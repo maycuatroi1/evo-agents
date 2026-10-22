@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from fastapi import HTTPException
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import question_runs, tables
@@ -24,8 +24,11 @@ NOT_HELD = (
 def _held_run(token_id: int, run_id: int):
     """The run ``run_id`` that the live worker of token ``token_id`` holds: its state, its project, the grant of its
     owner there (role and max_level None without one), its kind, and its owner, the member who dispatched it, by id and
-    login, and the project's ladder and default label. That is the worker's owner, or another writer of the project on a shared worker (``docs/workers.md``)."""
+    login, and the project's ladder and default label. That is the worker's owner, or another writer of the project on
+    a shared worker (``docs/workers.md``). Then what its memories need: its profile, version, the handle of a profile
+    that is not its project's default, its hop, chat and chat message."""
     workers, runs, projects, grants, users = tables.workers, tables.runs, tables.projects, tables.grants, tables.users
+    profiles = tables.agent_profiles
     return (
         select(
             runs.c.state,
@@ -35,6 +38,12 @@ def _held_run(token_id: int, run_id: int):
             runs.c.kind,
             runs.c.dispatched_by,
             users.c.login,
+            runs.c.profile_id,
+            runs.c.profile_version,
+            case((profiles.c.is_default, None), else_=profiles.c.handle).label("agent"),
+            runs.c.hop,
+            runs.c.chat_id,
+            runs.c.chat_message_id,
             projects.c.levels,
             projects.c.default_label,
         )
@@ -43,6 +52,7 @@ def _held_run(token_id: int, run_id: int):
             .join(projects, projects.c.id == runs.c.project_id)
             .join(users, users.c.id == runs.c.dispatched_by)
             .outerjoin(grants, and_(grants.c.project_id == runs.c.project_id, grants.c.user_id == runs.c.dispatched_by))
+            .outerjoin(profiles, profiles.c.id == runs.c.profile_id)
         )
         .where(workers.c.token_id == token_id, workers.c.revoked_at.is_(None), runs.c.id == run_id)
     )
@@ -63,5 +73,6 @@ async def run_principal(conn: AsyncConnection, user: Principal, run_id: int) -> 
     role = "writer" if has_role(role, "writer") else role
     if kind == "question":  # its answer leaves the hub: it reads, up to the label the answer carries
         role, max_level = "reader", question_runs.lowered_level(row.levels, max_level, row.default_label)
-    scope = RunScope(run_id, project, role, max_level, kind)
+    memory = (row.profile_id, row.profile_version, row.agent, row.hop, row.chat_id, row.chat_message_id)
+    scope = RunScope(run_id, project, role, max_level, kind, *memory)
     return replace(user, user_id=row.dispatched_by, login=row.login, admin=False, scope=scope)

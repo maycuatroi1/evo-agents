@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
+from evo_agents.hub.runs import AGENT_HOME
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES
 from tests.hub.contract_keys import assert_json_keys
@@ -401,6 +402,9 @@ def test_plugin_config_of_a_run_is_its_own_layer_and_its_claim_records_version_a
     assert dispatch(client, hub["owner"], [2], plugin_config={"Bad Name": {}}).status_code == 422
 
     worker = add_worker(client, hub["owner"], "mac-mini", slots=2)
+    home = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 2, "runs": []}
+    home["features"] = [AGENT_HOME]  # a run under the profile helper needs it (tests.hub.test_claim_agent_home)
+    assert client.post("/v1/worker/heartbeat", json=home, headers=worker["headers"]).status_code == 200
     own = dispatched(client, hub["owner"], [2], profile="helper", plugin_config={"sandbox": {"channel": "ops"}})[0]
     plain = dispatched(client, hub["owner"], [4])[0]
     reader = hub["reader"]

@@ -583,10 +583,12 @@ class HubMcp(MCPServer):
             held = f" The hub holds revision {current['revision']} (id {current['id']})." if current else ""
             raise Refusal(payload["message"] + held)
         verb = "created" if outcome.created else "changed" if outcome.changed else "unchanged: the hub held this"
+        pulled = "`evo-agents hub memory pull` brings it into the memory directory."
+        if outcome.agent:
+            pulled = f"it stays in the memories of @{outcome.agent}, which the Curator considers promoting."
         text = (
             f"Memory {outcome.name} {verb} on the hub ({memory_where(outcome)}): id {outcome.id}, revision "
-            f"{outcome.revision}. Nothing was written on this machine: `evo-agents hub memory pull` brings it into "
-            "the memory directory."
+            f"{outcome.revision}. Nothing was written on this machine: {pulled}"
         )
         data = {"memory": outcome.model_dump(mode="json", exclude={"body"}), "summary": f"memory {outcome.id} {verb}"}
         return text, {**data, **({"project": outcome.project} if outcome.project else {})}

@@ -494,6 +494,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memories/{memory_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Memory
+         * @description Bring back an agent's memory the daily upkeep archived: into the index and the searches of its agent's runs
+         *     again, as if just opened, with the audit row ``memory.restore``. A writer of its project who reads it, never the
+         *     agent of a run; a memory not archived is left as it is.
+         */
+        post: operations["restore_memory_v1_memories__memory_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/plans": {
         parameters: {
             query?: never;
@@ -690,7 +712,7 @@ export interface paths {
         get: operations["list_memories_v1_memories_get"];
         /**
          * Put
-         * @description Create or change the memory at the key ``body`` names.
+         * @description Create or change the memory at the key ``body`` names, in the namespace of ``body.agent`` or the run's.
          */
         put: operations["put_v1_memories_put"];
         post?: never;
@@ -12201,7 +12223,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "session" | "transcript" | "run" | "code";
+            kind: "session" | "transcript" | "run" | "code" | "memory";
             /**
              * Session Id
              * @description session, transcript: the session
@@ -12252,6 +12274,16 @@ export interface components {
              * @description code: the commit the worktree was at
              */
             commit?: string | null;
+            /**
+             * Memory Id
+             * @description memory: a memory of the project
+             */
+            memory_id?: number | null;
+            /**
+             * Revision
+             * @description memory: one of its revisions
+             */
+            revision?: number | null;
         };
         /** FacetCluster */
         FacetCluster: {
@@ -12444,6 +12476,31 @@ export interface components {
         };
         /** Found */
         Found: {
+            /**
+             * Read At
+             * @description an agent's memory: when the agent of a run last opened it
+             */
+            read_at?: string | null;
+            /**
+             * Archived At
+             * @description an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it
+             */
+            archived_at?: string | null;
+            /**
+             * Stale At
+             * @description an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph
+             */
+            stale_at?: string | null;
+            /**
+             * Promoted At
+             * @description an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision
+             */
+            promoted_at?: string | null;
+            /**
+             * Promoted Into
+             * @description the shared memory it was promoted into, while it exists
+             */
+            promoted_into?: number | null;
             /** Id */
             id: number;
             /** Scope */
@@ -12461,6 +12518,11 @@ export interface components {
              * @description the login of the person who created it
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent profile whose memory it is; else null
+             */
+            agent?: string | null;
             /** Label */
             label: {
                 [key: string]: unknown;
@@ -13776,7 +13838,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome" | "skill_release";
+            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome" | "skill_release" | "promoted";
             /**
              * Actor
              * @description curator: the hub's own code; agent: an agent of a run of the Curator; user: a member
@@ -14340,6 +14402,31 @@ export interface components {
         };
         /** Memory */
         Memory: {
+            /**
+             * Read At
+             * @description an agent's memory: when the agent of a run last opened it
+             */
+            read_at?: string | null;
+            /**
+             * Archived At
+             * @description an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it
+             */
+            archived_at?: string | null;
+            /**
+             * Stale At
+             * @description an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph
+             */
+            stale_at?: string | null;
+            /**
+             * Promoted At
+             * @description an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision
+             */
+            promoted_at?: string | null;
+            /**
+             * Promoted Into
+             * @description the shared memory it was promoted into, while it exists
+             */
+            promoted_into?: number | null;
             /** Id */
             id: number;
             /** Scope */
@@ -14357,6 +14444,11 @@ export interface components {
              * @description the login of the person who created it
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent profile whose memory it is; else null
+             */
+            agent?: string | null;
             /** Label */
             label: {
                 [key: string]: unknown;
@@ -14427,6 +14519,11 @@ export interface components {
              * @description what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience
              */
             audience?: string[] | null;
+            /**
+             * Agent
+             * @description scope project only: the agent profile whose memory it is
+             */
+            agent?: string | null;
         };
         /** MemoryRevision */
         MemoryRevision: {
@@ -14458,6 +14555,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** @description the run or the promotion that wrote it; null for neither */
+            provenance?: components["schemas"]["Provenance"] | null;
             /** Memory Id */
             memory_id: number;
             /**
@@ -17971,6 +18070,49 @@ export interface components {
              */
             skills?: components["schemas"]["RuntimeSkillStat"][];
         };
+        /**
+         * PromotionIn
+         * @description What a proposal of kind memory promotes: its sources are its evidence naming agents' memories.
+         */
+        PromotionIn: {
+            target: components["schemas"]["PromotionTarget"];
+            /**
+             * Body
+             * @description the whole memory after the merge
+             */
+            body: string;
+        };
+        /**
+         * PromotionTarget
+         * @description The shared memory a promotion writes: one of the project by id and current revision, or a new one.
+         */
+        PromotionTarget: {
+            /**
+             * Memory Id
+             * @description a shared memory of the project to merge into
+             */
+            memory_id?: number | null;
+            /**
+             * Revision
+             * @description its current revision
+             */
+            revision?: number | null;
+            /**
+             * Location
+             * @description a new one: harness or a repo
+             */
+            location?: string | null;
+            /**
+             * Name
+             * @description a new one: its file name, ending in .md
+             */
+            name?: string | null;
+            /**
+             * Type
+             * @description a new one: project or reference
+             */
+            type?: ("project" | "reference") | null;
+        };
         /** Proposal */
         Proposal: {
             /** Id */
@@ -18054,11 +18196,18 @@ export interface components {
             }[];
             /**
              * Plan
-             * @description the draft plan
+             * @description the draft plan; empty for a promotion
              */
             plan: {
                 [key: string]: unknown;
             };
+            /**
+             * Promotion
+             * @description kind memory: what it promotes, and the shared memory it wrote
+             */
+            promotion?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Note
              * @description the owner's note with the answer
@@ -18138,11 +18287,13 @@ export interface components {
             evidence?: components["schemas"]["EvidenceIn"][];
             /**
              * Plan
-             * @description the draft plan: plan.schema.json, in outcome steps
+             * @description the draft plan: plan.schema.json, in outcome steps; none to promote
              */
-            plan: {
+            plan?: {
                 [key: string]: unknown;
-            };
+            } | null;
+            /** @description kind memory: in place of a plan */
+            promotion?: components["schemas"]["PromotionIn"] | null;
         };
         /** ProposalList */
         ProposalList: {
@@ -18225,6 +18376,53 @@ export interface components {
             project: string;
             /** Repos */
             repos: components["schemas"]["RepoCheck"][];
+        };
+        /**
+         * Provenance
+         * @description Where a revision came from, when the agent of a run wrote it or an accepted proposal promoted agents' memories
+         *     into it.
+         */
+        Provenance: {
+            /**
+             * Run
+             * @description the run whose agent wrote it; null for a promotion
+             */
+            run: number | null;
+            /**
+             * Proposal
+             * @description the Curator's proposal whose promotion wrote it
+             */
+            proposal?: number | null;
+            /**
+             * Agent
+             * @description the handle of the profile the run ran under
+             */
+            agent: string | null;
+            /**
+             * Agent Version
+             * @description the version of that profile
+             */
+            agent_version: number | null;
+            /**
+             * Origin
+             * @description the login of the person at the run's origin, who dispatched it
+             */
+            origin: string | null;
+            /**
+             * Hop
+             * @description the run's hop in its chat: 1 for a person's mention, more agent to agent
+             */
+            hop: number | null;
+            /**
+             * Chat
+             * @description the chat of the run
+             */
+            chat: number | null;
+            /**
+             * Chat Message
+             * @description the chat message that started the run
+             */
+            chat_message: number | null;
         };
         /** PruneRequest */
         PruneRequest: {
@@ -19526,6 +19724,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** @description the run or the promotion that wrote it; null for neither */
+            provenance?: components["schemas"]["Provenance"] | null;
         };
         /** Revisions */
         Revisions: {
@@ -20439,6 +20639,23 @@ export interface components {
              */
             size_mb?: number | null;
         };
+        /**
+         * RunOrigin
+         * @description The person at the origin of a claimed run, who dispatched it (for a chat run, the person whose message began
+         *     the chain of agents): the worker names them as the co-author of the commits of a run its agent authors.
+         */
+        RunOrigin: {
+            /**
+             * Login
+             * @description the person's GitHub login
+             */
+            login: string;
+            /**
+             * Github Id
+             * @description the person's GitHub user id; null for a user the hub never saw on GitHub
+             */
+            github_id: number | null;
+        };
         /** RunOutput */
         RunOutput: {
             /** Id */
@@ -20835,6 +21052,14 @@ export interface components {
             session_per_step: boolean;
             /** @description the agent profile the run went under; null for a run from before schema 0030 */
             profile?: components["schemas"]["RunProfile"] | null;
+            /**
+             * Own Home
+             * @description true for a run under a profile that is not its project's default: the agent of a claude-code run gets a Claude Code config dir of its own in the run's directory instead of the owner's
+             * @default false
+             */
+            own_home: boolean;
+            /** @description the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it */
+            origin?: components["schemas"]["RunOrigin"] | null;
             /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
             plugin_runtime?: components["schemas"]["PluginRuntime"] | null;
             /** @description the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host */
@@ -25756,6 +25981,31 @@ export interface components {
         };
         /** Written */
         evo_agents__hub__server__memories__Written: {
+            /**
+             * Read At
+             * @description an agent's memory: when the agent of a run last opened it
+             */
+            read_at?: string | null;
+            /**
+             * Archived At
+             * @description an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it
+             */
+            archived_at?: string | null;
+            /**
+             * Stale At
+             * @description an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph
+             */
+            stale_at?: string | null;
+            /**
+             * Promoted At
+             * @description an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision
+             */
+            promoted_at?: string | null;
+            /**
+             * Promoted Into
+             * @description the shared memory it was promoted into, while it exists
+             */
+            promoted_into?: number | null;
             /** Id */
             id: number;
             /** Scope */
@@ -25773,6 +26023,11 @@ export interface components {
              * @description the login of the person who created it
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent profile whose memory it is; else null
+             */
+            agent?: string | null;
             /** Label */
             label: {
                 [key: string]: unknown;
@@ -27338,6 +27593,76 @@ export interface operations {
             };
         };
     };
+    restore_memory_v1_memories__memory_id__restore_post: {
+        parameters: {
+            query?: {
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Memory"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_plans_v1_projects__project__plans_get: {
         parameters: {
             query?: {
@@ -28141,6 +28466,8 @@ export interface operations {
                 limit?: number;
                 /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
                 sink?: string | null;
+                /** @description only the memories of this agent profile (its handle, @ left out); left out, those of no agent */
+                agent?: string | null;
             };
             header?: never;
             path?: never;
@@ -28269,6 +28596,8 @@ export interface operations {
                 limit?: number;
                 /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
                 sink?: string | null;
+                /** @description only the memories of this agent profile (its handle, @ left out); left out, those of no agent */
+                agent?: string | null;
             };
             header?: never;
             path?: never;

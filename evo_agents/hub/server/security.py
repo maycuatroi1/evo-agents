@@ -169,6 +169,20 @@ class RunScope:
     role: str  # the owner's role on the project when the request came, at most writer
     max_level: str  # the owner's grant's, when the request came
     kind: str = "step"  # the run's kind: a judge run's agent reads the code graph alone (``mcp_tools.JUDGE_TOOLS``)
+    # What the memories of a run need (``memory_agents``): the profile and version it runs under, the handle of that
+    # profile when it is not its project's default (whose agent writes into its own namespace), and its chat and hop.
+    profile_id: int | None = None
+    profile_version: int | None = None
+    agent: str | None = None
+    hop: int | None = None
+    chat_id: int | None = None
+    chat_message_id: int | None = None
+
+    @property
+    def namespace(self) -> int | None:
+        """The profile whose memories the agent writes and reads besides the shared ones; None for a default
+        profile, which writes the shared memories as before."""
+        return self.profile_id if self.agent is not None else None
 
 
 @dataclass(frozen=True)

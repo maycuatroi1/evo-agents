@@ -61,7 +61,7 @@ from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
-from evo_agents.worker.agent_input import decision_option, evidence_items, read_text
+from evo_agents.worker.agent_input import attest, decision_option, evidence_items, plan_file, promotion_file, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 
@@ -759,35 +759,6 @@ def cmd_plan(args) -> int:
 # The commands of a review run's agent
 
 
-async def _attest(evidence: list[dict], workspaces: dict) -> None:
-    """Check each piece of code evidence against the run's worktree of its repo: the file is there, with the line;
-    and add the commit the worktree is at. The hub checks the rest."""
-    from evo_agents.worker import gitops
-
-    for item in evidence:
-        if item["kind"] != "code":
-            continue
-        workspace = workspaces.get(item["repo"])
-        if workspace is None:
-            raise WorkerStateError(
-                f"code:{item['repo']}:{item['path']}: run works in {', '.join(workspaces) or 'no repo'}, not in "
-                f"{item['repo']}"
-            )
-        path = workspace.worktree / item["path"]
-        if not path.resolve().is_relative_to(workspace.worktree.resolve()) or not path.is_file():
-            raise WorkerStateError(
-                f"code:{item['repo']}:{item['path']}: no such file in the worktree of {item['repo']}"
-            )
-        if item.get("line") is not None:
-            with open(path, "rb") as handle:
-                lines = sum(1 for _ in handle)
-            if item["line"] > lines:
-                raise WorkerStateError(f"code:{item['repo']}:{item['path']}:{item['line']}: the file has {lines} lines")
-        head = await gitops.rev(workspace.worktree, "HEAD")
-        if head:
-            item["commit"] = head
-
-
 @worker_command
 def cmd_finding(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
@@ -802,27 +773,12 @@ def cmd_finding(args) -> int:
     workspaces = _workspaces(agent)
 
     async def work(hub) -> dict:
-        await _attest(body["evidence"], workspaces)
+        await attest(body["evidence"], workspaces)
         return await hub.finding(agent.run_id, body)
 
     answer = _with_hub(agent, work)
     print(f"Finding #{answer.get('id')} recorded ({args.lens}, {args.severity}): {body['title']}")
     return 0
-
-
-def _plan_file(source: str) -> dict:
-    import yaml
-
-    from evo_agents.hub.review import MAX_DRAFT_BYTES
-
-    text = read_text(source, "draft plan", MAX_DRAFT_BYTES) or ""
-    try:
-        plan = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise WorkerStateError(f"{source} is neither YAML nor JSON: {exc}") from None
-    if not isinstance(plan, dict):
-        raise WorkerStateError(f"{source} holds no plan: a draft plan is a mapping with id, goal and steps")
-    return json.loads(json.dumps(plan, default=str))  # dates as text, as the hub keeps JSON
 
 
 @worker_command
@@ -847,7 +803,7 @@ def cmd_propose(args) -> int:
         "paths": paths,
         "finding_ids": list(dict.fromkeys(args.finding or [])),
         "evidence": evidence,
-        "plan": _plan_file(args.plan_file),
+        **({"plan": plan_file(args.plan_file)} if args.plan_file else {"promotion": promotion_file(args.promote_file)}),
     }
     if args.summary_file:
         text = read_text(args.summary_file, "summary", MAX_BODY_BYTES)
@@ -856,7 +812,7 @@ def cmd_propose(args) -> int:
     workspaces = _workspaces(agent)
 
     async def work(hub) -> dict:
-        await _attest(body["evidence"], workspaces)
+        await attest(body["evidence"], workspaces)
         return await hub.proposal(agent.run_id, body)
 
     answer = _with_hub(agent, work)
@@ -950,6 +906,43 @@ def _register_step(wsub) -> None:
         f"ends); it goes on after, and they exit {step_verify.verify_jobs.EXIT_RUNNING}",
     )
     step.set_defaults(func=cmd_step)
+
+
+def _register_review(wsub) -> None:
+    """``worker finding`` and ``worker propose``, which the agent of a review run runs; outside one they refuse."""
+    from evo_agents.hub.review import LENSES, SEVERITIES
+    from evo_agents.hub.tiers import CHANGE_KINDS
+
+    finding = wsub.add_parser("finding", help="inside a review run: record a finding with its evidence; prints its id")
+    finding.add_argument("--lens", required=True, choices=list(LENSES), help="the lens it was found through")
+    finding.add_argument("--title", required=True, help="what was found, in one line")
+    finding.add_argument(
+        "--evidence",
+        action="append",
+        required=True,
+        metavar="SPEC",
+        help="session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
+    )
+    finding.add_argument("--severity", choices=SEVERITIES, default="medium", help="low, medium (default) or high")
+    finding.add_argument("--body-file", help="markdown that explains it, at most 16 KiB (- for stdin)")
+    finding.set_defaults(func=cmd_finding)
+
+    propose = wsub.add_parser(
+        "propose", help="inside a review run: propose a change with its draft plan; prints its id, tier and state"
+    )
+    propose.add_argument("--lens", required=True, choices=list(LENSES), help="the lens it comes from")
+    propose.add_argument("--kind", required=True, choices=list(CHANGE_KINDS), help="the kind of change")
+    propose.add_argument("--title", required=True, help="the change, in one line")
+    draft = propose.add_mutually_exclusive_group(required=True)
+    draft.add_argument("--plan-file", help="the draft plan, YAML or JSON, in outcome steps")
+    draft.add_argument("--promote-file", help="kind memory: the promotion of agents' memories, YAML or JSON")
+    propose.add_argument("--path", action="append", metavar="REPO:PATH", help="a file it would edit; repeat it")
+    propose.add_argument("--finding", action="append", type=int, metavar="ID", help="a finding it rests on; repeat it")
+    propose.add_argument(
+        "--evidence", action="append", metavar="SPEC", help="evidence of its own, as finding takes it; repeat it"
+    )
+    propose.add_argument("--summary-file", help="markdown: the problem, the change, what waiting costs (- for stdin)")
+    propose.set_defaults(func=cmd_propose)
 
 
 def register(sub) -> None:
@@ -1064,38 +1057,7 @@ def register(sub) -> None:
     notify.add_argument("--commit", action="append", metavar="SHA", help="a commit pushed or merged; repeat it")
     notify.set_defaults(func=cmd_notify)
 
-    from evo_agents.hub.review import LENSES, SEVERITIES
-    from evo_agents.hub.tiers import CHANGE_KINDS
-
-    # The agent of a review run runs these; outside one they refuse.
-    finding = wsub.add_parser("finding", help="inside a review run: record a finding with its evidence; prints its id")
-    finding.add_argument("--lens", required=True, choices=list(LENSES), help="the lens it was found through")
-    finding.add_argument("--title", required=True, help="what was found, in one line")
-    finding.add_argument(
-        "--evidence",
-        action="append",
-        required=True,
-        metavar="SPEC",
-        help="session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
-    )
-    finding.add_argument("--severity", choices=SEVERITIES, default="medium", help="low, medium (default) or high")
-    finding.add_argument("--body-file", help="markdown that explains it, at most 16 KiB (- for stdin)")
-    finding.set_defaults(func=cmd_finding)
-
-    propose = wsub.add_parser(
-        "propose", help="inside a review run: propose a change with its draft plan; prints its id, tier and state"
-    )
-    propose.add_argument("--lens", required=True, choices=list(LENSES), help="the lens it comes from")
-    propose.add_argument("--kind", required=True, choices=list(CHANGE_KINDS), help="the kind of change")
-    propose.add_argument("--title", required=True, help="the change, in one line")
-    propose.add_argument("--plan-file", required=True, help="the draft plan, YAML or JSON, in outcome steps")
-    propose.add_argument("--path", action="append", metavar="REPO:PATH", help="a file it would edit; repeat it")
-    propose.add_argument("--finding", action="append", type=int, metavar="ID", help="a finding it rests on; repeat it")
-    propose.add_argument(
-        "--evidence", action="append", metavar="SPEC", help="evidence of its own, as finding takes it; repeat it"
-    )
-    propose.add_argument("--summary-file", help="markdown: the problem, the change, what waiting costs (- for stdin)")
-    propose.set_defaults(func=cmd_propose)
+    _register_review(wsub)
 
     plan = wsub.add_parser(
         "plan", help="inside a plan run or an author run: print the run's plan as the hub holds it now"
