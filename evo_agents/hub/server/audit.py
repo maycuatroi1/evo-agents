@@ -38,6 +38,8 @@ KG_PRUNE = "kg.prune"  # the retention deleted artifacts of a project's older gr
 # An admin deleted old graphs and source blobs of a project that hold a secret (evo_agents.hub.server.kg_scrub); the
 # target counts them, "<project> artifacts=<n> blobs=<n>", never a hash or a value.
 KG_SCRUB = "kg.scrub"
+# A member took every run of a source off the hub (evo_agents.hub.server.kg): "<project> source=<id> runs=<n>".
+KG_FORGET = "kg.forget"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
 WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token
