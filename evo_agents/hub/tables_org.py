@@ -15,6 +15,9 @@ seat.
 autonomy_ceilings holds every revision of the ceiling of a unit or a seat, never changed: the scope (unit or seat), the
 id of the unit or the seat, the revision (1 and up within the scope), the level (A0 to A5), the writer's note, who
 wrote it (NULL for the root's first, which schema 0099 wrote) and when. A scope's ceiling is its highest revision.
+
+worker_shares (0102, ``tables.worker_shares``) holds the units a shared worker is narrowed to: the worker, the unit, who
+added the row and when (``evo_agents.hub.server.worker_shares``).
 """
 
 from __future__ import annotations
@@ -132,6 +135,22 @@ def ceilings_table(metadata: MetaData) -> Table:
     )
 
 
-def org_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """(org_units, org_seats, autonomy_ceilings), added to ``metadata``."""
-    return units_table(metadata), seats_table(metadata), ceilings_table(metadata)
+def worker_shares_table(metadata: MetaData) -> Table:
+    return Table(
+        "worker_shares",
+        metadata,
+        Column("worker_id", BigInteger, nullable=False),
+        Column("unit_id", BigInteger, nullable=False),
+        Column("created_by", BigInteger),
+        _stamp("created_at"),
+        _key("worker_shares", "worker_id", "workers", "CASCADE"),
+        _key("worker_shares", "unit_id", "org_units", "RESTRICT"),
+        _key("worker_shares", "created_by", "users", "SET NULL"),
+        PrimaryKeyConstraint("worker_id", "unit_id", name="worker_shares_pkey"),
+        Index("worker_shares_unit_idx", "unit_id"),
+    )
+
+
+def org_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
+    """(org_units, org_seats, autonomy_ceilings, worker_shares), added to ``metadata``."""
+    return units_table(metadata), seats_table(metadata), ceilings_table(metadata), worker_shares_table(metadata)

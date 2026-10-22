@@ -309,6 +309,7 @@ def create_app(config: HubConfig) -> FastAPI:
         protection,
         replays,
         transcripts,
+        worker_shares,
     )
 
     for routes in (
@@ -329,6 +330,7 @@ def create_app(config: HubConfig) -> FastAPI:
         playbook.router,
         playbook.worker_router,
         org.router,  # the org chart (plan org-chart)
+        worker_shares.router,  # shared workers narrowed to units (plan credential-sharing)
     ):
         app.include_router(routes)
 
