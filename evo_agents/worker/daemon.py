@@ -100,6 +100,8 @@ RUNTIMES_EVERY = 300.0  # seconds between looks at the runtimes
 CHECKOUTS_EVERY = 60.0  # and at the checkouts
 CLEANUP_EVERY = 3600.0
 KEEP_WORKTREES = timedelta(days=7)
+# the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
+DIRECTORY_KINDS = ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question")
 LEFTOVER_GRACE = 30.0  # seconds the daemon waits at its end for leftover events to go
 MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
 
@@ -890,7 +892,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release"):
+        if record.get("kind") in DIRECTORY_KINDS:
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)

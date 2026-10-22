@@ -142,6 +142,7 @@ SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
 SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
 # migration 0098: the reviews of single use cases of a version of a BA document
 SRS_USE_CASE_REVIEW_TABLES = frozenset({"srs_use_case_reviews"})
+AGENT_QUESTION_TABLES = frozenset({"agent_questions"})  # the questions of core plugins to their agent types
 # migration 0073: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
 CANVAS_TABLES = frozenset({"canvas_canvases", "canvas_claims", "canvas_claim_revs", "canvas_evidence"})
 # migration 0074: the registry of a project's signal keys, its signals, and the ingest keys services write them with
