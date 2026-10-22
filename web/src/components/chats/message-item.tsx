@@ -1,8 +1,8 @@
 "use client";
 
-import { MessageSquareReply, Reply } from "lucide-react";
+import { BookOpen, MessageSquareReply, Reply } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import type { ReactNode, Ref } from "react";
+import { type ReactNode, type Ref, useContext } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
 import { OutputStrip } from "@/components/data/output-strip";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { type Chat, type ChatAuthor, chatFileOutput, type GroupMessage, isMine } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
+import { docKey, messageDocs, OpenDocContext } from "./doc-model";
 import { AuthorAvatar } from "./faces";
 import type { Quote } from "./line-model";
 import { MessageHead, ReplyQuote, ThreadSummary } from "./message-parts";
@@ -133,6 +134,7 @@ export function MessageItem(props: Props) {
         ) : null}
         <OutputStrip outputs={attached} label={tFiles("attached")} className={cn(mine && "justify-end", !bubble && highlighted && "rounded-sm ring-2 ring-brand")} testId="message-attachments" />
         <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
+        <DocButtons message={message} className={cn(mine && "justify-end")} />
         <MessageLinks message={message} chat={chat} />
         <MessageProgress progress={message.progress} />
         {under?.(message)}
@@ -163,5 +165,23 @@ export function MessageItem(props: Props) {
         ) : null}
       </div>
     </li>
+  );
+}
+
+/** A button for each Markdown document of the message that opens it beside the chat, where the page has the panel. */
+function DocButtons({ message, className }: { message: GroupMessage; className?: string }) {
+  const t = useTranslations("chats.doc");
+  const openDoc = useContext(OpenDocContext);
+  const names = [...new Map(messageDocs(message).map((file) => [docKey(file.name), file.name])).values()];
+  if (!openDoc || names.length === 0) return null;
+  return (
+    <div className={cn("flex flex-wrap gap-1.5", className)} data-testid="message-docs">
+      {names.map((name) => (
+        <Button key={name} type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => openDoc(name)} data-testid="doc-open">
+          <BookOpen aria-hidden="true" />
+          {t("open", { name })}
+        </Button>
+      ))}
+    </div>
   );
 }

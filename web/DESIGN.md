@@ -997,7 +997,14 @@ Shared pieces built on them:
   in `danger` when it could not, and Remove (which stops an upload). A file over 25 MiB, an empty one and the files
   past ten are refused before they are sent, the reason under the box. A message may then have no text; Send is
   disabled while a file uploads and refuses while a chip failed, and the chips go once the message is sent (its
-  `file_ids`). Members
+  `file_ids`). A Markdown file of a message (attached or sent by a run) has "Open NAME beside the chat" (`BookOpen`)
+  under it: the document panel (`doc-panel.tsx`) reads it in a column beside the chat from lg, above it below lg, so
+  the composer stays in reach. Files of the chat with the same name (any case) are versions of one document; the panel
+  shows the latest, and when a new one comes (an agent sends the file it fixed back under its name) it reloads by
+  itself, says so in a polite status and switches to Changes: a unified line diff (`doc-diff.tsx`, `lib/line-diff.ts`)
+  against the version read before, green rows with + for lines added, red rows with − for lines removed or replaced,
+  plain rows for the lines kept around them (runs of more than 8 folded behind a button), +N −M in the bar. Selects
+  pick the version shown and the one it is compared with. Members
   (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
   project, or takes one out), the people (any member adds one with New chat's people picker, or by login; the creator
   takes others out; each may Leave, confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its
