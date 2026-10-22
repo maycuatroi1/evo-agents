@@ -168,7 +168,10 @@ would fail the author run), or a plan that cannot run (a repo of its steps the p
 others) leaves the work item queued with `worker` and the hub's why. An author run in Loop mode is ended by the hub once
 its plan is on the hub and its turn left no decision open; one that asks a question waits for its owner as any author
 run does (`author_question`). The merge requests of a plan run go through the merge queue (`docs/merge-queue.md`) as any
-plan run's do: the Loop merges nothing itself.
+plan run's do: the Loop merges nothing itself. When a repo of the project is in merge mode `auto`, the author run's request
+says so: the queue opens the merge request, runs its pipeline and merges it, so each step ends at its branch pushed with
+its local tests passing and no step waits for a pipeline, and no step edits CI configuration (`.gitlab-ci.yml`,
+`.github/workflows`) unless the goal is about CI, since gate 3 holds such a change for a person.
 
 ## Waiting for a person, triage and the breaker
 
