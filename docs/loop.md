@@ -84,7 +84,7 @@ the Loop reads them from their tables when it reconciles a work item, so it need
 | 7 | the frame task is ready (the clock) | group todo, the split run ended, in an active sprint when `loop.require_sprint` | the `build` queued | |
 | 8 | a frame task of the chain closed | before a run was handed out for it | its `build` cancelled (`task_closed`) | |
 | 9 | the `build`'s author run wrote a plan and ended (the clock) | | the `build` done; a `deliver` of that plan | `deliver:<plan id>` |
-| 10 | the plan's merge requests in the merge queue (the clock) | each one through (`done`, or `merged` where the repo names no check job), each repo the queue does not merge marked merged in the plan | the `deliver` done; the release noted in the chain | |
+| 10 | the plan's merge requests in the merge queue (the clock) | each one through (`done`, `merged` where the repo names no check job, or `closed` because a person merged it on GitLab, as the queue's ledger says), each repo the queue does not merge marked merged in the plan | the `deliver` done; the release noted in the chain | |
 | 11 | a merge request of the chain reverted | | a failure of the `deliver` | |
 | 12 | `tasks.status`, `canvas.claim`, `signal.posted`, any other version approved | | nothing; the canvas's value check runs on signals by itself | |
 | 13 | a test card past its deadline | | nothing; the canvas's baseline asks to extend or retire it | |
@@ -137,7 +137,11 @@ work item's reason; it stays queued and no run is handed out:
    draining, or has no free slot.
 
 A hand-out the agent type refuses (off, its run_as no writer, its daily cap spent) leaves the work item queued with
-`type_refused`. A reason is written, with its ledger row, only when it changes.
+`type_refused`. A reason is written, with its ledger row, only when it changes. Its figures (the cycle, the count and
+the cap for `concurrency`, the repos held for a deliver, the hand-outs of the hour and the cap for `rate`, the worker
+and why for `worker` and `type_refused`) go into the work item's detail in the place of those of its reason before, so
+`GET .../loop/items` and the Loop page show them as `waiting`; figures that change under the same reason are written
+again with no ledger row.
 
 Each run carries its own caps. An author run and a plan run of the Loop take `max_turns` and `max_seconds` from
 `loop.caps.author` or `loop.caps.plan`, `max_usd` empty, and a timeout of that time plus 300 seconds. A task run of
@@ -168,7 +172,10 @@ would fail the author run), or a plan that cannot run (a repo of its steps the p
 others) leaves the work item queued with `worker` and the hub's why. An author run in Loop mode is ended by the hub once
 its plan is on the hub and its turn left no decision open; one that asks a question waits for its owner as any author
 run does (`author_question`). The merge requests of a plan run go through the merge queue (`docs/merge-queue.md`) as any
-plan run's do: the Loop merges nothing itself.
+plan run's do: the Loop merges nothing itself. When a repo of the project is in merge mode `auto`, the author run's request
+says so: the queue opens the merge request, runs its pipeline and merges it, so each step ends at its branch pushed with
+its local tests passing and no step waits for a pipeline, and no step edits CI configuration (`.gitlab-ci.yml`,
+`.github/workflows`) unless the goal is about CI, since gate 3 holds such a change for a person.
 
 ## Waiting for a person, triage and the breaker
 
@@ -212,7 +219,8 @@ People decide the direction of the project at three gates, gathered on its decis
    tripped, and the Loop's own breaker.
 
 After the gates the board lists what the Loop's chain waits on: its decisions of category `loop`, the decisions and
-questions of the runs it handed out, merge requests held for a person, the merge queue's audit samples, and the SRS
+questions of the runs it handed out, merge requests held for a person (one held at gate 3 names the command an admin
+passes it with, `docs/merge-queue.md`, The gates), the merge queue's audit samples, and the SRS
 versions its use cases drafted that wait for their review, with their settle chats. The review of an SRS version and
 the settle chat are no fourth gate: the rules of the plugin srs stay as they are. The Curator's morning brief has a
 part of the Loop (the runs it handed out and the work items it finished in the last 24 hours, and those waiting for a

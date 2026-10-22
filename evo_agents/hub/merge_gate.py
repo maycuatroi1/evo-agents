@@ -25,7 +25,10 @@ others:
    keeps it waiting, at most ``merge.pipeline_minutes``.
 2. the repo of the plan step (``plan_repo_problem``): the merge request is of the repo's GitLab project and from the
    branch the plan (or the task run, or the Curator's change) names for it; a person's has no plan step and passes.
-3. score hacking (``judge.hack_signs`` on the diff GitLab lists, ``files_of``): one sign holds it for a person.
+3. score hacking (``judge.hack_signs`` on the diff GitLab lists, ``files_of``): one sign holds it for a person. An
+   admin of the project passes such a hold with a reason (PASSABLE_GATES, ``pass_refusal``): the queue goes on from
+   the gate at the same head, every later gate, the Judges, its turn and its pipeline still to pass; a new push takes
+   the pass back.
 4. the checks: the judge run runs the verify of the plan's steps for the repo and the project's hidden checks before
    its agent reads the diff; each must exit 0.
 5. the Judge (``judge_gate``): Claude, with a context of its own that never holds the Builder's transcript, judges each
@@ -91,6 +94,9 @@ QUEUED_STATES = (*OPEN_STATES, *TURN_STATES)  # a merge request the queue still 
 HOLDING_STATES = ("merged", "verifying", "releasing", "rolling_back", "reverting")
 MAX_REBASES = 3  # rebases again in a row, the target branch moving under each; the next move blocks it
 WAITS = "waits: "  # the reason of a merge request that waits for something on GitLab starts so
+# The keys of the detail of a ledger line ``closed`` for a merge request GitLab no longer has open: its state there
+# (merged or closed) and, merged, the commit GitLab names for the merge (``closed_detail``).
+GITLAB_STATE, MERGE_SHA = "gitlab", "merge_commit_sha"
 EVENT_KINDS = (
     "opened",  # the hub opened the merge request of a run
     "queued",  # the queue took it, or it passed every gate and waits for its turn
@@ -122,6 +128,7 @@ GATES = {
     6: "risk",
     7: "second Judge",
 }
+PASSABLE_GATES = (3,)  # the gates whose hold is for a person: an admin of the project passes it (pass_refusal)
 NO_ONE, DEVELOPER, MAINTAINER = 0, 30, 40  # GitLab's access levels
 MERGE_METHOD = "ff"
 GREEN = "success"
@@ -623,15 +630,56 @@ def gate_reason(gate: int, why: str) -> str:
     return reason_line(f"gate {gate} ({GATES[gate]}): {why}")
 
 
-def comment(reason: str, *, waits: bool = False) -> str:
-    """The hub's comment on a merge request its queue holds or blocks."""
+def comment(reason: str, *, waits: bool = False, passable: bool = False) -> str:
+    """The hub's comment on a merge request its queue holds or blocks; ``passable`` when the hold is for a person
+    (``pass_refusal``)."""
     what = "waits" if waits else "is blocked"
-    after = (
-        "The hub reads it again on its own."
-        if waits
-        else "The hub gates it again after a new push, or when an admin of the project asks it to."
-    )
+    if waits:
+        after = "The hub reads it again on its own."
+    elif passable:
+        after = (
+            "The hub gates it again after a new push. This hold is for a person: an admin of the project on the hub may "
+            "pass it with a reason (`evo-agents hub merge pass`), and the queue goes on from this gate."
+        )
+    else:
+        after = "The hub gates it again after a new push."
     return f"The evo-agents hub's merge queue: this merge request {what} at {reason}.\n\n{after}"
+
+
+def held_at(reason: str | None) -> int | None:
+    """The gate a merge request's ``reason`` (``gate_reason``) holds it at; None when it names no gate."""
+    found = re.match(r"gate (\d) \(", reason or "")
+    return int(found.group(1)) if found else None
+
+
+def pass_refusal(state: str, reason: str | None, source: str) -> str | None:
+    """Why no person may pass the hold of a merge request in ``state`` with ``reason``, from ``source``; None when an
+    admin of the project may: it is blocked at one of PASSABLE_GATES, and it is no revert, whose gate 3 checks that
+    its diff undoes the merge."""
+    gate = held_at(reason)
+    if state != "blocked" or gate is None:
+        return f"it is {state} and held at no gate: only a hold at gate 3 ({GATES[3]}) is for a person"
+    if gate not in PASSABLE_GATES:
+        return f"it is held at gate {gate} ({GATES[gate]}), which a new push moves, not a person"
+    if source == "revert":
+        return "it is a revert of the hub: its gate 3 checks that its diff undoes the merge, and no person passes it"
+    return None
+
+
+def pass_line(login: str, reason: str) -> str:
+    """The ledger's line of an admin's pass of a hold."""
+    return reason_line(f"passed by {login}, an admin of the project: {reason}")
+
+
+def closed_detail(state: str | None, merge_commit_sha: str | None, head: str | None) -> dict:
+    """The detail of the ledger's line ``closed`` of a merge request that left the queue while GitLab has it in
+    ``state``: that state, and for one merged the commit GitLab names for the merge (its head when it names none, as
+    a fast-forward merge leaves it); empty while it is still open there."""
+    if state in (None, "opened"):
+        return {}
+    if state != "merged":
+        return {GITLAB_STATE: state}
+    return {GITLAB_STATE: state, MERGE_SHA: merge_commit_sha or head}
 
 
 def turn_reason(stage: str, why: str) -> str:

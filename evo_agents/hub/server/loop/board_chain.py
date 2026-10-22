@@ -5,8 +5,9 @@ report's sections Trang Quyết định and Người vào cuộc ngoài ba cổn
   (the goal's owner gets no notice of it: the board shows it to every member); each decision still open of a run the
   Loop handed out that a work item waits on (``run_decision``: a plan run at a checkpoint, an author run's), and an
   author run of the Loop asking its owner in its chat with no decision open; each merge request of a work item deliver
-  held for a person (blocked or paused) and the repos of its plan the queue does not merge, to merge by hand and mark
-  merged in the plan; each audit sample of the merge queue not answered.
+  held for a person (blocked or paused; one blocked at a gate says how it goes on: an admin passes a hold at gate 3,
+  ``merge_gate.pass_refusal``, and a new push moves any other) and the repos of its plan the queue does not merge, to
+  merge by hand and mark merged in the plan; each audit sample of the merge queue not answered.
 - ``srs``: each version of an SRS document a work item use_case drafted that waits for its review, for the writers
   who may approve it (who wrote none of the versions since the one approved last, unless the plugin's self_approval is
   on; the approval policy of the plugin may ask roles too); each settle chat of an open finding of level decide that
@@ -23,12 +24,13 @@ from collections.abc import Sequence
 from sqlalchemy import Text, cast, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import goals, runs, tables
+from evo_agents.hub import goals, merge_gate, runs, tables
 from evo_agents.hub.server.loop.board_items import (
     ADMIN,
     CHAT_MEMBER,
     RUN_OWNER,
     SRS_REVIEWER,
+    TITLE_CHARS,
     WRITER,
     BoardItem,
     People,
@@ -48,6 +50,7 @@ ASKING = ("run_decision", "author_question")  # the reasons of a work item whose
 HELD = ("blocked", "paused")  # merge_gate.STATES of a merge request that waits for a person
 IN_REVIEW = "in_review"  # tables_srs.VERSION_STATES
 SRS = "srs"  # the core plugin whose config says self_approval
+MIN_WHY_CHARS = 40  # of why a merge request is held at a gate, in its title
 
 
 async def _waiting(conn: AsyncConnection, project_id: int) -> list:
@@ -155,15 +158,13 @@ async def _merges(conn: AsyncConnection, reading: Reading, crowd: People, waitin
     }
     found = []
     if held:
-        query = select(q.c.id, q.c.repo, q.c.iid, q.c.state, q.c.reason, q.c.plan_id, q.c.updated_at).where(
-            q.c.project_id == reading.project_id, q.c.id.in_(sorted(held)), q.c.state.in_(HELD)
-        )
+        query = select(q.c.id, q.c.repo, q.c.iid, q.c.state, q.c.reason, q.c.plan_id, q.c.updated_at, q.c.source)
+        query = query.where(q.c.project_id == reading.project_id, q.c.id.in_(sorted(held)), q.c.state.in_(HELD))
         admins, queue = crowd.holding(ADMIN), project_path(reading.project, "merge-queue")
         for row in await conn.execute(query.order_by(q.c.id)):
             work = held[row.id]
-            title = f"Merge request !{row.iid or '?'} of {row.repo} {row.state}, plan {row.plan_id or work.plan_id}"
-            title += f": {line(row.reason)}" if row.reason else ""
-            refs = _refs(work, merge_request=row.id, repo=row.repo)
+            title = _held_title(row, row.plan_id or work.plan_id)
+            refs = _refs(work, merge_request=row.id, repo=row.repo, plan=row.plan_id or work.plan_id)
             found.append(item("merge_held", title, row.updated_at, ADMIN, admins, queue, work_item=work.id, refs=refs))
     writers = crowd.holding(WRITER)
     for work in waiting:
@@ -176,6 +177,21 @@ async def _merges(conn: AsyncConnection, reading: Reading, crowd: People, waitin
         link, refs = project_path(reading.project, "plans", work.plan_id), _refs(work, plan=work.plan_id)
         found.append(item("merge_manual", title, work.updated_at, WRITER, writers, link, work_item=work.id, refs=refs))
     return found
+
+
+def _held_title(row, plan: str | None) -> str:
+    """The title of a merge request held for a person. One blocked at a gate names the gate, why in the room left, and
+    how it goes on: an admin passes a hold for a person (``merge_gate.pass_refusal``), a new push moves any other."""
+    what = f"Merge request !{row.iid or '?'} of {row.repo} {row.state}"
+    gate = merge_gate.held_at(row.reason) if row.state == "blocked" else None
+    if gate is None:
+        return f"{what}, plan {plan}" + (f": {line(row.reason)}" if row.reason else "")
+    head = f"{what} at gate {gate} ({merge_gate.GATES[gate]}): "
+    how = "; a new push gates it again"
+    if merge_gate.pass_refusal(row.state, row.reason, row.source) is None:
+        how = f"; an admin passes it: `evo-agents hub merge pass {row.repo} {row.iid} --reason ...`"
+    why = row.reason.split(": ", 1)[-1]
+    return head + line(why, max(TITLE_CHARS - len(head) - len(how), MIN_WHY_CHARS)) + how
 
 
 async def _samples(conn: AsyncConnection, reading: Reading, crowd: People) -> list[BoardItem]:

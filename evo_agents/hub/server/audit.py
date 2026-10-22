@@ -158,6 +158,9 @@ GOAL_SET = "goal.set"
 MERGE_OPEN = "merge.open"
 MERGE_JUDGE = "merge.judge"
 MERGE_MERGE = "merge.merge"
+# An admin passed the hold of a merge request at a gate that holds it for a person (evo_agents.hub.server.merge_pass),
+# in the project: "<project>/<repo> !<iid> gate=<n> sha=<the head it holds> reason=<the admin's reason, cut>".
+MERGE_PASS = "merge.pass"
 # What follows a merge of the queue (evo_agents.hub.server.post_merge), in the project: the hub ran the PROD deploy job,
 # "<project>/<repo> !<iid> job=<name> sha=<commit>[ carries=<!iid,...>]", or the rollback job, "... job=<name>
 # to=<commit>", or opened a revert, "<project>/<repo> !<iid> revert=!<iid> branch=<branch>"; an admin approved a PROD

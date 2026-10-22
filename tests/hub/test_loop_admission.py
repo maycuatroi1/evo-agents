@@ -120,6 +120,14 @@ def set_run(db, run_id: int, **values) -> None:
     sql(db, update(tables.runs).where(tables.runs.c.id == run_id).values(**values))
 
 
+def shown(client, hub, db, key: str) -> dict:
+    """The figures work item ``key`` waits on, as GET .../loop/items shows them to a member (``waiting``)."""
+    listed = client.get(f"/v1/projects/{PROJECT}/loop/items", headers=hub["owner"])
+    assert listed.status_code == 200, listed.text
+    (found,) = [entry for entry in listed.json()["items"] if entry["id"] == item(db, key)["id"]]
+    return found["waiting"]
+
+
 def queued(db, kind: str, key: str, **values) -> None:
     """A work item of the development cycle queued for goal G-1, as the engine leaves one."""
     goal = sql(db, select(tables.goals.c.id))[0][0]
@@ -166,6 +174,7 @@ def test_loop_admission_holds_business_work_items_at_the_cycle_cap_the_rate_the_
         "concurrency",
         {"cycle": "business", "running": 1, "max_running": 1},
     )
+    assert shown(client, hub, hub_db, CASE) == {"cycle": "business", "running": 1, "max_running": 1}
     before = counts(hub_db)
     assert ticked(client, hub_db, dispatch) == {"events": 0, "changed": 0}
     assert counts(hub_db) == before
@@ -175,6 +184,8 @@ def test_loop_admission_holds_business_work_items_at_the_cycle_cap_the_rate_the_
     policy(client, hub, loop)
     assert ticked(client, hub_db, dispatch)["waiting"] == 1
     assert waits(hub_db, CASE)[-1][:3] == ("waiting", "rate", {"dispatched": 1, "dispatches_per_hour": 1})
+    assert shown(client, hub, hub_db, CASE) == {"dispatched": 1, "dispatches_per_hour": 1}
+    assert not {"cycle", "running", "max_running"} & set(item(hub_db, CASE)["detail"])  # the cycle's figures went
 
     # room in the hour: @ba, not enabled, takes no task, and the use case says why
     loop["dispatches_per_hour"] = 6
@@ -215,11 +226,17 @@ def test_loop_admission_holds_builds_and_delivers_for_the_worker_and_the_repos_t
             )
         ]
     assert item(hub_db, "brainstorm:G-1:r1")["reason"] is None  # a task run needs no loop.worker
+    assert shown(client, hub, hub_db, build) == {
+        "worker": "studio",
+        "why": "no live worker studio (the policy's loop.worker) serves the project",
+    }
 
     # studio, one slot: the first deliver's plan run takes it and holds repo evo-agents
     worker = add_worker(client, hub["owner"], "studio", slots=1)
     found = ticked(client, hub_db, dispatch)
-    assert (found["dispatched"], found["waiting"]) == (1, 1)  # the build's reason stays worker: no write
+    assert (found["dispatched"], found["waiting"]) == (1, 1)  # the build's reason stays worker: no ledger row
+    assert shown(client, hub, hub_db, build) == {"worker": "studio", "why": "worker studio has no free slot"}
+    assert [row[:2] for row in waits(hub_db, build)] == [("waiting", "worker")]
     first = item(hub_db, "deliver:pantry-reorder")
     assert (first["state"], first["owner"], first["attempts"]) == ("running", OWNER, 1)
     kind, budget, timeout, pinned, _, repos, _ = run_row(hub_db, first["run_id"])
@@ -293,3 +310,30 @@ def test_loop_caps_a_task_run_the_loop_hands_out_keeps_the_daily_cap_of_its_agen
     refused = client.portal.call(partial(hand, "use_case"))
     assert (refused.run_id, refused.reason) == (None, "type_refused")
     assert refused.why.startswith("agent type ba of plugin srs is not enabled")
+
+
+def test_loop_a_deliver_whose_held_merge_request_a_person_merged_on_gitlab_is_done(client, hub, hub_db):
+    """The queue closed the merge request of the deliver's plan, which a person merged by hand on GitLab while it was
+    held at gate 3: the ledger's line closed says so, and the deliver is done with the merge GitLab named."""
+    push_plan(client, hub, "pantry-reorder", (REPO,))
+    policy(client, hub, {"enabled": True})
+    pid, q, e = project_id(hub_db), tables.merge_queue, tables.merge_events
+    merge = {"project_id": pid, "repo": REPO, "iid": 9, "source": "plan", "target_branch": "main"}
+    merge |= {"source_branch": "loop/pantry-reorder", "plan_id": "pantry-reorder", "state": "blocked"}
+    merge |= {"reason": "gate 3 (score hacking): the diff shows signs of score hacking (ci_changed)"}
+    ((merge_id,),) = sql(hub_db, insert(q).values(merge).returning(q.c.id))
+    detail = {"merges": [merge_id]}
+    queued(hub_db, "deliver", "deliver:pantry-reorder", plan_id="pantry-reorder")
+    i = tables.loop_items
+    held = update(i).where(i.c.key == "deliver:pantry-reorder")
+    sql(hub_db, held.values(state="waiting_human", reason="merge_blocked", detail=detail))
+    ticked(client, hub_db)
+    assert item(hub_db, "deliver:pantry-reorder")["reason"] == "merge_blocked"
+
+    gone = {"state": "closed", "reason": "it left the queue: it is merged on GitLab"}
+    sql(hub_db, update(q).where(q.c.id == merge_id).values(gone))
+    line = {"project_id": pid, "queue_id": merge_id, "kind": "closed", "reason": gone["reason"]}
+    sql(hub_db, insert(e).values({**line, "detail": {"gitlab": "merged", "merge_commit_sha": "9c1d2e3f"}}))
+    ticked(client, hub_db)
+    deliver = item(hub_db, "deliver:pantry-reorder")
+    assert (deliver["state"], deliver["detail"]["after_sha"]) == ("done", ["9c1d2e3f"])
