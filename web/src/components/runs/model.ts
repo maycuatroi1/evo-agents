@@ -299,14 +299,24 @@ export function activePlanRun<R extends Pick<Run, "kind" | "plan_id" | "state">>
   return runs.find((run) => run.kind === "plan" && run.plan_id === planId && isActiveState(run.state)) ?? null;
 }
 
+/** The ids of the Curator's plans start with this (`CURATOR_PLAN_PREFIX` of the hub's judge). */
+export const CURATOR_PLAN_PREFIX = "curator-";
+
+/** Whether `planId` is one of the Curator's plans, which only the night shift runs: the hub refuses a dispatch (409). */
+export function isCuratorPlan(planId: string): boolean {
+  return planId.startsWith(CURATOR_PLAN_PREFIX);
+}
+
 /** Why Run plan is not offered for a plan now, or null when it is. */
 export type PlanRunLock =
+  | { kind: "curator" }
   | { kind: "planRun"; id: number; state: RunState }
   | { kind: "stepRun"; id: number; state: RunState; step: string }
   | { kind: "noPending" };
 
 /**
- * The hub refuses a plan run (409) while the plan has an active run of any kind, or no pending step. `runs` are runs of
+ * The hub refuses a plan run (409) of a Curator's plan, and while the plan has an active run of any kind, or no pending
+ * step. `runs` are runs of
  * the project (only the plan's active ones count); `pending` is how many steps of the plan are pending, or, where only
  * the counts of done steps are known (the plans list), how many are not done.
  */
@@ -315,6 +325,7 @@ export function planRunLock(
   planId: string,
   pending: number,
 ): PlanRunLock | null {
+  if (isCuratorPlan(planId)) return { kind: "curator" };
   const active = runs.filter((run) => run.plan_id === planId && isActiveState(run.state));
   const plan = active.find((run) => run.kind === "plan");
   if (plan) return { kind: "planRun", id: plan.id, state: plan.state };
