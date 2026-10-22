@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { agentOf, agentPath, agentsPath, createAgentByApi, PIXEL_PNG } from "./support/agents";
+import { agentAccountsOf, agentOf, agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAgentAccountByApi } from "./support/agents";
 import { signOut } from "./support/auth";
 import { authorWorker, ensureAuthorSkill } from "./support/author";
 import { chatsOf } from "./support/chats";
@@ -19,7 +19,8 @@ import { heartbeat, registerWorker } from "./support/workers";
  * lists (their secret, the project's skill, a worker's label, the models it lists) with an avatar, edits it into a new
  * version and deletes it, which then reads as before; a writer only reads; Chat on the list and on an agent's page opens
  * the visitor's direct chat with it; and Dispatch, Run plan and New plan queue their runs under the agent picked, which
- * its page then lists. Pages render in English.
+ * its page then lists. An admin adds, renews, edits, pauses, resumes and deletes an agent's accounts on its page, which a
+ * writer only reads and the default agent has none of. Pages render in English.
  */
 test.skip(isDeployed, "creates agents through the local stack");
 
@@ -282,4 +283,118 @@ test("Chat on the agents list and on an agent's page opens the visitor's one dir
   await open(page, agentPath(readOnly, readOnly));
   await expect(main(page).getByTestId("agent-detail")).toBeVisible();
   await expect(main(page).getByTestId("agent-chat")).toHaveCount(0);
+});
+
+/** Pixels the page is wider than the window: zero when it does not scroll sideways. */
+async function overflow(page: Page): Promise<number> {
+  return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+}
+
+test("an admin adds, renews, edits, pauses, resumes and deletes an agent's accounts on its page; a writer only reads them", async ({ page, member, admin, signInAs }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("keys");
+  await createAgentByApi(me, project, { handle, name: "Key holder", permissions: {} });
+  const gpu = await registerWorker(me, { name: uniqueName("gpu"), projects: [project] });
+  const first = secretValue("agent-a");
+  const second = secretValue("agent-b");
+
+  // The default agent takes no account: its page has no card.
+  await open(page, agentPath(project, project));
+  await expect(main(page).getByTestId("agent-about")).toBeVisible();
+  await expect(main(page).getByTestId("agent-accounts")).toHaveCount(0);
+
+  await open(page, agentPath(project, handle));
+  const card = main(page).getByTestId("agent-accounts");
+  await expect(card.getByRole("heading", { level: 2, name: "Accounts" })).toBeVisible();
+  await expect(card.getByTestId("agent-accounts-count")).toHaveText("0");
+  await expect(card.getByTestId("agent-accounts-empty")).toContainText(`@${handle} has no account of its own`);
+
+  // Add: every field is checked before anything is sent; the value is a password field.
+  await card.getByTestId("agent-account-add").click();
+  const dialog = page.getByTestId("agent-account-dialog");
+  await expect(dialog.getByRole("heading", { name: `Add an account to @${handle}` })).toBeVisible();
+  await expect(dialog.getByTestId("agent-account-value")).toHaveAttribute("type", "password");
+  await dialog.getByTestId("agent-account-dialog-save").click();
+  await expect(dialog.getByTestId("agent-account-name-error")).toHaveText("Enter a name.");
+  await expect(dialog.getByTestId("agent-account-workers-error")).toHaveText("Pick at least one worker.");
+  await dialog.getByTestId("agent-account-name").fill("openai-a");
+  await dialog.getByTestId("agent-account-env").fill("evo_token");
+  await expect(dialog.getByTestId("agent-account-env")).toHaveValue("EVO_TOKEN");
+  await dialog.getByTestId("agent-account-dialog-save").click();
+  await expect(dialog.getByTestId("agent-account-env-error")).toHaveText("A run sets this variable itself. Pick another.");
+  await dialog.getByTestId("agent-account-env").fill("OPENAI_API_KEY");
+  await dialog.getByTestId("agent-account-value").fill(first);
+  await dialog.getByTestId("agent-account-workers").getByLabel(gpu.name).check();
+  const put = page.waitForRequest((request) => request.method() === "PUT" && request.url().includes(`/agents/${handle}/accounts/openai-a`));
+  await dialog.getByTestId("agent-account-dialog-save").click();
+  expect((await put).postDataJSON()).toEqual({ env_var: "OPENAI_API_KEY", value: first, workers: [gpu.name], expires_at: null });
+  await expect(dialog).toBeHidden();
+  await expect(toast(page, "Account openai-a added")).toBeVisible();
+  const row = card.locator("tbody").filter({ has: page.locator('[data-account-name="openai-a"]') });
+  await expect(card.getByTestId("agent-accounts-count")).toHaveText("1");
+  await expect(row.getByTestId("account-target")).toContainText("OPENAI_API_KEY");
+  await expect(row.locator('[data-provider="openai"]')).toBeVisible();
+  await expect(row.getByTestId("account-state")).toHaveAttribute("data-state", "ready");
+  expect(await page.content()).not.toContain(first);
+
+  // The value is never filled back: a new dialog starts empty.
+  await card.getByTestId("agent-account-add").click();
+  await expect(dialog.getByTestId("agent-account-value")).toHaveValue("");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+
+  // Renew sends the new value alone; Edit only what changed.
+  await row.getByRole("button", { name: "Renew openai-a" }).click();
+  await expect(dialog.getByRole("heading", { name: "Renew account openai-a" })).toBeVisible();
+  await dialog.getByTestId("agent-account-value").fill(second);
+  const renew = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/accounts/openai-a"));
+  await dialog.getByTestId("agent-account-dialog-save").click();
+  expect((await renew).postDataJSON()).toEqual({ value: second });
+  await expect(toast(page, "Account openai-a renewed")).toBeVisible();
+
+  await row.getByRole("button", { name: "Edit openai-a" }).click();
+  await expect(dialog.getByTestId("agent-account-weight")).toHaveValue("1");
+  await dialog.getByTestId("agent-account-weight").fill("3");
+  await dialog.getByTestId("agent-account-dialog-save").click();
+  await expect(toast(page, "Account openai-a changed")).toBeVisible();
+  expect((await agentAccountsOf(me, project, handle))[0]).toMatchObject({ weight: 3, workers: [gpu.name] });
+
+  // Pause and Resume: a pill only while paused.
+  await row.getByRole("button", { name: "Pause account openai-a" }).click();
+  await expect(toast(page, "Account openai-a paused")).toBeVisible();
+  await expect(row.getByTestId("account-state")).toHaveAttribute("data-state", "paused");
+  await expect(row.getByTestId("account-state")).toHaveText("Paused");
+  await row.getByRole("button", { name: "Resume account openai-a" }).click();
+  await expect(row.getByTestId("account-state")).toHaveAttribute("data-state", "ready");
+
+  for (const width of [375, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(card.getByTestId("agent-accounts-table")).toBeVisible();
+    expect(await overflow(page)).toBe(0);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // Delete asks first.
+  await row.getByRole("button", { name: "Delete openai-a" }).click();
+  const confirm = page.getByTestId("agent-account-delete-dialog");
+  await expect(confirm).toContainText("Its value is gone for good");
+  await confirm.getByTestId("agent-account-delete-dialog-confirm").click();
+  await expect(toast(page, "Account openai-a deleted")).toBeVisible();
+  await expect(card.getByTestId("agent-accounts-empty")).toBeVisible();
+  expect(await agentAccountsOf(me, project, handle)).toEqual([]);
+
+  // A writer of the project reads the accounts, and changes none.
+  await putAgentAccountByApi(me, project, handle, "notion", { env_var: "NOTION_TOKEN", value: secretValue("notion"), workers: [gpu.name] });
+  const writer = newAccount("writer");
+  await admin.grant(project, writer.login, "writer", "internal");
+  await signOut(page); // of the hub and the fake GitHub
+  await signInAs(writer);
+  await open(page, agentPath(project, handle));
+  await expect(card.getByTestId("agent-accounts-count")).toHaveText("1");
+  await expect(card).toContainText(`Only an admin of ${project} adds or changes them.`);
+  await expect(card.locator('[data-account-name="notion"]')).toBeVisible();
+  await expect(card.getByTestId("agent-account-add")).toHaveCount(0);
+  await expect(card.getByTestId("agent-account-delete")).toHaveCount(0);
+  await expect(card.getByTestId("agent-account-renew")).toHaveCount(0);
 });

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
-import type { Account } from "./queries";
+import type { AccountFigures } from "./queries";
 import { resetWhen, usageStatus, type UsageWindowView, usageWindows, windowLabel } from "./usage-model";
 
 type Format = ReturnType<typeof useFormatter>;
@@ -81,7 +81,7 @@ function UsageWindow({ window, now }: { window: UsageWindowView; now: number | n
  * status the bars do not carry (near its limit, a limit without a window) is a badge beside the time. Before any
  * report, one quiet line says so.
  */
-export function UsageLimits({ account, pageNow }: { account: Account; pageNow: number }) {
+export function UsageLimits({ account, pageNow }: { account: Pick<AccountFigures, "name" | "last_usage" | "last_usage_at">; pageNow: number }) {
   const t = useTranslations("accounts.usage");
   const format = useFormatter();
   const usage = account.last_usage;
