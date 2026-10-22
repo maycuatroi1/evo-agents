@@ -40,6 +40,7 @@ from evo_agents.hub import (
     tables_goals,
     tables_kg,
     tables_loop,
+    tables_memory_agents,
     tables_merge,
     tables_night,
     tables_org,
@@ -211,23 +212,6 @@ memories = Table(
     Index("memories_updated_idx", "updated_at", "id"),
 )
 Index(
-    "memories_shared_key",
-    memories.c.project_id,
-    memories.c.location,
-    memories.c.name,
-    unique=True,
-    postgresql_where=(memories.c.scope == "project") & memories.c.type.in_(("project", "reference")),
-)
-Index(
-    "memories_owned_key",
-    memories.c.owner_id,
-    memories.c.project_id,
-    memories.c.location,
-    memories.c.name,
-    unique=True,
-    postgresql_where=(memories.c.scope == "project") & memories.c.type.in_(("user", "feedback")),
-)
-Index(
     "memories_personal_key",
     memories.c.owner_id,
     memories.c.location,
@@ -251,6 +235,7 @@ memory_revisions = Table(
     ForeignKeyConstraint(["memory_id"], ["memories.id"], ondelete="CASCADE", name="memory_revisions_memory_id_fkey"),
     PrimaryKeyConstraint("memory_id", "revision", name="memory_revisions_pkey"),
 )
+tables_memory_agents.memory_agent_tables(memories, memory_revisions)  # namespaces, provenance (0101)
 
 plans = Table(
     "plans",
@@ -716,7 +701,7 @@ secrets = Table(
     "secrets",
     metadata,
     _id(),
-    Column("owner_id", BigInteger),  # a member's secret; null for one an agent profile owns (0101)
+    Column("owner_id", BigInteger),  # a member's secret; null for one an agent profile owns (0104)
     Column("name", Text, nullable=False),
     Column("kind", Text, nullable=False),
     Column("env_var", Text),
@@ -729,7 +714,7 @@ secrets = Table(
     _stamp("updated_at"),
     _when("expires_at"),
     _when("deleted_at"),
-    Column("profile_id", BigInteger),  # 0101: the agent profile that owns it, null for a member's
+    Column("profile_id", BigInteger),  # 0104: the agent profile that owns it, null for a member's
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="secrets_owner_id_fkey"),
     ForeignKeyConstraint(["profile_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="secrets_profile_id_fkey"),
     PrimaryKeyConstraint("id", name="secrets_pkey"),
@@ -741,7 +726,7 @@ Index(
     unique=True,
     postgresql_where=secrets.c.deleted_at.is_(None),
 )
-Index(  # 0101: an agent's secret is unique by (profile, name) among the live ones
+Index(  # 0104: an agent's secret is unique by (profile, name) among the live ones
     "secrets_profile_name_key",
     secrets.c.profile_id,
     secrets.c.name,
@@ -900,6 +885,7 @@ proposals = Table(
     Column("label", JSONB, nullable=False),
     _stamp("created_at"),
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
+    Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0103)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
     ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
     ForeignKeyConstraint(["revert_of"], ["proposals.id"], ondelete="SET NULL", name="proposals_revert_of_fkey"),

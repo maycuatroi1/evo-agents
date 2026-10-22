@@ -67,6 +67,16 @@ class RunProfile(BaseModel):
     )
 
 
+class RunOrigin(BaseModel):
+    """The person at the origin of a claimed run, who dispatched it (for a chat run, the person whose message began
+    the chain of agents): the worker names them as the co-author of the commits of a run its agent authors."""
+
+    login: str = Field(description="the person's GitHub login")
+    github_id: int | None = Field(
+        description="the person's GitHub user id; null for a user the hub never saw on GitHub"
+    )
+
+
 class RunPack(BaseModel):
     """An agent pack the run's profile attaches (``evo_agents.plugins.agent_packs``), as the hub holds the version of
     its plugin the profile pins: the worker downloads the plugin's bundle, checks it, and builds the pack from its

@@ -91,7 +91,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
-| memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience` |
+| memories | `/v1/memories` (`GET`, `PUT`; `?agent=` for an agent's), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience`, `POST .../restore` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
@@ -987,6 +987,13 @@ work item's last run stands for after its third failure, and `notifications.noti
 notice of a tripped breaker of the Loop; going back to 0094 deletes those decisions and notices and keeps the notice
 kinds of 0090. Schema 0099 adds the org chart, `org_units`, `org_seats` and `autonomy_ceilings`, with the
 root and a seat there for every user (`docs/org-chart.md`, Schema); going back to 0098 drops the three tables.
+Schema 0101 adds `memories.profile_id`, the agent profile whose memory a memory is (null for every memory there is),
+makes `memories_shared_key` and `memories_owned_key` again over the memories of no agent with `memories_agent_key` for
+an agent's, and gives `memory_revisions` the provenance of a run's write (`run_id`, `profile_id`, `profile_version`,
+`origin_id`, `hop`, `chat_id`, `chat_message_id`); going back to 0100 deletes the agents' memories and drops the
+columns. Schema 0102 adds `memories.read_at`, `archived_at` and `stale_at`; schema 0103 adds `proposals.promotion`,
+`memory_revisions.proposal_id`, `memories.promoted_at` and `promoted_into`, and the ledger action `promoted`; going
+back from each drops what it added (Memories, skills and knowledge graphs, Memories of agents).
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1863,6 +1870,34 @@ with an error and the push sends nothing. Only an admin of the memory's project 
 hand and to a part of it: `PUT /v1/memories/{id}/audience` with `audience` and `if_revision` writes a new revision and
 the audit row `memory.audience`. Raising it there is a 422, a stale revision a 409, and a personal memory, which has no
 admin, a 403. No command of the CLI lowers it.
+
+**Memories of agents.** Each agent profile of a project that is not its default has memories of its own
+(`memories.profile_id`, `evo_agents/hub/server/memory_agents.py`). The agent of a run under such a profile writes
+into its profile's namespace alone, and reads the project's shared memories with its own, never another agent's. A
+run under the default profile reads and writes as it always did. A member reads an agent's memories under the
+project's read rule, by id or by naming the agent (`GET /v1/memories?agent=<handle>`, `evo-agents hub memory list
+--agent <handle>`); a listing or a search that names no agent leaves them out, so `evo-agents hub memory pull` never
+brings them to a machine. A writer changes and deletes them like any memory of the project. Every revision a run
+writes records where it came from: the run, the profile and version, the person at the run's origin, its hop, and its
+chat and chat message; the history of a memory on the web shows it.
+
+A run's writes are fenced, each refusal a 403 whose message the agent reads through `/mcp`: an agent of a profile that
+is not the default writes no shared memory and hears that the Curator considers promoting its memories (`docs/curator.md`,
+Memory); a chat run, under any profile, neither reads nor writes memories of type `user` (`feedback` stays readable);
+a run at hop 2 or more, work one agent handed to another, writes no memory at all; and one run writes at most five
+memories, changing one it wrote already counting as no new one.
+
+The prompt of a run under such a profile ends with the index of its agent's memories, newest first: each one's name,
+id, type, description and a stale mark, at most 4 KiB and within the room the prompt has left
+(`evo_agents/hub/server/memory_upkeep.py`). A profile with no memory its agent could open, and the default profile,
+keep the prompt as it was. The agent opens a memory with `memory_get`, which records the read (`memories.read_at`);
+the index records none. The daily job `hub.memory_upkeep` archives an agent's memory nobody opened or wrote for 30
+days, out of the index and of the runs' searches, and marks stale one citing `code:REPO:PATH` that the project's graph,
+read as the memory's owner, no longer has; a project without a readable graph keeps its marks. A writer restores an
+archived memory with `POST /v1/memories/{id}/restore` or `evo-agents hub memory restore ID` (audit row
+`memory.restore`), and a new revision clears both marks. The Curator's review reads what agents wrote since its last
+night and may propose promoting it into a shared memory; an accepted promotion marks the agent's memory promoted, out of
+the index, the searches of runs and the upkeep (`docs/curator.md`, Memory).
 
 **Session digests.** Stop also pushes the digest of the session once its transcript holds 6 messages, and again after
 each turn that changed it, to the project the session's directory belongs to, decided as for memories; a directory of

@@ -20,10 +20,12 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-import { DeletedBadge, LabelBadge, MemoryTypeBadge } from "./badges";
+import { DeletedBadge, LabelBadge, MemoryStatusBadge, MemoryTypeBadge } from "./badges";
 import { SafeMarkdown } from "./markdown";
-import { memoryHref } from "./memory-browser";
-import { labelNames, parseFrontmatter, SHARED_TYPES } from "./memory-meta";
+import { memoryHref } from "./memory-table";
+import { labelNames, memoryStatus, parseFrontmatter, SHARED_TYPES } from "./memory-meta";
+import { AgentFacts, MemoryStateNote } from "./memory-state";
+import { ProvenanceLine } from "./provenance";
 import { type Memory, memoryQuery, memoryRevisionQuery, type MemoryScope } from "./queries";
 import { RevisionHistory } from "./revision-history";
 
@@ -112,7 +114,7 @@ function Detail({
           <>
             <MemoryTypeBadge type={memory.type} />
             {memory.scope === "project" ? <LabelBadge label={memory.label} unrestricted={unrestricted} /> : null}
-            {memory.deleted ? <DeletedBadge /> : null}
+            {memory.deleted ? <DeletedBadge /> : memory.agent ? <MemoryStatusBadge status={memoryStatus(memory)} /> : null}
             {title !== memory.name ? <Identifier value={memory.name} testId="memory-file" /> : null}
           </>
         }
@@ -125,6 +127,7 @@ function Detail({
           <AlertDescription>{t("detail.deletedDescription")}</AlertDescription>
         </Alert>
       ) : null}
+      {viewing === null ? <MemoryStateNote memory={memory} role={project.status === "success" ? project.data.role : null} /> : null}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-6">
           {viewing === null ? (
@@ -209,6 +212,7 @@ function OldRevision({
               when: () => <When iso={old.created_at} />,
             })}
           </p>
+          {old.provenance ? <ProvenanceLine project={memory.project ?? null} provenance={old.provenance} /> : null}
           <p>
             <Link href={memoryHref(scope, memory.id)} className="font-medium">
               {t("detail.toLatest", { revision: memory.revision })}
@@ -324,6 +328,7 @@ function Details({ memory, unrestricted }: { memory: Memory; unrestricted?: stri
           <Field label={t("location")}>
             <Mono>{memory.location}</Mono>
           </Field>
+          <AgentFacts memory={memory} />
           <Field label={t("owner")}>
             {memory.owner}
             {!SHARED_TYPES.has(memory.type) || memory.scope === "personal" ? (

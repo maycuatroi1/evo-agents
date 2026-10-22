@@ -2684,8 +2684,8 @@ def test_0100_keeps_the_questions_of_core_plugins_and_question_runs_and_going_ba
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0100") :]
 
 
-def test_0101_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_while_one_does(hub_db):
-    move_to(hub_db, "0100")
+def test_0104_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_while_one_does(hub_db):
+    move_to(hub_db, "0103")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -2695,7 +2695,7 @@ def test_0101_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_wh
     with live.connect(hub_db) as conn:
         conn.execute(insert(s).values(mine))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0101")
+    move_to(hub_db, "0104")
     with live.connect(hub_db) as conn:
         profile = {"project_id": ids["project"], "handle": "auditor", "name": "Auditor", "color": "#475569"}
         profile |= {"permissions": {}, "created_by": ids["user"]}
@@ -2717,10 +2717,10 @@ def test_0101_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_wh
         conn.execute(update(s).values(gone).where(s.c.profile_id == pid))
         conn.execute(insert(s).values(agent))  # a deleted one frees the name
     with pytest.raises(RuntimeError, match=r"2 secret row\(s\) belong to agent profiles"):
-        move_to(hub_db, "0100", down=True)
+        move_to(hub_db, "0103", down=True)
     with live.connect(hub_db) as conn:
         conn.execute(delete(s).where(s.c.profile_id.is_not(None)))
-    move_to(hub_db, "0100", down=True)
+    move_to(hub_db, "0103", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert "profile_id" not in columns(hub_db, "secrets")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0101") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0104") :]

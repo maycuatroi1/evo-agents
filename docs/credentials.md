@@ -515,7 +515,7 @@ failure of the endpoint (down, 5xx) does not mark the account.
 ### Accounts of an agent
 
 An **agent account** is an `env` secret that an agent profile owns (`secrets.profile_id`, no member owner, migration
-0101), for runs under that agent to use whoever dispatches them: an admin of the profile's project adds it from the
+0104), for runs under that agent to use whoever dispatches them: an admin of the profile's project adds it from the
 agent's page or with `evo-agents hub agent account` (`evo_agents/hub/server/agent_accounts.py`), names the workers it
 is bound to (the admin's own that are not revoked, or shared workers serving the project), and gives it a weight, a
 priority and an end like any account. The hub keeps the value sealed under its own associated data

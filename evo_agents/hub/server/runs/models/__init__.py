@@ -24,6 +24,7 @@ from evo_agents.hub.server.runs.models.run_parts import (
     ReleaseSpec,
     RunBudget,
     RunEnvironment,
+    RunOrigin,
     RunPack,
     RunProfile,
     RunRepo,
@@ -489,6 +490,16 @@ class RunSpec(BaseModel):
     )
     profile: RunProfile | None = Field(
         None, description="the agent profile the run went under; null for a run from before schema 0030"
+    )
+    own_home: bool = Field(
+        False,
+        description="true for a run under a profile that is not its project's default: the agent of a claude-code "
+        "run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
+    )
+    origin: RunOrigin | None = Field(
+        None,
+        description="the person who dispatched the run, whom the worker names as co-author of the commits of a chat "
+        "run and of a run under a profile that is not its project's default; null from a hub that does not send it",
     )
     plugin_runtime: PluginRuntime | None = Field(
         None,

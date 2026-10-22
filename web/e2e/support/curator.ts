@@ -1,8 +1,10 @@
 import { call } from "../../src/lib/api/client";
 import type { components } from "../../src/lib/api/schema";
 
+import { createAgentByApi } from "./agents";
 import { API_URL, STACK_URL } from "./env";
-import { type Account, bearerClient, machineToken } from "./hub";
+import { type Account, bearerClient, HubAdmin, machineToken, registration } from "./hub";
+import { apiOf, type Memory, memoryFile, putMemory } from "./memories";
 import { claimRun, type LiveWorker, liveWorker, reportState, REPO } from "./runs";
 import { PROTOCOL_HEADER } from "./workers";
 
@@ -248,4 +250,53 @@ export async function seedCurator(owner: Account, project: string, name: string)
   await writeCharter(owner, project, live.worker.name);
   await pushDigest(owner, project);
   return reviewNight(live);
+}
+
+/** What an agent learned, promoted into the project's shared conventions, as the merged memory says it. */
+export const MERGED = "Claims retry on a 503 and back off twice as long each time.";
+
+export type Promotion = { night: Night; handle: string; source: Memory; shared: Memory; proposal: Proposal };
+
+/**
+ * A night whose review run promotes what agent `handle` of `owner`'s project learned (a memory of its own) into the
+ * project's shared memory of conventions, as a proposal of kind memory: its evidence the agent's memory at its revision,
+ * its promotion the shared memory it merges into and the whole memory after the merge, and no plan. The charter's
+ * auto_merge names tier 0, so the hub accepts it at once and writes the shared memory's second revision.
+ */
+export async function promotionNight(owner: Account, project: string, name: string, handle: string): Promise<Promotion> {
+  // A review run reads a memory as the files a pull writes are read, through the agent's sink, which the project declares.
+  const sinks = [...(registration().sinks ?? []), { id: "claude-code@anthropic", kind: "agent-session" as const, clearance: { level: "internal" } }];
+  await new HubAdmin().registerProject(project, { sinks });
+  const live = await dutyWorker(owner, project, name);
+  await writeCharter(owner, project, live.worker.name);
+  await pushDigest(owner, project);
+  await createAgentByApi(owner, project, { handle, name: "Scout" });
+  const api = await apiOf(owner);
+  const source = await putMemory(api, {
+    project,
+    agent: handle,
+    name: "flaky-claims.md",
+    body: memoryFile("Flaky claims", "what the claims do on a 503", "Claims retry on a 503."),
+  });
+  const shared = await putMemory(api, {
+    project,
+    name: "conventions.md",
+    body: memoryFile("Conventions", "the project's conventions", "Keep the claims idempotent."),
+  });
+  const night = await reviewNight(live, { finish: false });
+  const proposal = await workerPost<Proposal>(live, `/v1/worker/runs/${night.runId}/proposals`, {
+    lens: "skills_memory",
+    kind: "memory",
+    title: `Promote what @${handle} learned about claims`,
+    paths: [],
+    evidence: [{ kind: "memory", memory_id: source.id, revision: source.revision }],
+    plan: null,
+    promotion: {
+      target: { memory_id: shared.id, revision: shared.revision },
+      body: memoryFile("Conventions", "the project's conventions", `Keep the claims idempotent.\n\n${MERGED}`),
+    },
+  });
+  await reportState(live, night.runId, { state: "verifying" });
+  await reportState(live, night.runId, { state: "done" });
+  return { night, handle, source, shared, proposal };
 }

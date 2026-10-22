@@ -43,8 +43,9 @@ plan, which the night shift builds on a branch of its own (``evo_agents.hub.serv
 .../proposals/{id}/plan does the same for an accepted proposal that has no change yet); a draft that cannot become one
 leaves a change open with the reason, and nothing of it runs. Accepting one of tier 3 records the answer alone. The hub
 merges a change of tier 0 alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time has
-passed (the job curator.collect). Recording a proposal and answering it each add a line to its ledger
-(``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
+passed (the job curator.collect). A proposal of kind memory may promote agents' memories in place of a plan
+(``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
+proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
 """
 
@@ -67,7 +68,7 @@ from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
-from evo_agents.hub.server import audit, change_tiers, earlier, facet_figures, history_search
+from evo_agents.hub.server import audit, change_tiers, earlier, facet_figures, history_search, memory_promotion
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -117,11 +118,13 @@ class EvidenceIn(BaseModel):
     path: str | None = Field(None, min_length=1, max_length=tiers.MAX_PATH_CHARS, description="code: within the repo")
     line: int | None = Field(None, ge=1, le=review.MAX_LINE, description="code, transcript: the line")
     commit: str | None = Field(None, pattern=OBJECT_NAME, description="code: the commit the worktree was at")
+    memory_id: int | None = Field(None, ge=1, le=MAX_ID, description="memory: a memory of the project")
+    revision: int | None = Field(None, ge=1, le=review.MAX_REVISION, description="memory: one of its revisions")
 
     @model_validator(mode="after")
     def _complete(self):
         needed = {"session": ("session_id",), "transcript": ("session_id", "line"), "run": ("run_id", "seq")}
-        needed = {**needed, "code": ("repo", "path")}[self.kind]
+        needed = {**needed, "code": ("repo", "path"), "memory": ("memory_id", "revision")}[self.kind]
         if self.kind == "transcript":
             self.file = self.file or review.MAIN_FILE
         missing = [name for name in needed if getattr(self, name) is None]
@@ -196,12 +199,15 @@ class ProposalIn(BaseModel):
         default_factory=list, max_length=review.MAX_FINDING_IDS, description="findings of the project it rests on"
     )
     evidence: list[EvidenceIn] = Field(default_factory=list, max_length=review.MAX_EVIDENCE)
-    plan: dict = Field(description="the draft plan: plan.schema.json, in outcome steps")
+    plan: dict | None = Field(None, description="the draft plan: plan.schema.json, in outcome steps; none to promote")
+    promotion: memory_promotion.PromotionIn | None = Field(None, description="kind memory: in place of a plan")
 
     @model_validator(mode="after")
     def _supported(self):
         if not self.finding_ids and not self.evidence:
             raise ValueError("a proposal rests on findings, evidence of its own, or both: give at least one")
+        if (self.plan is None) == (self.promotion is None) or (self.promotion and self.kind != "memory"):
+            raise ValueError("a proposal carries a draft plan, or in its place a promotion when its kind is memory")
         if self.summary is not None and len(self.summary.encode()) > review.MAX_BODY_BYTES:
             raise ValueError(f"a proposal's summary is at most {review.MAX_BODY_BYTES} bytes of UTF-8")
         self.finding_ids = list(dict.fromkeys(self.finding_ids))
@@ -243,7 +249,8 @@ class Proposal(ProposalSummary):
     tier_reasons: list[str] = Field(description="why it has its tier, rule by rule")
     finding_ids: list[int]
     evidence: list[dict] = Field(description="its own evidence, as the hub resolved it")
-    plan: dict = Field(description="the draft plan")
+    plan: dict = Field(description="the draft plan; empty for a promotion")
+    promotion: dict | None = Field(None, description="kind memory: what it promotes, and the shared memory it wrote")
     note: str | None = Field(description="the owner's note with the answer")
     change: Change | None = Field(
         None,
@@ -386,6 +393,8 @@ async def resolve(
             if why is not None:
                 raise _refused(where, why)
             found.append({**stored, "resolved": "transcript"})
+        elif item.kind == "memory":
+            found.append(await memory_promotion.evidence(conn, run.project_id, run.project, access, item, where))
         elif item.kind == "run":
             query = select(r.c.event_seq, r.c.kind, r.c.plan_id, r.c.dispatched_by).where(
                 r.c.id == item.run_id, r.c.project_id == run.project_id
@@ -578,6 +587,7 @@ def _proposals():
         p.c.note,
         p.c.label,
         p.c.revert_of,
+        p.c.promotion,
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
@@ -596,7 +606,8 @@ def _summary(project: str, row) -> ProposalSummary:
 async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, user: CurrentUser) -> Proposal:
     """Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,
     computes its tier and drops it when it repeats a proposal rejected lately."""
-    _check_draft(body.plan)
+    if body.plan is not None:
+        _check_draft(body.plan)
     p = tables.proposals
     async with request.app.state.engine.begin() as conn:
         run = await held_review_run(conn, user, run_id)
@@ -612,6 +623,7 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         if unknown:
             raise _refused("paths", f"project {run.project} has no repo {', '.join(unknown)}")
         evidence = await resolve(conn, request, run, access, body.evidence)
+        promotion, label = await memory_promotion.checked(conn, run, access, body.promotion, evidence, label)
         count = len(evidence) + await _finding_evidence(conn, access, body.finding_ids)
         paths = list(dict.fromkeys((item.repo, item.path) for item in body.paths))
         graph = await graph_view(request, run.owner, access, [f"{repo}:{path}" for repo, path in paths])
@@ -635,7 +647,8 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
             "finding_ids": body.finding_ids,
             "evidence": evidence,
             "evidence_count": count,
-            "draft": body.plan,
+            "draft": body.plan or {},
+            "promotion": promotion,
             "fingerprint": fingerprint,
             "state": "dropped" if dropped else "open",
             "duplicate_of": rejected.id if dropped else None,
@@ -643,6 +656,7 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         }
         proposal_id = (await conn.execute(insert(p).values(**values).returning(p.c.id))).scalar_one()
         await ledger_lines.proposal_recorded(conn, run.project_id, proposal_id)
+        await memory_promotion.recorded(conn, run, access, proposal_id, tier.tier, values["state"], promotion)
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}
         await write_event(conn, run_id, event)
@@ -920,7 +934,9 @@ async def answer_proposal_as(
         days=days if body.action == "defer" else None,
         via=via,
     )
-    if body.action == "accept" and row.tier in judge.PLANNED_TIERS:
+    if body.action == "accept" and row.promotion is not None:
+        await memory_promotion.promote(conn, access, user, proposal_id, row.promotion)
+    elif body.action == "accept" and row.tier in judge.PLANNED_TIERS:
         from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
 
         await plan_from_proposal(conn, access, user, row)

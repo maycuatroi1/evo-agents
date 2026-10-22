@@ -1,13 +1,13 @@
 "use client";
 
-import { Archive, FileQuestion, Lock, ShieldCheck } from "lucide-react";
+import { Archive, ArrowUpCircle, CircleDot, FileQuestion, FileWarning, Lock, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
 import { useVisibilityName } from "@/components/data/visibility";
 import { Badge } from "@/components/ui/badge";
 
-import { isMemoryType, labelNames, SHARED_TYPES, TYPE_ICONS } from "./memory-meta";
+import { isMemoryType, labelNames, type MemoryStatus, SHARED_TYPES, TYPE_ICONS } from "./memory-meta";
 
 /**
  * A memory's type as an icon and a word on a tag: a kind, not a state, so square-ish corners (web/DESIGN.md, Shape).
@@ -68,6 +68,25 @@ export function DeletedBadge() {
     <Badge variant="warning" className="gap-1">
       <Archive aria-hidden="true" />
       {t("deleted")}
+    </Badge>
+  );
+}
+
+const STATUS = {
+  active: { icon: CircleDot, variant: "secondary" },
+  stale: { icon: FileWarning, variant: "warning" },
+  archived: { icon: Archive, variant: "secondary" },
+  promoted: { icon: ArrowUpCircle, variant: "success" },
+} as const;
+
+/** Where an agent's memory stands (memoryStatus), as an icon and a word on a pill: never colour alone. */
+export function MemoryStatusBadge({ status }: { status: MemoryStatus }) {
+  const t = useTranslations("memories.status");
+  const { icon: Icon, variant } = STATUS[status];
+  return (
+    <Badge variant={variant} className="gap-1" data-memory-status={status} data-testid="memory-status">
+      <Icon aria-hidden="true" />
+      {t(status)}
     </Badge>
   );
 }

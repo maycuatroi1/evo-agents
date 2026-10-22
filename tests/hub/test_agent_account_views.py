@@ -25,9 +25,9 @@ from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import bearer, sql
-from tests.hub.test_agent_account_leases import VAR, finish, run_under
+from tests.hub.test_agent_account_leases import VAR, finish, run_under, worker_of
 from tests.hub.test_agent_accounts import added, body, path
-from tests.hub.test_credentials_api import PROJECT, leased, sample, worker_of
+from tests.hub.test_credentials_api import PROJECT, leased, sample
 from tests.hub.test_run_cli import as_json, ok, write_credentials
 from tests.hub.test_run_stream import serving
 from tests.hub.test_secrets_cli import run_cli

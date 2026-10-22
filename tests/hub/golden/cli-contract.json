@@ -4046,6 +4046,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -4124,6 +4125,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -4359,6 +4361,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -4419,6 +4422,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -5822,6 +5826,72 @@
       ],
       "json": null
     },
+    "hub memory list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "scope",
+          "project",
+          "location",
+          "name",
+          "type",
+          "owner",
+          "agent",
+          "label",
+          "body",
+          "revision",
+          "deleted",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "read_at",
+          "archived_at",
+          "stale_at",
+          "promoted_at",
+          "promoted_into"
+        ],
+        "schema": "Memory"
+      }
+    },
     "hub memory pull": {
       "positionals": [
         {
@@ -5972,6 +6042,53 @@
         ]
       }
     },
+    "hub memory restore": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "scope",
+          "project",
+          "location",
+          "name",
+          "type",
+          "owner",
+          "agent",
+          "label",
+          "body",
+          "revision",
+          "deleted",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "read_at",
+          "archived_at",
+          "stale_at",
+          "promoted_at",
+          "promoted_into"
+        ],
+        "schema": "Memory"
+      }
+    },
     "hub memory search": {
       "positionals": [
         {
@@ -6030,13 +6147,19 @@
           "name",
           "type",
           "owner",
+          "agent",
           "label",
           "body",
           "revision",
           "deleted",
           "created_at",
           "updated_at",
-          "updated_by"
+          "updated_by",
+          "read_at",
+          "archived_at",
+          "stale_at",
+          "promoted_at",
+          "promoted_into"
         ],
         "schema": "Memory"
       }
@@ -14129,7 +14252,15 @@
             "--plan-file"
           ],
           "value": "string",
-          "required": true,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--promote-file"
+          ],
+          "value": "string",
+          "required": false,
           "repeatable": false
         },
         {
@@ -16250,6 +16381,106 @@
           }
         }
       },
+      "/v1/memories/{memory_id}/restore": {
+        "post": {
+          "tags": [
+            "memories"
+          ],
+          "summary": "Restore Memory",
+          "description": "Bring back an agent's memory the daily upkeep archived: into the index and the searches of its agent's runs\nagain, as if just opened, with the audit row ``memory.restore``. A writer of its project who reads it, never the\nagent of a run; a memory not archived is left as it is.",
+          "operationId": "restore_memory_v1_memories__memory_id__restore_post",
+          "parameters": [
+            {
+              "name": "memory_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Memory Id"
+              }
+            },
+            {
+              "name": "sink",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+                "description": "the sink reading the memories (read rule)",
+                "default": "claude-code@anthropic",
+                "title": "Sink"
+              },
+              "description": "the sink reading the memories (read rule)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Memory"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/plans": {
         "get": {
           "tags": [
@@ -17693,6 +17924,25 @@
                 "title": "Sink"
               },
               "description": "the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent",
+                "title": "Agent"
+              },
+              "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent"
             }
           ],
           "responses": {
@@ -17733,7 +17983,7 @@
             "memories"
           ],
           "summary": "Put",
-          "description": "Create or change the memory at the key ``body`` names.",
+          "description": "Create or change the memory at the key ``body`` names, in the namespace of ``body.agent`` or the run's.",
           "operationId": "put_v1_memories_put",
           "parameters": [
             {
@@ -17945,6 +18195,25 @@
                 "title": "Sink"
               },
               "description": "the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent",
+                "title": "Agent"
+              },
+              "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent"
             }
           ],
           "responses": {
@@ -69018,7 +69287,8 @@
                 "session",
                 "transcript",
                 "run",
-                "code"
+                "code",
+                "memory"
               ],
               "title": "Kind"
             },
@@ -69166,6 +69436,34 @@
               ],
               "title": "Commit",
               "description": "code: the commit the worktree was at"
+            },
+            "memory_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memory Id",
+              "description": "memory: a memory of the project"
+            },
+            "revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision",
+              "description": "memory: one of its revisions"
             }
           },
           "type": "object",
@@ -69625,6 +69923,70 @@
         },
         "Found": {
           "properties": {
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "an agent's memory: when the agent of a run last opened it"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it"
+            },
+            "stale_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale At",
+              "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
+            "promoted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted At",
+              "description": "an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision"
+            },
+            "promoted_into": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted Into",
+              "description": "the shared memory it was promoted into, while it exists"
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -69660,6 +70022,18 @@
               "type": "string",
               "title": "Owner",
               "description": "the login of the person who created it"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile whose memory it is; else null"
             },
             "label": {
               "additionalProperties": true,
@@ -72625,7 +72999,8 @@
                 "left_open",
                 "closed",
                 "outcome",
-                "skill_release"
+                "skill_release",
+                "promoted"
               ],
               "title": "Action"
             },
@@ -74408,6 +74783,70 @@
         },
         "Memory": {
           "properties": {
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "an agent's memory: when the agent of a run last opened it"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it"
+            },
+            "stale_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale At",
+              "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
+            "promoted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted At",
+              "description": "an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision"
+            },
+            "promoted_into": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted Into",
+              "description": "the shared memory it was promoted into, while it exists"
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -74443,6 +74882,18 @@
               "type": "string",
               "title": "Owner",
               "description": "the login of the person who created it"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile whose memory it is; else null"
             },
             "label": {
               "additionalProperties": true,
@@ -74591,6 +75042,19 @@
               ],
               "title": "Audience",
               "description": "what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "scope project only: the agent profile whose memory it is"
             }
           },
           "type": "object",
@@ -74637,6 +75101,17 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "provenance": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Provenance"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the run or the promotion that wrote it; null for neither"
             },
             "memory_id": {
               "type": "integer",
@@ -82576,6 +83051,106 @@
           ],
           "title": "ProjectToolStats"
         },
+        "PromotionIn": {
+          "properties": {
+            "target": {
+              "$ref": "#/components/schemas/PromotionTarget"
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 262144,
+              "minLength": 1,
+              "title": "Body",
+              "description": "the whole memory after the merge"
+            }
+          },
+          "type": "object",
+          "required": [
+            "target",
+            "body"
+          ],
+          "title": "PromotionIn",
+          "description": "What a proposal of kind memory promotes: its sources are its evidence naming agents' memories."
+        },
+        "PromotionTarget": {
+          "properties": {
+            "memory_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memory Id",
+              "description": "a shared memory of the project to merge into"
+            },
+            "revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision",
+              "description": "its current revision"
+            },
+            "location": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location",
+              "description": "a new one: harness or a repo"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "a new one: its file name, ending in .md"
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "project",
+                    "reference"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type",
+              "description": "a new one: project or reference"
+            }
+          },
+          "type": "object",
+          "title": "PromotionTarget",
+          "description": "The shared memory a promotion writes: one of the project by id and current revision, or a new one."
+        },
         "Proposal": {
           "properties": {
             "id": {
@@ -82764,7 +83339,20 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Plan",
-              "description": "the draft plan"
+              "description": "the draft plan; empty for a promotion"
+            },
+            "promotion": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promotion",
+              "description": "kind memory: what it promotes, and the shared memory it wrote"
             },
             "note": {
               "anyOf": [
@@ -83000,18 +83588,35 @@
               "title": "Evidence"
             },
             "plan": {
-              "additionalProperties": true,
-              "type": "object",
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Plan",
-              "description": "the draft plan: plan.schema.json, in outcome steps"
+              "description": "the draft plan: plan.schema.json, in outcome steps; none to promote"
+            },
+            "promotion": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PromotionIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "kind memory: in place of a plan"
             }
           },
           "type": "object",
           "required": [
             "lens",
             "kind",
-            "title",
-            "plan"
+            "title"
           ],
           "title": "ProposalIn"
         },
@@ -83226,6 +83831,118 @@
             "repos"
           ],
           "title": "Protection"
+        },
+        "Provenance": {
+          "properties": {
+            "run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run",
+              "description": "the run whose agent wrote it; null for a promotion"
+            },
+            "proposal": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal",
+              "description": "the Curator's proposal whose promotion wrote it"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the profile the run ran under"
+            },
+            "agent_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Version",
+              "description": "the version of that profile"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "the login of the person at the run's origin, who dispatched it"
+            },
+            "hop": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hop",
+              "description": "the run's hop in its chat: 1 for a person's mention, more agent to agent"
+            },
+            "chat": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat",
+              "description": "the chat of the run"
+            },
+            "chat_message": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Message",
+              "description": "the chat message that started the run"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run",
+            "agent",
+            "agent_version",
+            "origin",
+            "hop",
+            "chat",
+            "chat_message"
+          ],
+          "title": "Provenance",
+          "description": "Where a revision came from, when the agent of a run wrote it or an accepted proposal promoted agents' memories\ninto it."
         },
         "PruneRequest": {
           "properties": {
@@ -86406,6 +87123,17 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "provenance": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Provenance"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the run or the promotion that wrote it; null for neither"
             }
           },
           "type": "object",
@@ -88375,6 +89103,34 @@
           "title": "RunMount",
           "description": "A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``)."
         },
+        "RunOrigin": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the person's GitHub login"
+            },
+            "github_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Github Id",
+              "description": "the person's GitHub user id; null for a user the hub never saw on GitHub"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "github_id"
+          ],
+          "title": "RunOrigin",
+          "description": "The person at the origin of a claimed run, who dispatched it (for a chat run, the person whose message began\nthe chain of agents): the worker names them as the co-author of the commits of a run its agent authors."
+        },
         "RunOutput": {
           "properties": {
             "id": {
@@ -89129,6 +89885,23 @@
                 }
               ],
               "description": "the agent profile the run went under; null for a run from before schema 0030"
+            },
+            "own_home": {
+              "type": "boolean",
+              "title": "Own Home",
+              "description": "true for a run under a profile that is not its project's default: the agent of a claude-code run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
+              "default": false
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunOrigin"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it"
             },
             "plugin_runtime": {
               "anyOf": [
@@ -101001,6 +101774,70 @@
         },
         "evo_agents__hub__server__memories__Written": {
           "properties": {
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "an agent's memory: when the agent of a run last opened it"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it"
+            },
+            "stale_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale At",
+              "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
+            "promoted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted At",
+              "description": "an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision"
+            },
+            "promoted_into": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted Into",
+              "description": "the shared memory it was promoted into, while it exists"
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -101036,6 +101873,18 @@
               "type": "string",
               "title": "Owner",
               "description": "the login of the person who created it"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile whose memory it is; else null"
             },
             "label": {
               "additionalProperties": true,

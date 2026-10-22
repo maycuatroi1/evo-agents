@@ -1250,7 +1250,9 @@
       "location": "Location",
       "type": "Type",
       "harness": "Harness",
-      "clear": "Clear filters"
+      "clear": "Clear filters",
+      "agent": "Agent",
+      "shared": "Shared"
     },
     "types": {
       "project": "Project",
@@ -1273,7 +1275,9 @@
       "type": "Type",
       "location": "Location",
       "label": "Label",
-      "updated": "Updated"
+      "updated": "Updated",
+      "status": "State",
+      "read": "Last read"
     },
     "caption": "Memories",
     "captionSearch": "Memory search results, best match first",
@@ -1350,7 +1354,52 @@
       "more": "Show older revisions",
       "loadingMore": "Loading…",
       "moreFailed": "Older revisions did not load (status {status}). Try again."
-    }
+    },
+    "status": {
+      "active": "Active",
+      "stale": "Stale",
+      "archived": "Archived",
+      "promoted": "Promoted"
+    },
+    "provenance": {
+      "proposal": "Proposal #{id}",
+      "run": "Run #{id}",
+      "agentVersion": "@{handle} v{version}",
+      "origin": "for {login}",
+      "hop": "hop {hop}",
+      "chat": "Chat #{id}"
+    },
+    "agent": {
+      "revision": "Revision {revision}",
+      "by": "by {login}",
+      "noRun": "Not written by a run",
+      "status": "State",
+      "read": "Last read",
+      "latest": "Latest revision",
+      "neverRead": "Never",
+      "caption": "Memories of @{handle}",
+      "failed": "The agent's memories could not be read.",
+      "empty": "@{handle} keeps no memory yet: its runs write one with the memory tools.",
+      "scope": "<link>Open them among the project's memories</link>, to search and filter them."
+    },
+    "state": {
+      "archivedTitle": "Archived",
+      "archivedDescription": "No run of @{handle} opened this memory for 30 days, so the hub took it out of the agent's index and searches. A writer of the project brings it back.",
+      "archivedReader": "A writer of the project can restore it.",
+      "promotedTitle": "Promoted",
+      "promotedInto": "The Curator promoted this memory into <link>shared memory #{id}</link>; the agent's runs no longer list it.",
+      "promotedDescription": "The Curator promoted this memory into a shared memory; the agent's runs no longer list it.",
+      "staleTitle": "Stale",
+      "staleDescription": "A path this memory cites is gone from the project's knowledge graph. The agent's runs still read it; check it before relying on it.",
+      "restore": "Restore",
+      "restored": "{name} restored",
+      "restoredText": "The agent's runs list it again.",
+      "restoreFailed": "Could not restore the memory.",
+      "agent": "Agent",
+      "read": "Last read",
+      "neverRead": "Never"
+    },
+    "captionAgent": "Memories of @{handle}"
   },
   "skills": {
     "projectTitle": "Project skills",
@@ -2663,6 +2712,9 @@
         "hint": "Loaded into every run under this agent, each at the version it pins. Its skills and MCP servers count as allowed.",
         "none": "None: its runs get no agent pack.",
         "version": "v{version}"
+      },
+      "memories": {
+        "title": "Memory"
       }
     }
   },
@@ -5753,7 +5805,8 @@
       "dropped": "Dropped as a repeat of <link>proposal #{id}</link>.",
       "droppedPlain": "Dropped as a repeat of a rejected proposal.",
       "inbox": "In the owner's Inbox since <ago></ago>.",
-      "revertOf": "The hub proposes this revert: the figures of <link>proposal #{id}</link> got worse after it merged."
+      "revertOf": "The hub proposes this revert: the figures of <link>proposal #{id}</link> got worse after it merged.",
+      "promotion": "Promotion"
     },
     "ledger": {
       "title": "Ledger",
@@ -5783,7 +5836,8 @@
         "left_open": "Left open",
         "closed": "Closed",
         "outcome": "Outcome",
-        "skill_release": "Skill release"
+        "skill_release": "Skill release",
+        "promoted": "Promoted"
       },
       "outcome": {
         "keep": "Keep",
@@ -5871,8 +5925,11 @@
         "repo": "A file of the project's repo",
         "graph": "A file of the project's knowledge graph",
         "unmatched": "A file of the project's repo the knowledge graph does not hold yet",
-        "transcript": "A line of a transcript the hub holds"
-      }
+        "transcript": "A line of a transcript the hub holds",
+        "agent_memory": "An agent's memory",
+        "shared_memory": "A shared memory of the project"
+      },
+      "memory": "Memory #{id}, revision {revision}"
     },
     "draft": {
       "view": "Show the draft as",
@@ -6521,6 +6578,17 @@
         "runs": "Runs",
         "cost": "Cost"
       }
+    },
+    "promotion": {
+      "sources": "{count, plural, one {The agent's memory it promotes} other {The agents' memories it promotes}}",
+      "memory": "Memory #{id}, revision {revision}",
+      "target": "Into",
+      "merge": "Merged into <link>shared memory #{id}</link>, at revision {revision}",
+      "new": "A new shared memory <code>{name}</code> of type {type} in {location}",
+      "noTarget": "The target could not be read.",
+      "written": "Accepting it wrote <link>shared memory #{id}, revision {revision}</link>.",
+      "notWritten": "Nothing is written until the proposal is accepted.",
+      "merged": "The memory after the merge"
     }
   },
   "releases": {

@@ -2,6 +2,7 @@ import type { Route } from "next";
 
 import type { ParamSource } from "@/components/admin/data";
 import { parseRunId, runHref } from "@/components/runs/queries";
+import { projectHref } from "@/components/shell/nav";
 
 import { type CuratorState, type CuratorStatus, type Lens, type Proposal, PROPOSALS_PAGE, type ProposalAction, type ProposalQuery, type ProposalState } from "./queries";
 import { codeUrl, type EvidenceView, type RepoInfo } from "./evidence-model";
@@ -198,6 +199,14 @@ export function evidenceView(raw: Record<string, unknown>, project: string, repo
       const commit = str(raw.commit);
       const line = int(raw.line);
       return { kind: "code", repo, path, line, commit, url: codeUrl(info?.origin, commit ?? info?.default_branch ?? null, path, line) };
+    }
+  }
+  if (kind === "memory") {
+    const memoryId = int(raw.memory_id);
+    const revision = int(raw.revision);
+    if (memoryId !== null && revision !== null) {
+      const href = projectHref(project, `memories/${memoryId}?revision=${revision}`);
+      return { kind: "memory", memoryId, revision, agent: str(raw.agent), href };
     }
   }
   return { kind: "other", text: JSON.stringify(raw) };
