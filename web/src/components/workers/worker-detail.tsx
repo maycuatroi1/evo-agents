@@ -47,14 +47,14 @@ import {
   workerQuery,
 } from "./queries";
 import { SectionCard } from "./section-card";
-import { SharedSwitch } from "./shared-switch";
 import { UpdateNotes, VersionCard } from "./version-card";
 import { WorkerSettings } from "./worker-settings";
+import { WorkerSharing } from "./worker-sharing";
 
 /**
  * One worker: its runtimes, scope, checkouts and version, the last hour of heartbeats, its latest runs, drain, resume
- * and revoke, and, for its owner, its settings with the version lock and the switch that keeps it to runs dispatched
- * from the web.
+ * and revoke, and, for its owner, whom it is shared with and what its doctor found, its settings with the version
+ * lock and the switch that keeps it to runs dispatched from the web.
  */
 export function WorkerDetail({ id, initialError }: { id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers.detail");
@@ -101,6 +101,7 @@ function WorkerPage({ worker }: { worker: Worker }) {
         <Checkouts worker={worker} />
         <VersionCard worker={worker} isOwner={isOwner} />
       </div>
+      {isOwner && view !== "revoked" ? <WorkerSharing worker={worker} /> : null}
       {isOwner ? <WorkerSettings worker={worker} /> : null}
       <Card data-testid="worker-heartbeat">
         <CardHeader className="sm:grid-cols-[1fr_auto]">
@@ -254,12 +255,7 @@ function Scope({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
         <dt className="text-muted-foreground">{t("terminal")}</dt>
         <dd>{worker.allow_web_terminal ? t("terminalOn") : t("terminalOff")}</dd>
       </dl>
-      {isOwner && workerView(worker) !== "revoked" ? (
-        <>
-          <DispatchFromSwitch worker={worker} />
-          <SharedSwitch worker={worker} />
-        </>
-      ) : null}
+      {isOwner && workerView(worker) !== "revoked" ? <DispatchFromSwitch worker={worker} /> : null}
     </SectionCard>
   );
 }

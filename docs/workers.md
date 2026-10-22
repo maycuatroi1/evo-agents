@@ -139,6 +139,25 @@ every worker starts unshared, and the audit row `worker.update` names the change
   shared with, with only the projects on which they hold a grant and without `kg_sync`; it shows `owner` and
   `shared`. They cannot drain, undrain, revoke or change it (404, as for a worker they cannot see); a hub admin still
   may drain or revoke it.
+- **Narrowed to units.** Its owner, or a hub admin, narrows a shared worker to units of the org chart (table
+  `worker_shares`, schema 0107) with `evo-agents hub org worker share WORKER --unit SLUG` (`PUT
+  /v1/org/workers/{id}/units/{slug}`), which also turns sharing on, and takes a unit back with `hub org worker unshare
+  WORKER --unit SLUG` (`DELETE` on the same path); taking back its last unit also turns sharing off, so narrowing
+  never ends with the worker shared with every writer. A narrowed worker takes, besides its owner's, only the runs of
+  a member whose live primary seat is in one of its units or below one and who holds writer on the run's project:
+  claim, dispatch, the lists of workers, the candidates of a rerun and a chat run's worker all count it so. A shared
+  worker with no unit keeps meaning every writer. `PATCH {"shared": false}` keeps the units, which apply again once
+  it is shared. `hub org worker list [--json]` shows the caller's live workers (every one for a hub admin) with
+  `shared`, `units` and the newest doctor report (`doctor_at`, `doctor_high`, `doctor_medium`, null until the daemon
+  sends one). The audit rows are `worker.share` and `worker.unshare`.
+- **The doctor decides.** A daemon of this release (feature `doctor_report`) runs `evo-agents worker doctor` when it
+  starts and every 24 hours and sends its findings to `POST /v1/worker/doctor`: code, severity and detail as the doctor
+  prints them, each detail redacted on the machine and again by the hub, never a credential. The hub keeps the newest
+  report on the worker's row (schema 0108). Narrowing a worker to a unit answers 409 with the reason when that report
+  is older than 48 hours, when there is none (an older daemon sends none, so its worker cannot be narrowed) or when it
+  has a high finding. A narrowed worker whose newest report has a high finding takes no run of its units' members
+  until a report has none, while its owner's runs go on; the report that first finds something high sends its owner
+  the notice `worker_doctor` (`docs/notifications.md`).
 - **Turning it off.** The worker claims no new run of another member; the runs of other members it holds finish, and
   those queued pinned to it wait until it is shared again or their dispatcher cancels or reruns them elsewhere. A
   member who loses writer on the project, or an owner who does, ends the sharing there as for any run: claims skip

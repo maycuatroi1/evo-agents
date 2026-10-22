@@ -92,6 +92,8 @@ const ACCOUNT: Account = {
   cost_24h_usd: 0,
   cost_7d_usd: 1.5,
   held_by: [],
+  shares: [],
+  cost_by_principal: [],
 };
 
 const TOKEN = "sk-ant-oat01-unit-token-7f3a";

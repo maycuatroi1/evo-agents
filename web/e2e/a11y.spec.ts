@@ -72,6 +72,7 @@ import { decidePath, goalsPath, itemPath as loopItemPath, loopPath, seedLoop, se
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
+import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import {
   documentPath,
   editItem,
@@ -879,6 +880,47 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/accounts");
       await expect(page.locator("#main").getByTestId("accounts-group-service")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts shared with a member and a unit, a share ending soon, the cost by member, and the share dialog with the terms warning",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      const lan = await otherMember("lan-tran");
+      const unit = await unitByApi("a11y-share");
+      const projects = [me.projects[0]];
+      await shareByApi(me, "claude-sub", { grantee_kind: "user", login: lan.login, projects, budget_usd: 40, terms_ack: true });
+      await shareByApi(me, "anthropic-key", { grantee_kind: "unit", unit, projects, expires_at: `${dayFromNow(2)}T00:00:00Z` });
+      await page.goto("/accounts");
+      const shares = page.locator("#main").getByTestId("account-shares");
+      await expect(shares.getByTestId("share-row")).toHaveCount(2);
+      await expect(shares.getByTestId("share-ends-soon")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("accounts-cost-empty")).toBeVisible();
+      await expectNoSeriousViolations(page, "accounts with their shares");
+      await shares.getByTestId("share-open").click();
+      const dialog = page.getByTestId("share-dialog");
+      await dialog.getByTestId("share-secret").selectOption("claude-sub");
+      await expect(dialog.getByTestId("share-terms-text")).toBeVisible();
+      await dialog.getByTestId("share-kind").selectOption("unit");
+      await expect(dialog.getByTestId("share-save")).toBeDisabled();
+      await dialog.getByTestId("share-terms-ack").check();
+      await dialog.getByTestId("share-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("share-unit-error")).toBeVisible();
+    },
+  },
+  {
+    name: "worker detail with its Sharing card: a unit, a high doctor finding and the switch locked",
+    open: async ({ page, me }) => {
+      const live = await liveWorker(me, me.projects[0], uniqueName("studio"));
+      const unit = await unitByApi("a11y-worker");
+      await doctorReport(live, CLEAN_REPORT);
+      await narrowByApi(me, live, unit);
+      await doctorReport(live, HIGH_REPORT);
+      await page.goto(`/workers/${live.worker.id}`);
+      const card = page.locator("#main").getByTestId("worker-sharing");
+      await expect(card.getByTestId("worker-doctor-high")).toBeVisible();
+      await expect(card.getByTestId("worker-shared-locked")).toBeVisible();
+      await expect(card.locator(`[data-unit="${unit}"]`)).toBeVisible();
     },
   },
   {
