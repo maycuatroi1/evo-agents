@@ -576,6 +576,10 @@ def _origin(provenance: dict | None) -> str:
     return "written by " + ", ".join(what)
 
 
+def _audience(item: dict) -> str:
+    return f", audience {', '.join(item['audience'])}" if item.get("audience") else ""
+
+
 def memory_lines(memories: dict) -> list[str]:
     """The agents' memories new or changed since the last review, with where each came from, the project's shared
     memories, and how to propose a promotion (``evo_agents.hub.server.memory_promotion.for_prompt``)."""
@@ -593,18 +597,22 @@ def memory_lines(memories: dict) -> list[str]:
         "merge into, or `{location: LOCATION, name: NAME.md, type: project|reference}` for a new one) and `body`, "
         "the whole memory file after the merge, frontmatter included. A promotion takes no plan file. Promote "
         "nothing that is one run's detail, and never copy a secret.",
+        "- A memory listed with an audience (such as chat:ID, written by a chat run) is for those people alone: a "
+        "shared memory promoted from it, and the proposal, keep that audience, so only they read them. Never copy "
+        "its content into a proposal or finding that does not cite it as evidence.",
     ]
     agents = []
     for item in memories.get("agents") or []:
         head = (
             f"- memory:{item['id']}:{item['revision']} of @{item['agent']}, {item['location']}/{item['name']} "
-            f"({item['type']}), {_origin(item.get('provenance'))}:"
+            f"({item['type']}), {_origin(item.get('provenance'))}{_audience(item)}:"
         )
         body = "\n".join(f"    {line}" for line in str(item.get("body") or "").splitlines())
         agents.append(f"{head}\n{body}" if body else head)
     lines.append(clip("\n".join(agents), MEMORIES_BYTES) if agents else "- none")
     shared = [
-        f"- memory:{item['id']}:{item['revision']} {item['location']}/{item['name']} ({item['type']}): {item['about']}"
+        f"- memory:{item['id']}:{item['revision']} {item['location']}/{item['name']} ({item['type']}){_audience(item)}: "
+        f"{item['about']}"
         for item in memories.get("shared") or []
     ]
     lines += ["", "# The project's shared memories, the targets of a promotion"]
