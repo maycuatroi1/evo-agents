@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.2 evo-agents kg hook session-start || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.34.2, so evo-agents from PATH runs kg hook session-start' >&2 && evo-agents kg hook session-start; } || echo 'evo-kg: kg hook session-start did not run: uvx could not run evo-ak==0.34.2 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.35.0 evo-agents kg hook session-start || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.35.0, so evo-agents from PATH runs kg hook session-start' >&2 && evo-agents kg hook session-start; } || echo 'evo-kg: kg hook session-start did not run: uvx could not run evo-ak==0.35.0 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.2 evo-agents kg hook post-tool || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.34.2, so evo-agents from PATH runs kg hook post-tool' >&2 && evo-agents kg hook post-tool; } || echo 'evo-kg: kg hook post-tool did not run: uvx could not run evo-ak==0.34.2 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.35.0 evo-agents kg hook post-tool || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.35.0, so evo-agents from PATH runs kg hook post-tool' >&2 && evo-agents kg hook post-tool; } || echo 'evo-kg: kg hook post-tool did not run: uvx could not run evo-ak==0.35.0 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 10
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.2 evo-agents kg hook post-search || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.34.2, so evo-agents from PATH runs kg hook post-search' >&2 && evo-agents kg hook post-search; } || echo 'evo-kg: kg hook post-search did not run: uvx could not run evo-ak==0.34.2 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.35.0 evo-agents kg hook post-search || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.35.0, so evo-agents from PATH runs kg hook post-search' >&2 && evo-agents kg hook post-search; } || echo 'evo-kg: kg hook post-search did not run: uvx could not run evo-ak==0.35.0 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 5
           }
         ]
@@ -39,13 +39,13 @@
           {
             "type": "command",
             "if": "Bash(rg *)",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.2 evo-agents kg hook post-search --only rg || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.34.2, so evo-agents from PATH runs kg hook post-search --only rg' >&2 && evo-agents kg hook post-search --only rg; } || echo 'evo-kg: kg hook post-search --only rg did not run: uvx could not run evo-ak==0.34.2 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.35.0 evo-agents kg hook post-search --only rg || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.35.0, so evo-agents from PATH runs kg hook post-search --only rg' >&2 && evo-agents kg hook post-search --only rg; } || echo 'evo-kg: kg hook post-search --only rg did not run: uvx could not run evo-ak==0.35.0 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 5
           },
           {
             "type": "command",
             "if": "Bash(grep *)",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.2 evo-agents kg hook post-search --only grep || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.34.2, so evo-agents from PATH runs kg hook post-search --only grep' >&2 && evo-agents kg hook post-search --only grep; } || echo 'evo-kg: kg hook post-search --only grep did not run: uvx could not run evo-ak==0.34.2 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.35.0 evo-agents kg hook post-search --only grep || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-kg: uvx could not run evo-ak==0.35.0, so evo-agents from PATH runs kg hook post-search --only grep' >&2 && evo-agents kg hook post-search --only grep; } || echo 'evo-kg: kg hook post-search --only grep did not run: uvx could not run evo-ak==0.35.0 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 5
           }
         ]
