@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { createAgentByApi } from "./support/agents";
 import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount } from "./support/hub";
+import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -145,12 +145,30 @@ for (const width of WIDTHS) {
   test(`admin pages never scroll sideways at ${width} px`, async ({ page, signInAs }) => {
     await signInAs(ADMIN_ACCOUNT);
     await machineToken(ADMIN_ACCOUNT); // a machine token row next to the web sessions
+    await new HubAdmin().invite({ kind: "register", for_login: newAccount(LONG).login, days: 1 }); // a long login in the list
     await noSidewaysScroll(page, [width], [
       { path: "/admin/audit", ready: shown("audit-table") },
+      { path: "/admin/invites", ready: shown("invites-table") },
       { path: "/admin/tokens", ready: shown("tokens-table") },
       { path: "/admin/members", ready: shown("members-table") },
       { path: `/admin/members/${ADMIN_ACCOUNT.login}`, ready: shown("member-tokens") },
     ]);
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`an invite link's page never scrolls sideways at ${width} px, signed out, signed in and accepted`, async ({ page, signInAs }) => {
+    const hub = new HubAdmin();
+    const project = uniqueName(LONG);
+    await hub.registerProject(project);
+    const created = await hub.invite({ kind: "join", project, role: "writer", max_level: "internal", days: 7 });
+    const path = `/invite/${created.token}`;
+    await noSidewaysScroll(page, [width], [{ path, ready: (p) => expect(p.getByTestId("invite-sign-in")).toBeVisible() }]);
+    await signInAs(newAccount(LONG));
+    await noSidewaysScroll(page, [width], [{ path, ready: (p) => expect(p.getByTestId("invite-accept")).toBeVisible() }]);
+    await page.getByTestId("invite-accept").click();
+    await expect(page.getByTestId("invite-get-started")).toBeVisible(); // accepted before the page loads again
+    await noSidewaysScroll(page, [width], [{ path, ready: shown("invite-get-started") }]);
   });
 }
 

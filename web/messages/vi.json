@@ -14,6 +14,102 @@
     "access": "Bạn chỉ thấy những dự án quản trị viên đã cấp quyền cho tài khoản của mình.",
     "cli": "Trên máy tính, đăng nhập CLI bằng lệnh <code>evo-agents hub login</code>."
   },
+  "invite": {
+    "title": "Lời mời",
+    "heading": "{inviter} mời bạn vào {hub}",
+    "facts": {
+      "invitedBy": "Người mời",
+      "gives": "Quyền được cấp",
+      "project": "Dự án",
+      "role": "Vai trò",
+      "visibility": "Mức hiển thị",
+      "expires": "Hết hạn"
+    },
+    "register": "Quyền đăng ký một dự án của riêng bạn trên hub này",
+    "hidden": "Link này dành cho một tên đăng nhập GitHub. Dự án và vai trò sẽ hiện khi đúng tên đăng nhập đó đăng nhập.",
+    "signInHint": "Đăng nhập bằng GitHub để nhận lời mời. Sau đó bạn quay lại trang này.",
+    "github": "Đăng nhập bằng GitHub",
+    "loginUnavailable": "Hub này hiện chưa đăng nhập được bằng GitHub. Hãy thử lại sau, hoặc báo cho {inviter}.",
+    "signedInAs": "Đang đăng nhập với {login}",
+    "accept": "Nhận lời mời",
+    "accepting": "Đang nhận…",
+    "notForYou": "Link này được tạo cho một tên đăng nhập GitHub khác, không phải {login}. Hãy đăng xuất, rồi đăng nhập bằng đúng tên đăng nhập đó.",
+    "signOut": "Đăng xuất",
+    "signingOut": "Đang đăng xuất…",
+    "signOutFailed": "Không đăng xuất được",
+    "unknownTitle": "Link mời này không hợp lệ",
+    "unknownDescription": "Hub không nhận ra link này. Hãy kiểm tra bạn đã mở đủ cả link, hoặc xin người gửi một link mới.",
+    "closed": {
+      "accepted": "Link mời này đã được dùng",
+      "revoked": "Link mời này đã bị thu hồi",
+      "expired": "Link mời này đã hết hạn"
+    },
+    "closedDescription": "Mỗi link chỉ dùng được một lần, trước khi hết hạn. Hãy xin {inviter} một link mới.",
+    "acceptedTitle": "Bạn đã nhận lời mời",
+    "acceptedJoin": "Giờ bạn làm việc trong dự án {project} với vai trò {role}.",
+    "acceptedRegister": "Bạn được đăng ký một dự án của riêng mình trên hub này, theo các bước bên dưới.",
+    "acceptedRegistered": "Bạn đã đăng ký dự án {project} bằng link này.",
+    "acceptedToast": "Đã nhận lời mời",
+    "errors": {
+      "failed": "Không nhận được lời mời",
+      "forbidden": "Link này dành cho một tên đăng nhập GitHub khác. Chưa có quyền nào được cấp.",
+      "notFound": "Hub không còn nhận ra link này. Hãy xin {inviter} một link mới.",
+      "conflict": "Mức hiển thị của link này không còn trong dự án. Hãy xin {inviter} một link mới.",
+      "gone": "Trong lúc đó link này đã được dùng, bị thu hồi hoặc hết hạn. Hãy xin {inviter} một link mới."
+    },
+    "openHub": "Mở hub",
+    "start": {
+      "title": "Bắt đầu",
+      "description": "Chạy các lệnh này trong terminal trên máy bạn làm việc. Mỗi lệnh có nút sao chép.",
+      "commands": "Các lệnh",
+      "install": {
+        "title": "Cài CLI evo-agents",
+        "hint": "Cần có uv. Phần mở rộng thêm bộ dựng knowledge graph và worker.",
+        "label": "lệnh cài đặt"
+      },
+      "login": {
+        "title": "Đăng nhập CLI vào hub này",
+        "hint": "Lệnh mở GitHub trên trình duyệt để xác nhận. Mỗi máy một lần.",
+        "label": "lệnh đăng nhập"
+      },
+      "plugins": {
+        "title": "Cài plugin evo-hub và evo-kg",
+        "hint": "Cho Claude Code, hoặc cho Codex, nơi dùng plugin evo-hub.",
+        "claude": "Claude Code",
+        "codex": "Codex",
+        "label": "lệnh plugin {agent} số {number}"
+      },
+      "project": {
+        "title": "Tạo harness và đăng ký dự án",
+        "hint": "Chạy cả hai lệnh trong thư mục chứa các repo của bạn. Đăng ký dùng quyền link này cấp và đặt bạn làm quản trị của dự án.",
+        "name": "Tên dự án",
+        "nameHint": "Không bắt buộc. Nếu bỏ trống, dự án lấy tên thư mục.",
+        "invalid": "Chỉ dùng chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số.",
+        "initLabel": "lệnh tạo harness",
+        "registerLabel": "lệnh đăng ký"
+      },
+      "worker": {
+        "title": "Ghép một worker",
+        "hint": "Tạo mã ghép, rồi chạy lệnh join nó hiện trên máy sẽ chạy plan. Sau đó cài worker thành dịch vụ để nó luôn chạy.",
+        "afterRegister": "Ghép worker sau khi đăng ký dự án: worker phục vụ các dự án bạn có quyền ghi.",
+        "pair": "Tạo mã ghép",
+        "credentials": "Worker chạy agent bằng phiên đăng nhập Claude Code, Codex hoặc opencode của máy đó, và push bằng thông tin xác thực git của máy đó.",
+        "serviceLabel": "lệnh cài dịch vụ"
+      },
+      "run": {
+        "title": "Chạy một plan",
+        "hint": "Mở các plan của dự án, chọn một plan rồi bấm Chạy plan. Worker của bạn sẽ nhận run.",
+        "open": "Mở các plan của {project}",
+        "noProject": "Khi dự án đã đăng ký, hãy mở nó từ trang chủ của hub.",
+        "home": "Mở hub"
+      },
+      "read": {
+        "title": "Xem dự án",
+        "hint": "Với vai trò Đọc, bạn xem memories, plans, skills và knowledge graph của dự án, tới mức hiển thị được cấp.",
+        "open": "Mở {project}"
+      }
+    }
+  },
   "nav": {
     "label": "Điều hướng chính",
     "home": "Trang chủ",
@@ -400,10 +496,11 @@
     },
     "empty": {
       "title": "Bạn chưa được cấp dự án nào",
-      "description": "Quản trị viên hub cấp vai trò trong từng dự án. Gửi họ tên đăng nhập của bạn, {login}, rồi tải lại trang này.",
-      "adminDescription": "Bạn quản trị hub nhưng chưa có vai trò trong dự án nào. Tự cấp cho mình ở trang Quản trị, rồi tải lại trang này.",
+      "description": "Quản trị viên hub cấp vai trò trong từng dự án, hoặc gửi bạn một link mời. Gửi họ tên đăng nhập của bạn, {login}, rồi tải lại trang này.",
+      "adminDescription": "Bạn quản trị hub nhưng chưa có vai trò trong dự án nào. Tự cấp cho mình ở trang Quản trị, rồi tải lại trang này. Để mời người khác, hãy tạo link mời cho họ.",
       "admin": "Mở trang Quản trị",
-      "copyLogin": "Sao chép tên đăng nhập"
+      "copyLogin": "Sao chép tên đăng nhập",
+      "invites": "Tạo link mời"
     },
     "authorWaiting": {
       "title": "Đang chờ bạn trả lời",
@@ -554,6 +651,7 @@
       "members": "Thành viên",
       "tokens": "Token",
       "audit": "Audit",
+      "invites": "Lời mời",
       "plugins": "Plugin",
       "diagnostics": "Chẩn đoán",
       "branding": "Nhận diện",
@@ -762,6 +860,89 @@
       "successTitle": "Đã thu hồi token {id} của {login}",
       "failed": "Không thu hồi được token {id}",
       "openMember": "Mở thành viên"
+    },
+    "invites": {
+      "title": "Link mời",
+      "caption": "Link mời",
+      "sub": "Link cho phép một người vào một dự án, hoặc đăng ký dự án của riêng họ, bằng cách đăng nhập GitHub. Mỗi link dùng một lần.",
+      "count": "{count, plural, other {# link}}",
+      "new": "Tạo link mời",
+      "emptyTitle": "Chưa có link mời nào",
+      "emptyDescription": "Tạo một link để đưa ai đó vào dự án, hoặc để họ đăng ký dự án của riêng mình.",
+      "columns": {
+        "id": "ID",
+        "kind": "Loại",
+        "gives": "Quyền cấp",
+        "forLogin": "Dành cho",
+        "createdBy": "Người tạo",
+        "expires": "Hết hạn",
+        "status": "Trạng thái",
+        "acceptedBy": "Người nhận",
+        "actions": "Thao tác"
+      },
+      "kinds": {
+        "join": "Vào dự án",
+        "register": "Đăng ký dự án"
+      },
+      "statuses": {
+        "open": "Đang mở",
+        "accepted": "Đã nhận",
+        "revoked": "Đã thu hồi",
+        "expired": "Hết hạn"
+      },
+      "anyone": "Ai có link",
+      "registerGives": "Một dự án của riêng họ",
+      "rightUsed": "Đã dùng cho {project}",
+      "rightUnused": "Chưa dùng quyền",
+      "nobody": "Chưa có",
+      "mobileTitle": "{kind} #{id}",
+      "revoke": "Thu hồi",
+      "revokeLabel": "Thu hồi link mời {id}",
+      "form": {
+        "title": "Tạo link mời",
+        "description": "Chọn quyền link cấp. Link dùng được một lần, cho người mở trước hoặc cho một tên đăng nhập GitHub.",
+        "kind": "Link cấp",
+        "kindHints": {
+          "join": "Một vai trò trong một dự án của hub này.",
+          "register": "Quyền đăng ký một dự án của riêng họ, với vai trò quản trị."
+        },
+        "project": "Dự án",
+        "projectPlaceholder": "Chọn một dự án",
+        "projectRequired": "Chọn một dự án.",
+        "noProjects": "Hub chưa có dự án nào. Hãy tạo link đăng ký dự án, hoặc đăng ký một dự án trước.",
+        "role": "Vai trò",
+        "visibility": "Mức hiển thị",
+        "visibilityHint": "Mức cao nhất trong thang nhãn của dự án mà người này được xem.",
+        "days": "Hết hạn sau (ngày)",
+        "daysHint": "Từ 1 đến 30 ngày.",
+        "daysInvalid": "Nhập số ngày nguyên từ 1 đến 30.",
+        "forLogin": "Cho một tên đăng nhập GitHub (không bắt buộc)",
+        "forLoginHint": "Chỉ tên đăng nhập này nhận được link, và chỉ nó thấy dự án và vai trò. Bỏ trống để ai có link cũng nhận được.",
+        "cancel": "Huỷ",
+        "create": "Tạo link",
+        "creating": "Đang tạo…",
+        "notFound": "Dự án {project} không còn trên hub. Hãy chọn dự án khác."
+      },
+      "created": {
+        "title": "Đã tạo link mời",
+        "description": "Hãy chép ngay và gửi cho người bạn mời. Hub chỉ giữ bản băm của link, nên link không hiện lại lần nữa.",
+        "label": "link mời",
+        "done": "Xong"
+      },
+      "revokeDialog": {
+        "title": "Thu hồi link mời {id}?",
+        "open": "Không ai nhận được link này nữa. Người mở link sẽ thấy link đã bị thu hồi.",
+        "right": "{login} đã nhận link này và chưa dùng nó để đăng ký dự án: thu hồi sẽ lấy lại quyền đó.",
+        "audit": "Thao tác không hoàn tác được và được ghi vào audit.",
+        "cancel": "Huỷ",
+        "confirm": "Thu hồi link",
+        "pending": "Đang thu hồi…",
+        "notFound": "Hub không còn link này. Danh sách vừa được tải lại.",
+        "conflict": "Không thu hồi được link này nữa: nó đã được dùng, bị thu hồi hoặc hết hạn. Danh sách vừa được tải lại.",
+        "success": "Không ai nhận được link này nữa.",
+        "successTitle": "Đã thu hồi link mời {id}",
+        "failed": "Không thu hồi được link mời {id}"
+      }
     },
     "audit": {
       "title": "Nhật ký audit",

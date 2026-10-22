@@ -311,8 +311,7 @@
     "src/components/runs/run-actions.tsx": [
       "src/components/admin/confirm-action.tsx",
       "src/components/admin/notice.tsx",
-      "src/components/plans/links.ts",
-      "src/components/workers/command-line.tsx"
+      "src/components/plans/links.ts"
     ],
     "src/components/runs/run-chat.tsx": [
       "src/components/admin/confirm-action.tsx",
