@@ -512,6 +512,51 @@ whose refresh token is still good is not in this state: it is usable, and the ne
 `oauth-login NAME` again stores the new tokens and ends the cooldown; a cooldown for a usage limit stays. A transient
 failure of the endpoint (down, 5xx) does not mark the account.
 
+### Accounts of an agent
+
+An **agent account** is an `env` secret that an agent profile owns (`secrets.profile_id`, no member owner, migration
+0104), for runs under that agent to use whoever dispatches them: an admin of the profile's project adds it from the
+agent's page or with `evo-agents hub agent account` (`evo_agents/hub/server/agent_accounts.py`), names the workers it
+is bound to (the admin's own that are not revoked, or shared workers serving the project), and gives it a weight, a
+priority and an end like any account. The hub keeps the value sealed under its own associated data
+(`agent-secret:<profile id>:<name>`) and never hands it back by any route. Only `env` accounts exist for an agent: git
+secrets and the GitHub App token of a push stay the dispatcher's.
+
+The rule, per variable, for a run under a named agent P (not the project's default profile, not a run of the Curator)
+on worker W, for every kind of run (step, plan, author, chat at any hop, 1:1 chat, agent type `run_as`) and every
+project the agent's project axis lets it run in:
+
+- **P has a live account for the variable bound to W**: the run is leased one of those, chosen by weight, priority,
+  pause, cooldown and `DEFAULT_POLICY` (round-robin, a cooldown of an hour when the runtime gave no reset, failover on,
+  up to three), and never the dispatcher's secret for that variable. P's credential allowlist does not filter P's own
+  accounts, and a failover moves only between P's accounts.
+- **Every one of them is paused, cooling or past its end**: the run does not fall back to the dispatcher's secret. It
+  does as it does when all of a member's accounts for a variable are unusable: with every account cooling it waits on
+  the one ready first, with every one paused or ended it is leased none for that variable, and an event of the run says
+  why, naming accounts by id.
+- **P has no account for the variable on W** (or none on W at all): the run is leased the dispatcher's secret for it
+  through the credential axis, as before.
+
+Picking by hand, at dispatch or rerun, an account for a variable P has accounts for is 422 naming `@P`. The lease is
+named `@<handle>:<name>`, which no secret of a member can be, so an answer never holds two leases of one name; the
+`credential.lease` audit row names it by id and handle (`agent-accounts=12@<handle>`) apart from the dispatcher's
+`secrets=`, and `GET .../runs/{id}/credentials`, `evo-agents hub run credentials` and the run's page show it under that
+name. The JSON of a lease the worker gets is unchanged, so a worker of 0.24.x leases it without an upgrade. The hub
+replaces the value of each account of the agent by `***` in the messages the agent posts to a chat, as the daemon does
+in events.
+
+Who sees what: every member of the project sees an account's name, variable, workers, state, weight, priority and its
+usage, never the value; only an admin of the project adds, renews, changes and deletes it. A member reads them with
+`GET /v1/projects/{p}/agents/{handle}/accounts[/{name}]`, or across every project they hold a grant on with
+`GET /v1/agent-accounts` (the /accounts page), and with `evo-agents hub agent account list|show`
+(`evo_agents/hub/server/agent_account_views.py`): provider, category, state, workers, weight, priority, end, last
+usage, runs and cost over 24 hours and 7 days (null for a service account), the runs holding it and when it was last
+leased, computed by the functions of a member's own accounts (`account_views`). Without a grant it is the 404 or 403
+of reading the profile; `GET /v1/accounts` stays the caller's own accounts. Who can read the value, since
+a run that holds it runs the agent's code: an admin, through the instructions of the profile (the agent runs under
+them); a writer, through the agent of any run they dispatch; the owner of the worker and a root user on it, for every
+account bound to it; and every other run on that worker, as for any lease (see "What is still a risk").
+
 ### Compared with a proxy
 
 CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
@@ -793,5 +838,6 @@ medium findings as `warning:` lines; they never stop the install.
 | a secret | delete it (`evo-agents hub secret delete NAME` or the Secrets page), then revoke it at its source |
 | a GitLab access token | GitLab, the project's Settings > Access tokens > Revoke |
 | a `claude setup-token` token | claude.ai, Settings > Claude Code, revoke the token |
+| an agent account | delete it (`evo-agents hub agent account remove`) or the agent on the project's page, then revoke it at its source; a run that holds it keeps the value until it ends, so end those runs too |
 | a GitHub App token | it ends within the hour; to end all at once, suspend or uninstall the App, or rotate its private key |
 | `EVO_HUB_SECRETS_KEY` | rotate the key, then have every owner set their secrets again |
