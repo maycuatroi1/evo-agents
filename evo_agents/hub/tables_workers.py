@@ -11,7 +11,9 @@ unbroken line of heartbeats that said it. kg_sync (0053) is what its last heartb
 the projects whose night shift it is on duty for (``evo_agents.worker.kg_sync``). The columns of 0065 keep its owner's
 Update now: update_requested_at, when the last one was asked for; update_ended_at, when it ended (NULL while it is
 open, or when none was asked for), update_outcome how (``runs.UPDATE_NOW_OUTCOMES``) and update_reason why, when the
-daemon said. hub_nightly (0065) is one row, the commit the tag nightly pointed to when the hub last read it and when
+daemon said. The columns of 0107 keep the newest report of its daemon's doctor (``evo_agents.hub.server.worker_doctor``):
+doctor_at, when the hub took it; doctor_high and doctor_medium, its findings of each severity; doctor_findings, the
+findings (code, severity, detail). hub_nightly (0065) is one row, the commit the tag nightly pointed to when the hub last read it and when
 that was (``evo_agents.hub.nightly``), absent until the hub first read it. worker_projects lists the projects a worker
 takes runs of; worker_pairings holds the pairing codes a member creates for a machine to join with.
 """
@@ -90,6 +92,10 @@ def workers_table(metadata: MetaData) -> Table:
         _when("update_ended_at"),  # 0065
         Column("update_outcome", Text),  # 0065
         Column("update_reason", Text),  # 0065
+        _when("doctor_at"),  # 0107
+        Column("doctor_high", SmallInteger),  # 0107
+        Column("doctor_medium", SmallInteger),  # 0107
+        Column("doctor_findings", JSONB),  # 0107
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
         ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
         PrimaryKeyConstraint("id", name="workers_pkey"),

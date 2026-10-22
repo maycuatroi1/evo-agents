@@ -150,6 +150,14 @@ every worker starts unshared, and the audit row `worker.update` names the change
   it is shared. `hub org worker list [--json]` shows the caller's live workers (every one for a hub admin) with
   `shared`, `units` and the newest doctor report (`doctor_at`, `doctor_high`, `doctor_medium`, null until the daemon
   sends one). The audit rows are `worker.share` and `worker.unshare`.
+- **The doctor decides.** A daemon of this release (feature `doctor_report`) runs `evo-agents worker doctor` when it
+  starts and every 24 hours and sends its findings to `POST /v1/worker/doctor`: code, severity and detail as the doctor
+  prints them, each detail redacted on the machine and again by the hub, never a credential. The hub keeps the newest
+  report on the worker's row (schema 0107). Narrowing a worker to a unit answers 409 with the reason when that report
+  is older than 48 hours, when there is none (an older daemon sends none, so its worker cannot be narrowed) or when it
+  has a high finding. A narrowed worker whose newest report has a high finding takes no run of its units' members
+  until a report has none, while its owner's runs go on; the report that first finds something high sends its owner
+  the notice `worker_doctor` (`docs/notifications.md`).
 - **Turning it off.** The worker claims no new run of another member; the runs of other members it holds finish, and
   those queued pinned to it wait until it is shared again or their dispatcher cancels or reruns them elsewhere. A
   member who loses writer on the project, or an owner who does, ends the sharing there as for any run: claims skip

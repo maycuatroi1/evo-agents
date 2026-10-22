@@ -177,6 +177,10 @@ class WorkerHub:
     async def heartbeat(self, body: dict) -> dict:
         return await self.call("POST", "/v1/worker/heartbeat", body)
 
+    async def doctor(self, body: dict) -> dict:
+        """Send the findings of the machine's doctor (``evo_agents.worker.doctor_report``)."""
+        return await self.call("POST", "/v1/worker/doctor", body)
+
     async def report(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/state", body)
 

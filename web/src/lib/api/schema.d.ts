@@ -4113,6 +4113,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Doctor
+         * @description Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a
+         *     high finding stops it taking the runs of the units it is shared with.
+         */
+        post: operations["report_doctor_v1_worker_doctor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -12176,6 +12197,44 @@ export interface components {
              */
             value: "any" | "web";
         };
+        /** DoctorAnswer */
+        DoctorAnswer: {
+            /** Worker Id */
+            worker_id: number;
+            /**
+             * Doctor At
+             * Format: date-time
+             * @description when the hub took the report
+             */
+            doctor_at: string;
+            /** Doctor High */
+            doctor_high: number;
+            /** Doctor Medium */
+            doctor_medium: number;
+        };
+        /** DoctorFinding */
+        DoctorFinding: {
+            /**
+             * Code
+             * @description what the doctor found, as `worker doctor --json` names it
+             */
+            code: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
+            /**
+             * Detail
+             * @description what it found, as the doctor prints it
+             */
+            detail: string;
+        };
+        /** DoctorReport */
+        DoctorReport: {
+            /** Findings */
+            findings: components["schemas"]["DoctorFinding"][];
+        };
         /** EarlierFinding */
         EarlierFinding: {
             /** Id */
@@ -15393,7 +15452,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "worker_doctor") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -41083,6 +41142,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_doctor_v1_worker_doctor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoctorReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoctorAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
