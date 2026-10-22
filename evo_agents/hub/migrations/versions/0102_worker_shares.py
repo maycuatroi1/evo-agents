@@ -43,7 +43,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         _key("worker_id", "workers", "CASCADE"),
         _key("unit_id", "org_units", "RESTRICT"),
-        _key("created_by", "users", "SET NULL"),
+        _key("created_by", "users", ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("worker_id", "unit_id", name=f"{SHARES}_pkey"),
     )
     op.create_index(f"{SHARES}_unit_idx", SHARES, ["unit_id"])
