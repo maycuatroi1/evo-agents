@@ -460,6 +460,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/invites/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description What an invite link gives, for its page: public, the token being the credential; never the login it is bound
+         *     to, and its project and role only to someone it is for.
+         */
+        post: operations["preview_v1_invites_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/invites/accept": {
         parameters: {
             query?: never;
@@ -13617,6 +13638,64 @@ export interface components {
              * @description the link to hand out, EVO_HUB_PUBLIC_URL + /invite/ + token; null without one
              */
             url: string | null;
+        };
+        /** InvitePreview */
+        InvitePreview: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Invited By
+             * @description the hub admin who made the link
+             */
+            invited_by: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Bound
+             * @description whether one GitHub login alone may accept the link; which one is never shown
+             */
+            bound: boolean;
+            /**
+             * Viewer
+             * @description the login signed in on the web that asks; null for a visitor
+             */
+            viewer: string | null;
+            /**
+             * For Viewer
+             * @description whether the viewer may accept the link: signed in, and it unbound or theirs
+             */
+            for_viewer: boolean;
+            /**
+             * Accepted By Viewer
+             * @description whether the viewer accepted the link
+             */
+            accepted_by_viewer: boolean;
+            /**
+             * Project
+             * @description join: the project; register: the project its right registered, once used. Null unless the link is open and for the viewer (unbound, anyone), or the viewer accepted it
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives, shown as the project is
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches, shown as the project is
+             */
+            max_level: string | null;
         };
         /** InviteRequest */
         InviteRequest: {
@@ -27773,6 +27852,57 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_v1_invites_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

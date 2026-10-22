@@ -15903,6 +15903,68 @@
           }
         }
       },
+      "/v1/invites/preview": {
+        "post": {
+          "tags": [
+            "invites"
+          ],
+          "summary": "Preview",
+          "description": "What an invite link gives, for its page: public, the token being the credential; never the login it is bound\nto, and its project and role only to someone it is for.",
+          "operationId": "preview_v1_invites_preview_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteAccept"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InvitePreview"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/invites/accept": {
         "post": {
           "tags": [
@@ -71161,6 +71223,121 @@
             "url"
           ],
           "title": "InviteCreated"
+        },
+        "InvitePreview": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "join",
+                "register"
+              ],
+              "title": "Kind"
+            },
+            "invited_by": {
+              "type": "string",
+              "title": "Invited By",
+              "description": "the hub admin who made the link"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "revoked",
+                "expired"
+              ],
+              "title": "Status"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "bound": {
+              "type": "boolean",
+              "title": "Bound",
+              "description": "whether one GitHub login alone may accept the link; which one is never shown"
+            },
+            "viewer": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Viewer",
+              "description": "the login signed in on the web that asks; null for a visitor"
+            },
+            "for_viewer": {
+              "type": "boolean",
+              "title": "For Viewer",
+              "description": "whether the viewer may accept the link: signed in, and it unbound or theirs"
+            },
+            "accepted_by_viewer": {
+              "type": "boolean",
+              "title": "Accepted By Viewer",
+              "description": "whether the viewer accepted the link"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "join: the project; register: the project its right registered, once used. Null unless the link is open and for the viewer (unbound, anyone), or the viewer accepted it"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "reader",
+                    "writer",
+                    "admin"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "join: the role it gives, shown as the project is"
+            },
+            "max_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Level",
+              "description": "join: the highest level it reaches, shown as the project is"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "invited_by",
+            "status",
+            "expires_at",
+            "bound",
+            "viewer",
+            "for_viewer",
+            "accepted_by_viewer",
+            "project",
+            "role",
+            "max_level"
+          ],
+          "title": "InvitePreview"
         },
         "InviteRequest": {
           "properties": {

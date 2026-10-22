@@ -11,6 +11,13 @@ open, accepted, revoked or expired. POST /v1/admin/invites/{invite_id}/revoke re
 accepted register link gave that no registration has used yet; any other link is 409. Those three routes are a hub
 admin's alone: anyone else gets 403.
 
+POST /v1/invites/preview is public: the web's page of a link reads, from the token alone, what the link gives, so a
+visitor who has not signed in yet sees who invites them and to what. It names the admin who made the link, its kind,
+status and expiry, and whether it is bound to a login, never which one; the project, role and max level only to a
+visitor the link is for while it is open (anyone for an unbound link, the bound login alone, signed in, for a bound
+one), and to the member who accepted it. It reads the session cookie when there is one, to say who is signed in, and
+writes nothing.
+
 POST /v1/invites/accept takes the token from a signed-in member, never from the agent of a run. The link's row is
 locked first, so of two accepts at once one gives what the link gives and the other finds it accepted. A token the hub
 does not know is 404; a link accepted, revoked or expired is 410, and one bound to another login 403, each saying why
@@ -47,7 +54,16 @@ from evo_agents.hub.server.admin import LOGIN_NAME, PROJECT_NAME, project_ladder
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal, admin, hash_token
+from evo_agents.hub.server.security import (
+    SESSION_COOKIE,
+    WEB,
+    AdminUser,
+    CurrentUser,
+    Principal,
+    admin,
+    authenticate,
+    hash_token,
+)
 
 log = logging.getLogger(__name__)
 
@@ -124,6 +140,23 @@ class InviteCreated(InviteRow):
 
 class InviteAccept(BaseModel):
     token: str = Field(min_length=1, max_length=200, description="the token of the link, evn_...")
+
+
+class InvitePreview(BaseModel):
+    kind: Literal["join", "register"]
+    invited_by: str = Field(description="the hub admin who made the link")
+    status: Status
+    expires_at: datetime
+    bound: bool = Field(description="whether one GitHub login alone may accept the link; which one is never shown")
+    viewer: str | None = Field(description="the login signed in on the web that asks; null for a visitor")
+    for_viewer: bool = Field(description="whether the viewer may accept the link: signed in, and it unbound or theirs")
+    accepted_by_viewer: bool = Field(description="whether the viewer accepted the link")
+    project: str | None = Field(
+        description="join: the project; register: the project its right registered, once used. Null unless the link "
+        "is open and for the viewer (unbound, anyone), or the viewer accepted it"
+    )
+    role: Role | None = Field(description="join: the role it gives, shown as the project is")
+    max_level: str | None = Field(description="join: the highest level it reaches, shown as the project is")
 
 
 def _rows():
@@ -293,6 +326,44 @@ def _refuse_closed(row: Row | None, user: Principal) -> None:
         raise HTTPException(
             403, "this invite link is for another GitHub login: sign in as that login to accept it; nothing was granted"
         )
+
+
+async def _viewer(request: Request) -> Principal | None:
+    """Who is signed in on the web that sends ``request``: the live session of its cookie, or None."""
+    session = request.cookies.get(SESSION_COOKIE)
+    if not session:
+        return None
+    return await authenticate(request.app.state.engine, session, WEB, request.app.state.config)
+
+
+@accept_router.post("/preview", response_model=InvitePreview, responses={404: {"model": ErrorBody}})
+async def preview(request: Request, response: Response, body: InviteAccept) -> InvitePreview:
+    """What an invite link gives, for its page: public, the token being the credential; never the login it is bound
+    to, and its project and role only to someone it is for."""
+    viewer = await _viewer(request)
+    async with request.app.state.engine.begin() as conn:
+        row = (await conn.execute(ROWS.where(tables.invites.c.token_hash == hash_token(body.token)))).first()
+    response.headers.update(NO_STORE)
+    if row is None:
+        raise HTTPException(404, f"this invite link is not known to the hub: {ASK_AGAIN}")
+    invite = InviteRow(**row._asdict())
+    login = viewer.login.lower() if viewer is not None else None
+    for_viewer = login is not None and (invite.for_login is None or invite.for_login.lower() == login)
+    accepted_by_viewer = login is not None and (invite.accepted_by or "").lower() == login
+    shown = accepted_by_viewer or (invite.status == OPEN and (invite.for_login is None or for_viewer))
+    return InvitePreview(
+        kind=invite.kind,
+        invited_by=invite.created_by,
+        status=invite.status,
+        expires_at=invite.expires_at,
+        bound=invite.for_login is not None,
+        viewer=viewer.login if viewer is not None else None,
+        for_viewer=for_viewer,
+        accepted_by_viewer=accepted_by_viewer,
+        project=invite.project if shown else None,
+        role=invite.role if shown else None,
+        max_level=invite.max_level if shown else None,
+    )
 
 
 def _higher(ladder: list[str], *levels: str) -> str:

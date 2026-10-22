@@ -88,7 +88,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
 | emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
-| invite links | `POST` and `GET /v1/admin/invites`, `POST /v1/admin/invites/{id}/revoke`, for hub admins; `POST /v1/invites/accept`, for any member signed in (section Signing in, Invite links) |
+| invite links | `POST` and `GET /v1/admin/invites`, `POST /v1/admin/invites/{id}/revoke`, for hub admins; `POST /v1/invites/accept`, for any member signed in; `POST /v1/invites/preview`, public, for the link's page (section Signing in, Invite links) |
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
@@ -327,7 +327,12 @@ evo-agents hub admin invite revoke 3
 The link is `EVO_HUB_PUBLIC_URL` followed by `/invite/` and a token of 256 random bits (`evn_...`). The hub prints it
 once, in the answer to `POST /v1/admin/invites` (sent `Cache-Control: no-store`), and keeps only the SHA-256 of the
 token; no list, audit row or log holds the token. The member opens the link, signs in (the web passes the page as
-`?next=`), and accepts it with `POST /v1/invites/accept`. A link works once: of two accepts at the same time, one
+`?next=`), and accepts it with `POST /v1/invites/accept`. The page reads the link with `POST /v1/invites/preview`, which
+needs no sign-in and writes nothing: it names the admin who made the link, its kind, status and expiry, and whether it
+is bound to a login, never which one; the project, role and max level go only to a visitor the link is for while it is
+open (anyone for an unbound link, the bound login signed in for a bound one) and to the member who accepted it. The
+page is not indexed, and its title names no project. Once accepted, it lists the commands to get started on this
+hub. A link works once: of two accepts at the same time, one
 gives the grant and the other gets 410. A link accepted, revoked or expired answers 410, a token the hub does not
 know 404, a link bound to another login 403; none of them grants anything, and the message says to ask a hub admin
 for a new link. Accepting never lowers a grant the member holds already: they keep the higher role and the higher

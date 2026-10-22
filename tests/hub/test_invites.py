@@ -3,7 +3,8 @@ one-time link to join a project or to register one, lists and revokes it, and no
 accepts it once, the second of two accepts at once finding it accepted; a link accepted, revoked, expired, unknown or
 bound to another login gives nothing; a register link's right makes its holder the admin of the one project they
 register; the token is shown once and stored nowhere; each of create, accept and revoke writes one audit row without
-it; a holder sees nothing of another project; the web's sign-in comes back to a relative path of the hub alone;
+it; the public preview of a link's page names who made it and, only to someone it is for, what it gives, never the
+login it is bound to; a holder sees nothing of another project; the web's sign-in comes back to a relative path of the hub alone;
 migration 0104 goes up and down; ``evo-agents hub admin invite create|list|revoke`` drives it all; and (criterion a2)
 the holder of a register link who runs ``evo-agents harness init`` and then ``evo-agents hub project register`` in a
 directory of repos becomes the admin of that one project.
@@ -53,6 +54,7 @@ ADMIN_ID = 302
 WRITER = {"kind": "join", "project": "demo", "role": "writer", "max_level": "internal"}
 REGISTER = {"kind": "register"}
 ACCEPT = "/v1/invites/accept"
+PREVIEW = "/v1/invites/preview"
 INVITES = "/v1/admin/invites"
 
 
@@ -359,6 +361,83 @@ def test_an_invite_accepted_revoked_expired_unknown_or_for_another_login_gives_n
     assert sql(hub_db, select(invites.c.id).where(invites.c.accepted_by.is_not(None))) == [(used["id"],)]
     assert client.post(f"{INVITES}/{used['id']}/revoke", headers=admin).status_code == 409  # a grant is taken back
     assert client.post(ACCEPT, json={"token": revoked["token"]}).status_code == 401
+
+
+def previewed(client, token: str, headers: dict | None = None) -> dict:
+    response = client.post(PREVIEW, json={"token": token}, headers=headers or {})
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    return response.json()
+
+
+def gives(preview: dict) -> tuple:
+    return preview["project"], preview["role"], preview["max_level"]
+
+
+@needs_pg
+def test_an_invite_page_shows_what_a_link_gives_only_to_whom_it_is_for(client, github, hub_db, admin):
+    add_project(hub_db, "demo")
+    unbound = created(client, admin, **WRITER)
+    bound = created(client, admin, **WRITER, for_login="NewComer")
+    register = created(client, admin, **REGISTER, for_login="newcomer")
+    before = invite_audit(hub_db)
+
+    # a visitor who has not signed in: who invites, and what an unbound link gives; a bound link says no more than that
+    # it is bound, never to whom
+    seen = previewed(client, unbound["token"])
+    assert {key: seen[key] for key in ("kind", "invited_by", "status", "bound", "viewer", "for_viewer")} == {
+        "kind": "join",
+        "invited_by": ADMIN,
+        "status": "open",
+        "bound": False,
+        "viewer": None,
+        "for_viewer": False,
+    }
+    assert gives(seen) == ("demo", "writer", "internal") and seen["accepted_by_viewer"] is False
+    hidden = previewed(client, bound["token"])
+    assert (hidden["bound"], hidden["invited_by"], gives(hidden)) == (True, ADMIN, (None, None, None))
+    assert "newcomer" not in json.dumps(hidden).lower()
+    stranger = previewed(client, register["token"])
+    assert (stranger["kind"], stranger["bound"], gives(stranger)) == ("register", True, (None, None, None))
+
+    # signed in as another login: still nothing of a bound link, and it is not theirs to accept
+    other = cookie(web_sign_in(client, github, Account("someone", 702)))
+    theirs_not = previewed(client, bound["token"], other)
+    assert (theirs_not["viewer"], theirs_not["for_viewer"], gives(theirs_not)) == ("someone", False, (None, None, None))
+    assert previewed(client, unbound["token"], other)["for_viewer"] is True
+
+    # the login of the link, in another case: its project and role, and the right to accept it
+    session = web_sign_in(client, github, Account("newcomer", 701))
+    mine = previewed(client, bound["token"], cookie(session))
+    assert (mine["viewer"], mine["for_viewer"], gives(mine)) == ("newcomer", True, ("demo", "writer", "internal"))
+    assert previewed(client, register["token"], cookie(session))["for_viewer"] is True
+    assert invite_audit(hub_db) == before  # reading a link writes nothing
+    assert grants_of(client, cookie(session)) == []
+
+    # once accepted, the member who accepted it still sees what it gave; anyone else sees an accepted link, nothing more
+    accepted(client, {**cookie(session), "X-Evo-CSRF": csrf_for(client, session)}, unbound["token"])
+    after = previewed(client, unbound["token"], cookie(session))
+    assert (after["status"], after["accepted_by_viewer"], gives(after)) == (
+        "accepted",
+        True,
+        ("demo", "writer", "internal"),
+    )
+    for headers in (other, None):
+        closed = previewed(client, unbound["token"], headers)
+        assert (closed["status"], closed["accepted_by_viewer"], gives(closed)) == (
+            "accepted",
+            False,
+            (None, None, None),
+        )
+
+    # a revoked link shows nothing it gave; an unknown token is 404, and a stale session reads as nobody signed in
+    assert client.post(f"{INVITES}/{bound['id']}/revoke", headers=admin).status_code == 200
+    revoked = previewed(client, bound["token"], cookie(session))
+    assert (revoked["status"], gives(revoked)) == ("revoked", (None, None, None))
+    for token in ("evn_" + "A" * 43, "not-even-a-token"):
+        unknown = client.post(PREVIEW, json={"token": token}, headers=cookie(session))
+        assert unknown.status_code == 404 and "not known to the hub" in unknown.json()["message"]
+    assert previewed(client, register["token"], cookie("evs_" + "x" * 43))["viewer"] is None
 
 
 @needs_pg
