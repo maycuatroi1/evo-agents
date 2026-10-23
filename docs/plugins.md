@@ -482,6 +482,17 @@ contributes the routes under `/v1/x/crm/{project}/contacts`, the source `contact
 `crm_*` tables, asks for no permission, and a contact can be deleted on request with all its touchpoints
 (`evo-agents hub crm delete`). Import-linter keeps it in its own package (contract crm-plugin-own-package).
 
+### Marketing
+
+**marketing** (`evo_agents/core_plugins/marketing`, `docs/marketing-plugin.md`) keeps the channel accounts of a project
+(github, hackernews, reddit, x, linkedin, viblo, facebook_page, facebook_profile, tiktok) and puts every post through a
+gate: deny-list, source rule, caps and gap, a Judge in a fresh context, then the month's budget. A post that passes goes
+out with no human; one that fails is a draft with its reason. Each channel has a breaker, the project a kill switch, and
+every post an audit. The credentials are `x-secret` fields of the plugin's config. It contributes the routes under
+`/v1/x/marketing/{project}`, the job `advance`, the agent type `marketing-judge` and the six `marketing_*` tables, and
+asks for no permission (`evo-agents hub marketing channels|posts|pause|resume|kill`). Import-linter keeps it in its own
+package (contract marketing-plugin-own-package).
+
 ### Notifications from a plugin
 
 A backend granted `notifications:send` sends a notice to members of the project through the hub's API for plugins, with

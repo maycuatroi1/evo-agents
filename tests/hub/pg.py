@@ -191,6 +191,17 @@ AUTONOMY_LEVEL_TABLES = frozenset({"autonomy_prefs"})
 AUTONOMY_STOP_TABLES = frozenset({"autonomy_stops"})
 # migration 0118: the contacts of the core plugin crm (plan autonomous-oss-growth)
 CRM_TABLES = frozenset({"crm_contacts", "crm_touchpoints", "crm_stage_history", "crm_cursors", "crm_deletions"})
+# migration 0119: the channel accounts and the posting gate of the core plugin marketing
+MARKETING_TABLES = frozenset(
+    {
+        "marketing_channels",
+        "marketing_posts",
+        "marketing_budget",
+        "marketing_denylist",
+        "marketing_state",
+        "marketing_metrics",
+    }
+)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

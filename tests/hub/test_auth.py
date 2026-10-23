@@ -109,6 +109,7 @@ HUB_TABLES |= pg.INVITE_TABLES  # migration 0110
 HUB_TABLES |= pg.AUTONOMY_LEVEL_TABLES  # migration 0112
 HUB_TABLES |= pg.AUTONOMY_STOP_TABLES  # migration 0116
 HUB_TABLES |= pg.CRM_TABLES  # migration 0118
+HUB_TABLES |= pg.MARKETING_TABLES  # migration 0119
 
 
 @pytest.fixture

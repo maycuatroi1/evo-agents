@@ -6461,6 +6461,222 @@
         "schema": "ProjectLoop"
       }
     },
+    "hub marketing channels": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "channel",
+          "account",
+          "kind",
+          "mode",
+          "adapter",
+          "owner",
+          "target",
+          "paused",
+          "paused_reason",
+          "autonomous_since"
+        ],
+        "schema": "MarketingChannel"
+      }
+    },
+    "hub marketing kill": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "stopped by hand"
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "ok"
+        ],
+        "schema": "MarketingDone"
+      }
+    },
+    "hub marketing pause": {
+      "positionals": [
+        {
+          "name": "channel_id",
+          "metavar": "CHANNEL_ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "stopped by hand"
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "ok"
+        ],
+        "schema": "MarketingDone"
+      }
+    },
+    "hub marketing posts": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "proposed",
+            "judging",
+            "posted",
+            "draft",
+            "failed",
+            "withdrawn"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "channel_id",
+          "channel",
+          "account",
+          "kind",
+          "body",
+          "links",
+          "state",
+          "reason",
+          "layers",
+          "judge",
+          "run_id",
+          "posted_url",
+          "cost_usd",
+          "dry_run",
+          "created_at",
+          "posted_at"
+        ],
+        "schema": "MarketingPost"
+      }
+    },
+    "hub marketing resume": {
+      "positionals": [
+        {
+          "name": "channel_id",
+          "metavar": "CHANNEL_ID",
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "ok"
+        ],
+        "schema": "MarketingDone"
+      }
+    },
     "hub mcp": {
       "positionals": [],
       "options": [
@@ -44204,6 +44420,1519 @@
           }
         }
       },
+      "/v1/x/marketing/{project}/channels": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Channels",
+          "description": "The channel accounts of the project, with their mode and whether their breaker is open.",
+          "operationId": "list_channels_v1_x_marketing__project__channels_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MarketingChannel"
+                    },
+                    "title": "Response List Channels V1 X Marketing  Project  Channels Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Channel",
+          "description": "Make a channel account, always draft_only. An admin makes a project account; any writer makes a personal one,\nwhich belongs to them. The credential is not here: it is a secret of the plugin's config.",
+          "operationId": "add_channel_v1_x_marketing__project__channels_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingChannelIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingChannel"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/channels/{channel_id}/mode": {
+        "put": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Set Mode",
+          "description": "Switch an account between draft_only and autonomous. An agent never does; a personal account goes autonomous only\nfor its owner and only on facebook_profile and tiktok; hackernews is always draft_only.",
+          "operationId": "set_mode_v1_x_marketing__project__channels__channel_id__mode_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "channel_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Channel Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingModeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingChannel"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/channels/{channel_id}/pause": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Pause Channel",
+          "description": "Open the breaker of a channel by hand: it posts nothing until an admin resumes it.",
+          "operationId": "pause_channel_v1_x_marketing__project__channels__channel_id__pause_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "channel_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Channel Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingReasonIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/channels/{channel_id}/resume": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Resume Channel",
+          "description": "Close the breaker of a channel; only an admin does, and nothing closes it by itself.",
+          "operationId": "resume_channel_v1_x_marketing__project__channels__channel_id__resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "channel_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Channel Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/kill": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Kill",
+          "description": "Stop every channel of the project at once. Any member with a grant may.",
+          "operationId": "kill_v1_x_marketing__project__kill_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingReasonIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/resume": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Resume",
+          "description": "Clear the kill switch; only an admin does. The breakers that are open stay open.",
+          "operationId": "resume_v1_x_marketing__project__resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/status": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Status",
+          "description": "The kill switch, the breakers and this month's budget.",
+          "operationId": "status_v1_x_marketing__project__status_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/posts": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Posts",
+          "description": "The posts of the project, newest first, with what each layer of the gate said.",
+          "operationId": "list_posts_v1_x_marketing__project__posts_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "proposed",
+                      "judging",
+                      "posted",
+                      "draft",
+                      "failed",
+                      "withdrawn"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only posts in this state",
+                "title": "State"
+              },
+              "description": "only posts in this state"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MarketingPost"
+                    },
+                    "title": "Response List Posts V1 X Marketing  Project  Posts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Propose Post",
+          "description": "Propose a post to the gate: it is checked in order and goes out when every layer passes, with no human. A post\ncommand to a personal account that is draft_only, or on a channel a personal account never posts on by itself, is\nrefused here (403); save a draft instead.",
+          "operationId": "propose_post_v1_x_marketing__project__posts_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingPostIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingPost"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/posts/{post_id}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Post",
+          "operationId": "show_post_v1_x_marketing__project__posts__post_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "post_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Post Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingPost"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/drafts": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Save Draft",
+          "description": "Save a draft that goes through no gate and posts nothing: a person posts it. The only way an agent leaves a text\nfor a personal account.",
+          "operationId": "save_draft_v1_x_marketing__project__drafts_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingPostIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingPost"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/posts/{post_id}/report": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Report Post",
+          "description": "A report or complaint about a post that went out: the breaker of its channel opens at once.",
+          "operationId": "report_post_v1_x_marketing__project__posts__post_id__report_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "post_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Post Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingReasonIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/denylist": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Denylist",
+          "operationId": "list_denylist_v1_x_marketing__project__denylist_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MarketingDeny"
+                    },
+                    "title": "Response List Denylist V1 X Marketing  Project  Denylist Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Deny",
+          "description": "Add a term, a domain or a person no post may name. Only an admin edits it; the audit holds the change.",
+          "operationId": "add_deny_v1_x_marketing__project__denylist_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingDenyIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/denylist/{deny_id}": {
+        "delete": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Remove Deny",
+          "operationId": "remove_deny_v1_x_marketing__project__denylist__deny_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "deny_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Deny Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/pm/{project}/daily": {
         "get": {
           "tags": [
@@ -80900,6 +82629,577 @@
             "version"
           ],
           "title": "LoopUseCaseRef"
+        },
+        "MarketingBudget": {
+          "properties": {
+            "month": {
+              "type": "string",
+              "title": "Month"
+            },
+            "budget_usd": {
+              "type": "number",
+              "title": "Budget Usd"
+            },
+            "reserved_usd": {
+              "type": "number",
+              "title": "Reserved Usd"
+            },
+            "spent_usd": {
+              "type": "number",
+              "title": "Spent Usd"
+            }
+          },
+          "type": "object",
+          "required": [
+            "month",
+            "budget_usd",
+            "reserved_usd",
+            "spent_usd"
+          ],
+          "title": "MarketingBudget"
+        },
+        "MarketingChannel": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "channel": {
+              "type": "string",
+              "title": "Channel"
+            },
+            "account": {
+              "type": "string",
+              "title": "Account"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "mode": {
+              "type": "string",
+              "title": "Mode",
+              "description": "autonomous or draft_only"
+            },
+            "adapter": {
+              "type": "string",
+              "title": "Adapter"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "the login of the member who owns a personal account"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            },
+            "paused": {
+              "type": "boolean",
+              "title": "Paused",
+              "description": "the breaker is open: the channel posts nothing until an admin resumes it"
+            },
+            "paused_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused Reason"
+            },
+            "autonomous_since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Autonomous Since"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "channel",
+            "account",
+            "kind",
+            "mode",
+            "adapter",
+            "owner",
+            "target",
+            "paused",
+            "paused_reason",
+            "autonomous_since"
+          ],
+          "title": "MarketingChannel"
+        },
+        "MarketingChannelIn": {
+          "properties": {
+            "channel": {
+              "type": "string",
+              "enum": [
+                "github",
+                "hackernews",
+                "reddit",
+                "x",
+                "linkedin",
+                "viblo",
+                "facebook_page",
+                "facebook_profile",
+                "tiktok"
+              ],
+              "title": "Channel"
+            },
+            "account": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Account",
+              "description": "the handle, page or repo the account posts as"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "project",
+                "personal"
+              ],
+              "title": "Kind",
+              "description": "a personal account belongs to the member who makes it and is draft_only",
+              "default": "project"
+            },
+            "adapter": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "api",
+                    "browser"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Adapter",
+              "description": "api or browser; the channel's default"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target",
+              "description": "a subreddit, a page id, owner/name, an author urn"
+            }
+          },
+          "type": "object",
+          "required": [
+            "channel",
+            "account"
+          ],
+          "title": "MarketingChannelIn"
+        },
+        "MarketingDeny": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "value": {
+              "type": "string",
+              "title": "Value"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "value",
+            "added_at"
+          ],
+          "title": "MarketingDeny"
+        },
+        "MarketingDenyIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "term",
+                "domain",
+                "person"
+              ],
+              "title": "Kind"
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Value"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "value"
+          ],
+          "title": "MarketingDenyIn"
+        },
+        "MarketingDone": {
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "title": "Ok",
+              "description": "false when nothing changed (it was so already)"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ok"
+          ],
+          "title": "MarketingDone"
+        },
+        "MarketingModeIn": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "autonomous",
+                "draft_only"
+              ],
+              "title": "Mode"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "title": "MarketingModeIn"
+        },
+        "MarketingPost": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "channel_id": {
+              "type": "integer",
+              "title": "Channel Id"
+            },
+            "channel": {
+              "type": "string",
+              "title": "Channel"
+            },
+            "account": {
+              "type": "string",
+              "title": "Account"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "links": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Links"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "proposed, judging, posted, draft, failed or withdrawn"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it is a draft, failed or withdrawn"
+            },
+            "layers": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Layers",
+              "description": "layer -> {ok, detail}, in the order the gate ran them"
+            },
+            "judge": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Judge",
+              "description": "the Judge's scores and verdict"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "posted_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Posted Url"
+            },
+            "cost_usd": {
+              "type": "number",
+              "title": "Cost Usd"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "description": "it would have gone out, but the channel is in its dry-run time"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "posted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Posted At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "channel_id",
+            "channel",
+            "account",
+            "kind",
+            "body",
+            "links",
+            "state",
+            "reason",
+            "layers",
+            "judge",
+            "run_id",
+            "posted_url",
+            "cost_usd",
+            "dry_run",
+            "created_at",
+            "posted_at"
+          ],
+          "title": "MarketingPost"
+        },
+        "MarketingPostIn": {
+          "properties": {
+            "channel_id": {
+              "type": "integer",
+              "title": "Channel Id"
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Body"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "post",
+                "reply"
+              ],
+              "title": "Kind",
+              "default": "post"
+            },
+            "reply_to": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reply To",
+              "description": "what a reply answers"
+            },
+            "links": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Links"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/MarketingSource"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Sources"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run that proposed it, kept in the audit"
+            }
+          },
+          "type": "object",
+          "required": [
+            "channel_id",
+            "body"
+          ],
+          "title": "MarketingPostIn"
+        },
+        "MarketingReasonIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Reason",
+              "default": "stopped by hand"
+            }
+          },
+          "type": "object",
+          "title": "MarketingReasonIn"
+        },
+        "MarketingSource": {
+          "properties": {
+            "quote": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Quote",
+              "description": "the sentence of the post the source backs"
+            },
+            "url": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Url",
+              "description": "a link to the docs, a release or the changelog"
+            }
+          },
+          "type": "object",
+          "required": [
+            "quote",
+            "url"
+          ],
+          "title": "MarketingSource"
+        },
+        "MarketingStatus": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "killed": {
+              "type": "boolean",
+              "title": "Killed",
+              "description": "the kill switch of the project is set: no channel posts"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "channels": {
+              "type": "integer",
+              "title": "Channels"
+            },
+            "open_breakers": {
+              "type": "integer",
+              "title": "Open Breakers"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/MarketingBudget"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "killed",
+            "reason",
+            "channels",
+            "open_breakers",
+            "budget"
+          ],
+          "title": "MarketingStatus"
         },
         "MemberCounts": {
           "properties": {
