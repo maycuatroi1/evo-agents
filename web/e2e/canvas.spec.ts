@@ -23,6 +23,7 @@ import {
 import { expect, isDeployed, test } from "./support/fixtures";
 import { HubAdmin, newAccount, uniqueName } from "./support/hub";
 import { apiOf } from "./support/memories";
+import { revealNavItem } from "./support/nav";
 import { toast } from "./support/toast";
 
 /**
@@ -50,12 +51,13 @@ test("Lean Canvas shows only where a project enabled it, and a writer starts a c
   await expect(page.getByTestId("state-not-found")).toBeVisible();
   await page.goto(`/p/${project}`);
   await expect(page.getByTestId("nav-plugin-canvas-canvases")).toHaveCount(0);
-  await expect(page.getByTestId("nav-signals")).toBeVisible();
+  await expect(page.getByTestId("nav-signals")).toBeAttached();
   const off = await api.GET("/v1/x/canvas/{project}/canvases", { params: { path: { project } } });
   expect(off.response.status).toBe(404);
 
   await enableCanvas(me, project);
   await page.reload();
+  await revealNavItem(page, "nav-plugin-canvas-canvases");
   await page.getByTestId("nav-plugin-canvas-canvases").click();
   await expect(page).toHaveURL(canvasesPath(project));
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Lean Canvas");

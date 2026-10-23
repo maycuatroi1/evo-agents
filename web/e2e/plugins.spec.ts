@@ -4,6 +4,7 @@ import { expect, isDeployed, test } from "./support/fixtures";
 import { signIn } from "./support/auth";
 import { BASE_URL } from "./support/env";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
+import { revealNavItem } from "./support/nav";
 import {
   enablePlugin,
   installedSample,
@@ -94,6 +95,7 @@ test("a project's admin enables a plugin through its consent and configures it, 
   await admin.grant(project, reader.login, "reader", "internal");
 
   await page.goto(`/p/${project}`);
+  await revealNavItem(page, "nav-plugins");
   await page.getByTestId("nav-plugins").click();
   await expect(page).toHaveURL(`/p/${project}/plugins`);
   const row = main(page).getByTestId("project-plugins-table").locator("tr", { has: page.locator(`[data-plugin-link="${id}"]`) });
@@ -158,6 +160,7 @@ test("a plugin's page opens in a sandbox from the project's menu and reaches the
   await enablePlugin(me, project, id);
 
   await page.goto(`/p/${project}`);
+  await revealNavItem(page, `nav-plugin-${id}-${SAMPLE_PAGE.name}`);
   await page.getByTestId(`nav-plugin-${id}-${SAMPLE_PAGE.name}`).click();
   await expect(page).toHaveURL(pluginPagePath(project, id));
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText(SAMPLE_PAGE.title);
@@ -227,6 +230,8 @@ test("the core plugin notes adds a native page only where a project enabled it, 
   await expect(page.getByTestId("consent-permissions")).toContainText("Read the project's plans");
   await page.getByTestId("plugin-consent-grant").click();
   await expect(toast(page, `Enabled Notes in ${project}`)).toBeVisible();
+
+  await revealNavItem(page, "nav-plugin-notes-entries");
 
   await page.getByTestId("nav-plugin-notes-entries").click();
   await expect(page).toHaveURL(notesPath);

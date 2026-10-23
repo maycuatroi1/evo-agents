@@ -3,9 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Puzzle } from "lucide-react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
+import type { Route } from "next";
 
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { browserApi } from "@/lib/api/browser";
 import { menuPages, shownPage } from "@/lib/plugin-pages";
 import { pluginPageHref, projectPluginsQuery } from "@/lib/plugin-queries";
@@ -18,36 +17,33 @@ import { isActive } from "./nav";
  */
 const PluginIcon = dynamic(() => import("./plugin-icons"), { ssr: false, loading: () => <Puzzle aria-hidden="true" /> });
 
-/** The project's plugins as the menu reads them: a refusal (no grant) or a failure leaves the menu without them. */
-function useProjectPlugins(project: string) {
-  return useQuery({ ...projectPluginsQuery(browserApi, project), retry: false, staleTime: 60_000 });
-}
+/** A menu item a plugin's page adds: what the sidebar draws (app-sidebar.tsx), in its Apps fold. */
+export type PluginNavLink = { key: string; testId: string; name: string; icon: React.ReactNode; href: Route; active: boolean };
 
 /**
  * The items of the pages a project's enabled plugins add to its menu (web/DESIGN.md, Plugins), after the project's own
  * areas: each with the icon and the title its manifest gives, in the plugins' order. A plugin the project has not
- * enabled, or the hub turned off, adds nothing; nor does a page that asks for no menu item.
+ * enabled, or the hub turned off, adds nothing; nor does a page that asks for no menu item. A refusal (no grant) or a
+ * failure leaves the menu without them.
  */
-export function PluginNavItems({ project, pathname, onNavigate }: { project: string; pathname: string; onNavigate: () => void }) {
-  const { data } = useProjectPlugins(project);
+export function usePluginNavLinks(project: string | null, pathname: string): PluginNavLink[] {
+  const { data } = useQuery({
+    ...projectPluginsQuery(browserApi, project ?? ""),
+    enabled: Boolean(project),
+    retry: false,
+    staleTime: 60_000,
+  });
+  if (!project) return [];
   return menuPages(data ?? []).map(({ plugin, page }) => {
     const href = pluginPageHref(project, plugin.name, page.name);
-    const active = isActive(pathname, href, false);
-    return (
-      <SidebarMenuItem key={`${plugin.name}/${page.name}`}>
-        <SidebarMenuButton asChild isActive={active} tooltip={page.title}>
-          <Link
-            href={href}
-            aria-current={active ? "page" : undefined}
-            onClick={onNavigate}
-            data-testid={`nav-plugin-${plugin.name}-${page.name}`}
-          >
-            <PluginIcon name={page.icon} />
-            <span className="min-w-0 flex-1 truncate">{page.title}</span>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    );
+    return {
+      key: `${plugin.name}/${page.name}`,
+      testId: `nav-plugin-${plugin.name}-${page.name}`,
+      name: page.title,
+      icon: <PluginIcon name={page.icon} />,
+      href,
+      active: isActive(pathname, href, false),
+    };
   });
 }
 

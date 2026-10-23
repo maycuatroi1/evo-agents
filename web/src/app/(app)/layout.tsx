@@ -28,9 +28,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   ]);
   if (meError) return <ShellError error={meError} />;
   const sidebarOpen = cookieStore.get("sidebar_state")?.value !== "false";
+  // The sidebar's open folds (shell/nav.ts, NAV_GROUPS_COOKIE), so it renders as the visitor left it.
+  const navGroups = cookieStore.get("hub_nav_groups")?.value;
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <AppShell sidebarOpen={sidebarOpen}>{children}</AppShell>
+      <AppShell sidebarOpen={sidebarOpen} navGroups={navGroups}>
+        {children}
+      </AppShell>
     </HydrationBoundary>
   );
 }
