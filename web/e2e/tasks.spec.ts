@@ -4,6 +4,7 @@ import { signOut } from "./support/auth";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { HubAdmin, newAccount, uniqueName } from "./support/hub";
 import { apiOf } from "./support/memories";
+import { revealNavItem } from "./support/nav";
 import { dispatch, seedRunPlan } from "./support/runs";
 import { enableSrs, enableTasks, importSample, itemPath, RULE, USE_CASE } from "./support/srs";
 import {
@@ -48,6 +49,7 @@ test("Tasks shows only where a project enabled it: no menu item, and its pages a
 
   await enableTasks(me, project);
   await page.reload();
+  await revealNavItem(page, "nav-plugin-tasks-board");
   await page.getByTestId("nav-plugin-tasks-board").click();
   await expect(page).toHaveURL(tasksPath(project));
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Tasks");

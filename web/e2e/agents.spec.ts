@@ -7,6 +7,7 @@ import { chatsOf } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { apiOf, markAgentMemory, memoryFile, putMemory } from "./support/memories";
+import { revealNavItem } from "./support/nav";
 import { open } from "./support/plans";
 import { PLAN_RUN_PLAN, RUN_PLAN, runsOf, seedPlanRunPlan, seedRunPlan } from "./support/runs";
 import { putSecretByApi, secretValue } from "./support/secrets";
@@ -40,6 +41,7 @@ test("an admin creates an agent from the hub's own lists, with an avatar, and fi
 
   // The sidebar leads to the project's agents: its default agent, @<project>, every permission.
   await open(page, `/p/${project}`);
+  await revealNavItem(page, "nav-agents");
   await page.getByTestId("nav-agents").click();
   await page.waitForURL(`**${agentsPath(project)}`);
   await expect(main(page).getByRole("heading", { level: 1, name: "Agents" })).toBeVisible();

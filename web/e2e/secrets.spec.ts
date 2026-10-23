@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
+import { revealNavItem } from "./support/nav";
 import { claimRun, dispatch, leaseCredentials, liveWorker, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, recordResponses, type RunLease, runCredentialsOf, type SecretWrite, secretsOf, secretValue } from "./support/secrets";
 import { otherMember, shareByApi } from "./support/sharing";
@@ -31,6 +32,7 @@ function dayFromNow(days: number): string {
 
 test("the sidebar leads to Secrets, which offers to add the first one", async ({ page, member }) => {
   await member([{ role: "writer", maxLevel: "internal" }]);
+  await revealNavItem(page, "nav-secrets");
   await page.getByTestId("nav-secrets").click();
   await page.waitForURL("**/secrets");
   await expect(page.getByRole("heading", { level: 1, name: "Secrets" })).toBeVisible();

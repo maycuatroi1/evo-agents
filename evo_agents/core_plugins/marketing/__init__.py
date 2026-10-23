@@ -215,8 +215,19 @@ PAGES = {
         "icon": "message-square",
         "description": "Channels, breakers, budget, kill switch",
     },
-    "posts": {"title": "Posts", "icon": "list-checks", "description": "Posts by the gate's result, and drafts to copy"},
-    "weekly": {"title": "Growth weekly", "icon": "chart-column", "description": "Signal against Goal, posts and cost"},
+    # Posts and Growth weekly are tabs of the Marketing page, not menu items of their own.
+    "posts": {
+        "title": "Posts",
+        "icon": "list-checks",
+        "description": "Posts by the gate's result, and drafts to copy",
+        "menu": False,
+    },
+    "weekly": {
+        "title": "Growth weekly",
+        "icon": "chart-column",
+        "description": "Signal against Goal, posts and cost",
+        "menu": False,
+    },
 }
 
 MANIFEST = {
