@@ -161,7 +161,21 @@ CONFIG = {
             "type": "object",
         },
         "github_token": {"title": "GitHub token", "description": "Releases and Discussions.", **SECRET},
-        "x_token": {"title": "X token", "description": "A user access token that may post.", **SECRET},
+        "x_token": {"title": "X token", "description": "An OAuth 2.0 user access token that may post.", **SECRET},
+        **{
+            name: {
+                "title": f"X OAuth 1.0a {title}",
+                "description": "One of the four OAuth 1.0a user-context keys of the X account, from the app's Keys and "
+                "tokens page; with all four set they sign the requests in place of x_token.",
+                **SECRET,
+            }
+            for name, title in (
+                ("x_consumer_key", "API key"),
+                ("x_consumer_secret", "API key secret"),
+                ("x_access_token", "access token"),
+                ("x_access_token_secret", "access token secret"),
+            )
+        },
         "linkedin_token": {"title": "LinkedIn token", "description": "An access token that may post.", **SECRET},
         "reddit_token": {"title": "Reddit token", "description": "An OAuth token, once Reddit approved it.", **SECRET},
         "facebook_page_token": {"title": "Facebook Page token", "description": "A Page access token.", **SECRET},
