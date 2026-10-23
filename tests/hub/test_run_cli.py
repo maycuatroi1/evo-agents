@@ -1178,7 +1178,7 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
 
     # answering: another member, an option the decision does not have, then the owner
     other = decisions_of(hub, monkeypatch, capsys, "other", "answer", number, "--option", "postgres")
-    assert other.code == 1 and f"only {OWNER}, whom it is asked of, may answer decision {number}" in other.err
+    assert other.code == 1 and f"only {OWNER}, who dispatched its run, may answer decision {number}" in other.err
     wrong = decisions_of(hub, monkeypatch, capsys, "owner", "answer", number, "--option", "mysql")
     assert wrong.code == 1 and "has no option 'mysql'" in wrong.err
     answered = ok(

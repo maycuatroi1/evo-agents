@@ -313,7 +313,7 @@ def test_only_the_runs_owner_answers_and_a_decision_is_answered_once(client, hub
     assert by_worker.status_code == 403, by_worker.text
     for who, status in (("other", 403), ("reader", 403), ("admin", 403), ("stranger", 404)):
         assert answer(client, hub[who], decision_id, option="postgres").status_code == status, who
-    assert "only owner, whom it is asked of" in answer(client, hub["other"], decision_id, option="sqlite").text
+    assert "only owner, who dispatched its run" in answer(client, hub["other"], decision_id, option="sqlite").text
     for body in ({}, {"option": "mysql"}, {"text": "  "}, {"text": "x" * (4 * 1024 + 1)}):
         assert answer(client, hub["owner"], decision_id, **body).status_code == 422, body
     assert decision(client, hub["owner"], decision_id)["state"] == "open"
