@@ -64,7 +64,7 @@ ever added to. Its kinds are `created`, `ready`, `admitted`, `dispatched`, `wait
 | `watching` | `stable` (a baseline settles), `auto_tasks` (the plugin srs makes the frame task), `split` (@ba splits it), `merge_queue`, `triage` |
 | `waiting_human` | `srs_review`, `srs_finding`, `srs_changes`, `author_question`, `run_decision`, `loop_decision`, `merge_blocked`, `merge_manual` |
 | `done` | none |
-| `cancelled` | `claim_invalidated`, `claim_retired`, `goal_paused`, `goal_closed`, `loop_off`, `task_closed`, `no_frame_task`, `person`, `dropped`, `manual` |
+| `cancelled` | `claim_invalidated`, `claim_retired`, `goal_paused`, `goal_closed`, `loop_off`, `task_closed`, `no_frame_task`, `person`, `dropped`, `manual`; for a core plugin's work item also `plugin_off` (below) |
 
 ## The rule table
 
@@ -114,13 +114,43 @@ no tick. Each step below runs in a transaction of its own that first takes the p
 1. the events past the cursor, at most `hub_events.MAX_READ` at a time: the engine's `rules` for each, what they
    return written, the cursor moved past them in the same transaction; not while the breaker is tripped, so the cursor
    stands and no event is lost;
-2. the engine's `scheduled` (rows 1 and 2), then its `reconcile` of each unfinished work item;
+2. the engine's `scheduled` (rows 1 and 2), then its `reconcile` of each unfinished work item (a core plugin's work
+   item is reconciled by its plugin's rules, below);
 3. the breaker and the stalls (below);
 4. admission of each queued work item, oldest first, and the hand-out of the runs that pass.
 
 A tick with nothing new writes no work item. Turning the Loop on (`loop.enabled` true in a new revision of the
 policy) puts its cursor at the project's newest event, with no backfill, and queues a tick; a chain from before enters
 through the next baseline a writer opens. Turning it off cancels every unfinished work item with reason `loop_off`.
+
+## Rules of a core plugin
+
+A core plugin adds rules to the Loop through the extension point `loop_rules` (version 1, `docs/plugins.md`). The core
+table above is unchanged: a plugin's rule runs beside it, so a baseline that moves a claim to testing still makes its
+`use_case` (row 3) whatever a plugin makes of the same event. A plugin declares the events its rule reads (events of the
+hub, or its own `plugin.<id>.<name>`), the kinds of work items it makes and how each gets its run: a task run of the
+plugin's own agent type, or the plugin's own job. The kinds are `growth_idea`, `growth_draft`, `growth_publish`,
+`growth_invite` and `growth_review`, all of cycle `business`; the routes and pages of the Loop list the four core kinds
+and not these.
+
+A plugin's work items go through the same path as the core ones:
+
+- **Ancestors and key.** A `work` effect names the ancestors it comes of (`goal_id`, `claim_id`, `parent_id`, `use_case`,
+  `task_id`), each of which must exist in the project. Its key is `<plugin>:<key>`, made by `INSERT ... ON CONFLICT DO
+  NOTHING` like any other, so a delta read twice (an event replayed, a weekly rule on the same week) makes one work
+  item. The engine of the work item is `plugin/<id>`.
+- **Admission.** The breaker, the cap `loop.business.max_running` and the rate `loop.dispatches_per_hour` hold a
+  plugin's work item as they hold a core one, with the same reasons. A task run goes to the plugin's agent type through
+  `task_dispatch.hand_own_task`, so the type's `daily_usd` caps its cost and a type that is off or whose cap is spent
+  leaves the work item queued with `type_refused`. A job runs with no run of the hub until the plugin moves it.
+- **Failure and triage.** A run that ends other than done, or a `move` with `failed`, counts a failure: the second opens
+  the triage thread, the third asks a person (`loop_decision`), and the breaker counts the work items a plugin makes in
+  an hour with the others.
+- **Turned off.** In a project where the plugin is not enabled, or off, its rules are not called and make no work
+  item, and its work items not finished are cancelled with reason `plugin_off` on the next tick. A project that does not
+  enable the plugin, or has no Loop, is as before.
+
+A handler that raises or takes more than 20 seconds makes nothing for that call and the tick goes on.
 
 ## Admission and caps
 

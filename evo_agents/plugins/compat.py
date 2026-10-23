@@ -41,6 +41,7 @@ POINT_VERSIONS: dict[str, tuple[int, ...]] = {
     "kg_connectors": (1,),
     "kg_sources": (1,),
     "tables": (1,),
+    "loop_rules": (1,),
 }
 PLUGIN_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]{1,40}))?")
 _RELEASE = re.compile(r"(\d+(?:\.\d+)*)(?:\.?(a|b|rc|dev)\.?(\d*))?")

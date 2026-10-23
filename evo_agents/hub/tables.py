@@ -37,11 +37,13 @@ from evo_agents.hub import (
     tables_accounts,
     tables_attachments,
     tables_browser,
+    tables_crm,
     tables_curator,
     tables_goals,
     tables_invites,
     tables_kg,
     tables_loop,
+    tables_marketing,
     tables_memory_agents,
     tables_merge,
     tables_night,
@@ -973,3 +975,17 @@ kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health =
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
+# the contacts of the core plugin crm (0124)
+crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions, crm_invites_sent = tables_crm.crm_tables(
+    metadata
+)
+# the channel accounts, posts and gate of the core plugin marketing (0125)
+(
+    marketing_channels,
+    marketing_posts,
+    marketing_budget,
+    marketing_denylist,
+    marketing_state,
+    marketing_metrics,
+    marketing_replies,
+) = tables_marketing.marketing_tables(metadata)

@@ -41,7 +41,7 @@ from evo_agents.hub.server.loop.board_items import (
     project_path,
     self_approval,
 )
-from evo_agents.hub.server.loop.model import WAITING_HUMAN
+from evo_agents.hub.server.loop.model import KINDS, WAITING_HUMAN
 from evo_agents.hub.server.loop.view import run_chains
 from evo_agents.hub.server.notifications import decision_link
 
@@ -60,7 +60,7 @@ async def _waiting(conn: AsyncConnection, project_id: int) -> list:
         select(i.c.id, i.c.kind, i.c.reason, i.c.detail, i.c.plan_id, i.c.run_id, i.c.use_case, i.c.updated_at)
         .add_columns(g.c.number.label("goal"))
         .join_from(i, g, g.c.id == i.c.goal_id, isouter=True)
-        .where(i.c.project_id == project_id, i.c.state == WAITING_HUMAN)
+        .where(i.c.project_id == project_id, i.c.state == WAITING_HUMAN, i.c.kind.in_(KINDS))
         .order_by(i.c.id)
     )
     return list(await conn.execute(query))
