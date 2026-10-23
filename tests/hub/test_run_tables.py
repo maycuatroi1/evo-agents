@@ -116,6 +116,9 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "question":  # a read-only question of a core plugin to an agent type of its own, on no plan (0100)
         row |= {"kind": "question", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "request": "Where does the wait start?"}
+    elif kind == "browser":  # the login session of a browser identity: no plan, no agent (0118)
+        row |= {"kind": "browser", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": None, "repos": REPOS, "browser": True}
     elif kind == "release":  # a cut or a fix of a release cycle, on no plan, dispatched by its schedule (0067)
         row |= {"kind": "release", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "dispatched_via": "release"}
@@ -345,6 +348,8 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, kind="question", agent_type_id=agent_type)
     for state in ("queued", *runs.TERMINAL_STATES):  # a project has one release run active at a time (0067)
         add_run(conn, ids, state, kind="release")
+    for state in ("queued", *runs.TERMINAL_STATES):  # the login session of a browser identity, on no plan (0118)
+        add_run(conn, ids, state, kind="browser")
     assert query_kinds(conn) == set(runs.SHOWN_KINDS)
     for runtime in ("any", *runs.RUNTIMES, "sandbox/fake"):  # a plugin's runtime, <plugin>/<name> (0039)
         for mode in runs.MODES:
