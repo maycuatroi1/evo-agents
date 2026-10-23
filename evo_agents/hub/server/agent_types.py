@@ -6,7 +6,9 @@ project enabled it; PUT .../agent-types/{plugin}/{name}, an admin of the project
 Enabling a type the first time creates its agent profile in the project from the type's template: the handle, name,
 description, instructions and permissions it names, the agent packs of the plugin it names attached at the version the
 project runs (``agent_packs.pinned``), and its environment, when it names one, as the only one its runs may take. A
-handle another agent holds, deleted ones included, or the name of a project refuses it (409), as does a plugin the
+handle is unique on the hub and a core plugin's type is enabled in many projects, so the profile takes the handle the
+admin names (``handle``), else the template's, else ``<template's>-<project>`` when another agent, deleted ones
+included, or a project holds the template's (``_handle``); none of them free refuses it (409), as does a plugin the
 project did not enable or that is turned off. Enabling it again keeps that profile, which the project's admins edit as
 any other, and changes the rest: the member whose name its runs go under (``run_as``, a writer or an admin of the
 project), the workers of that member they may run on (none named: any the profile allows) and the cap of what its task
@@ -51,6 +53,7 @@ log = logging.getLogger(__name__)
 
 POINT = "agent_types"
 NOTHING = "nothing changed"
+MAX_HANDLE = 100  # the characters of a handle, as profiles.HANDLE_PATTERN allows
 WINDOW = func.make_interval(0, 0, 0, 0, task_runs.BUDGET_HOURS)
 
 PluginName = Annotated[str, Path(pattern=PLUGIN_ID, description="the plugin's id")]
@@ -79,6 +82,14 @@ class AgentTypeIn(BaseModel):
         gt=0,
         le=task_runs.MAX_DAILY_USD,
         description=f"what its task runs may cost in {task_runs.BUDGET_HOURS} hours; a task past it is refused",
+    )
+    handle: str | None = Field(
+        default=None,
+        pattern=profiles.HANDLE_PATTERN,
+        description=(
+            "the handle of the profile the first enable makes; none: the template's, or <template's>-<project> when "
+            "another agent of the hub holds it. A handle never changes, so a later enable names the profile's or none"
+        ),
     )
 
 
@@ -263,12 +274,35 @@ def _permissions(plugin: str, item: dict) -> dict:
     return stored
 
 
-async def _create_profile(conn: AsyncConnection, user, access: ProjectAccess, plugin: str, item: dict, hub: str) -> int:
-    """Create the profile of agent type ``item`` of ``plugin`` in the project from its template, at version 1."""
-    template, ap, p = item["profile"], tables.agent_profiles, tables.projects
-    handle = template["handle"]
-    if (await conn.execute(select(p.c.id).where(p.c.name == handle))).first() is not None:
-        raise HTTPException(409, f"@{handle}, the handle agent type {item['name']} names, is a project's: {NOTHING}")
+async def _handle(conn: AsyncConnection, access: ProjectAccess, plugin: str, item: dict, wanted: str | None) -> str:
+    """The handle of the profile agent type ``item`` of ``plugin`` gets in the project: ``wanted`` when the admin names
+    one; else its template's, or ``<template's>-<project>`` when another agent of the hub (deleted ones included) or a
+    project holds the template's, since a handle is unique on the hub and a core plugin's type is enabled in many
+    projects. 409 when none of them is free."""
+    own = item["profile"]["handle"]
+    candidates = [wanted] if wanted else [own, f"{own}-{access.name}"[:MAX_HANDLE].rstrip("-")]
+    ap, p = tables.agent_profiles, tables.projects
+    held = set((await conn.execute(select(ap.c.handle).where(ap.c.handle.in_(candidates)))).scalars())
+    held |= set((await conn.execute(select(p.c.name).where(p.c.name.in_(candidates)))).scalars())
+    free = next((handle for handle in candidates if handle not in held), None)
+    if free is not None:
+        return free
+    taken = " and ".join(f"@{handle}" for handle in candidates)
+    raise HTTPException(
+        409,
+        f"{taken}, the handle{'s' if len(candidates) > 1 else ''} agent type {item['name']} of plugin {plugin} would "
+        f"take, {'are' if len(candidates) > 1 else 'is'} another agent's, deleted ones included, or a project's: name "
+        f"a free one in handle; {NOTHING}",
+    )
+
+
+async def _create_profile(
+    conn: AsyncConnection, user, access: ProjectAccess, plugin: str, item: dict, hub: str, wanted: str | None
+) -> int:
+    """Create the profile of agent type ``item`` of ``plugin`` in the project from its template, at version 1, under
+    the handle ``_handle`` picks."""
+    template, ap = item["profile"], tables.agent_profiles
+    handle = await _handle(conn, access, plugin, item, wanted)
     name = (template.get("name") or item.get("title") or item["name"])[: profiles.MAX_NAME_CHARS]
     if not re.fullmatch(PRINTABLE, name):
         name = item["name"]
@@ -294,8 +328,8 @@ async def _create_profile(conn: AsyncConnection, user, access: ProjectAccess, pl
     if profile_id is None:
         raise HTTPException(
             409,
-            f"@{handle}, the handle agent type {item['name']} of plugin {plugin} names, is taken by another agent, "
-            f"deleted ones included: {NOTHING}",
+            f"@{handle}, the handle agent type {item['name']} of plugin {plugin} would take, was taken by another "
+            f"agent meanwhile: {NOTHING}",
         )
     await write_version(conn, profile_id, 1, values, user.user_id)
     await _record(conn, user, access, audit.AGENT_CREATE, f"{access.name}/@{handle} v1")
@@ -331,8 +365,18 @@ async def enable_agent_type(
                 f"@{row.handle}, the profile of agent type {name}, was deleted, and a handle is never taken again: "
                 f"{NOTHING}",
             )
+        if row is not None and body.handle is not None and body.handle != row.handle:
+            raise HTTPException(
+                409,
+                f"agent type {name} of plugin {plugin} has its profile @{row.handle} in project {project}, and a "
+                f"handle never changes: {NOTHING}",
+            )
         hub = request.app.state.hub_version
-        profile_id = row.profile_id if row is not None else await _create_profile(conn, user, access, plugin, item, hub)
+        profile_id = (
+            row.profile_id
+            if row is not None
+            else await _create_profile(conn, user, access, plugin, item, hub, body.handle)
+        )
         values = {"profile_id": profile_id, "run_as": run_as, "workers": workers, "daily_usd": body.daily_usd}
         values |= {"enabled_by": user.user_id, "enabled_at": func.now(), "disabled_at": None}
         statement = pg_insert(t).values(project_id=access.project_id, plugin_id=enabled.id, name=name, **values)
