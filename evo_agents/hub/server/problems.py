@@ -1,5 +1,5 @@
 """The problems of a project, kept as revisions (plan problem-oriented-hub, criterion a1; the model in
-``evo_agents.hub.problems``). Tables problems and problem_revisions, schema 0130.
+``evo_agents.hub.problems``). Tables problems and problem_revisions, schema 0134.
 
 - GET /v1/projects/{project}/problems: the project's problems as they are now, by rank, for a member with a grant on
   the project; ``?status=`` keeps those of one status. GET .../problems/{ref}: one problem, by its code (P-<number>),

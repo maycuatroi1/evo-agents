@@ -1,7 +1,7 @@
 """The problem a work item of the Loop goes from, and the kind discover: the engine rules/2.
 
-Revision ID: 0132
-Revises: 0131
+Revision ID: 0136
+Revises: 0135
 Create Date: 2026-10-24
 
 The names below are copies of ``evo_agents.hub.tables_loop`` and ``evo_agents.hub.server.loop.model`` as of this
@@ -22,8 +22,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0132"
-down_revision = "0131"
+revision = "0136"
+down_revision = "0135"
 branch_labels = None
 depends_on = None
 

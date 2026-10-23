@@ -10,14 +10,14 @@ plan that names none reads, writes and runs on the Loop as it did.
 | --- | --- |
 | the model: codes, fields, statuses | `evo_agents/hub/problems.py` |
 | the routes and the writes | `evo_agents/hub/server/problems.py` |
-| the tables | `evo_agents/hub/tables_problems.py` (schema 0130) |
+| the tables | `evo_agents/hub/tables_problems.py` (schema 0134) |
 | the commands | `evo_agents/hub/cli_problems.py` |
 | the MCP tools `problem_list` and `problem_show` | `evo_agents/hub/mcp_tools.py`, `evo_agents/hub/server/mcp.py` |
 | a goal's problem | `evo_agents/hub/goals.py`, `evo_agents/hub/server/goals.py` |
-| a claim's problems | `evo_agents/core_plugins/canvas/links.py`, `content.py` (schema 0131) |
+| a claim's problems | `evo_agents/core_plugins/canvas/links.py`, `content.py` (schema 0135) |
 | a plan's problems | `evo_agents/harness/schemas/plan.schema.json`, `evo_agents/hub/server/plan_problems.py` |
 | the knowledge graph | `evo_agents/hub/kg_problems.py`, `evo_agents/hub/kg_sources.py` |
-| the Loop | `evo_agents/hub/server/loop/rules2.py` (schema 0132, `docs/loop.md`) |
+| the Loop | `evo_agents/hub/server/loop/rules2.py` (schema 0136, `docs/loop.md`) |
 | @builder's proposals of kind `problem` | `evo_agents/core_plugins/builder/proposals.py` |
 | the web | `web/src/app/(app)/p/[project]/problems`, `web/src/components/loop` |
 
@@ -75,7 +75,7 @@ What a write adds is checked; a link held before stays when its problem is close
   with a warning: naming one is asked, never required. `GET .../plans` and `evo-agents hub plan list --json` list
   each plan's problems, and the copy in git writes them after `goal`; a plan without problems is copied as before.
 - **The Loop**'s engine `rules/2` stamps each work item it makes with the problem its goal answers, or with the one
-  of the work item it came of (`loop_items.problem_id`, schema 0132). `GET .../loop/items?problem=P-3` keeps the work
+  of the work item it came of (`loop_items.problem_id`, schema 0136). `GET .../loop/items?problem=P-3` keeps the work
   items of one problem, and a chain's stages start from its problem (`docs/loop.md`, rules/2).
 
 `GET .../problems/{ref}` and `evo-agents hub problem show` answer a problem with the goals whose newest revision
@@ -149,8 +149,8 @@ rail on the Loop's pages starts from its problem.
 ## Tables
 
 `problems` holds one row per problem of a project: its number and its newest revision. `problem_revisions` holds every
-revision, never changed. Both go with their project. Schema 0130 adds them, `goal_revisions.problem_id` (a key to
+revision, never changed. Both go with their project. Schema 0134 adds them, `goal_revisions.problem_id` (a key to
 `problems` that takes no action of its own, so a project's goals and problems go in one delete) and the @builder
-proposal kind `problem`; schema 0131 adds `canvas_claims.problems`, the codes a claim links; schema 0132 adds
+proposal kind `problem`; schema 0135 adds `canvas_claims.problems`, the codes a claim links; schema 0136 adds
 `loop_items.problem_id` (set to null when its problem goes) and the work item kind `discover`. Going back past each
 drops what it added.

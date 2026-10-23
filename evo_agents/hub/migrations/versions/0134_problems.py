@@ -1,7 +1,7 @@
 """The problems of a project, kept as revisions, the problem a goal answers, and @builder's proposals of one.
 
-Revision ID: 0130
-Revises: 0129
+Revision ID: 0134
+Revises: 0133
 Create Date: 2026-10-24
 
 The names below are copies of ``evo_agents.hub.tables_problems``, ``evo_agents.hub.problems`` and
@@ -23,15 +23,15 @@ a change of one, which a writer of the project approves before the hub writes it
 other column of an older table changes.
 
 Going back deletes the proposals of kind problem and their Inbox notices, puts the check of 0091 back on
-builder_proposals, drops goal_revisions.problem_id and both tables: the goals of 0129 answer no problem.
+builder_proposals, drops goal_revisions.problem_id and both tables: the goals of 0133 answer no problem.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0130"
-down_revision = "0129"
+revision = "0134"
+down_revision = "0133"
 branch_labels = None
 depends_on = None
 

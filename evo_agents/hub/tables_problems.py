@@ -1,4 +1,4 @@
-"""The tables of the problems of a project (0130, plan problem-oriented-hub), which ``evo_agents.hub.tables`` adds to
+"""The tables of the problems of a project (0134, plan problem-oriented-hub), which ``evo_agents.hub.tables`` adds to
 its metadata and exposes as its own attributes (``tables.problems``, ``tables.problem_revisions``): queries name them
 there.
 

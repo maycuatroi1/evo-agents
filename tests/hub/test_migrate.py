@@ -137,7 +137,7 @@ TABLES |= pg.MARKETING_TABLES  # migration 0125
 TABLES |= pg.GROWTH_TABLES  # migration 0127
 TABLES |= pg.PROBE_TABLES  # migration 0130
 TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
-TABLES |= pg.PROBLEM_TABLES  # migration 0130
+TABLES |= pg.PROBLEM_TABLES  # migration 0134
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -219,8 +219,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_sixty_eight_tables(hub_db):
-    assert len(TABLES) == 168  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_seventy_tables(hub_db):
+    assert len(TABLES) == 170  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3103,10 +3103,10 @@ def test_0133_fix_proposals_one_open_per_change_findings_and_replacement_probes_
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0133") :]
 
 
-def test_0130_keeps_the_revisions_of_problems_the_problem_of_a_goal_and_proposals_of_one_and_going_back_drops_them(
+def test_0134_keeps_the_revisions_of_problems_the_problem_of_a_goal_and_proposals_of_one_and_going_back_drops_them(
     hub_db,
 ):
-    move_to(hub_db, "0129")
+    move_to(hub_db, "0133")
     t = hub_tables
     p, r, g, gr, b, n = t.problems, t.problem_revisions, t.goals, t.goal_revisions, t.builder_proposals, t.notifications
     with live.connect(hub_db) as conn:
@@ -3119,9 +3119,9 @@ def test_0130_keeps_the_revisions_of_problems_the_problem_of_a_goal_and_proposal
         with pytest.raises(errors.CheckViolation):  # 0091 knows no problem proposal
             conn.execute(insert(b).values({**proposal, "kind": "problem"}))
         goal_id = one(conn, insert(g).values(project_id=ids["project"], number=1, revision=1).returning(g.c.id))
-        conn.execute(insert(gr).values({**goal_row, "goal_id": goal_id}))  # a goal of 0129: it answers no problem
+        conn.execute(insert(gr).values({**goal_row, "goal_id": goal_id}))  # a goal of 0133: it answers no problem
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0130")
+    move_to(hub_db, "0134")
     assert columns(hub_db, "problems") == {"id", "project_id", "number", "revision", "created_at"}
     assert columns(hub_db, "problem_revisions") == {
         "problem_id",
@@ -3140,7 +3140,7 @@ def test_0130_keeps_the_revisions_of_problems_the_problem_of_a_goal_and_proposal
         "created_at",
     }
     assert "problem_id" in columns(hub_db, "goal_revisions")
-    assert query(hub_db, select(gr.c.problem_id)) == [(None,)]  # the goal of 0129 answers none
+    assert query(hub_db, select(gr.c.problem_id)) == [(None,)]  # the goal of 0133 answers none
     texts = {"statement": "Searches find nothing", "who": "shoppers", "when": "a brand has two names"}
     row = {**texts, "workaround": "they ask support", "revision": 1, "rank": 1, "owner_id": ids["user"]}
     row |= {"status": "open", "created_by": ids["user"]}
@@ -3203,17 +3203,17 @@ def test_0130_keeps_the_revisions_of_problems_the_problem_of_a_goal_and_proposal
         (2, problem_id),
     ]
     # Going back drops the problems and the problem of a goal, and the proposals of a problem with their notices.
-    move_to(hub_db, "0129", down=True)
+    move_to(hub_db, "0133", down=True)
     assert not {"problems", "problem_revisions"} & tables(hub_db)
     assert "problem_id" not in columns(hub_db, "goal_revisions")
     assert query(hub_db, select(b.c.kind)) == [("goal",)]
     assert query(hub_db, select(n.c.details["kind"].as_string())) == [("goal",)]
     assert query(hub_db, SNAPSHOT) == before
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0130") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0134") :]
 
 
-def test_0131_keeps_the_problems_a_claim_links_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0131")
+def test_0135_keeps_the_problems_a_claim_links_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0135")
     k = hub_tables.canvas
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -3229,16 +3229,16 @@ def test_0131_keeps_the_problems_a_claim_links_and_going_back_drops_them(hub_db)
             conn.execute(insert(k.claims).values(number=3, problems=[f"P-{n}" for n in range(1, 22)], **claim))
     held = select(k.claims.c.number, k.claims.c.problems, k.claims.c.use_cases).order_by(k.claims.c.number)
     assert query(hub_db, held) == [(1, [], []), (2, ["P-1", "P-3"], ["UC ORD-1"])]
-    move_to(hub_db, "0130", down=True)
+    move_to(hub_db, "0134", down=True)
     assert "problems" not in columns(hub_db, "canvas_claims")
     assert {"use_cases", "signal_keys"} <= columns(hub_db, "canvas_claims")
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the check of 0078 is back
         conn.execute(insert(k.claims).values(number=4, use_cases=[f"UC ORD-{n}" for n in range(21)], **claim))
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0131") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0135") :]
 
 
-def test_0132_keeps_the_problem_of_a_work_item_and_the_kind_discover_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0131")
+def test_0136_keeps_the_problem_of_a_work_item_and_the_kind_discover_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0135")
     t = hub_tables
     i, e = t.loop_items, t.loop_item_events
     with live.connect(hub_db) as conn:
@@ -3249,7 +3249,7 @@ def test_0132_keeps_the_problem_of_a_work_item_and_the_kind_discover_and_going_b
         with pytest.raises(errors.CheckViolation):  # 0123 knows no discover
             conn.execute(insert(i).values({**item, "key": "discover:c:CL-1:b1", "kind": "discover"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0132")
+    move_to(hub_db, "0136")
     assert "problem_id" in columns(hub_db, "loop_items")
     assert query(hub_db, select(i.c.key, i.c.problem_id)) == [("brainstorm:G-1:r1", None)]
     texts = {"statement": "Shops run out of milk", "who": "shop owners", "when": "before a delivery"}
@@ -3280,11 +3280,11 @@ def test_0132_keeps_the_problem_of_a_work_item_and_the_kind_discover_and_going_b
         ("build:claim:c:CL-2:b1", "build", None),
     ]
     # going back deletes the discover with its ledger and drops the column; the rest stays
-    move_to(hub_db, "0131", down=True)
+    move_to(hub_db, "0135", down=True)
     assert "problem_id" not in columns(hub_db, "loop_items")
     assert query(hub_db, select(i.c.key).order_by(i.c.id)) == [("brainstorm:G-1:r1",), ("build:claim:c:CL-2:b1",)]
     assert query(hub_db, select(func.count()).select_from(e)) == [(0,)]
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the check of 0123 is back
         conn.execute(insert(i).values({**item, "key": "discover:c:CL-3:b1", "kind": "discover"}))
     assert query(hub_db, SNAPSHOT) == before
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0132") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0136") :]

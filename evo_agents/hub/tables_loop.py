@@ -12,7 +12,7 @@ and writes the same rows.
   and version, the frame task, the plan, the run in flight, the work item it came of), where it stands and why, what it
   waits on (``detail``), how often a run was handed out for it and how often one failed, who it stands for, the engine
   that made it, the event that made it, when it was made, changed and finished, and the problem its goal answered
-  when it was made (0132, plan problem-oriented-hub).
+  when it was made (0136, plan problem-oriented-hub).
 - loop_item_events: what happened to each work item, only ever added to: made, ready, admitted, handed a run,
   waiting, failed, triaged, asked, done, cancelled, or a result noted in its chain; the state and reason after it, the
   run and the event of hub_events it came of.
@@ -106,7 +106,7 @@ def _items(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _stamp("updated_at"),
         _when("finished_at"),
-        Column("problem_id", BigInteger),  # 0132
+        Column("problem_id", BigInteger),  # 0136
         _key(name, "project_id", "projects", ondelete="CASCADE"),
         _key(name, "goal_id", "goals", ondelete="SET NULL"),
         _key(name, "claim_id", "canvas_claims", ondelete="SET NULL"),
