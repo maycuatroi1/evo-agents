@@ -11,8 +11,8 @@ The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
 ``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``pm`` by ``cli_pm``, ``crm`` by ``cli_crm``, ``marketing`` by ``cli_marketing``, ``canvas`` by ``cli_canvas``,
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by
-``release_cli``, ``policy`` by ``cli_policy``, ``goal`` by ``cli_goals``, ``merge`` by ``cli_merge``, ``loop`` by
-``cli_loop``, ``org`` by ``cli_org`` and ``autonomy`` by ``cli_autonomy``; they need nothing beyond the core
+``release_cli``, ``policy`` by ``cli_policy``, ``goal`` by ``cli_goals``, ``problem`` by ``cli_problems``, ``merge`` by
+``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli_org`` and ``autonomy`` by ``cli_autonomy``; they need nothing beyond the core
 package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
 document; ``hub contract check`` does not.
 """
@@ -234,6 +234,10 @@ def _register_client_commands(hsub) -> None:
     from evo_agents.hub.cli_goals import register_goals
 
     register_goals(hsub)
+
+    from evo_agents.hub.cli_problems import register_problems
+
+    register_problems(hsub)
 
     from evo_agents.hub.cli_merge import register_merge
 

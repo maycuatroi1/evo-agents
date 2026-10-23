@@ -11,11 +11,12 @@ alone (``mentioned_by: admin``): a writer who mentions @builder gets the hub's r
 Two routes for a change:
 
 - A declarative one (the branding of the hub, a layer of features, a layer of a plugin's config in the project, an
-  agent profile, the autonomy policy or a goal of the project) is a proposal: the agent calls the tool
+  agent profile, the autonomy policy, a problem or a goal of the project) is a proposal: the agent calls the tool
   ``builder__propose`` of the hub's /mcp, which checks the change, keeps it pending in builder_proposals, shows it in
-  the thread and tells the admins who may approve it. An admin approves or rejects it in the thread (``approve 12``, ``reject 12``), from
-  the Inbox, or with the routes under /v1/x/builder/<project>/proposals; approved, the hub applies it as the setting's
-  next version, which ``rollback 12`` makes a copy of the one before (``proposals``). The Curator's review run on a
+  the thread and tells the members who may approve it (a writer of the project for a problem, an admin otherwise).
+  They approve or reject it in the thread (``approve 12``, ``reject 12``), from the Inbox, or with the routes under
+  /v1/x/builder/<project>/proposals; approved, the hub applies it as the setting's next version, which
+  ``rollback 12`` makes a copy of the one before (``proposals``). The Curator's review run on a
   night of the lens product proposes a change of the autonomy policy through the same tool, with no thread: an admin
   decides it from the Inbox or the routes (plan loop-engine, criterion a9).
 - A change of code is the chat run itself: the agent works on the client's plugin repo the chat run checks out, pushes
@@ -27,7 +28,15 @@ The hub imports this package for the manifest only; ``server`` holds the tool, t
 """
 
 SERVER = "evo_agents.core_plugins.builder.server"
-KINDS = ("branding", "features", "plugin_config", "agent", "policy", "goal")  # tables_settings.PROPOSAL_KINDS
+KINDS = (
+    "branding",
+    "features",
+    "plugin_config",
+    "agent",
+    "policy",
+    "problem",
+    "goal",
+)  # tables_settings.PROPOSAL_KINDS
 MAX_SUMMARY_CHARS = 500
 MAX_FIELDS = 50  # fields one proposal sets or unsets
 
@@ -48,9 +57,12 @@ PROPOSE_SCHEMA = {
             "description": "branding: the hub's name and colours; features: a layer of features (target.layer); "
             "plugin_config: a layer of a plugin's config in the project (target.plugin, target.agent); agent: an "
             "agent profile of the project (target.agent); policy: the project's autonomy policy, each key by its "
-            "dotted path such as merge.hold_until or repos.<repo>.mode (no target); goal: a goal of the project "
-            "(target.goal, its code; none for a new goal), its fields statement, metric, deadline, canvas, rank, "
-            "owner, status and close_reason",
+            "dotted path such as merge.hold_until or repos.<repo>.mode (no target); problem: a problem of the project "
+            "(target.problem, its code; none for a new problem), its fields statement, who, when, workaround, metric "
+            "(key, aggregate, window_days, tenant; no target), rank, owner, status (open, solved, dropped) and "
+            "close_reason, which a writer approves; goal: a goal of the project (target.goal, its code; none for a "
+            "new goal), its fields statement, metric, deadline, canvas, problem (a problem's code), rank, owner, "
+            "status and close_reason",
         },
         "summary": {
             "type": "string",
@@ -73,6 +85,11 @@ PROPOSE_SCHEMA = {
                     "type": "string",
                     "pattern": "^(?:G-[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,63})$",
                     "description": "goal: the goal's code (G-<number>) or alias; left out for a new goal",
+                },
+                "problem": {
+                    "type": "string",
+                    "pattern": "^P-[1-9][0-9]{0,8}$",
+                    "description": "problem: the problem's code (P-<number>); left out for a new problem",
                 },
             },
         },
@@ -119,8 +136,8 @@ MANIFEST = {
                 "name": "propose",
                 "title": "Propose a change of a setting",
                 "description": "Propose a change of the hub's branding, a layer of features, a layer of a plugin's "
-                "config, an agent profile, the autonomy policy or a goal of the project, which an admin approves "
-                "before the hub applies it. Only the agent of a chat run of @builder may call it, and the Curator's "
+                "config, an agent profile, the autonomy policy, a problem or a goal of the project, which an admin "
+                "(a writer, for a problem) approves before the hub applies it. Only the agent of a chat run of @builder may call it, and the Curator's "
                 "review run on a night of the lens product for a change of the autonomy policy; it applies nothing.",
                 "python": f"{SERVER}:propose",
                 "input_schema": PROPOSE_SCHEMA,

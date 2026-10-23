@@ -29,16 +29,17 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 33 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+The 35 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project whose audience the caller still holds
 (``kg_audience``), with or without a graph. chat_message and chat_thread read the messages of group chats whole, as
 ``chat_read`` rules who may, from the chats and grants as they are at each call. The others call the
-hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
-review run reads (the night's figures, session digests, the events of a run, decisions, replays, the probes' weekly report, and the project's
-whole history, ``history_mcp``) in this process, so they read and write under the same rules: the read rule of
-``evo_agents.hub.access`` through the session's sink, the write rule, revisions, conflicts and audit rows. Their
+hub's routes for memories, plans and their handoffs, problems, skills, projects, the tool figures of runs, and what the
+Curator's review run reads (the night's figures, session digests, the events of a run, decisions, replays, the probes'
+weekly report, and the project's whole history, ``history_mcp``) in this process, so they read and write under the
+same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write rule, revisions,
+conflicts and audit rows. Their
 arguments are checked against their schema first, and their text goes through the envelope of ``kg serve``: over
 CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a tool's answer is its text alone
 (``evo_agents.kg.serve.for_model``), which is what the model reads; its structuredContent comes only when the call's
@@ -72,6 +73,7 @@ from sqlalchemy import exc as sa_exc
 from starlette.requests import Request
 
 from evo_agents import __version__
+from evo_agents.hub import problems as problem_model
 from evo_agents.hub import runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
@@ -107,6 +109,7 @@ from evo_agents.hub.server import (
     plans,
     plugin_tools,
     probe_report,
+    problems,
     projects,
     proposals,
     replays,
@@ -390,6 +393,8 @@ class HubMcp(MCPServer):
             "plan_show": self._plan_show,
             "plan_handoff": self._plan_handoff,
             "plan_step": self._plan_step,
+            "problem_list": self._problem_list,
+            "problem_show": self._problem_show,
             "ask_member": self._ask_member,
             "skill_list": self._skill_list,
             "hub_projects": self._hub_projects,
@@ -708,6 +713,42 @@ class HubMcp(MCPServer):
         return "\n".join(lines), data
 
     # The member's answer to a question of a local session
+
+    # Problems
+
+    async def _problem_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        project = self._project(caller, arguments)
+        access = await self._readable(caller, project)
+        status = arguments.get("status")
+        async with self.hub.state.engine.begin() as conn:
+            found = await problems.listed(conn, access, status)
+        lines = [
+            f"{p.code} ({problem_model.status_text(p.model_dump())}, rank {p.rank}, owner {p.owner}, "
+            f"{problem_model.metric_text(p.metric.model_dump() if p.metric else None)}): {one_line(p.statement, EXCERPT)}"
+            for p in found
+        ]
+        text = "\n".join(lines) or f"project {project} has no problem{' ' + status if status else ''} on the hub"
+        listed = [p.model_dump(mode="json") for p in found]
+        return text, {"project": project, "problems": listed, "summary": f"{len(found)} problems"}
+
+    async def _problem_show(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        project = self._project(caller, arguments)
+        access = await self._readable(caller, project)
+        async with self.hub.state.engine.begin() as conn:
+            shown = await problems.shown(conn, access, arguments["code"], arguments.get("revision"))
+        data = shown.model_dump(mode="json")
+        lines = [
+            f"# Problem {shown.code} of project {project}, revision {shown.revision}",
+            f"statement: {shown.statement}",
+            f"who: {shown.who}",
+            f"when: {shown.when}",
+            f"workaround: {shown.workaround}",
+            f"metric: {problem_model.metric_text(data['metric'])}",
+            f"rank: {shown.rank}; owner: {shown.owner}; status: {problem_model.status_text(data)}",
+        ]
+        goals = [f"- {goal.code} ({goal.status}): {one_line(goal.statement, EXCERPT)}" for goal in shown.goals]
+        lines += ["goals that answer it:", *goals] if goals else ["no goal answers it yet"]
+        return "\n".join(lines), {"project": project, "problem": data, "summary": f"problem {shown.code}"}
 
     async def _ask_member(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         """Ask the member who runs this local session a question as a decision (Inbox, Telegram, web, the run's page,
