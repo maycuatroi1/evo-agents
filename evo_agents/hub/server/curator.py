@@ -39,7 +39,8 @@ review runs (``evo_agents.hub.server.collect``), else the night's history run on
 that waits for one, else the Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else the
 replay run of a change that waits for one (``evo_agents.hub.server.replays``), else, inside the window, a plan run of
 the charter's night_plans, as ``evo_agents.hub.curator`` says, audited as curator.dispatch with the owner as actor and
-no token. GET .../curator also names the last review run of the project, with how many findings and proposals it wrote,
+no token, else, when no plan of night_plans has work, the probe run of a probe and a model the week has not measured,
+within the charter's probes.budget_usd (``evo_agents.hub.server.probe_runs``). GET .../curator also names the last review run of the project, with how many findings and proposals it wrote,
 and its last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each
 agent session once at its largest total, as Claude Code reports a session's running total. The charter also names what
 the Curator's runs get of the owner's secrets (``git_secret``, ``env_secrets``): no other secret is leased to them.

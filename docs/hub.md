@@ -1056,6 +1056,10 @@ environments and workers of a ceiling (`docs/autonomy.md`); going back to 0111 d
 columns. Schema 0113 adds `runs.principal_id` and the snapshot `runs.autonomy`; 0114 `secrets.environment`, the
 decision category and the notice kind `autonomy`; 0115 the decision categories `merge`, `credential` and `access` and
 `decisions.asked_of`; 0116 `autonomy_stops`, the stops S4. Going back from each drops what it added.
+Schema 0130 adds `curator_probes`, 0131 the run of kind `probe` and `curator_probe_runs`, 0132 the notice
+`curator_probe_report`, and 0133 `proposals.fix_of`, `findings.fix_of` and `curator_probes.replaces` (The Curator's
+probes, below); going back from 0131 deletes the probe runs, from 0132 the notices of the kind, and from each it drops
+what it added.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1620,6 +1624,95 @@ proposes its revert, it also adds a version holding the bundle of the version be
 ```sh
 evo-agents hub curator replay tasks --split holdout   # the project's suite of replay tasks
 evo-agents hub curator replay show 4                  # change #4's replays, arm a against arm b
+```
+
+## The Curator's probes
+
+A probe measures, every week after a change of the Curator merged, whether the rule it made from a correction still
+keeps the mistake away (schemas 0130 to 0133, `evo_agents/hub/probes.py`, `evo_agents/hub/server/probes.py`,
+`probe_routes.py`, `probe_runs.py`, `probe_report.py`, `probe_fixes.py`): a task in one repo from a base commit, and a
+one-line verify that exits 0 when an agent given the task does not make the mistake again. `docs/curator.md`, Probes,
+says what they are for and how to read them.
+
+**The probes.** `curator_probes` holds one row per probe: its proposal, its change, `repo`, `commit` (null: the tip
+of the repo's default branch when it was made), `task` (at most 16 KiB), `verify` (one shell line of at most 2000
+characters whose first program is a real command), `state` (`active` or `retired`), `source` (`proposal`, `review` or
+`admin`), `replaces`, and the label of what it was read from. The task and the verify go through
+`evo_agents.hub.redact` before they are stored. A change or a proposal has at most one active probe. A proposal a
+review run posts whose evidence cites `corrections` of the night's figures (`ledger.evidence_metrics`) and whose paths
+include a file a probe arm can place (`probes.probe_path`: an AGENTS.md or a CLAUDE.md, a file of a skill, the repo's
+`.claude/settings.json`, a file under `.claude/hooks/`) gets 422 without a `probe`, and one whose probe names a repo
+the proposal does not change gets 422 too. Accepting the proposal gives its probe the change; the proposal's view
+carries its active probe.
+
+- `GET /v1/projects/{p}/curator/probes` (reader) lists the probes whose label the caller's grant reaches, newest
+  first, by `?change=`, `?proposal=` and `?state=` (and `?limit=`, at most 200); `GET .../curator/probes/{id}` shows
+  one.
+- `POST .../curator/probes` adds one to a change or a proposal of the project, `PATCH .../curator/probes/{id}`
+  changes its repo, commit, task or verify (409 once retired), and `POST .../curator/probes/{id}/retire` retires it
+  with a note (409 when it is retired already): the project's admins alone (403 otherwise), 404 for a change or
+  proposal the project does not have, 409 while it has an active probe; each write audited as `curator.probe`.
+- `POST /v1/worker/runs/{id}/probes` takes a probe from the agent of a review run the worker holds (404 for any other
+  run), as the member who dispatched it, for a merged change of the project with no active probe (409 otherwise); with
+  `replaces`, in place of the change's probe that the weekly report found not reproduced (422 for any other), which
+  the hub retires with a note.
+
+The verify is the answer key: it is shown only to an admin of the project whose principal is not the agent of a run
+(`probes.verify_shown`), and is null in every other answer, the worker's included.
+
+**The runs.** A run of kind `probe` measures one probe on one runtime and model of the charter's `probes.models` in
+one ISO week (its Monday, in the charter's time zone): k sessions with the change's rule on and k with it off, on the
+plan of the change, so only a merged change that has a plan is probed. `curator_probe_runs` holds one row per probe,
+week, runtime and model: its `k` as the charter said when it was queued, its run, its `state` (`queued`, `running`,
+`done`, `stale`, `failed`, `unmeasured`), its reason, the SHA-256 of the run's own key, the commits its arms ran from
+and each session's result. The night shift queues one inside the window, after every other kind of its runs and only
+when no plan of `night_plans` has work, one active per project (`runs_active_probe_key`), queued by a schedule alone
+(`runs_probe_schedule_check`), audited as `curator.probe_run`, `<project>/<plan> run:<id> probe:<id> week:<day>`.
+It takes the pair the week has not measured that was measured longest ago, on a worker on duty that has `probe` in
+its `run_kinds`, with the night's caps cut to what the week's `probes.budget_usd` has left; once less than 0.01 USD is
+left, every pair the week has not measured becomes `unmeasured`, with why. A probe run that ends without all `2k`
+sessions puts its row back to `queued`, two runs in all, then the row fails with why; the run itself has
+`max_attempts` 1, so the reaper does not retry it.
+
+The claim of a probe run names the probe (repo, base commit, task, verify, k, week, when it was made), the change
+(repo, merge commit or head, default branch) and hands the daemon the run's own key. The worker posts each session,
+or why the probe is stale, with `POST /v1/worker/runs/{id}/probe` and that key in `X-Evo-Probe-Key`; the worker token
+alone gets 403. A session's body holds `arm`, `index`, `passed`, `exit_code`, `cost_usd`, `turns`, `duration_ms`,
+`runtime`, `model` (as the runtime said it ran), `agent_error` and `session_id`. The agent of a probe run gets none of
+the hub's MCP tools, and the agent of any run reads no probe run (`views.agent_reads`), which history search and the
+items of the history leave out as they do a replay run. What happens on the machine is `docs/workers.md`, A probe run on the machine.
+
+**The weekly report.** `GET /v1/projects/{p}/curator/probe-report?weeks=N&week=YYYY-MM-DD` (reader; `weeks` 1 to 52,
+`week` a day of the newest week, default today in the charter's time zone) answers `project`, `k`, `budget_usd`,
+`weeks` (the newest first, each with `week`, `complete`, `cost_usd`, `budget_usd`, `totals` and `probes`), `unprobed`,
+`fixes` and `replacements`. Each item of `probes` has `probe_id`, `change_id`, `runtime`, `model`, `k`, `on` and
+`off` (each `runs`, `failed` and `recurrence`, 1 - pass^k), `status`, `previous` (the status of the week before),
+`reason` and `run_id`. An active probe of a merged change made before the week ended appears on every model of the
+charter, `unmeasured` with a reason when the week has no row of it. A week's cost is the usage of the project's probe
+runs whose night falls in it. `unprobed` lists at most 50 merged changes whose proposal cites `corrections` and that
+have no active probe, each with why. No part of it holds a verify. The MCP tool `curator_probe_report` (`weeks`,
+`week`) answers the same, and the review run reads it there.
+
+On Monday at the charter's `brief_at`, in its time zone, the job `curator.brief` sends the owner of the night shift's
+schedule of a project whose charter has `probes.budget_usd` the report of the ISO week that just ended, as the notice
+`curator_probe_report` on the web and every channel of theirs, Telegram included. The notice names its week in
+`details`, and under the schedule's row lock a week told is not told again; the report runs in a transaction of its
+own after the brief, and its failure leaves the brief as it went (`probe_report_failed` in the job's summary).
+
+**The fixes.** A probe `recurring` on the same runtime and model in the two weekly reports before a review run's week
+puts a fix assignment in that run's prompt, and one `not_reproduced` on both a replace assignment
+(`probe_fixes`). A proposal or a finding with `fix_of` (`evo-agents worker propose --fix-of CHANGE`,
+`evo-agents worker finding --fix-of CHANGE`) and a probe with `replaces` get 422 when no such assignment exists. A fix proposal is at least tier 1
+(`tiers.tier_of`, `FIX_TIER`), the hub adds the two weeks' probe results to its evidence (kind `probe`, which no agent
+may submit), and a change has at most one open or deferred fix proposal: 409 for a second, and the partial unique
+index `proposals_fix_open_key` holds it. Fix proposals reach the Inbox under `max_decisions_per_day` as any proposal.
+
+```sh
+evo-agents hub curator probe list --change 12           # the probes of change #12
+evo-agents hub curator probe show 3                     # its task, and its verify to an admin
+evo-agents hub curator probe add --proposal 7 --repo evo-agents --task-file task.md --verify "python3 -m pytest -q tests/test_x.py"
+evo-agents hub curator probe retire 3 --note "replaced by a hook"
+evo-agents hub curator probe report --weeks 2 --json    # keys weeks, unprobed, fixes, replacements
 ```
 
 ## The Curator's history run
