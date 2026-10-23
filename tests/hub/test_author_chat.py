@@ -367,7 +367,7 @@ def test_a_message_or_an_end_of_chat_to_a_run_of_another_kind_keeps_the_rule_it_
     refused = control(client, hub["owner"], step["id"], "finish")
     assert refused.status_code == 409
     assert refused.json()["message"] == (
-        f"run {step['id']} is a step run: only an author run has a chat to end; cancel it instead"
+        f"run {step['id']} is a step run: only an author run has a chat to end, and a login session its Save; cancel it instead"
     )
     control(client, hub["owner"], step["id"], "cancel")
     late = send(client, hub["owner"], step["id"])

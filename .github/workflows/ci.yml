@@ -268,7 +268,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e '.[test,graphify]'
+      - run: uv pip install --system -e '.[test,graphify,worker]'
       - run: pytest -q
 
   test-windows:
@@ -289,7 +289,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e ".[test,graphify]"
+      - run: uv pip install --system -e ".[test,graphify,worker]"
       - run: python -m pytest -q -n 4 --durations=20
 
   # The web under web/ without a browser: the First Load JS budgets on a production build first, since they fail the
@@ -396,7 +396,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e '.[test,hub-server]'
+      - run: uv pip install --system -e '.[test,hub-server,worker]'
         working-directory: .
       # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt): the stack's hub serves
       # Telegram's routes, which e2e/telegram.spec.ts drives.
