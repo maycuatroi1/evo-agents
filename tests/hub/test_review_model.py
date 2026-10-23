@@ -297,7 +297,7 @@ RUN_16 = (
         ),
         ("git fetch failed (128): git@github.com: Permission denied (publickey).", "credentials"),
         ("no credential reads evo-agents: could not read Password for 'https://github.com'", "credentials"),
-        ("project evo-lms lists no origin for evo-agents", "origin"),
+        ("project fabrikam-lms lists no origin for evo-agents", "origin"),
         ("verify command `rg -q x` exited 127; nothing was pushed", "missing_tool"),
         ("verify command `pnpm test` calls pnpm, which is not on this worker's PATH", "missing_tool"),
         ("git fetch in /src/evo-agents failed: could not resolve host", "checkout"),

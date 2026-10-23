@@ -79,7 +79,7 @@ GITHUB_OWNER = "maycuatroi1"
 OWNER_GITHUB_ID = 902
 BRANCHES = {REPO: "feat/leased", APP_REPO: "feat/app-token"}
 STEPS = {REPO: 1, APP_REPO: 2}
-OTHER_PROJECT = "evo-lms"  # a project the owner writes in too; the agent of a run of PROJECT reaches none of it
+OTHER_PROJECT = "fabrikam-lms"  # a project the owner writes in too; the agent of a run of PROJECT reaches none of it
 OTHER_PLAN = "lms-rollout"
 WORKER = "mac-mini"
 GIT_USER = "oauth2"  # the user the git secret goes with, as GitLab takes a project access token
@@ -344,7 +344,7 @@ class Machine:
 
 class World:
     """The hub with the secrets key and the GitHub App, the git http-backend, project evo-agents (evo-agents behind
-    the git http-backend, evo-cli on github.com) and project evo-lms, the owner a writer of both, the plan of each
+    the git http-backend, evo-cli on github.com) and project fabrikam-lms, the owner a writer of both, the plan of each
     pushed, a graph of evo-agents, and the App installed on maycuatroi1/evo-cli; the worker, once ``machine`` made
     it."""
 

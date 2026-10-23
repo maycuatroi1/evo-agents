@@ -1,12 +1,13 @@
 "use client";
 
-import { Ban, CircleCheck, Clock, Globe, Hourglass, Laptop, MonitorCheck, Server, ShieldCheck } from "lucide-react";
+import { Ban, CircleCheck, CircleDot, Clock, FolderPlus, Globe, Hourglass, Laptop, MonitorCheck, Server, ShieldCheck, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
 import { Badge } from "@/components/ui/badge";
 
 import type { AdminToken } from "./data";
+import type { InviteRow } from "./invite-data";
 
 /**
  * Badges of the admin area: an icon and a word each, so colour is never the only signal. A role or a kind (Hub admin,
@@ -75,5 +76,34 @@ export function CurrentSessionBadge() {
       <MonitorCheck aria-hidden="true" />
       {t("current")}
     </Tag>
+  );
+}
+
+export function InviteKindBadge({ kind }: { kind: InviteRow["kind"] }) {
+  const t = useTranslations("admin.invites.kinds");
+  const Icon = kind === "join" ? UserPlus : FolderPlus;
+  return (
+    <Tag data-kind={kind}>
+      <Icon aria-hidden="true" />
+      {t(kind)}
+    </Tag>
+  );
+}
+
+const INVITE_STATUS = {
+  open: { variant: "success", icon: CircleDot },
+  accepted: { variant: "outline", icon: CircleCheck },
+  revoked: { variant: "outline", icon: Ban },
+  expired: { variant: "warning", icon: Hourglass },
+} as const;
+
+export function InviteStatusBadge({ status }: { status: InviteRow["status"] }) {
+  const t = useTranslations("admin.invites.statuses");
+  const { variant, icon: Icon } = INVITE_STATUS[status];
+  return (
+    <Badge variant={variant} data-state={status} data-testid="invite-status">
+      <Icon aria-hidden="true" />
+      {t(status)}
+    </Badge>
   );
 }

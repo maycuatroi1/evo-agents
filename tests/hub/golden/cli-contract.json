@@ -733,6 +733,167 @@
       ],
       "json": null
     },
+    "hub admin invite create": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--role"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "reader",
+            "writer",
+            "admin"
+          ]
+        },
+        {
+          "flags": [
+            "--max-level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--register"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--for",
+            "--for-login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--days"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 7
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "role",
+          "max_level",
+          "for_login",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "status",
+          "accepted_by",
+          "accepted_at",
+          "used_at",
+          "token",
+          "url"
+        ],
+        "schema": "InviteCreated"
+      }
+    },
+    "hub admin invite list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "role",
+          "max_level",
+          "for_login",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "status",
+          "accepted_by",
+          "accepted_at",
+          "used_at"
+        ],
+        "schema": "InviteRow"
+      }
+    },
+    "hub admin invite revoke": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "role",
+          "max_level",
+          "for_login",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "status",
+          "accepted_by",
+          "accepted_at",
+          "used_at"
+        ],
+        "schema": "InviteRow"
+      }
+    },
     "hub admin revoke": {
       "positionals": [
         {
@@ -12319,6 +12480,47 @@
         "schema": "SignalBatchResult"
       }
     },
+    "hub skills audience": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "audience",
+          "metavar": "AUDIENCE",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "everyone",
+            "admins"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "audience",
+          "changed"
+        ],
+        "schema": "SkillAudience"
+      }
+    },
     "hub skills list": {
       "positionals": [],
       "options": [
@@ -12352,7 +12554,8 @@
           "source_repo",
           "source_commit",
           "published_by",
-          "published_at"
+          "published_at",
+          "audience"
         ],
         "schema": "Skill"
       }
@@ -12395,6 +12598,18 @@
         },
         {
           "flags": [
+            "--audience"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "everyone",
+            "admins"
+          ]
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -12410,6 +12625,7 @@
           "name",
           "created",
           "latest",
+          "audience",
           "bundle"
         ],
         "schema": "Published"
@@ -15308,6 +15524,26 @@
           "summary": "Web Login",
           "description": "Leave for GitHub's authorize page with a fresh state and PKCE challenge.",
           "operationId": "web_login_v1_auth_web_login_get",
+          "parameters": [
+            {
+              "name": "next",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the page of the hub to come back to, a relative path; any other is ignored",
+                "title": "Next"
+              },
+              "description": "the page of the hub to come back to, a relative path; any other is ignored"
+            }
+          ],
           "responses": {
             "302": {
               "description": "Successful Response"
@@ -15318,6 +15554,16 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
                   }
                 }
               }
@@ -16462,6 +16708,416 @@
             },
             "503": {
               "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/invites": {
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Create",
+          "description": "Make a one-time invite link; the answer holds its token, which the hub shows this once.",
+          "operationId": "create_v1_admin_invites_post",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InviteCreated"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "List Invites",
+          "description": "Every invite link, newest first, with its status; never a token.",
+          "operationId": "list_invites_v1_admin_invites_get",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/InviteRow"
+                    },
+                    "title": "Response List Invites V1 Admin Invites Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/invites/{invite_id}/revoke": {
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Revoke",
+          "description": "Revoke an open link, or the unused right an accepted register link gave.",
+          "operationId": "revoke_v1_admin_invites__invite_id__revoke_post",
+          "parameters": [
+            {
+              "name": "invite_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Invite Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InviteRow"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/invites/preview": {
+        "post": {
+          "tags": [
+            "invites"
+          ],
+          "summary": "Preview",
+          "description": "What an invite link gives, for its page: public, the token being the credential; never the login it is bound\nto, and its project and role only to someone it is for.",
+          "operationId": "preview_v1_invites_preview_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteAccept"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InvitePreview"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/invites/accept": {
+        "post": {
+          "tags": [
+            "invites"
+          ],
+          "summary": "Accept",
+          "description": "Accept an invite link: a join link gives its grant, a register link the right to register one project.",
+          "operationId": "accept_v1_invites_accept_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteAccept"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InviteRow"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "410": {
+              "description": "the link was accepted, revoked or has expired",
               "content": {
                 "application/json": {
                   "schema": {
@@ -19308,7 +19964,7 @@
             "skills"
           ],
           "summary": "List Skills",
-          "description": "The skills the caller sees, each with its latest version: the global ones and those of every project the\ncaller has a grant on.",
+          "description": "The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and\nthose of every project the caller has a grant on.",
           "operationId": "list_skills_v1_skills_get",
           "parameters": [
             {
@@ -19784,6 +20440,92 @@
                 }
               },
               "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/skills/global/{name}/audience": {
+        "put": {
+          "tags": [
+            "skills"
+          ],
+          "summary": "Set Audience",
+          "description": "Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one\naudit row; the audience it has already changes nothing.",
+          "operationId": "set_audience_v1_skills_global__name__audience_put",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                "description": "the skill's name, its directory in every runtime",
+                "title": "Name"
+              },
+              "description": "the skill's name, its directory in every runtime"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SkillAudience"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -62361,6 +63103,24 @@
           ],
           "title": "Attachment"
         },
+        "AudienceChange": {
+          "properties": {
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
+            }
+          },
+          "type": "object",
+          "required": [
+            "audience"
+          ],
+          "title": "AudienceChange"
+        },
         "AudienceIn": {
           "properties": {
             "audience": {
@@ -74488,6 +75248,537 @@
           ],
           "title": "InboxMessage"
         },
+        "InviteAccept": {
+          "properties": {
+            "token": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Token",
+              "description": "the token of the link, evn_..."
+            }
+          },
+          "type": "object",
+          "required": [
+            "token"
+          ],
+          "title": "InviteAccept"
+        },
+        "InviteCreated": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "join",
+                "register"
+              ],
+              "title": "Kind"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "join: the project the link grants on; register: the project its right registered, once used"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "reader",
+                    "writer",
+                    "admin"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "join: the role it gives"
+            },
+            "max_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Level",
+              "description": "join: the highest level it reaches"
+            },
+            "for_login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "For Login",
+              "description": "the one login that may accept it; null for anyone signed in"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "the hub admin who made it"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At",
+              "description": "after this the link can no longer be accepted"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "revoked",
+                "expired"
+              ],
+              "title": "Status",
+              "description": "revoked, else accepted, else expired once expires_at is past, else open"
+            },
+            "accepted_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accepted By"
+            },
+            "accepted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accepted At"
+            },
+            "used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Used At",
+              "description": "register: when its right registered the project"
+            },
+            "token": {
+              "type": "string",
+              "title": "Token",
+              "description": "evn_...: shown this once, the hub keeps only its SHA-256"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the link to hand out, EVO_HUB_PUBLIC_URL + /invite/ + token; null without one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "project",
+            "role",
+            "max_level",
+            "for_login",
+            "created_by",
+            "created_at",
+            "expires_at",
+            "status",
+            "accepted_by",
+            "accepted_at",
+            "used_at",
+            "token",
+            "url"
+          ],
+          "title": "InviteCreated"
+        },
+        "InvitePreview": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "join",
+                "register"
+              ],
+              "title": "Kind"
+            },
+            "invited_by": {
+              "type": "string",
+              "title": "Invited By",
+              "description": "the hub admin who made the link"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "revoked",
+                "expired"
+              ],
+              "title": "Status"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "bound": {
+              "type": "boolean",
+              "title": "Bound",
+              "description": "whether one GitHub login alone may accept the link; which one is never shown"
+            },
+            "viewer": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Viewer",
+              "description": "the login signed in on the web that asks; null for a visitor"
+            },
+            "for_viewer": {
+              "type": "boolean",
+              "title": "For Viewer",
+              "description": "whether the viewer may accept the link: signed in, and it unbound or theirs"
+            },
+            "accepted_by_viewer": {
+              "type": "boolean",
+              "title": "Accepted By Viewer",
+              "description": "whether the viewer accepted the link"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "join: the project; register: the project its right registered, once used. Null unless the link is open and for the viewer (unbound, anyone), or the viewer accepted it"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "reader",
+                    "writer",
+                    "admin"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "join: the role it gives, shown as the project is"
+            },
+            "max_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Level",
+              "description": "join: the highest level it reaches, shown as the project is"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "invited_by",
+            "status",
+            "expires_at",
+            "bound",
+            "viewer",
+            "for_viewer",
+            "accepted_by_viewer",
+            "project",
+            "role",
+            "max_level"
+          ],
+          "title": "InvitePreview"
+        },
+        "InviteRequest": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "join",
+                "register"
+              ],
+              "title": "Kind",
+              "description": "join: a grant on an existing project; register: the right to register one new project"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "join: the project the link grants on"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "reader",
+                    "writer",
+                    "admin"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "join: the role it gives"
+            },
+            "max_level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Level",
+              "description": "join: the highest level of the project's ladder it reaches"
+            },
+            "for_login": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "For Login",
+              "description": "the one GitHub login that may accept the link; anyone signed in if left out"
+            },
+            "days": {
+              "type": "integer",
+              "maximum": 30.0,
+              "minimum": 1.0,
+              "title": "Days",
+              "description": "how long the link stays open",
+              "default": 7
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "title": "InviteRequest"
+        },
+        "InviteRow": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "join",
+                "register"
+              ],
+              "title": "Kind"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "join: the project the link grants on; register: the project its right registered, once used"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "reader",
+                    "writer",
+                    "admin"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "join: the role it gives"
+            },
+            "max_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Level",
+              "description": "join: the highest level it reaches"
+            },
+            "for_login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "For Login",
+              "description": "the one login that may accept it; null for anyone signed in"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "the hub admin who made it"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At",
+              "description": "after this the link can no longer be accepted"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "revoked",
+                "expired"
+              ],
+              "title": "Status",
+              "description": "revoked, else accepted, else expired once expires_at is past, else open"
+            },
+            "accepted_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accepted By"
+            },
+            "accepted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accepted At"
+            },
+            "used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Used At",
+              "description": "register: when its right registered the project"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "project",
+            "role",
+            "max_level",
+            "for_login",
+            "created_by",
+            "created_at",
+            "expires_at",
+            "status",
+            "accepted_by",
+            "accepted_at",
+            "used_at"
+          ],
+          "title": "InviteRow"
+        },
         "Job": {
           "properties": {
             "job_id": {
@@ -86497,6 +87788,22 @@
               ],
               "title": "Source Commit",
               "description": "hex, abbreviated or whole"
+            },
+            "audience": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "everyone",
+                    "admins"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience",
+              "description": "a global skill's audience: default everyone for a new skill, unchanged for one that exists"
             }
           },
           "type": "object",
@@ -86538,6 +87845,15 @@
             },
             "latest": {
               "$ref": "#/components/schemas/Version"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
             }
           },
           "type": "object",
@@ -86546,7 +87862,8 @@
             "project",
             "name",
             "created",
-            "latest"
+            "latest",
+            "audience"
           ],
           "title": "Published"
         },
@@ -95335,6 +96652,15 @@
               "type": "string",
               "format": "date-time",
               "title": "Published At"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
             }
           },
           "type": "object",
@@ -95349,10 +96675,40 @@
             "source_repo",
             "source_commit",
             "published_by",
-            "published_at"
+            "published_at",
+            "audience"
           ],
           "title": "Skill",
           "description": "A skill with its latest version."
+        },
+        "SkillAudience": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the skill had this audience already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "audience",
+            "changed"
+          ],
+          "title": "SkillAudience"
         },
         "SkillCount": {
           "properties": {
@@ -95476,6 +96832,15 @@
               "type": "array",
               "title": "Versions",
               "description": "the latest first"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
             }
           },
           "type": "object",
@@ -95484,7 +96849,8 @@
             "project",
             "name",
             "created_at",
-            "versions"
+            "versions",
+            "audience"
           ],
           "title": "SkillHistory"
         },
