@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import date, timedelta
+from math import comb
 from pathlib import PurePosixPath
 
 from evo_agents.hub import replay
@@ -49,6 +50,14 @@ MAX_FILES = 500  # of the trace file: the files the agent changed
 PROBE_KEY_HEADER = "X-Evo-Probe-Key"  # a probe run's own key, which its claim hands the daemon
 TRACE_ENV = "EVO_PROBE_TRACE"  # names the trace file to the probe's verify: {"commands": [...], "files": [...]}
 CLAUDE_CODE = "claude-code"  # the runtime whose arms carry the repo's .claude/settings.json and .claude/hooks/
+
+# The weekly report of the probes: the status of one probe on one runtime and model in an ISO week. holds: arm on did
+# not fail once; recurring: arm on failed at least once; not_reproduced: arm off did not fail once either, so the probe
+# did not reproduce the mistake and says nothing of the rule; stale: the change's diff no longer comes off the tip;
+# unmeasured: no result of both arms this week (the money ran out, the runs ended short, or it has not run yet).
+STATUSES = ("holds", "recurring", "not_reproduced", "stale", "unmeasured")
+FLAGGED = ("recurring", "not_reproduced", "stale", "unmeasured")  # the statuses a report points out
+MAX_REPORT_WEEKS = 52
 
 
 def week_of(day: date) -> date:
@@ -107,3 +116,35 @@ def verify_problem(verify: str) -> str | None:
     if not programs(verify):
         return "runs no program: its first program must be a real command, not a builtin such as `true` or `exit 0`"
     return None
+
+
+def arm_counts(sessions: Iterable[dict], arm: str) -> tuple[int, int]:
+    """(sessions, failed sessions) of ``arm`` among the sessions a probe run reported."""
+    found = [item for item in sessions if isinstance(item, dict) and item.get("arm") == arm]
+    return len(found), sum(not item.get("passed") for item in found)
+
+
+def recurrence(runs: int, failed: int, k: int) -> float | None:
+    """1 - pass^k of an arm whose ``runs`` sessions failed ``failed`` times: the chance that k sessions in a row do not
+    all pass, by the unbiased estimate of tau-bench (C(c, k) / C(n, k) for c passes in n sessions); with fewer than k
+    sessions, 1 - (c / n)^k. With n = k it is 1 as soon as one session failed, else 0. None without a session."""
+    if runs <= 0:
+        return None
+    passed = runs - failed
+    rate = comb(passed, k) / comb(runs, k) if runs >= k else (passed / runs) ** k
+    return round(1 - rate, 6)
+
+
+def status_of(state: str | None, on_failed: int, off_runs: int, off_failed: int) -> str:
+    """The status a probe run's row of ``state`` (None: the week has none) gives its probe, runtime and model: a row
+    done is recurring when arm on failed, not_reproduced when arm off did not fail either, holds otherwise; a stale row
+    is stale; any other, or none, is unmeasured."""
+    if state == "stale":
+        return "stale"
+    if state != "done":
+        return "unmeasured"
+    if on_failed:
+        return "recurring"
+    if off_runs == 0 or off_failed == 0:
+        return "not_reproduced"
+    return "holds"

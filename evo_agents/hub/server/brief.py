@@ -26,6 +26,9 @@ curator_briefs keeps one row a project and local day, with what the brief said a
 the job, or a second hub worker, finds the row and sends nothing. ``curator.last_brief`` names the newest for GET
 /v1/projects/{p}/curator (``last_brief``). A schedule whose owner lost every grant on the project gets no brief.
 
+On Monday, the same pass tells the owner of a schedule whose charter runs probes the weekly report of the ISO week that
+just ended (``probe_report.send``), in a transaction of its own, once a week.
+
 ``send_loop_notices`` is the job ``hub.loop_notices`` (``loop.notices.send``): the month's review of the goals of each
 project whose Loop is on, and the Loop's part of the brief, at 07:00, for a project whose Curator sends none.
 """
@@ -43,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server import probe_report
 from evo_agents.hub.server.curator import _due, _owner_access, curator_state, night_figures
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.notifications import notify, one_line
@@ -501,6 +505,14 @@ async def send_briefs(engine: AsyncEngine, *, now: datetime | None = None) -> di
         except Exception:  # one project failing leaves the others their brief
             log.exception("a morning brief failed", extra={"project": due.project, "schedule_id": due.id})
             outcomes["failed"] += 1
+        try:
+            async with engine.begin() as conn:
+                told = await probe_report.send(conn, due)
+        except Exception:  # the probes' report failing leaves the brief as it went
+            log.exception("a probe report failed", extra={"project": due.project, "schedule_id": due.id})
+            told = "probe_report_failed"
+        if told is not None:
+            outcomes[told] += 1
     return dict(sorted(outcomes.items()))
 
 

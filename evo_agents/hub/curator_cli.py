@@ -27,7 +27,7 @@ request, the Judge's verdict and the merge, newest first (GET .../curator/change
 (``evo_agents.hub.replay_cli``) the replays that measure them, ``curator history status|clusters|sessions|search|lines``
 (``evo_agents.hub.history_cli``) the night's history run, the clusters of its facets and the whole history, and
 ``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember, and
-``curator probe list|show|add|retire`` (``evo_agents.hub.probe_cli``) the probes of proposals and changes. ``curator
+``curator probe list|show|add|retire|report`` (``evo_agents.hub.probe_cli``) the probes of proposals and changes. ``curator
 protection`` lists the project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check
 REPO`` checks one now with the Curator's App, which only an admin of the project may (POST
 .../curator/protection/{repo}/check): a Builder runs on a repo of GitHub only once its default branch keeps the
