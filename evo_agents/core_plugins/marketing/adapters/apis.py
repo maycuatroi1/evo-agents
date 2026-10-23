@@ -21,6 +21,7 @@ from evo_agents.core_plugins.marketing.adapters.base import (
     Transport,
     check,
 )
+from evo_agents.core_plugins.marketing.adapters.oauth1 import OAuth1
 
 
 def _bearer(token: str, **more: str) -> dict[str, str]:
@@ -156,28 +157,38 @@ class GitHub(_Base):
 
 
 class X(_Base):
+    """A post as the account. The credential is a user access token (OAuth 2.0, a bearer) or the account's OAuth 1.0a
+    user-context keys (``OAuth1``), which sign each request; an app-only bearer acts as no user and fails the check."""
+
     channel = "x"
     API = "https://api.x.com/2/tweets"
 
-    async def publish(self, content: Content, token: str) -> Published:
+    @staticmethod
+    def _auth(method: str, url: str, token: str | OAuth1) -> dict[str, str]:
+        if isinstance(token, OAuth1):
+            return {"Authorization": token.header(method, url), "Accept": "application/json"}
+        return _bearer(token)
+
+    async def publish(self, content: Content, token: str | OAuth1) -> Published:
         payload: dict = {"text": content.body}
         if content.reply_to:
             payload["reply"] = {"in_reply_to_tweet_id": content.reply_to}
-        body = await self.call(HttpRequest("POST", self.API, _bearer(token), payload))
+        body = await self.call(HttpRequest("POST", self.API, self._auth("POST", self.API, token), payload))
         found = str((body.get("data") or {}).get("id", ""))
         return Published(f"https://x.com/{content.account}/status/{found}", found, cost_usd=0.01)
 
-    async def health(self, target: str | None, token: str) -> str:
+    async def health(self, target: str | None, token: str | OAuth1) -> str:
         """The user the credential acts as."""
-        body = await self.read(HttpRequest("GET", "https://api.x.com/2/users/me", _bearer(token)))
+        url = "https://api.x.com/2/users/me"
+        body = await self.read(HttpRequest("GET", url, self._auth("GET", url, token)))
         user = body.get("data") or {}
         if not user.get("id"):
             raise AdapterError("rejected", "x: the platform did not say whose credential it is")
         return f"signed in as @{user.get('username') or user['id']}"
 
-    async def metrics(self, external_id: str, token: str) -> dict[str, float]:
+    async def metrics(self, external_id: str, token: str | OAuth1) -> dict[str, float]:
         url = f"{self.API}/{external_id}?tweet.fields=public_metrics"
-        found = ((await self.call(HttpRequest("GET", url, _bearer(token)))).get("data") or {}).get(
+        found = ((await self.call(HttpRequest("GET", url, self._auth("GET", url, token)))).get("data") or {}).get(
             "public_metrics"
         ) or {}
         names = {
@@ -292,7 +303,7 @@ class FacebookPage(_Base):
     """A post on a Page (target is the page id). Posting only: no feed and no insight is read."""
 
     channel = "facebook_page"
-    API = "https://graph.facebook.com/v19.0"
+    API = "https://graph.facebook.com/v22.0"
 
     async def publish(self, content: Content, token: str) -> Published:
         if not content.target:
@@ -304,14 +315,22 @@ class FacebookPage(_Base):
         return Published(f"https://www.facebook.com/{found}", found)
 
     async def health(self, target: str | None, token: str) -> str:
-        """The page read with the credential, whose tasks must let it create content. Reads no feed and no insight."""
+        """The page the credential speaks for (``/me`` of a Page token is the page) and the credential's own debug
+        record, which must be a valid Page token of the target holding ``pages_manage_posts``. Posts nothing."""
         if not target:
             raise AdapterError("missing", "facebook_page: the account has no target page id")
-        url = f"{self.API}/{target}?fields=name,tasks"
-        body = await self.read(HttpRequest("GET", url, _bearer(token)))
-        if "CREATE_CONTENT" not in (body.get("tasks") or []):
+        me = await self.read(HttpRequest("GET", f"{self.API}/me?fields=id,name", _bearer(token)))
+        if str(me.get("id")) != target:
+            raise AdapterError("rejected", f"facebook_page: the credential is not a Page token of page {target}")
+        query = {"input_token": token}
+        debug = (await self.read(HttpRequest("GET", f"{self.API}/debug_token", _bearer(token), params=query))).get(
+            "data"
+        ) or {}
+        if not debug.get("is_valid") or debug.get("type") != "PAGE" or str(debug.get("profile_id") or target) != target:
+            raise AdapterError("rejected", f"facebook_page: the credential is not a valid Page token of page {target}")
+        if "pages_manage_posts" not in (debug.get("scopes") or []):
             raise AdapterError("rejected", f"facebook_page: the credential reads page {target} but may not post on it")
-        return f"may post on {body.get('name') or target}"
+        return f"may post on {me.get('name') or target}"
 
 
 class TikTok(_Base):

@@ -271,12 +271,65 @@ def test_marketing_health_x_reddit_and_linkedin_read_whose_credential_it_is():
     assert all(r.method == "GET" for r in fake.sent)
 
 
-def test_marketing_health_facebook_page_needs_create_content_and_tiktok_reads_the_creator():
-    page = HttpResponse(200, {"name": "Evo", "tasks": ["ANALYZE", "CREATE_CONTENT"]})
-    said, fake = health("facebook_page", "42", page)
-    assert said == "may post on Evo" and fake.sent[0].url.endswith("/42?fields=name,tasks")
-    assert fake.sent[0].method == "GET"
-    assert "may not post" in refused("facebook_page", "42", HttpResponse(200, {"tasks": ["ANALYZE"]})).message
+def test_marketing_x_oauth1_signs_as_x_documents_and_hides_its_keys():
+    from evo_agents.core_plugins.marketing.adapters.oauth1 import OAuth1
+
+    # The example of docs.x.com "Creating a signature"; its keys are the page's, invalid for any real request.
+    keys = OAuth1(
+        "xvz1evFS4wEEPTGEFPHBog",
+        "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw",
+        "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb",
+        "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE",
+    )
+    url = "https://api.x.com/1.1/statuses/update.json?include_entities=true&status=" + (
+        "Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21"
+    )
+    header = keys.header("POST", url, nonce="kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg", timestamp=1318622958)
+    assert header.startswith("OAuth ") and 'oauth_signature="Ls93hJiZbQ3akF3HF3x1Bz8%2FzU4%3D"' in header
+    assert 'oauth_signature_method="HMAC-SHA1"' in header and 'oauth_version="1.0"' in header
+    assert "kAcSOq" not in header and "Lswwdo" not in header and repr(keys) == "OAuth1()"
+
+
+def test_marketing_x_health_with_oauth1_keys_reads_the_user_and_posts_nothing():
+    from evo_agents.core_plugins.marketing.adapters.oauth1 import OAuth1
+    from evo_agents.core_plugins.marketing.settings import Config, credentials
+
+    keys = OAuth1("ck-value", "cs-secret-value", "at-value", "ats-secret-value")
+    fake = Fake(HttpResponse(200, {"data": {"id": "1", "username": "NguynAnhBnh7"}}))
+    said = asyncio.run(adapters.for_channel("x", fake).health(None, keys))
+    assert said == "signed in as @NguynAnhBnh7" and [(r.method, r.url) for r in fake.sent] == [
+        ("GET", "https://api.x.com/2/users/me")
+    ]
+    auth = fake.sent[0].headers["Authorization"]
+    assert auth.startswith("OAuth ") and 'oauth_consumer_key="ck-value"' in auth and 'oauth_token="at-value"' in auth
+    assert "secret-value" not in auth and "secret-value" not in repr(fake.sent[0]) + repr(Config(tokens={"x": keys}))
+    with pytest.raises(AdapterError) as failed:
+        asyncio.run(adapters.for_channel("x", Fake(HttpResponse(401, {}))).health(None, keys))
+    assert failed.value.kind == "locked" and "value" not in failed.value.message
+    four = {"x_consumer_key": "ck", "x_consumer_secret": "cs", "x_access_token": "at", "x_access_token_secret": "ts"}
+    assert credentials({**four, "x_token": "bearer"})["x"] == OAuth1("ck", "cs", "at", "ts")
+    assert credentials({**four, "x_access_token_secret": "", "x_token": "bearer"})["x"] == "bearer"
+    assert "x" not in credentials({"x_consumer_key": "ck"}) and credentials({"github_token": "g"}) == {"github": "g"}
+    assert not registry.may_be_autonomous("x", "personal")  # signing keys open no autonomy for a personal account
+
+
+def test_marketing_health_facebook_page_needs_a_page_token_that_may_post_and_tiktok_reads_the_creator():
+    me = HttpResponse(200, {"id": "42", "name": "Evo"})
+    token = {"is_valid": True, "type": "PAGE", "profile_id": "42", "scopes": ["pages_show_list", "pages_manage_posts"]}
+    said, fake = health("facebook_page", "42", me, HttpResponse(200, {"data": token}))
+    assert said == "may post on Evo" and [(r.method, r.url) for r in fake.sent] == [
+        ("GET", "https://graph.facebook.com/v22.0/me?fields=id,name"),
+        ("GET", "https://graph.facebook.com/v22.0/debug_token"),
+    ]
+    assert fake.sent[1].params == {"input_token": SECRET} and SECRET not in repr(fake.sent[1])
+    assert "not a Page token" in refused("facebook_page", "42", HttpResponse(200, {"id": "7", "name": "Other"})).message
+    no_post = HttpResponse(200, {"data": {**token, "scopes": ["pages_read_engagement"]}})
+    assert "may not post" in refused("facebook_page", "42", me, no_post).message
+    user = HttpResponse(200, {"data": {**token, "type": "USER"}})
+    assert "not a valid Page token" in refused("facebook_page", "42", me, user).message
+    other = HttpResponse(200, {"data": {**token, "profile_id": "7"}})
+    assert "not a valid Page token" in refused("facebook_page", "42", me, other).message
+    assert refused("facebook_page", "42", HttpResponse(400, {"error": {"code": 100}})).kind == "rejected"
     assert refused("facebook_page", None).kind == "missing"
     creator = HttpResponse(200, {"data": {"creator_username": "evo"}, "error": {"code": "ok"}})
     said, fake = health("tiktok", None, creator)
