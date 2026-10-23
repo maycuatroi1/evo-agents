@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.marketing import registry
+from evo_agents.core_plugins.marketing.adapters.oauth1 import OAuth1
 from evo_agents.core_plugins.marketing.store import PLUGIN
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.plugin_calls import enabled_in
@@ -27,6 +28,7 @@ TOKENS = {  # channel -> the secret field that holds its credential
     "facebook_page": "facebook_page_token",
     "tiktok": "tiktok_token",
 }
+X_OAUTH1 = ("x_consumer_key", "x_consumer_secret", "x_access_token", "x_access_token_secret")  # in OAuth1's order
 SESSIONS = {  # browser channel -> the secret field that holds the sealed login session of its account
     "hackernews": "hackernews_session",
     "reddit": "reddit_session",
@@ -44,10 +46,10 @@ class Config:
     rules: dict = field(default_factory=dict)  # channel -> the fields of its rules the project changes
     replies_per_day: int = registry.DEFAULT_REPLIES_PER_DAY  # reply work items the Loop makes in 24 hours
     proposals_project: str = ""  # the hub project that gets the proposals for personal channels; none when empty
-    tokens: dict = field(default_factory=dict, repr=False)  # channel -> credential; hidden from repr
+    tokens: dict = field(default_factory=dict, repr=False)  # channel -> credential (str, or OAuth1 for x); hidden
     sessions: dict = field(default_factory=dict, repr=False)  # channel -> login session of the browser; hidden
 
-    def token(self, channel: str) -> str | None:
+    def token(self, channel: str) -> str | OAuth1 | None:
         return self.tokens.get(channel) or None
 
     def session(self, channel: str) -> str | None:
@@ -60,11 +62,21 @@ def _number(value, default: float) -> float:
     return float(value) if ok else default
 
 
+def credentials(values: dict) -> dict:
+    """Channel -> its credential out of the opened config. X's four OAuth 1.0a keys, when all four are set, win over
+    a bearer ``x_token``; fewer than four are none of them."""
+    tokens = {channel: values.get(name) for channel, name in TOKENS.items() if isinstance(values.get(name), str)}
+    keys = [values.get(name) for name in X_OAUTH1]
+    if all(isinstance(key, str) and key for key in keys):
+        tokens["x"] = OAuth1(*keys)
+    return tokens
+
+
 async def config(conn: AsyncConnection, hub_config: HubConfig | None, project: str) -> Config:
     """The effective config of the plugin in ``project``. A credential this process cannot open is none."""
     found = await hub.plugin_config(conn, hub.plugin(__name__), hub_config, project=project)
     values = found.values
-    tokens = {channel: values.get(name) for channel, name in TOKENS.items() if isinstance(values.get(name), str)}
+    tokens = credentials(values)
     sessions = {channel: values.get(name) for channel, name in SESSIONS.items() if isinstance(values.get(name), str)}
     rules = values.get("rules")
     return Config(

@@ -21,6 +21,7 @@ from evo_agents.core_plugins.marketing.adapters.base import (
     Transport,
     check,
 )
+from evo_agents.core_plugins.marketing.adapters.oauth1 import OAuth1
 
 
 def _bearer(token: str, **more: str) -> dict[str, str]:
@@ -156,28 +157,38 @@ class GitHub(_Base):
 
 
 class X(_Base):
+    """A post as the account. The credential is a user access token (OAuth 2.0, a bearer) or the account's OAuth 1.0a
+    user-context keys (``OAuth1``), which sign each request; an app-only bearer acts as no user and fails the check."""
+
     channel = "x"
     API = "https://api.x.com/2/tweets"
 
-    async def publish(self, content: Content, token: str) -> Published:
+    @staticmethod
+    def _auth(method: str, url: str, token: str | OAuth1) -> dict[str, str]:
+        if isinstance(token, OAuth1):
+            return {"Authorization": token.header(method, url), "Accept": "application/json"}
+        return _bearer(token)
+
+    async def publish(self, content: Content, token: str | OAuth1) -> Published:
         payload: dict = {"text": content.body}
         if content.reply_to:
             payload["reply"] = {"in_reply_to_tweet_id": content.reply_to}
-        body = await self.call(HttpRequest("POST", self.API, _bearer(token), payload))
+        body = await self.call(HttpRequest("POST", self.API, self._auth("POST", self.API, token), payload))
         found = str((body.get("data") or {}).get("id", ""))
         return Published(f"https://x.com/{content.account}/status/{found}", found, cost_usd=0.01)
 
-    async def health(self, target: str | None, token: str) -> str:
+    async def health(self, target: str | None, token: str | OAuth1) -> str:
         """The user the credential acts as."""
-        body = await self.read(HttpRequest("GET", "https://api.x.com/2/users/me", _bearer(token)))
+        url = "https://api.x.com/2/users/me"
+        body = await self.read(HttpRequest("GET", url, self._auth("GET", url, token)))
         user = body.get("data") or {}
         if not user.get("id"):
             raise AdapterError("rejected", "x: the platform did not say whose credential it is")
         return f"signed in as @{user.get('username') or user['id']}"
 
-    async def metrics(self, external_id: str, token: str) -> dict[str, float]:
+    async def metrics(self, external_id: str, token: str | OAuth1) -> dict[str, float]:
         url = f"{self.API}/{external_id}?tweet.fields=public_metrics"
-        found = ((await self.call(HttpRequest("GET", url, _bearer(token)))).get("data") or {}).get(
+        found = ((await self.call(HttpRequest("GET", url, self._auth("GET", url, token)))).get("data") or {}).get(
             "public_metrics"
         ) or {}
         names = {
