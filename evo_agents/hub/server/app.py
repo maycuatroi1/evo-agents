@@ -311,6 +311,7 @@ def create_app(config: HubConfig) -> FastAPI:
         autonomy_page,
         autonomy_routes,
         autonomy_stops,
+        build_now,
         changes,
         earlier,
         history,
@@ -329,6 +330,7 @@ def create_app(config: HubConfig) -> FastAPI:
 
     for routes in (
         changes.router,
+        build_now.router,  # Run plan on a Curator's plan: its Builder now
         protection.router,
         proposal_plans.router,
         changes.worker_router,
