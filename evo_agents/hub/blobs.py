@@ -54,7 +54,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 
-from evo_agents.hub import outputs
+from evo_agents.hub import attachments, outputs
 from evo_agents.hub.config import DEFAULT_BLOB_CONCURRENCY, MAX_BLOB_CONCURRENCY, HubConfig
 from evo_agents.plugins.bundle import KIND as PLUGIN_KIND
 from evo_agents.plugins.bundle import MAX_BUNDLE as MAX_PLUGIN_BUNDLE
@@ -79,6 +79,7 @@ KIND_LIMITS = {
     "run-diff": 8 * MiB,  # the diff of that run's commits
     "transcript": 48 * MiB,  # a part of a session's transcript, gzip of its redacted lines (evo_agents.hub.transcripts)
     outputs.KIND: outputs.MAX_FILE_BYTES,  # a file a run's agent made, an output of the run (evo_agents.hub.outputs)
+    attachments.KIND: attachments.MAX_FILE_BYTES,  # a file a person attached to a message (evo_agents.hub.attachments)
     PLUGIN_KIND: MAX_PLUGIN_BUNDLE,  # a plugin's tar.gz, which the hub holds itself (evo_agents.plugins.bundle)
 }
 SHA256 = re.compile(r"[0-9a-f]{64}")

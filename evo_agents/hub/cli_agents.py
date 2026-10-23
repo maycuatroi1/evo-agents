@@ -1,5 +1,5 @@
 """``evo-agents hub agent list|show|create|edit|delete``: the agent profiles of a project (``evo_agents.hub.profiles``),
-over GET, POST, PATCH and DELETE /v1/projects/{p}/agents.
+over GET, POST, PATCH and DELETE /v1/projects/{p}/agents. ``agent account`` is in ``cli_agent_accounts``.
 
 ``list`` prints the project's profiles, the default first, with the axes each one limits; ``--deleted`` adds the
 deleted ones. ``show`` prints one profile whole, each axis with its allowlist. Every member of the project may read
@@ -57,7 +57,7 @@ AGENT_KEYS = (
 )
 
 
-def _project(args) -> str:
+def project_of(args) -> str:
     if args.project:
         return args.project
     try:
@@ -109,7 +109,7 @@ def _show(agent: dict) -> None:
 @client_command
 def cmd_list(args) -> int:
     hub, _ = signed_in()
-    project = _project(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project) + ("?deleted=true" if args.deleted else ""))
     if args.json:
         print_json(found)
@@ -135,7 +135,7 @@ def cmd_list(args) -> int:
 @client_command
 def cmd_show(args) -> int:
     hub, _ = signed_in()
-    agent = hub.call("GET", _path(_project(args), args.handle))
+    agent = hub.call("GET", _path(project_of(args), args.handle))
     if args.json:
         print_json(agent)
     else:
@@ -233,7 +233,7 @@ def cmd_create(args) -> int:
         return _usage(str(exc))
     body.update({key: value for key, value in fields.items() if value is not None})
     hub, _ = signed_in()
-    project = _project(args)
+    project = project_of(args)
     agent = hub.call("POST", _path(project), body)
     if avatar is not None:
         agent = hub.call("PUT", _path(project, agent["handle"]) + "/avatar", avatar)
@@ -243,7 +243,7 @@ def cmd_create(args) -> int:
 @client_command
 def cmd_edit(args) -> int:
     hub, _ = signed_in()
-    project = _project(args)
+    project = project_of(args)
     current = hub.call("GET", _path(project, args.handle))
     try:
         fields = {
@@ -275,7 +275,7 @@ def cmd_edit(args) -> int:
 @client_command
 def cmd_delete(args) -> int:
     hub, _ = signed_in()
-    agent = hub.call("DELETE", _path(_project(args), args.handle))
+    agent = hub.call("DELETE", _path(project_of(args), args.handle))
     return _done(args, agent, "Deleted")
 
 
@@ -310,6 +310,8 @@ def _handle(parser) -> None:
 
 
 def register_agents(hsub) -> None:
+    from evo_agents.hub.cli_agent_accounts import register_agent_accounts
+
     agent = hsub.add_parser("agent", help="the agent profiles of a project: who its agents are and what they may use")
     asub = agent.add_subparsers(dest="agent_command", required=True)
 
@@ -351,3 +353,4 @@ def register_agents(hsub) -> None:
     delete.add_argument("--project", help=PROJECT_HELP)
     json_option(delete, returns_object(*AGENT_KEYS, schema="Agent"))
     delete.set_defaults(func=cmd_delete)
+    register_agent_accounts(asub)

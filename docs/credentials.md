@@ -512,6 +512,51 @@ whose refresh token is still good is not in this state: it is usable, and the ne
 `oauth-login NAME` again stores the new tokens and ends the cooldown; a cooldown for a usage limit stays. A transient
 failure of the endpoint (down, 5xx) does not mark the account.
 
+### Accounts of an agent
+
+An **agent account** is an `env` secret that an agent profile owns (`secrets.profile_id`, no member owner, migration
+0104), for runs under that agent to use whoever dispatches them: an admin of the profile's project adds it from the
+agent's page or with `evo-agents hub agent account` (`evo_agents/hub/server/agent_accounts.py`), names the workers it
+is bound to (the admin's own that are not revoked, or shared workers serving the project), and gives it a weight, a
+priority and an end like any account. The hub keeps the value sealed under its own associated data
+(`agent-secret:<profile id>:<name>`) and never hands it back by any route. Only `env` accounts exist for an agent: git
+secrets and the GitHub App token of a push stay the dispatcher's.
+
+The rule, per variable, for a run under a named agent P (not the project's default profile, not a run of the Curator)
+on worker W, for every kind of run (step, plan, author, chat at any hop, 1:1 chat, agent type `run_as`) and every
+project the agent's project axis lets it run in:
+
+- **P has a live account for the variable bound to W**: the run is leased one of those, chosen by weight, priority,
+  pause, cooldown and `DEFAULT_POLICY` (round-robin, a cooldown of an hour when the runtime gave no reset, failover on,
+  up to three), and never the dispatcher's secret for that variable. P's credential allowlist does not filter P's own
+  accounts, and a failover moves only between P's accounts.
+- **Every one of them is paused, cooling or past its end**: the run does not fall back to the dispatcher's secret. It
+  does as it does when all of a member's accounts for a variable are unusable: with every account cooling it waits on
+  the one ready first, with every one paused or ended it is leased none for that variable, and an event of the run says
+  why, naming accounts by id.
+- **P has no account for the variable on W** (or none on W at all): the run is leased the dispatcher's secret for it
+  through the credential axis, as before.
+
+Picking by hand, at dispatch or rerun, an account for a variable P has accounts for is 422 naming `@P`. The lease is
+named `@<handle>:<name>`, which no secret of a member can be, so an answer never holds two leases of one name; the
+`credential.lease` audit row names it by id and handle (`agent-accounts=12@<handle>`) apart from the dispatcher's
+`secrets=`, and `GET .../runs/{id}/credentials`, `evo-agents hub run credentials` and the run's page show it under that
+name. The JSON of a lease the worker gets is unchanged, so a worker of 0.24.x leases it without an upgrade. The hub
+replaces the value of each account of the agent by `***` in the messages the agent posts to a chat, as the daemon does
+in events.
+
+Who sees what: every member of the project sees an account's name, variable, workers, state, weight, priority and its
+usage, never the value; only an admin of the project adds, renews, changes and deletes it. A member reads them with
+`GET /v1/projects/{p}/agents/{handle}/accounts[/{name}]`, or across every project they hold a grant on with
+`GET /v1/agent-accounts` (the /accounts page), and with `evo-agents hub agent account list|show`
+(`evo_agents/hub/server/agent_account_views.py`): provider, category, state, workers, weight, priority, end, last
+usage, runs and cost over 24 hours and 7 days (null for a service account), the runs holding it and when it was last
+leased, computed by the functions of a member's own accounts (`account_views`). Without a grant it is the 404 or 403
+of reading the profile; `GET /v1/accounts` stays the caller's own accounts. Who can read the value, since
+a run that holds it runs the agent's code: an admin, through the instructions of the profile (the agent runs under
+them); a writer, through the agent of any run they dispatch; the owner of the worker and a root user on it, for every
+account bound to it; and every other run on that worker, as for any lease (see "What is still a risk").
+
 ### Compared with a proxy
 
 CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
@@ -546,6 +591,66 @@ applications, and says developers may not collect, store or intermediate Claude.
 [Unverified] Whether `oauth-login` fits those terms is not settled by this document; its owner checks a use of an
 account against that page, and `account login` with a setup-token is the route that keeps the sign-in inside
 Anthropic's own binary.
+
+### Sharing a secret or an account
+
+The owner of a secret or an account may share it with one member, a unit of the org chart and every unit below it,
+or everyone on the hub, for some of the projects it is bound to (`POST /v1/secrets/{name}/shares`, table
+`credential_shares` of migration 0105):
+
+```
+evo-agents hub account share claude-a --login someone-else --project demo --level A2 --budget-usd 50 \
+    --usage-ceiling 80 --max-running 2 --expires 2027-01-31 --ack-terms
+evo-agents hub secret share notes-key --unit lab --project demo
+evo-agents hub account unshare --share 12
+evo-agents hub secret unshare --share 13
+```
+
+Only the owner creates a share, a hub admin included. The owner revokes it (`DELETE /v1/shares/{id}`), and a hub admin
+may revoke any share; a revoked share stays, with who revoked it and when, and deleting the secret revokes its shares.
+A forge secret is never shared. A unit grantee is a live unit: neither it nor a unit above it is archived, and no
+cohort holding it has ended. `hub secret list --json` and `hub account show --json` carry each one's live shares under
+`shares`; `GET /v1/secrets/{name}/shares` lists revoked ones too.
+
+The hub sorts each credential into a class: `subscription` for an account of provider claude, whether its token was
+pasted or came from OAuth; `api_key` for an Anthropic or OpenAI API key; `git`; and `env` for the rest. A subscription
+token is shared only with the owner's acknowledgement of this warning (`terms_ack` in the API, `--ack-terms` on the
+command line), which the web, the command line and the audit show word for word
+(`evo_agents.hub.credential_shares.TERMS_WARNING`):
+
+> This is a personal Claude subscription token. Anthropic's Consumer Terms (section 2) do not allow you to let anyone
+> else use your account. Anthropic may limit, suspend or close the account without notice. Every request a run makes
+> with this token is made in your name, as the account holder.
+
+Without the acknowledgement the hub answers 409 with that warning, and the command prints it and exits non-zero. With
+it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` holding the warning after the row
+`share.create`. Every write adds a `share.` audit row that names the secret by id, never by value.
+
+#### Leasing under a share
+
+A run's principal is the member who dispatched it; each lease records it (`credential_leases.principal_id`, migration
+0106). A share covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
+principal, a live unit holding the principal's live primary seat or a unit above it, or everyone. The shared secret
+must still be bound to the project; a run of the Curator and a release run never take one
+(`evo_agents/hub/server/share_leases.py`).
+
+The principal's own secrets come first: a shared account is taken only when none of their own for the variable is
+ready (`run_accounts.how` is `shared`), and a shared git secret only for an origin none of their own covers. A share
+lends nothing when its owner paused the account or it cools down (the owner's runs go first and may still take it
+cooling), when the highest usage among the windows of its last report whose reset has not passed reaches
+`usage_ceiling_pct` (unknown usage lends; the CLI reports a window's usage as a fraction of its limit, which the
+hub reads as a whole percent, a fraction above 1 as 100), when `max_running` runs hold it, or when this month's cost (UTC) of the
+runs under it plus an estimate for each run still running without a cost and for this one exceeds `budget_usd`. The
+estimate is the mean cost of the share's runs this month, else 1.00 USD, never under 0.01 USD. A run that holds a
+lease under a share keeps it. An agent's account (`hub agent account`) has no member owner, so no share names it; an
+agent's own account for a variable comes before any share. When a refused share leaves the run with nothing for a variable or origin, a `system`
+event of the run says why, naming the share by id alone.
+
+Revoking a share ends the leases out under it at once; a share that ended or no longer covers a run ends them at the
+run's next ask and on every pass of the reaper. `hub account show NAME --json` carries `cost_by_principal`: per
+member, runs and cost over 24 hours, 7 days and this month. The owner sees every row; a member it was shared with
+reads it with `--owner LOGIN` (`GET /v1/accounts/{name}?owner=LOGIN`) and sees their own row, runs and holders alone.
+The share's `level` is stored only, until the autonomy levels apply it.
 
 ## Plugins
 
@@ -793,5 +898,6 @@ medium findings as `warning:` lines; they never stop the install.
 | a secret | delete it (`evo-agents hub secret delete NAME` or the Secrets page), then revoke it at its source |
 | a GitLab access token | GitLab, the project's Settings > Access tokens > Revoke |
 | a `claude setup-token` token | claude.ai, Settings > Claude Code, revoke the token |
+| an agent account | delete it (`evo-agents hub agent account remove`) or the agent on the project's page, then revoke it at its source; a run that holds it keeps the value until it ends, so end those runs too |
 | a GitHub App token | it ends within the hour; to end all at once, suspend or uninstall the App, or rotate its private key |
 | `EVO_HUB_SECRETS_KEY` | rotate the key, then have every owner set their secrets again |

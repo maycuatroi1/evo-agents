@@ -90,9 +90,9 @@ export async function removeChatImage(api: ApiClient, id: number): Promise<Chat>
 }
 
 /** Send a message, in the thread of `replyTo` when given. */
-export async function sendChatMessage(api: ApiClient, id: number, body: string, replyTo: number | null): Promise<GroupMessage> {
+export async function sendChatMessage(api: ApiClient, id: number, body: string, replyTo: number | null, files: number[] = []): Promise<GroupMessage> {
   const headers = await csrfHeaders(api);
-  const payload = replyTo ? { body, reply_to: replyTo } : { body };
+  const payload = { body, ...(replyTo ? { reply_to: replyTo } : {}), ...(files.length ? { attachment_ids: files } : {}) };
   return call(api.POST("/v1/chats/{chat_id}/messages", { params: { path: { chat_id: id } }, body: payload, headers }));
 }
 

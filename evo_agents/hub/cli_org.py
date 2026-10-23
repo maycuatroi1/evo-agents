@@ -1,4 +1,4 @@
-"""``evo-agents hub org show|unit|seat`` and ``evo-agents hub autonomy ceiling set``: the org chart of the hub (plan
+"""``evo-agents hub org show|unit|seat|worker`` and ``evo-agents hub autonomy ceiling set``: the org chart of the hub (plan
 org-chart, criterion a4), over the routes under /v1/org (``evo_agents.hub.server.org``).
 
 ``org show`` prints the tree of units, indented below the root, each with its kind, its ceiling and the effective
@@ -22,6 +22,7 @@ from datetime import date
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
+from evo_agents.hub.cli_org_workers import register_workers
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 
@@ -441,6 +442,7 @@ def register_org(hsub) -> None:
 
     _register_units(osub)
     _register_seats(osub)
+    register_workers(osub)
 
 
 def register_autonomy(hsub) -> None:

@@ -138,6 +138,13 @@ Every command signs in like the rest of `evo-agents hub` and only calls the rout
 | `evo-agents hub org seat edit <login> [--unit <slug>] [--role member] [--reports-to <login> \| --clear-reports-to] [--sponsor <login>] [--primary] [--starts-on <date>] [--ends-on <date> \| --clear-ends-on]` | change a live seat |
 | `evo-agents hub org seat end <login> [--unit <slug>]` | end a seat now |
 | `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text>` | the next ceiling revision of a unit; `--login <login>` for a person's primary seat, `--seat <id>` for one seat |
+| `evo-agents hub org worker list [--json]` | the caller's live workers (every live worker for a hub admin), each with `shared`, the units it is narrowed to and its newest doctor report (`doctor_at`, `doctor_high`, `doctor_medium`) |
+| `evo-agents hub org worker share <worker> --unit <slug>` | narrow a worker to a unit and every unit below it, turning sharing on; refused (409) while the worker's newest doctor report is missing, older than 48 hours or has a high finding |
+| `evo-agents hub org worker unshare <worker> --unit <slug>` | take a unit back from a worker; taking back its last unit turns sharing off |
+
+`hub org worker` names a worker as its name (the caller's own) or as `owner/name`; an unknown or ambiguous name exits 1.
+Only the worker's owner or a hub admin narrows it, and an ended or archived unit is refused. What a narrowed worker
+takes, and how its doctor report decides, is in `docs/workers.md`, section "Shared workers".
 
 `seat edit` and `seat end` name a seat as `--seat <id>`, as a login, or as `--agent <handle> --project <project>`. With
 a login, `--unit <slug>` picks the person's live seat in that unit; without it, their live primary seat is meant. A
@@ -165,6 +172,9 @@ evo-agents hub admin grant <login> <project> --role writer --max-level <level>
 | `PATCH /v1/org/seats/{seat_id}` | admin, lead | change a live seat, or make it primary |
 | `POST /v1/org/seats/{seat_id}/end` | admin, lead | end a seat now |
 | `PUT /v1/org/ceilings` | admin, lead | the next ceiling revision of exactly one of `unit`, `login` (their primary seat) or `seat` |
+| `GET /v1/org/workers` | any member signed in | the caller's live workers (every live worker for a hub admin), with `shared`, `units` and the newest doctor report |
+| `PUT /v1/org/workers/{id}/units/{slug}` | the worker's owner, admin | narrow the worker to a unit, turning sharing on |
+| `DELETE /v1/org/workers/{id}/units/{slug}` | the worker's owner, admin | take a unit back; with the last one, sharing turns off |
 
 Writes answer 403 with the reason when the rules refuse, 404 for a unit, seat or login that does not exist, 409 when
 the state of the chart is in the way (an archived unit, an ended seat, a slug taken, a second live seat in a unit, a
@@ -189,3 +199,7 @@ agent profile, role, `is_primary`, `reports_to`, sponsor, `starts_on`, `ends_on`
 root, one live primary seat per person, one live seat per agent profile, an agent seat of role agent with a sponsor,
 and an intern with `reports_to`. The service checks the rest under the chart's lock: no cycle, `reports_to` naming a
 live seat of another person. Going back to 0098 drops the three tables, and the chart is lost.
+
+Schema 0107 adds `worker_shares` (worker, unit, who narrowed it and when): the units a shared worker is narrowed to
+(`docs/workers.md`, section "Shared workers"). Its downgrade turns sharing off on every narrowed worker before it drops
+the table, so no worker goes back to being shared with every writer.

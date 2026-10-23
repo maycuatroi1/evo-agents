@@ -10,7 +10,7 @@ import type { AccountGroupId } from "./model";
  * One group of the Accounts page: its title with the number of accounts, a line saying what the group is, and its
  * table, or a line saying there is none while the other group has some. A new group of accounts is one more of these.
  */
-export function AccountGroup({ id, count, children }: { id: AccountGroupId; count: number; children: ReactNode }) {
+export function AccountGroup({ id, count, children }: { id: AccountGroupId | "agent"; count: number; children: ReactNode }) {
   const t = useTranslations("accounts.groups");
   return (
     <section aria-labelledby={`accounts-group-${id}`} className="flex flex-col gap-3" data-testid={`accounts-group-${id}`}>

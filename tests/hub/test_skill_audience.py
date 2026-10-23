@@ -3,7 +3,7 @@ in, or hub admins alone. A member who is not a hub admin never sees an admins sk
 bundle), the skill_list tool, ``hub skills list`` and ``hub skills sync``, nor through the SessionStart check of the
 evo-hub plugin; the agent of a run sees what the run's owner sees. A hub admin sets the audience when publishing and
 changes it through the API and ``hub skills audience``, each change one audit row; a project skill stays everyone's.
-Migration 0105 leaves every skill that exists everyone's.
+Migration 0111 leaves every skill that exists everyone's.
 
 The checks of the client run without Postgres; everything that needs the hub skips without EVO_HUB_TEST_DSN."""
 
@@ -311,12 +311,12 @@ def test_skill_list_shows_the_agent_of_a_run_the_audience_its_owner_reads(mcp_hu
     assert listed(agent_tool(mcp_hub, alices_worker, alices_run, "skill_list")) == ["house-style"]
 
 
-# Migration 0105
+# Migration 0111
 
 
 @needs_pg
 @pytest.mark.empty_db
-def test_migration_0105_leaves_every_skill_everyones_and_takes_the_audience_back(hub_db):
+def test_migration_0111_leaves_every_skill_everyones_and_takes_the_audience_back(hub_db):
     import psycopg
     from sqlalchemy import select
 
@@ -324,7 +324,7 @@ def test_migration_0105_leaves_every_skill_everyones_and_takes_the_audience_back
     from tests.hub.live import add_project, sql
     from tests.hub.test_migrate import ALL, columns, migrate, move_to
 
-    move_to(hub_db, "0104")
+    move_to(hub_db, "0110")
     users, skills = tables.users, tables.skills
     (user_id,) = sql(hub_db, users.insert().values(login="octo").returning(users.c.id))[0]
     project_id = add_project(hub_db, "demo")
@@ -332,7 +332,7 @@ def test_migration_0105_leaves_every_skill_everyones_and_takes_the_audience_back
     sql(hub_db, skills.insert().values(scope="global", name="house-style", **held))
     sql(hub_db, skills.insert().values(scope="project", project_id=project_id, name="team-notes", **held))
 
-    move_to(hub_db, "0105")
+    move_to(hub_db, "0111")
     assert sql(hub_db, select(skills.c.name, skills.c.audience).order_by(skills.c.name)) == [
         ("house-style", "everyone"),
         ("team-notes", "everyone"),
@@ -345,7 +345,7 @@ def test_migration_0105_leaves_every_skill_everyones_and_takes_the_audience_back
         with pytest.raises(psycopg.errors.CheckViolation, match="skills_audience_check"):
             sql(hub_db, skills.insert().values(**bad, **held))
 
-    move_to(hub_db, "0104", down=True)
+    move_to(hub_db, "0110", down=True)
     assert "audience" not in columns(hub_db, "skills")
-    assert migrate(hub_db.dsn).applied == tuple(ALL[ALL.index("0105") :])
+    assert migrate(hub_db.dsn).applied == tuple(ALL[ALL.index("0111") :])
     assert "audience" in columns(hub_db, "skills")

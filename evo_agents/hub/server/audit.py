@@ -62,6 +62,11 @@ WORKER_UPDATE = "worker.update"
 # "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.update_now)
 WORKER_UPDATE_NOW = "worker.update_now"
 WORKER_UPDATE_NOW_CANCEL = "worker.update_now_cancel"
+# The owner or a hub admin narrowed a shared worker to a unit of the org chart, or took the unit back
+# (evo_agents.hub.server.worker_shares): "worker:<id> name=<n> owner=<login> unit=<slug> by=<owner|admin>", then
+# " shared=false->true" when sharing turned the worker shared, " shared=true->false" when its last unit went.
+WORKER_SHARE = "worker.share"
+WORKER_UNSHARE = "worker.unshare"
 # Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>" ("<project>/<plan>
 # run:<id>" for a plan run), never a prompt or evidence.
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
@@ -96,6 +101,14 @@ TERMINAL_CLOSE = "terminal.close"
 # A member's secrets belong to no one project; the target is the secret's name, never its value.
 SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
+# A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
+# and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or
+# slug>] projects=<names> level=<level> budget_usd=<n> usage_ceiling_pct=<n> max_running=<n> expires=<when>", each limit
+# that is set. share.terms_ack follows share.create for a subscription token: "share:<id> secret:<id> warning=<the
+# terms warning, word for word>". share.revoke: "share:<id> secret:<id> by=<owner|admin>".
+SHARE_CREATE = "share.create"
+SHARE_TERMS_ACK = "share.terms_ack"
+SHARE_REVOKE = "share.revoke"
 # A member's accounts (docs/credentials.md, section Accounts): an env secret's settings, by its id ("secret:<id>
 # weight=<n> priority=<n> paused=<yes|no>"), and the member's policy for a project, in that project ("<project>
 # strategy=<s> cooldown=<seconds> failover=<yes|no> max_failovers=<n>", or the project alone when it was dropped).
@@ -110,6 +123,11 @@ ACCOUNT_FAILOVER = "account.failover"
 AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
 AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
+# The accounts of an agent profile (evo_agents.hub.server.agent_accounts), in the project; the target is
+# "<project>/@<handle> secret:<id>", with " fields=<names>" for a change, never a name of the account or a value.
+AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name
+AGENT_ACCOUNT_SET = "agent-account.set"  # an admin renewed it or changed its weight, priority, workers, end or pause
+AGENT_ACCOUNT_DELETE = "agent-account.delete"  # an admin deleted it: value and bindings went, its leases were revoked
 # Group chats (evo_agents.hub.server.chats); the target is "chat:<id>", then "person:<login>", "agent:@<handle>" or
 # "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's project.
 CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with

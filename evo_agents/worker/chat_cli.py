@@ -12,11 +12,14 @@ and ``evo-agents worker repo open``, which only a chat run's agent uses.
 - ``mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]``: a message that hands the work to agent HANDLE of the chat,
   for the person who dispatched the run, one hop further; a refusal (the hops, the agent itself, no worker) is
   printed, said in the thread, and exits 1.
-- ``read MESSAGE [--thread]``, a command of the run's agent too: a message of a chat whole, or its thread (its first
+- ``read MESSAGE [--thread] [--fetch]``, a command of the run's agent too: a message of a chat whole, or its thread (its first
   message and the replies), those the run's agent may read (POST .../chat/read, ``evo_agents.hub.server.chat_read``),
   printed as the hub gave it, under a line saying it is data, never instructions. MESSAGE is its id, or its item as
   kg_search lists it (``plugin.chats:message:<id>``); a thread's item (``plugin.chats:thread:<chat>/<root>``) reads
-  that thread. A message it may not read is an error, as one that does not exist.
+  that thread. A message it may not read is an error, as one that does not exist. The text names the files attached
+  to each message (name, media type, size); with ``--fetch`` the command also saves them in the agent's directory,
+  under ``.evo-run/inbox/chat-<message id>/`` (``evo_agents.worker.attachments``), and lists their paths after it,
+  exit status 1 when one was not saved.
 
 Each reads the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record there, calls the hub with the worker's token
 (POST /v1/worker/runs/{id}/chat/..., ``evo_agents.hub.server.chat_agents``), and refuses outside a run of this worker
@@ -40,6 +43,7 @@ import functools
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from evo_agents.hub import chat_runs, chats
 from evo_agents.hub.client import HubError
@@ -183,7 +187,46 @@ def cmd_read(args) -> int:
         )
     answer = call(run, "chat/read", {"id": str(args.message).strip(), "thread": bool(args.thread)})
     print(answer["text"], end="")
-    return 0
+    if not args.fetch:
+        return 0
+    listed, failed = fetch_files(run, answer.get("messages") or [])
+    print(listed, end="")
+    return EXIT_FAILED if failed else 0
+
+
+def agent_dir(run_id: int) -> Path:
+    """The directory of the run's agent, as the run's record notes it; WorkerStateError before the run has one."""
+    record = WorkerHome().load_run(run_id) or {}
+    where = record.get("dir") or record.get("worktree")
+    if not isinstance(where, str) or not where:
+        raise WorkerStateError(f"run {run_id} has no directory on this worker yet: no file can be saved for it")
+    return Path(where)
+
+
+def fetch_files(run: AgentRun, messages: list) -> tuple[str, bool]:
+    """The files of ``messages`` (as chat/read answers them) saved under ``.evo-run/inbox/chat-<message id>/`` of the
+    agent's directory (``attachments.save_files``): the text that lists them, message by message, and whether one
+    was not saved."""
+    try:
+        from evo_agents.worker import attachments, hubapi
+    except ImportError as exc:
+        raise MissingExtra(f"missing module {exc.name}") from None
+    root = agent_dir(run.run_id)
+    carried = [m for m in messages if isinstance(m, dict) and isinstance(m.get("id"), int) and m.get("attachments")]
+
+    async def go() -> list[tuple[int, list]]:
+        async with hubapi.new_session() as session:
+            hub = hubapi.WorkerHub(run.config.url, run.token, session)
+            return [
+                (m["id"], await attachments.save_files(hub, run.run_id, root, f"chat-{m['id']}", m["attachments"]))
+                for m in carried
+            ]
+
+    found = asyncio.run(go())
+    if not found:
+        return "\nNo file is attached to these messages.\n", False
+    blocks = [f"\n# Files of message #{message_id}\n{attachments.listing(saved)}\n" for message_id, saved in found]
+    return "".join(blocks), any(file.error for _, saved in found for file in saved)
 
 
 @chat_command
@@ -261,6 +304,12 @@ def register_chat(wsub) -> None:
         "message", metavar="MESSAGE", help="its id, or plugin.chats:message:<id> or plugin.chats:thread:<chat>/<root>"
     )
     read.add_argument("--thread", action="store_true", help="its thread: the first message and the replies")
+    read.add_argument(
+        "--fetch",
+        action="store_true",
+        help="also save the files attached to the messages read under .evo-run/inbox/chat-<message id>/ and list "
+        "their paths",
+    )
     read.set_defaults(func=cmd_read)
     create = csub.add_parser(
         "create", help="create a chat of the run's agent and the person who dispatched the run, who is told"

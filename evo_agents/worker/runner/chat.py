@@ -50,13 +50,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import chat_runs, runs
-from evo_agents.worker import gitops
+from evo_agents.worker import attachments, gitops
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
 from evo_agents.worker.runner import access, clones, transitions, verify
 from evo_agents.worker.runner.branch_work import CHAT, BranchWork
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, Parked, RunFailed, Stopped, cut, wait_or
 from evo_agents.worker.runner.conversation import Conversation, post_last_message
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.inbox import receive
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 
 if TYPE_CHECKING:
@@ -126,7 +127,7 @@ class ChatRun:
         run.note(f"The run's worktrees are ready: starting {run.runtime}.", setup="starting")
         self.opens = True
         try:
-            prompt, session_id = await self.conversation.first_turn(self.prompt())
+            prompt, session_id = await self.conversation.first_turn(await self.prompt())
             await self.conversation.turns(cls, prompt, session_id)
         finally:
             self.opens = False  # no repo opens once the turns are over
@@ -163,12 +164,20 @@ class ChatRun:
             return unread
         return await self.conversation.wait_for_owner(asked, lambda found: transitions.author_wakes(found, asked))
 
-    def prompt(self) -> str:
+    async def prompt(self) -> str:
         """The run's prompt, with where each repo's worktree is when a folder is not named as its repo, and the repos
-        this worker has no checkout of."""
-        prompt = self.run.spec.get("prompt") or ""
+        this worker has no checkout of; then the block that lists the files of the message that opened the run, saved
+        under ``.evo-run/inbox/chat-<message id>/`` before the first turn (``inbox.receive``), which no clip cuts."""
+        run = self.run
+        prompt = run.spec.get("prompt") or ""
         extra = self.work.where()
-        return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
+        prompt = runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
+        files = [entry for entry in run.spec.get("attachments") or [] if isinstance(entry, dict)]
+        if not files:
+            return prompt
+        message_id = run.spec.get("chat_message_id")
+        folder = f"chat-{message_id}" if isinstance(message_id, int) else f"run-{run.id}"
+        return attachments.with_files(prompt, await receive(run, folder, files))
 
     # The repos its agent opens
 

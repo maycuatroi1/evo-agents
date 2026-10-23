@@ -3,7 +3,8 @@ import type { Page } from "@playwright/test";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { claimRun, dispatch, leaseCredentials, liveWorker, seedRunPlan, startRun } from "./support/runs";
-import { putSecretByApi, recordResponses, type RunLease, runCredentialsOf, secretsOf, secretValue } from "./support/secrets";
+import { putSecretByApi, recordResponses, type RunLease, runCredentialsOf, type SecretWrite, secretsOf, secretValue } from "./support/secrets";
+import { otherMember, shareByApi } from "./support/sharing";
 import { toast } from "./support/toast";
 import { registerWorker } from "./support/workers";
 
@@ -231,4 +232,62 @@ test("Delete asks first, then the secret is gone and the leases of it still out 
   expect(leases[0]).toMatchObject({ name: "claude-oauth", provider: "secret", kind: "env", target: "CLAUDE_CODE_OAUTH_TOKEN" });
   expect(leases[0].revoked_at).not.toBeNull();
   expect(JSON.stringify(leases)).not.toContain(value);
+});
+
+/** A GitLab token the hub merges with in `project`, which no run gets and no share may name. */
+const forgeToken = (project: string): SecretWrite => ({
+  kind: "forge",
+  url_prefix: "https://gitlab.example.org/fake-group",
+  projects: [project],
+  expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+  value: secretValue("forge"),
+});
+
+test("a member whose only secret is a GitLab token for the hub has nothing to share, and Share says why", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  await putSecretByApi(me, "gitlab-hub", forgeToken(me.projects[0]));
+  await page.goto("/secrets");
+  const shares = main(page).getByTestId("secret-shares");
+  await expect(shares.getByTestId("share-open")).toBeDisabled();
+  await expect(shares.getByTestId("share-none")).toHaveText(
+    "Only a credential bound to a project can be shared, and never a GitLab token for the hub.",
+  );
+  await expect(shares.getByTestId("shares-empty")).toBeVisible();
+});
+
+test("the Secrets page lists the shares of its secrets, those made from Accounts too, and Revoke ends one there", async ({ page, member }) => {
+  const me = await member([
+    { role: "writer", maxLevel: "internal" },
+    { role: "admin", maxLevel: "internal" },
+  ]);
+  const project = me.projects[0];
+  const minh = await otherMember("minh-le");
+  await putSecretByApi(me, "claude-main", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("oauth") });
+  await putSecretByApi(me, "gitlab-hub", forgeToken(me.projects[1]));
+  await shareByApi(me, "claude-main", { grantee_kind: "all", projects: [project], max_running: 1, terms_ack: true });
+  await shareByApi(me, "claude-main", { grantee_kind: "user", login: minh.login, projects: [project], terms_ack: true });
+
+  await page.goto("/secrets");
+  const shares = main(page).getByTestId("secret-shares");
+  const rows = shares.getByTestId("share-row");
+  await expect(rows).toHaveCount(2);
+  const everyone = rows.filter({ has: page.locator('[data-testid="share-grantee"][data-kind="all"]') });
+  await expect(everyone.getByTestId("share-grantee")).toHaveText("every member");
+  await expect(everyone.getByTestId("share-limits")).toHaveText("1 run at once");
+  const toMinh = rows.filter({ has: page.locator('[data-testid="share-grantee"][data-kind="user"]') });
+  await expect(toMinh.getByTestId("share-limits")).toHaveText("no limit");
+
+  // A GitLab token for the hub is never offered.
+  await shares.getByTestId("share-open").click();
+  const dialog = page.getByTestId("share-dialog");
+  await expect(dialog.getByTestId("share-secret").locator("option")).toHaveText(["claude-main"]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  await toMinh.getByTestId("share-revoke").click();
+  await page.getByTestId("share-revoke-dialog-confirm").click();
+  await expect(toast(page, "Share of claude-main revoked")).toBeVisible();
+  await expect(rows).toHaveCount(1);
+  const [stored] = (await secretsOf(me)).filter((item) => item.name === "claude-main");
+  expect(stored.shares.filter((share) => share.revoked_at === null).map((share) => share.grantee_kind)).toEqual(["all"]);
 });

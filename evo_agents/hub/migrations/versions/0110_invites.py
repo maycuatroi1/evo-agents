@@ -1,7 +1,7 @@
 """The invite links of the hub: invites.
 
-Revision ID: 0104
-Revises: 0103
+Revision ID: 0110
+Revises: 0109
 Create Date: 2026-10-22
 
 Plan autonomous-oss-growth, criterion a1 (``evo_agents.hub.server.invites`` describes the design). A hub admin makes a
@@ -21,8 +21,8 @@ the grants and projects they gave stay.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0104"
-down_revision = "0103"
+revision = "0110"
+down_revision = "0109"
 branch_labels = None
 depends_on = None
 

@@ -5,7 +5,7 @@ bound to another login gives nothing; a register link's right makes its holder t
 register; the token is shown once and stored nowhere; each of create, accept and revoke writes one audit row without
 it; the public preview of a link's page names who made it and, only to someone it is for, what it gives, never the
 login it is bound to; a holder sees nothing of another project; the web's sign-in comes back to a relative path of the hub alone;
-migration 0104 goes up and down; ``evo-agents hub admin invite create|list|revoke`` drives it all; and (criterion a2)
+migration 0110 goes up and down; ``evo-agents hub admin invite create|list|revoke`` drives it all; and (criterion a2)
 the holder of a register link who runs ``evo-agents harness init`` and then ``evo-agents hub project register`` in a
 directory of repos becomes the admin of that one project.
 
@@ -614,8 +614,8 @@ def test_the_web_sign_in_of_an_invite_comes_back_to_its_page_and_nowhere_else(cl
 
 @needs_pg
 @pytest.mark.empty_db
-def test_migration_0104_adds_the_invite_links_and_takes_them_back(hub_db):
-    move_to(hub_db, "0104")
+def test_migration_0110_adds_the_invite_links_and_takes_them_back(hub_db):
+    move_to(hub_db, "0110")
     assert "invites" in public_tables(hub_db)
     users, invites = tables.users, tables.invites
     (user_id,) = sql(hub_db, users.insert().values(login="octo").returning(users.c.id))[0]
@@ -632,9 +632,9 @@ def test_migration_0104_adds_the_invite_links_and_takes_them_back(hub_db):
     ):
         with pytest.raises((psycopg.errors.CheckViolation, psycopg.errors.UniqueViolation), match=check):
             sql(hub_db, invites.insert().values(bad))
-    move_to(hub_db, "0103", down=True)
+    move_to(hub_db, "0109", down=True)
     assert "invites" not in public_tables(hub_db)
-    assert migrate(hub_db.dsn).applied == tuple(ALL[ALL.index("0104") :])
+    assert migrate(hub_db.dsn).applied == tuple(ALL[ALL.index("0110") :])
     assert "invites" in public_tables(hub_db)
 
 
