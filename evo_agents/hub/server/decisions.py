@@ -721,14 +721,15 @@ async def answer_decision(
     access = await readable_decision(conn, user, project, decision_id, None)
     d, r, u = tables.decisions, tables.runs, tables.users
     query = (
-        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login)
+        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by)
         .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == asked_person()))
         .where(d.c.id == decision_id, d.c.project_id == access.project_id)
     )
     found = (await conn.execute(query)).one()
     plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.id, found.login
     if owner_id != user.user_id and user.user_id not in await principals.escalated_to(conn, decision_id):
-        raise HTTPException(403, f"only {owner}, whom it is asked of, may answer decision {decision_id}")
+        who = "who dispatched its run" if owner_id == found.dispatched_by else "whom it is asked of"
+        raise HTTPException(403, f"only {owner}, {who}, may answer decision {decision_id}")
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
