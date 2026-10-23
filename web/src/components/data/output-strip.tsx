@@ -4,20 +4,22 @@ import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 
-import type { RunOutput } from "@/lib/outputs";
+import type { ViewedFile } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { OutputChip } from "./output-tile";
 import type { OutputViewerProps } from "./output-viewer";
 
 /** The viewer, loaded the first time a file is opened: a page that only lists files carries none of it. */
-const LazyViewer = dynamic(() => import("./output-viewer").then((module) => module.OutputViewer), { ssr: false });
+const LazyViewer = dynamic(() => import("./output-viewer").then((module) => module.OutputViewer), { ssr: false }) as <F extends ViewedFile>(
+  props: OutputViewerProps<F>,
+) => ReactNode;
 
 /**
  * Which output the viewer shows (null: closed), and the viewer itself once one was opened, kept mounted afterwards so
  * it closes as a dialog does and gives focus back to the button that opened it.
  */
-export function useOutputViewer(outputs: readonly RunOutput[], actions?: OutputViewerProps["actions"]) {
+export function useOutputViewer<F extends ViewedFile>(outputs: readonly F[], actions?: OutputViewerProps<F>["actions"]) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   if (openId !== null && !loaded) setLoaded(true);
@@ -41,24 +43,24 @@ const SHOWN = 8;
  * thumbnail, any other file as its icon, name and size) that open the viewer over all of them. `onOpen` lets a page
  * hold one viewer for its strips (the run page); without it the strip holds its own.
  */
-export function OutputStrip({
+export function OutputStrip<F extends ViewedFile>({
   outputs,
   label,
   onOpen,
   className,
   testId = "output-strip",
 }: {
-  outputs: readonly RunOutput[];
+  outputs: readonly F[];
   /** The list's accessible name: "Files of this question". */
   label: string;
-  onOpen?: (output: RunOutput, list: readonly RunOutput[]) => void;
+  onOpen?: (output: F, list: readonly F[]) => void;
   className?: string;
   testId?: string;
 }): ReactNode {
   const t = useTranslations("outputs");
   const own = useOutputViewer(outputs);
   if (outputs.length === 0) return null;
-  const open = (output: RunOutput) => (onOpen ? onOpen(output, outputs) : own.open(output.id));
+  const open = (output: F) => (onOpen ? onOpen(output, outputs) : own.open(output.id));
   const shown = outputs.slice(0, SHOWN);
   const rest = outputs.length - shown.length;
   return (

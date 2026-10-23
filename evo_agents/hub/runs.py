@@ -72,6 +72,10 @@ import re
 from collections.abc import Collection
 from datetime import datetime, timedelta
 
+from evo_agents.hub.autonomy_card import DECISION_CATEGORIES as DECISION_CATEGORIES
+from evo_agents.hub.autonomy_card import DECISION_CATEGORY_TEXT as DECISION_CATEGORY_TEXT
+from evo_agents.hub.autonomy_card import PROMPTED_DECISION_CATEGORIES as PROMPTED_DECISION_CATEGORIES
+from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, with_card
 from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.record_rule import record_rule
@@ -189,11 +193,21 @@ MERGE_JUDGE = "merge_judge"
 # a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
 # the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
 CLONES_CHECKOUTS = "clones_checkouts"
+# a daemon whose claude-code runs apply the run's autonomy snapshot in their PreToolUse hook (plan autonomy-levels): the
+# hub hands a run with a class below auto (evo_agents.hub.autonomy_levels.restricted) to no other, on claude-code only
+AUTONOMY = "autonomy"
+AUTONOMY_RUNTIME = "claude-code"
 AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
 # a daemon that installed Chromium (`evo-agents worker browser install`) and starts it for a run dispatched with
 # browser (evo_agents.worker.browser); its heartbeat's browser says how many at once, and only it gets such a run
 BROWSER = "browser"
 MAX_BROWSERS = 64  # the most browser runs a worker may say it holds at once
+# a daemon that runs `evo-agents worker doctor` when it starts and every 24 hours and sends what it found (POST
+# /v1/worker/doctor; evo_agents.worker.doctor_report): only a worker whose newest report is fresh and has no high
+# finding may be narrowed to units of the org chart (evo_agents.hub.server.worker_doctor)
+DOCTOR_REPORT = "doctor_report"
+DOCTOR_EVERY_SECONDS = 24 * 3600  # how often the daemon sends a doctor report, besides when it starts
+DOCTOR_FRESH_SECONDS = 48 * 3600  # a worker is narrowed to a unit only with a report this recent
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -208,8 +222,10 @@ WORKER_FEATURES = (
     UPDATE_NOW,
     MERGE_JUDGE,
     CLONES_CHECKOUTS,
+    AUTONOMY,
     AGENT_HOME,
     BROWSER,
+    DOCTOR_REPORT,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -278,31 +294,8 @@ TRANSITIONS: dict[str, dict[str, frozenset[str]]] = {
     **{state: {} for state in TERMINAL_STATES},
 }
 
-# Decisions and notices of a plan run (docs/notifications.md). The agent asks its owner only a decision of one of
-# these categories, and decides everything else itself.
-DECISION_CATEGORIES = (
-    "deploy",
-    "delete_data",
-    "live_migration",
-    "external_send",
-    "spend_money",
-    "architecture",
-    "scope",
-)
-DECISION_CATEGORY_TEXT = {
-    "deploy": "deploying or releasing anything to any environment, a checkpoint step that deploys included",
-    "delete_data": "deleting data that is not this run's own scratch: database rows, files, buckets, other "
-    "people's branches",
-    "live_migration": "a migration, backfill or bulk change on real data rather than a test database",
-    "external_send": "sending anything to a service outside this machine and the repos' own remotes: mail, chat, "
-    "issues, third-party APIs",
-    "spend_money": "anything that costs money beyond this runtime's own usage: paid APIs, cloud resources, purchases",
-    "architecture": "an architectural choice the plan leaves open",
-    "scope": "a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers",
-}
-# What the prompt of a plan run tells its agent to ask: every category but deploy, since merging, deploying and releasing
-# are the agent's to do (main deploys on every push, deploy.yml). A worker of an older prompt may still ask a deploy.
-PROMPTED_DECISION_CATEGORIES = tuple(name for name in DECISION_CATEGORIES if name != "deploy")
+# Decisions and notices of a plan run (docs/notifications.md). The agent asks only a decision of one of these
+# categories, and decides everything else itself; each class of action that takes ask has its own (``autonomy_card``).
 LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that is none of DECISION_CATEGORIES
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
@@ -312,7 +305,10 @@ RELEASE_DECISION_CATEGORY = "release"
 # what the hub alone asks the person a work item of the Loop stands for after its third failure, on its last run
 # (``server.loop.stall``)
 LOOP_DECISION_CATEGORY = "loop"
-HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY)  # the hub does what the answer chooses
+# what a gate asks the principal of a run whose class is ask before it merges, deploys or releases (``autonomy_gates``)
+AUTONOMY_DECISION_CATEGORY = "autonomy"
+# the hub does what the answer chooses
+HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY, AUTONOMY_DECISION_CATEGORY)
 SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES, "login")
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
@@ -337,6 +333,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # loop_paused: the breaker of a project's Loop tripped on the work items it made in an hour (``server.loop.breaker``)
 # goal_review: the first day of a month, the admins and goal owners of a project whose Loop is on review its goals;
 # loop_brief: the Loop's part of the morning brief, for a project whose Curator sends none (``server.loop.notices``)
+# autonomy: a gate of the hub acted for a run whose class is notify, told to the run's principal
 # run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
 # sends to the run's owner (``server.output_notices``)
 OUTPUT_NOTICE = "run_outputs"
@@ -359,6 +356,8 @@ NOTICE_KINDS = (
     "goal_review",
     "loop_brief",
     "plugin_notice",  # what an isolated plugin granted notifications:send sends (``server.plugin_notify``)
+    AUTONOMY_DECISION_CATEGORY,
+    "worker_doctor",  # the doctor of a worker narrowed to units found something high (``server.worker_doctor``)
     "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser_logins``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
@@ -802,17 +801,7 @@ _PUSH_RULE = (
 )
 
 
-def _decision_lines(where: str) -> list[str]:
-    """The categories of decision the agent of a plan run may ask its owner, and where it writes the others."""
-    return [
-        "- Ask the run's owner only a decision of one of these categories:",
-        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in PROMPTED_DECISION_CATEGORIES),
-        f"  Decide everything else yourself, and write each such choice and why into the evidence of {where}, on a "
-        'line that starts with "Decision:".',
-    ]
-
-
-def _plan_rules() -> list[str]:
+def _plan_rules(autonomy) -> list[str]:
     fewest, most = DECISION_OPTIONS
     return [
         "Rules for this plan run:",
@@ -820,11 +809,9 @@ def _plan_rules() -> list[str]:
         "(EVO_RUN_KIND=plan). Without it, follow these rules yourself.",
         f"- {PLAN_FILE} holds the whole plan as this run was claimed. Before each step, read the plan as the hub "
         "holds it now with `evo-agents worker plan`: the hub keeps the plan's progress, not your memory of it.",
-        "- A step is ready when its status is pending and every step its depends_on names is done. Do ready steps "
-        "until every step is done. Checkpoint steps (a verification, a review, a merge, a deploy, a release) are "
-        "yours too, with no question to the owner.",
+        checkpoint_rule(autonomy),
         record_rule("KEY", "a step"),
-        *_decision_lines("its step"),
+        *decision_lines("its step", autonomy),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step KEY`, with {fewest} to {most} options. It prints "
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
@@ -918,18 +905,19 @@ def _step_list(plan: dict) -> list[str]:
     return lines + _packed(listed, STEP_LIST_BYTES, f"- and {{left}} more steps not done, which {PLAN_FILE} lists")
 
 
-def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None) -> str:
+def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None, autonomy=None) -> str:
     """The prompt of a plan run of ``plan`` over ``repos`` (the run's repos, each ``{"repo", "branch"}`` as the
     plan's ``repos`` names them), each checked out in the directory ``worktrees`` maps its name to (the repo's name,
     under the agent's directory, when it maps none): what the agent must and must not do, the repos, the plan's goal
     and its context, shortened, and a line for each step not done yet. The steps' what, verify and note stay in
-    PLAN_FILE, which the daemon writes, so the prompt stays within MAX_PROMPT_BYTES however long the plan is."""
+    PLAN_FILE, which the daemon writes, so the prompt stays within MAX_PROMPT_BYTES however long the plan is. The
+    autonomy card of the run (``autonomy``, ``autonomy_card.Card.spec``) opens it and says what the agent asks."""
     worktrees = worktrees or {}
     lines = [
         f"You are running the plan {_line(plan.get('id'), SHORT_BYTES, 'without an id')} from the evo-agents hub, as "
         "one plan run on a worker: do every step of it that is not done yet, in the order their depends_on allows.",
         "",
-        *_plan_rules(),
+        *_plan_rules(autonomy),
         "",
         "Repositories of this run, each in a worktree of its own under the current directory:",
         *_repo_lines(repos if isinstance(repos, list) else [], worktrees),
@@ -941,13 +929,13 @@ def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None) ->
         if _text(value):
             lines += ["", heading, clip(_text(value), budget)]
     lines += ["", *_step_list(plan)]
-    return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
+    return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)
 
 
 # The prompt of a step's session in a plan run with a session per step
 
 
-def _step_session_rules(key: str) -> list[str]:
+def _step_session_rules(key: str, autonomy) -> list[str]:
     fewest, most = DECISION_OPTIONS
     return [
         "Rules for this session:",
@@ -958,7 +946,7 @@ def _step_session_rules(key: str) -> list[str]:
         "hub holds it now. The handoff at the end of this prompt says what the sessions and runs before this one did; "
         "read the plan for what it left out.",
         record_rule(key, "the step"),
-        *_decision_lines("the step"),
+        *decision_lines("the step", autonomy),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step {key}`, with {fewest} to {most} options. It "
         "prints the decision's id. Go on with the work of the step that does not depend on the answer; when none is "
@@ -976,7 +964,7 @@ def _step_session_rules(key: str) -> list[str]:
 
 
 def build_step_session_prompt(
-    plan: dict, step: dict, repos: list, worktrees: dict | None = None, handoff: str | None = None
+    plan: dict, step: dict, repos: list, worktrees: dict | None = None, handoff: str | None = None, autonomy=None
 ) -> str:
     """The prompt of the session a plan run with a session per step gives ``step``, one of the steps of ``plan``,
     over ``repos`` checked out in ``worktrees`` (as ``build_plan_prompt`` takes them): what the agent must and must not
@@ -991,7 +979,7 @@ def build_step_session_prompt(
         "evo-agents hub, in an agent session of its own: this plan run gives each step not done yet a new session, "
         "with the handoff of the plan instead of the sessions before it.",
         "",
-        *_step_session_rules(key),
+        *_step_session_rules(key, autonomy),
         "",
         "Repositories of this run, each in a worktree of its own under the current directory:",
         *_repo_lines(repos if isinstance(repos, list) else [], worktrees or {}),
@@ -1001,7 +989,7 @@ def build_step_session_prompt(
     lines += _step_lines(step, key)
     if handoff and handoff.strip():
         lines += ["", handoff.strip()]
-    return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
+    return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)
 
 
 def handoff_room(prompt: str) -> int:

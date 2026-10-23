@@ -169,6 +169,26 @@ without a verdict is queued again, three times in all, then the merge request is
 not a commit: the lines each file adds and removes, without line numbers or context. A rebase that keeps the patch keeps
 the verdict, and the Judge does not run again.
 
+### The principal's K5 and K6
+
+Above the policy, the hub reads the autonomy of the person the run that made the merge request acts for, its principal
+(`docs/autonomy.md`, `evo_agents/hub/server/autonomy_gates.py`), as the stricter of the run's snapshot and the value
+now. A merge request no run made, a run without a snapshot, and a principal at A5 pass as before.
+
+- **K5 at the last gate** (`merge_gate.ready`). Auto lets the merge request into the queue; notify lets it in and,
+  once merged, sends the principal the notice `autonomy`; ask keeps it `judging` with the reason "waits" while a
+  decision of category `autonomy` is open to the principal (to the person they report to when they are an intern), and
+  lets it in once they approve; deny, or a refused decision, blocks it with the class, the mode and the source in its
+  reason. A K5 at `notify:ask_on_risk_paths` (A2) asks when the merge request touches a risk path.
+- **K6 at the PROD deploy** (`post_merge`). Before the job `prod_deploy` runs, K6 of the principal of every run whose
+  merge the deploy carries is read: ask waits on the decision, deny or a refusal leaves PROD where it is with the
+  reason on the target's row, notify deploys and tells the principal.
+
+A repo in mode `off` caps K5 at ask and `prod_release: manual` caps K6 at ask (source `policy:<project>/<repo>`); that
+ask is the policy's own, which the queue and the approval of a manual release already hold, so the gate adds no
+decision for it. A merge request a run opened names its principal and agent in its description (`Evo-Principal`,
+`Evo-Agent`). Every verdict writes `autonomy.decided` to the audit (the floor S1).
+
 ## The queue
 
 A merge request whose gates passed is `ready`. Each target branch of a repo has one queue, and one merge request of it

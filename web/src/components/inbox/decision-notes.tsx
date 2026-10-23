@@ -32,7 +32,7 @@ export function NoFormNote({ decision, access }: { decision: Decision; access: "
       <Lock className="mt-px size-4 shrink-0" aria-hidden="true" />
       <span>
         {access === "notOwner"
-          ? t("onlyOwner", { owner: decision.owner, run: decision.run_id })
+          ? t("onlyOwner", { owner: decision.asked_of, run: decision.run_id })
           : t("runGone", { run: decision.run_id, state: tState(decision.run_state) })}
       </span>
     </p>

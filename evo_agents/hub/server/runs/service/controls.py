@@ -86,7 +86,7 @@ def _web_only_worker(run_id: int):
         r.c.state == "queued",
         r.c.pinned_worker_id.is_(None),
         r.c.dispatched_via == "web",
-        or_(w.c.owner_id == r.c.dispatched_by, shared_in(r.c.project_id)),
+        or_(w.c.owner_id == r.c.dispatched_by, shared_in(r.c.project_id, r.c.dispatched_by)),
     )
     relation = case(
         (and_(held, r.c.state == "parked"), "was parked on"),

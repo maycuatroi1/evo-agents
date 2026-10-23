@@ -22,11 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs, chats, tables
 from evo_agents.hub.db import one_of
+from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.agent_profiles import icon_url
 from evo_agents.hub.server.chat_access import ChatAccess, LabelReader
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.output_views import by_message as outputs_by_message
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
+from evo_agents.hub.server.runs.models.attachment_parts import LinkedAttachment, linked
 
 HUB_NAME = "hub"
 
@@ -131,6 +133,10 @@ class GroupMessage(BaseModel):
     outputs: list[RunOutput] = Field(
         default_factory=list,
         description="the files of its run it carries, oldest first, each with the chat's URL of its bytes",
+    )
+    attachments: list[LinkedAttachment] = Field(
+        default_factory=list,
+        description="the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes",
     )
 
 
@@ -437,6 +443,7 @@ async def messages_view(
     reactions = await _reactions(conn, ids, reader.user_id)
     replies = await _reply_counts(conn, ids)
     files = await _outputs(conn, shown)
+    attached = await attachment_store.of_messages(conn, ids)
     return [
         GroupMessage(
             id=row.id,
@@ -453,6 +460,7 @@ async def messages_view(
             created_at=row.created_at,
             progress=(progress or {}).get(row.id, []),
             outputs=files.get(row.id, []),
+            attachments=linked(attached.get(row.id, []), f"/v1/chats/{row.chat_id}"),
         )
         for row in shown
     ]

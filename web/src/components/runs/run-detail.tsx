@@ -59,10 +59,7 @@ const RunOutputsPanel = dynamic(() => import("./run-outputs").then((module) => m
  * colour (the kit draws them bare; axe's link-in-text-block asks for more than a colour). */
 const SUB_LINK = "rounded-xs text-brand underline decoration-brand/40 underline-offset-4 hover:decoration-current";
 
-/**
- * The Terminal tab, for the run's owner on a worker of theirs that allows the web terminal; null for anyone else. The
- * worker is read only for the run's owner (the API answers its owner and hub admins).
- */
+/** The Terminal tab, for the run's owner on a worker of theirs that allows the web terminal; null for anyone else. */
 function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
   const ownsRun = viewer !== null && viewer.login === run.dispatched_by;
   const { data: worker } = useQuery({
@@ -143,6 +140,7 @@ function RunPage({ run }: { run: Run }) {
   const traceContext = useMemo<TraceContext>(
     () => ({
       runId: run.id,
+      project: run.project,
       owner: run.dispatched_by,
       viewer: viewer?.login ?? null,
       describe,
@@ -152,7 +150,7 @@ function RunPage({ run }: { run: Run }) {
       webOfBranch,
       showDecision: authoring ? showDecision : undefined,
     }),
-    [run.id, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision],
+    [run.id, run.project, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision],
   );
 
   // From xl the side column is a scroll region of its own, which a key must reach; below, the page scrolls it.

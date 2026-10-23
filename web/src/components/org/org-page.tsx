@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { FolderPlus, Building2, UserPlus } from "lucide-react";
+import { FolderPlus, Building2, OctagonX, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
@@ -22,14 +22,16 @@ import { CeilingDialog, type CeilingTarget } from "./ceiling-dialog";
 import { type OrgAction, type OrgView, OrgViewContext } from "./context";
 import { useOrgFailure, useOrgWrite, useToday } from "./hooks";
 import { buildTree, knownLogins, rightsOf, rootOf, runsByLogin, unplaced } from "./model";
-import { type OrgChart, type OrgUser, orgQuery, orgRunsQuery, orgUsersQuery } from "./queries";
+import { type OrgChart, type OrgUser, orgAutonomyQuery, orgQuery, orgRunsQuery, orgUsersQuery, type StopSet } from "./queries";
 import { SeatDialog, type SeatTarget } from "./seat-dialog";
+import { StopDialog, StopFlag } from "./stop-parts";
+import { ALL, heldStop, stopRightOf } from "./stops";
 import { UnitDialog, type UnitTarget } from "./unit-dialog";
 import { UnitBranch } from "./unit-tree";
 
-type Dialogs = { unit: UnitTarget | null; seat: SeatTarget | null; ceiling: CeilingTarget | null; confirm: OrgAction | null };
-type Open = { unit: boolean; seat: boolean; ceiling: boolean; confirm: boolean };
-const CLOSED: Open = { unit: false, seat: false, ceiling: false, confirm: false };
+type Dialogs = { unit: UnitTarget | null; seat: SeatTarget | null; ceiling: CeilingTarget | null; confirm: OrgAction | null; stop: StopSet | null };
+type Open = { unit: boolean; seat: boolean; ceiling: boolean; confirm: boolean; stop: boolean };
+const CLOSED: Open = { unit: false, seat: false, ceiling: false, confirm: false, stop: false };
 
 /** Ends a seat or archives a unit, after asking; the failure stays in the confirmation. */
 function Confirm({ action, open, onOpenChange }: { action: OrgAction | null; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -107,9 +109,15 @@ function OrgChartView({ chart, all, act }: { chart: OrgChart; all: boolean; act:
   const today = useToday();
   const runs = useQuery(orgRunsQuery(browserApi));
   const users = useQuery({ ...orgUsersQuery(browserApi), enabled: chart.viewer.admin });
+  const autonomy = useQuery(orgAutonomyQuery(browserApi));
   const rights = useMemo(() => rightsOf(chart.viewer, chart.units), [chart]);
+  const mayStop = useMemo(() => stopRightOf(chart, today ?? "0000-00-00"), [chart, today]);
   const tree = useMemo(() => buildTree(chart, today ?? "0000-00-00", all), [chart, today, all]);
-  const view: OrgView = useMemo(() => ({ units: chart.units, rights, runs: runsByLogin(runs.data), today, act }), [chart.units, rights, runs.data, today, act]);
+  const view: OrgView = useMemo(
+    () => ({ units: chart.units, rights, runs: runsByLogin(runs.data), today, act, autonomy: autonomy.data, mayStop }),
+    [chart.units, rights, runs.data, today, act, autonomy.data, mayStop],
+  );
+  const stopAll = heldStop(autonomy.data, ALL);
   const people = users.data && today ? unplaced(users.data, chart, today) : null;
   const root = rootOf(chart.units);
   const placeIn = chart.units.find((unit) => unit.parent !== null && !unit.archived_at)?.slug ?? root?.slug ?? "";
@@ -129,6 +137,12 @@ function OrgChartView({ chart, all, act }: { chart: OrgChart; all: boolean; act:
   return (
     <OrgViewContext.Provider value={view}>
       <div className="flex min-w-0 flex-col gap-6">
+        {stopAll ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm" role="status" data-testid="org-stop-all-held">
+            <span className="min-w-0 flex-1 font-medium">{t("stops.allHeld")}</span>
+            <StopFlag stop={stopAll} testId="org-all-stopped" />
+          </div>
+        ) : null}
         <section aria-labelledby="org-tree-title" className="min-w-0">
           <h2 id="org-tree-title" className="sr-only">
             {t("treeTitle")}
@@ -153,12 +167,13 @@ export function OrgPage({ initialError }: { initialError: ApiErrorInfo | null })
   const state = useHubQuery(orgQuery(browserApi), initialError);
   const chart = state.status === "success" ? state.data : null;
   const [all, setAll] = useState(false);
-  const [dialogs, setDialogs] = useState<Dialogs>({ unit: null, seat: null, ceiling: null, confirm: null });
+  const [dialogs, setDialogs] = useState<Dialogs>({ unit: null, seat: null, ceiling: null, confirm: null, stop: null });
   const [open, setOpen] = useState<Open>(CLOSED);
   const [opened, setOpened] = useState(0);
   const rights = useMemo(() => (chart ? rightsOf(chart.viewer, chart.units) : null), [chart]);
   const root = chart ? rootOf(chart.units) : undefined;
   const users = useQuery({ ...orgUsersQuery(browserApi), enabled: chart?.viewer.admin === true });
+  const stops = useQuery({ ...orgAutonomyQuery(browserApi), enabled: chart?.viewer.admin === true });
   const logins = useMemo(() => (chart ? knownLogins(chart, users.data) : []), [chart, users.data]);
 
   const act = useMemo(
@@ -174,6 +189,7 @@ export function OrgPage({ initialError }: { initialError: ApiErrorInfo | null })
       else if (action.kind === "seatCeiling") show("ceiling", { seat: action.seat });
       else if (action.kind === "addSeat") show("seat", { unit: action.unit, login: action.login });
       else if (action.kind === "editSeat") show("seat", { unit: action.seat.unit, seat: action.seat });
+      else if (action.kind === "stop") show("stop", action.target);
       else show("confirm", action);
     },
     [],
@@ -194,6 +210,12 @@ export function OrgPage({ initialError }: { initialError: ApiErrorInfo | null })
                 {t("showAll")}
               </Label>
             </div>
+            {chart?.viewer.admin && stops.data && !heldStop(stops.data, ALL) ? (
+              <Button variant="outline" onClick={() => act({ kind: "stop", target: ALL })} data-testid="org-stop-all">
+                <OctagonX aria-hidden="true" />
+                {t("stops.stopAll")}
+              </Button>
+            ) : null}
             {root && rights?.createUnder(root) ? (
               <Button onClick={() => act({ kind: "createUnit", parent: root })} data-testid="org-new-unit">
                 <FolderPlus aria-hidden="true" />
@@ -213,6 +235,7 @@ export function OrgPage({ initialError }: { initialError: ApiErrorInfo | null })
           <SeatDialog key={opened} target={dialogs.seat} open={open.seat} onOpenChange={toggle("seat")} units={chart.units} rights={rights} logins={logins} />
           <CeilingDialog key={opened} target={dialogs.ceiling} open={open.ceiling} onOpenChange={toggle("ceiling")} rights={rights} />
           <Confirm key={opened} action={dialogs.confirm} open={open.confirm} onOpenChange={toggle("confirm")} />
+          <StopDialog key={`stop-${opened}`} target={dialogs.stop} units={chart.units} open={open.stop} onOpenChange={toggle("stop")} />
         </>
       ) : null}
     </>

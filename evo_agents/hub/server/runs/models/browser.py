@@ -74,6 +74,13 @@ IDENTITIES_HELP = (
     "starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies "
     "browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one"
 )
+
+
+def identities_field():
+    """The field ``identities`` of a dispatch: the names of the browser identities the run opens with."""
+    return Field([], max_length=MAX_RUN_IDENTITIES, description=IDENTITIES_HELP)
+
+
 RUN_IDENTITIES_HELP = "the ids of the browser identities the run's Chromium opened with, in the order dispatched"
 SPEC_IDENTITIES_HELP = (
     "the ids of the browser identities to open the run's Chromium with (POST /v1/worker/runs/{id}/browser-profile "

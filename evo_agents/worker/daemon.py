@@ -54,6 +54,9 @@
   (``kg_sync``), one project at a time in a thread, under the lock of each checkout it fetches; each heartbeat says what
   the last look at each project found (``kg_sync``). EVO_WORKER_KG_SYNC=off turns it off: the daemon then neither says
   the feature nor sends the report.
+- When it starts and every 24 hours it runs the checks of ``worker doctor`` in a thread and sends the findings, each
+  detail redacted, to the hub (``doctor_report``, feature doctor_report): a worker narrowed to units of the org chart
+  needs a fresh report with no high finding.
 - After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``Run.watch``,
   ``runner.watchdog``): a file of the charter's protected paths changed in its worktrees, or its time or cost cap
   passed, stops it.
@@ -86,7 +89,7 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans, verify_jobs
+from evo_agents.worker import checkouts, doctor_report, gitops, interactive, kg_sync, orphans, verify_jobs
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.browser import install as browser_install
 from evo_agents.worker.browser import session as browser_session
@@ -288,9 +291,7 @@ class Daemon:
         self.hub = WorkerHub(self.config.url, self.token, session)
         background: list[asyncio.Task] = []
         try:
-            self.orphans = self._find_orphans()
-            self._close_abandoned_runs()
-            await browser_session.sweep(self.home)  # the browsers a daemon before this one left, before any claim
+            await self._clear_leftovers()
             await self._look_at_machine(force=True)
             self._log_start()
             self.updater.publish(held=0, orphans=len(self.orphans), worker=self._who())
@@ -299,7 +300,10 @@ class Daemon:
             claims = asyncio.create_task(self._claim_loop())
             cleanup = asyncio.create_task(self._cleanup_loop())
             updates = asyncio.create_task(self._self_update_loop())
-            background = [leftovers, heartbeat, cleanup, updates]
+            doctoring = doctor_report.report_loop(
+                self.hub, self.stopping, lambda: doctor_report.examine_here(self.env), secrets=(self.token,)
+            )
+            background = [leftovers, heartbeat, cleanup, updates, asyncio.create_task(doctoring)]
             if self.kg_on:
                 background.append(asyncio.create_task(self._kg_sync_loop()))
             await self.stopping.wait()
@@ -470,7 +474,7 @@ class Daemon:
         if report and report["projects"]:
             body["kg_sync"] = report  # what the last looks found (0053)
         if self.browser_report is not None:
-            body["browser"] = self.browser_report  # its Chromium, and how many browsers it holds at once (0106)
+            body["browser"] = self.browser_report  # its Chromium, and how many browsers it holds at once (0119)
         return body
 
     def _says(self, feature: str) -> bool:
@@ -788,6 +792,13 @@ class Daemon:
         task.add_done_callback(ended)
 
     # What earlier daemons left
+
+    async def _clear_leftovers(self) -> None:
+        """What a daemon before this one left, before any claim: the agents it started, the runs it held, and the
+        browsers of the runs here."""
+        self.orphans = self._find_orphans()
+        self._close_abandoned_runs()
+        await browser_session.sweep(self.home)
 
     def _find_orphans(self) -> dict[int, dict]:
         """The runs a previous daemon left with an agent started (agent.json), and their records; before

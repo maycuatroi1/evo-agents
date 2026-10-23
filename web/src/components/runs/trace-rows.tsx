@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { OutputStrip } from "@/components/data/output-strip";
+import { eventFiles, runFiles } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 
 import type { RepoWeb } from "./forge";
@@ -24,6 +25,8 @@ import { useTraceOutputs } from "./use-run-outputs";
 
 export type TraceContext = {
   runId: number;
+  /** The run's project: where the files a person's message carries are read. */
+  project?: string;
   /** The login of the run's owner, whom the agent asks. */
   owner: string;
   /** The visitor's login, to say "You". */
@@ -131,7 +134,9 @@ export function AskRow({ item, context }: { item: Extract<TraceItem, { type: "as
 
 export function UserRow({ item, context }: { item: Extract<TraceItem, { type: "user" }>; context: TraceContext }) {
   const t = useTranslations("runs.detail.trace");
+  const tFiles = useTranslations("attachments");
   const you = item.from !== null && item.from === context.viewer;
+  const files = context.project ? runFiles(eventFiles(item.files), context.project, context.runId, item.at) : [];
   const who = you ? t("you") : (item.from ?? t("someone"));
   return (
     <Row
@@ -148,9 +153,12 @@ export function UserRow({ item, context }: { item: Extract<TraceItem, { type: "u
         </Who>
       }
     >
-      <p className="text-sm leading-[21px] break-words whitespace-pre-wrap text-foreground">
-        <LinkedText text={item.text} />
-      </p>
+      {item.text || !files.length ? (
+        <p className="text-sm leading-[21px] break-words whitespace-pre-wrap text-foreground">
+          <LinkedText text={item.text} />
+        </p>
+      ) : null}
+      <OutputStrip outputs={files} label={tFiles("files")} className="mt-1.5" testId="trace-user-files" />
     </Row>
   );
 }

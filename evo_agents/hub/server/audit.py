@@ -30,6 +30,12 @@ GRANT_PUT = "grant.put"
 GRANT_DELETE = "grant.delete"
 PROJECT_REGISTER = "project.register"
 PROJECT_UPDATE = "project.update"
+# An invite link (evo_agents.hub.server.invites) was made, accepted or revoked; the target names the link and what it
+# gives, "invite:<id> kind=<kind> [project=<p> role=<r> max_level=<l>] [for=<login>]", never its token. A join link's
+# rows are in its project.
+INVITE_CREATE = "invite.create"
+INVITE_ACCEPT = "invite.accept"
+INVITE_REVOKE = "invite.revoke"
 BLOB_COMMIT = "blob.commit"  # the target is the project, never the hashes
 KG_CONFIG = "kg.config"  # the knowledge config a project's graph is built with changed; the target is the project
 KG_INGEST = "kg.ingest"  # a pushed run became part of the project's corpus; the target is the project, never the run
@@ -56,6 +62,11 @@ WORKER_UPDATE = "worker.update"
 # "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.update_now)
 WORKER_UPDATE_NOW = "worker.update_now"
 WORKER_UPDATE_NOW_CANCEL = "worker.update_now_cancel"
+# The owner or a hub admin narrowed a shared worker to a unit of the org chart, or took the unit back
+# (evo_agents.hub.server.worker_shares): "worker:<id> name=<n> owner=<login> unit=<slug> by=<owner|admin>", then
+# " shared=false->true" when sharing turned the worker shared, " shared=true->false" when its last unit went.
+WORKER_SHARE = "worker.share"
+WORKER_UNSHARE = "worker.unshare"
 # Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>" ("<project>/<plan>
 # run:<id>" for a plan run), never a prompt or evidence.
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
@@ -90,6 +101,14 @@ TERMINAL_CLOSE = "terminal.close"
 # A member's secrets belong to no one project; the target is the secret's name, never its value.
 SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
+# A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
+# and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or
+# slug>] projects=<names> level=<level> budget_usd=<n> usage_ceiling_pct=<n> max_running=<n> expires=<when>", each limit
+# that is set. share.terms_ack follows share.create for a subscription token: "share:<id> secret:<id> warning=<the
+# terms warning, word for word>". share.revoke: "share:<id> secret:<id> by=<owner|admin>".
+SHARE_CREATE = "share.create"
+SHARE_TERMS_ACK = "share.terms_ack"
+SHARE_REVOKE = "share.revoke"
 # A member's accounts (docs/credentials.md, section Accounts): an env secret's settings, by its id ("secret:<id>
 # weight=<n> priority=<n> paused=<yes|no>"), and the member's policy for a project, in that project ("<project>
 # strategy=<s> cooldown=<seconds> failover=<yes|no> max_failovers=<n>", or the project alone when it was dropped).
@@ -180,14 +199,39 @@ GOAL_SET = "goal.set"
 # The org chart belongs to no project (evo_agents.hub.server.org_store). A target names the unit by slug and the seat
 # by id with its holder, then each field that changed as "<field>=<was>-><is>" and the unit's revision after it:
 # "unit:<slug> parent=<slug> kind=<kind> revision=1", "seat:<id> unit=<slug> login=<l> role=<role> primary=true->false
-# revision=<n>", "ceiling unit:<slug> level=A5->A1 revision=<n>"; never a ceiling's note.
+# revision=<n>"; never a ceiling's note.
 ORG_UNIT_CREATE = "org.unit_create"
 ORG_UNIT_EDIT = "org.unit_edit"
 ORG_UNIT_ARCHIVE = "org.unit_archive"
 ORG_SEAT_ADD = "org.seat_add"
 ORG_SEAT_EDIT = "org.seat_edit"
 ORG_SEAT_END = "org.seat_end"
-ORG_CEILING_SET = "org.ceiling_set"
+# Autonomy levels belong to no project (evo_agents.hub.server.autonomy_store, .org_writes; plan autonomy-levels): a
+# ceiling revision of a unit or seat, "ceiling unit:<slug> level=A5->A1[ K5=ask ...][ environments=<e,...>]
+# [ workers=<w,...>] revision=<n>", and a revision of a person's own preference, "pref <login> level=A5->A2
+# [ K6=deny ...][ reset] revision=<n>"; never a ceiling's note.
+AUTONOMY_CEILING_SET = "autonomy.ceiling_set"
+AUTONOMY_PREF_SET = "autonomy.pref_set"
+# A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy_gates,
+# .lease_autonomy, .route_autonomy): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
+# act), "run:<id> <class> <act> decision:<id>" when it asked the principal, "run:<id> <class> <act>" when it acted and
+# told the principal; a route refused to a run's credential is "<class> <route> mode=<mode> source=<source> run:<id>".
+AUTONOMY_REFUSED = "autonomy.refused"
+AUTONOMY_ASKED = "autonomy.asked"
+AUTONOMY_NOTIFIED = "autonomy.notified"
+# A backup the agent of a run made before deleting data (evo_agents.hub.server.worker_autonomy, the floor S2), in the
+# run's project, with the worker's owner as actor: "run:<id> <target> at=<location> made=<ISO time>".
+AUTONOMY_BACKUP = "autonomy.backup"
+# The ledger S1 of autonomy (evo_agents.hub.server.autonomy_ledger): every decision a gate of the hub made for a run,
+# in the run's project, with the run's principal as actor, once for each distinct decision: "run:<id> principal=<login>
+# agent=<handle> <class> mode=<mode> result=<acted|asked|refused|allowed|granted|withheld> <act>", "-" for a principal
+# or an agent the run has none of.
+AUTONOMY_DECIDED = "autonomy.decided"
+# The stop S4 and its lift (evo_agents.hub.server.autonomy_stops), in no project, with who stopped or lifted as actor:
+# "stop:<id> <login:<login>|unit:<slug>|all> runs=<n cancelled or asked to stop> leases=<n ended>" and "stop:<id>
+# <login:<login>|unit:<slug>|all>"; never the reason.
+AUTONOMY_STOP = "autonomy.stop"
+AUTONOMY_STOP_LIFT = "autonomy.stop.lift"
 # The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a

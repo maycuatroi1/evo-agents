@@ -5,7 +5,8 @@ import { newAccount } from "./support/hub";
 
 test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
-const PROTECTED = ["/", "/admin", "/p/some-project", "/p/some-project/plans", "/no/such/page"];
+// "/" is not among them: a visitor without a session gets the product page there (e2e/product.spec.ts).
+const PROTECTED = ["/admin", "/p/some-project", "/p/some-project/plans", "/no/such/page"];
 
 test.describe("signed out", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -58,7 +59,10 @@ test.describe("signing in", () => {
     await context.addCookies([{ ...session!, expires: -1 }]);
     const whoami = await page.request.get("/v1/auth/whoami");
     expect(whoami.status()).toBe(401);
-    await page.goto("/");
+    // The 401 deletes the cookie, so the visitor has no session again: `/` would show the product page, a page of the
+    // hub sends them to sign in.
+    expect((await context.cookies()).some((cookie) => cookie.name === SESSION_COOKIE)).toBe(false);
+    await page.goto("/inbox");
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByTestId("login-github")).toBeVisible();
   });

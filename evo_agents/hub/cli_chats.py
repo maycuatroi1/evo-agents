@@ -6,8 +6,9 @@ starts with (adding an agent needs the writer role on its project). ``list`` pri
 active first, with the messages of others they have not read. ``show`` prints a chat, its people and agents, and its
 latest messages (``--limit``, or one thread with ``--thread``), each with its mentions, reactions and the thread it is
 in. ``send`` sends a message, from the argument or from a file (``--file PATH``, ``-`` for stdin), in the thread of
-``--reply-to``; a ``@name`` of a member mentions them. ``react`` puts an emoji on a message, ``--remove`` takes it off.
-``--json`` prints what the hub answered. Standard library only, like the rest of the client.
+``--reply-to``; a ``@name`` of a member mentions them. ``--attach FILE`` (repeated) uploads files the message
+carries (``evo_agents.hub.attach_cli``); with one, the text may be left out. ``react`` puts an emoji on a message,
+``--remove`` takes it off. ``--json`` prints what the hub answered. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
+from evo_agents.hub import attach_cli
 from evo_agents.hub.chats import MAX_MESSAGE_BYTES, emoji_problem
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
@@ -66,6 +68,7 @@ MESSAGE_KEYS = (
     "created_at",
     "progress",
     "outputs",
+    "attachments",
 )
 PAGE_KEYS = ("chat", "messages", "more")
 
@@ -102,6 +105,8 @@ def _print_message(message: dict) -> None:
     refused = [m["refusal"] for m in message["mentions"] if m.get("refusal")]
     if refused:
         print(f"  refused mentions: {'; '.join(refused)}")
+    if message.get("attachments"):
+        print(f"  files: {attach_cli.describe(message['attachments'])}")
     if message["reactions"]:
         print(f"  reactions: {_reactions(message)}")
 
@@ -168,9 +173,9 @@ def cmd_show(args) -> int:
 
 def _text(args) -> str:
     if args.file is None:
-        if args.text is None:
-            raise ValueError("give the message as an argument, or --file PATH (- for stdin)")
-        return args.text
+        if args.text is None and not args.attach:
+            raise ValueError("give the message as an argument, or --file PATH (- for stdin), or attach a file")
+        return args.text or ""
     if args.text is not None:
         raise ValueError("give the message as an argument or with --file, not both")
     text = sys.stdin.read() if args.file == "-" else Path(args.file).read_text("utf-8")
@@ -182,12 +187,14 @@ def _text(args) -> str:
 @client_command
 def cmd_send(args) -> int:
     try:
-        body = {"body": _text(args)}
+        body, files = {"body": _text(args)}, attach_cli.checked(args.attach or [])
     except (ValueError, OSError) as exc:
         return _usage(str(exc))
     if args.reply_to:
         body["reply_to"] = args.reply_to
     hub, _ = signed_in()
+    if files:
+        body["attachment_ids"] = attach_cli.upload(hub, _path(args.chat), files)
     message = hub.call("POST", f"{_path(args.chat)}/messages", body)
     if args.json:
         print_json(message)
@@ -243,7 +250,8 @@ def register_chats(hsub) -> None:
 
     send = csub.add_parser("send", help="send a message; @name mentions a member")
     send.add_argument("chat", metavar="CHAT", type=int, help="the chat's id")
-    send.add_argument("text", metavar="TEXT", nargs="?", help="the message")
+    send.add_argument("text", metavar="TEXT", nargs="?", help="the message; may be left out with --attach")
+    send.add_argument("--attach", action="append", metavar="FILE", help=attach_cli.ATTACH_HELP)
     send.add_argument("--file", metavar="PATH", help="read the message from a file, - for stdin")
     send.add_argument("--reply-to", type=int, metavar="MESSAGE", help="answer this message, in its thread")
     json_option(send, returns_object(*MESSAGE_KEYS, schema="GroupMessage"))

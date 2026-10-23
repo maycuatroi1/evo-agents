@@ -111,6 +111,8 @@ here.
   and ``availableModels`` in ``settings``, a PreToolUse hook, the model, and the instructions after SYSTEM_NOTE. With a
   tool allowlist, the adapter asks the CLI for its MCP servers once it is connected, before the prompt, and raises
   ``ProfileRefused`` on one the profile leaves out (the owner's own settings may allow more).
+- A run with a snapshot of autonomy gets the PreToolUse hook of ``evo_agents.worker.autonomy_hook`` on its Bash
+  commands, with a profile or without one (``RunContext.autonomy``).
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -753,7 +755,8 @@ class ClaudeCodeAdapter(QueueAdapter):
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
         if disallowed:
             settings["disallowed_tools"] = disallowed
-        if kind in ("chat", "task", "question"):  # an @handle or @path in the words it is given never makes it read a file
+        # an @handle or @path in the words it is given never makes it read a file
+        if kind in ("chat", "task", "question"):
             settings["verbatim_prompts"] = True
         settings.update(limits)
         settings.update(packs.claude_options(self.context.packs))
@@ -764,7 +767,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         else:
             servers = {**hub_tools.claude_servers(self.context, profile), **settings.get("mcp_servers", {})}
         settings.update({"mcp_servers": servers} if servers else {})
-        hooks = profiles.claude_hooks(profile)
+        hooks = profiles.claude_hooks(profile, self.context.autonomy)  # the run's hook of autonomy beside the profile's
         if hooks is not None:
             settings["hooks"] = hooks
         if self.budget is not None:

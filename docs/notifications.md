@@ -25,10 +25,28 @@ Inbox come in the same release.
 ## Decisions
 
 The agent of a plan run asks with `evo-agents worker ask`, and only about these categories (`DECISION_CATEGORIES`). The
-prompt of a plan run lists all of them but `deploy` (`PROMPTED_DECISION_CATEGORIES`): merging, deploying and releasing
-are the agent's to do, and the route still takes a `deploy` decision from a worker of an older prompt. The route that
-takes a decision refuses any other, and the agent decides everything else itself and writes each such choice, with why,
-into the evidence of its step on a line that starts with `Decision:`.
+prompt of a run with a snapshot of autonomy opens with its autonomy card (`autonomy_card.card`, plan autonomy-levels):
+the principal, their role and unit, the person an intern reports to, the effective level, the classes in deny, in ask
+with the category to ask each in (`CLASS_CATEGORIES`: K5 `merge`, K6 `deploy`, K8 `credential`, K9 `delete_data` and
+`live_migration`, K10 `external_send`, K11 `spend_money`, K12 `access`), and in notify; at A5 only the floors S2 and S3.
+A plan run's prompt then lists the categories its card leaves to ask, with `architecture` and `scope`, and says that
+merging, deploying and releasing are the agent's only when K5 and K6 are auto. A run without a snapshot (a local run,
+one queued before schema 0113) lists all of them but `deploy` and the three of schema 0115
+(`PROMPTED_DECISION_CATEGORIES`), as before. The route that takes a decision refuses any other category, and the agent
+decides everything else itself and writes each such choice, with why, into the evidence of its step on a line that
+starts with `Decision:`.
+
+A decision goes to one person, `asked_of` (schema 0115, `principals.asked_of`): for a run whose principal is an intern,
+the person their seat reports to, and once it has been open 24 hours the leads of their unit too (the hourly job
+hub.expire_seats tells them, once each, and each may then answer); for a run the hub makes on its own, the sponsor of
+its agent; for any other, the run's principal. An intern never answers a decision of their own run (403). The Inbox,
+the decision board, `hub decision list` and `hub decision show` name that person, and the notification's body, which
+Telegram sends as it is, ends with "asked of <login>". A notice of a class in notify reaches the principal, and the
+person they report to when they are an intern.
+
+The hub asks decisions of its own too. A gate of autonomy whose class is in ask, before a merge (K5), a deploy or a
+release (K6), opens one of the category `autonomy` (schema 0114, `runs.AUTONOMY_DECISION_CATEGORY`) to the run's
+principal, and acts once they approve; only that principal answers it (`docs/autonomy.md`).
 
 | Category | What it covers |
 | --- | --- |
@@ -39,6 +57,9 @@ into the evidence of its step on a line that starts with `Decision:`.
 | `spend_money` | anything that costs money beyond the runtime's own usage: paid APIs, cloud resources, purchases |
 | `architecture` | an architectural choice the plan leaves open |
 | `scope` | a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers |
+| `merge` | merging into a repo's default branch or the target branch of a pull or merge request (K5) |
+| `credential` | creating, rotating or revoking a credential: a token, a key, a secret, an account's password (K8) |
+| `access` | changing grants, autonomy ceilings or preferences, policies or agent profiles (K12) |
 
 A decision holds the run, its project, plan and step (the step is optional), the category, a question, a context in
 markdown of at most 16 KiB, and 2 to 6 options. An option has a key (letters, digits, `_` and `-`, at most 32
@@ -178,10 +199,12 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 | `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
+| `autonomy` | a class in notify acted for a run (the hub's gate, or the worker's hook through `POST /v1/worker/runs/{id}/autonomy-acts`), to the run's principal and to the person they report to when they are an intern; and a stop of autonomy S4 cancelled the member's runs, or was lifted (`docs/autonomy.md`) | the class, the act, the run and its agent; a stop's scope, reason and the runs it cancelled; never a credential |
+| `worker_doctor` | the doctor report of a worker shared with units of the org chart has a high finding and the one before had none (`docs/workers.md`, Shared workers), to the worker's owner; the worker takes no run of those units' members until a report has none | the worker, the codes of the high findings, and a link to the worker's page; never a credential |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
 `curator_paused`, `release`, `merge_paused`, `loop_paused`, `goal_review`, `loop_brief`, `plugin_notice`, `author_waiting`, `pm_daily`,
-`pm_escalation`, `chat_mention`, `chat_added` and `run_outputs`, and the `merge_default_branch` of its merge queue. A
+`pm_escalation`, `chat_mention`, `chat_added`, `run_outputs` and `worker_doctor`, and the `merge_default_branch` of its merge queue. A
 release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
@@ -296,7 +319,7 @@ For members, with a web session or a machine token:
 | --- | --- | --- |
 | `GET /v1/projects/{p}/decisions` | readers of the decision's run: of its plan, or of the project's runs on no plan for an author run without one | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
 | `GET /v1/projects/{p}/decisions/{id}` | readers of the decision's run, as above | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
-| `POST /v1/projects/{p}/decisions/{id}/answer` | the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
+| `POST /v1/projects/{p}/decisions/{id}/answer` | the person it is asked of (`asked_of`, above), else the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |

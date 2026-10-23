@@ -125,7 +125,13 @@ TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
 TABLES |= pg.ORG_TABLES  # migration 0099
 TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
-TABLES |= pg.BROWSER_TABLES  # migration 0105
+TABLES |= pg.SHARE_TABLES  # migration 0105
+TABLES |= pg.WORKER_SHARE_TABLES  # migration 0107
+TABLES |= pg.ATTACHMENT_TABLES  # migration 0109
+TABLES |= pg.INVITE_TABLES  # migration 0110
+TABLES |= pg.AUTONOMY_LEVEL_TABLES  # migration 0112
+TABLES |= pg.AUTONOMY_STOP_TABLES  # migration 0116
+TABLES |= pg.BROWSER_TABLES  # migration 0117
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -207,8 +213,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_forty_five_tables(hub_db):
-    assert len(TABLES) == 145  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_fifty_three_tables(hub_db):
+    assert len(TABLES) == 153  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -216,7 +222,7 @@ def test_a_fresh_database_gets_the_one_hundred_and_forty_five_tables(hub_db):
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
     # are the sealed values of credentials (0011) and their nonces, the sealed tokens of OAuth accounts (0066), and the
-    # sealed data keys of browser profiles (0105), whose profiles are in the bucket, sealed
+    # sealed data keys of browser profiles (0117), whose profiles are in the bucket, sealed
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
@@ -2732,14 +2738,61 @@ def test_0104_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_wh
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0104") :]
 
 
-def test_0105_keeps_browser_identities_and_going_back_records_their_blobs_for_deletion(hub_db):
-    move_to(hub_db, "0104")
+def test_0109_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_back_restores_them(hub_db):
+    move_to(hub_db, "0108")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        chat_id = _chat(conn, ids)
+        message = {"chat_id": chat_id, "seq": 1, "author_user_id": ids["user"], "body": "", "label": []}
+        with pytest.raises(errors.CheckViolation):  # no message without text before 0109
+            conn.execute(insert(t.chat_messages).values(message))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0109")
+    a, k = t.attachments, t.run_inbox_attachments
+    with live.connect(hub_db) as conn:
+        inbox_id = one(
+            conn, insert(t.run_inbox).values(run_id=run_id, sent_by=ids["user"], body="").returning(t.run_inbox.c.id)
+        )
+        message_id = one(conn, insert(t.chat_messages).values(message).returning(t.chat_messages.c.id))
+        upload = {"uploaded_by": ids["user"], "name": "notes.txt", "media_type": "text/plain", "size": 5}
+        upload |= {"sha256": "a" * 64}
+        to_run = one(conn, insert(a).values({**upload, "run_id": run_id, "inbox_id": inbox_id}).returning(a.c.id))
+        conn.execute(insert(a).values({**upload, "chat_id": chat_id, "chat_message_id": message_id}))
+        conn.execute(insert(k).values(inbox_id=inbox_id, attachment_id=to_run))
+        for bad in (
+            insert(a).values(**upload),  # a run or a chat
+            insert(a).values({**upload, "run_id": run_id, "chat_id": chat_id}),  # not both
+            insert(a).values({**upload, "chat_id": chat_id, "inbox_id": inbox_id}),  # an inbox row holds a run's file
+            insert(a).values({**upload, "run_id": run_id, "chat_message_id": message_id}),  # a message a chat's file
+            insert(a).values({**upload, "name": "", "run_id": run_id}),
+            insert(a).values({**upload, "sha256": "A" * 64, "run_id": run_id}),
+            insert(a).values({**upload, "size": 50 * 1024 * 1024 + 1, "run_id": run_id}),
+            insert(k).values(inbox_id=inbox_id, attachment_id=to_run),  # tied once
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    # Going back gives each empty body a placeholder and drops the files.
+    move_to(hub_db, "0108", down=True)
+    assert query(hub_db, select(t.run_inbox.c.body)) == [("(files)",)]
+    assert query(hub_db, select(t.chat_messages.c.body)) == [("(files)",)]
+    assert {"attachments", "run_inbox_attachments"}.isdisjoint(tables(hub_db))
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.run_inbox))
+        conn.execute(delete(t.chat_messages))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0109") :]
+
+
+def test_0117_keeps_browser_identities_and_going_back_records_their_blobs_for_deletion(hub_db):
+    move_to(hub_db, "0116")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         worker = one(conn, _worker_row(ids, ids["token"], "box", 2))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0105")
+    move_to(hub_db, "0117")
     b = t.browser_identities
     mine = {"project_id": ids["project"], "owner_kind": "member", "owner_id": ids["user"], "name": "northwind"}
     mine |= {"domains": ["northwind.example"], "worker_id": worker, "created_by": ids["user"]}
@@ -2777,7 +2830,7 @@ def test_0105_keeps_browser_identities_and_going_back_records_their_blobs_for_de
             conn.execute(update(b).values(deleted_at=func.now()).where(b.c.id == first))
         conn.execute(update(b).values(deleted_at=func.now()).where(b.c.owner_kind == "project"))
         conn.execute(insert(b).values(project))  # a deleted one frees the name
-    move_to(hub_db, "0104", down=True)
+    move_to(hub_db, "0116", down=True)
     assert "browser_identities" not in tables(hub_db)
     deletions = t.blob_deletions
     recorded = select(deletions.c.sha256, deletions.c.size, deletions.c.kind).order_by(deletions.c.sha256)
@@ -2785,18 +2838,18 @@ def test_0105_keeps_browser_identities_and_going_back_records_their_blobs_for_de
     with live.connect(hub_db) as conn:
         conn.execute(delete(deletions))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0105") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0117") :]
 
 
-def test_0109_lets_a_run_ask_a_login_decision_and_going_back_deletes_those_with_their_inbox_rows(hub_db):
-    move_to(hub_db, "0108")
+def test_0121_lets_a_run_ask_a_login_decision_and_going_back_deletes_those_with_their_inbox_rows(hub_db):
+    move_to(hub_db, "0120")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         run_id = one(conn, _author_run(ids))
-        with pytest.raises(errors.CheckViolation):  # no login category before 0109
+        with pytest.raises(errors.CheckViolation):  # no login category before 0121
             conn.execute(_decision_row(ids, run_id, "wait-helper").values(category="login"))
-    move_to(hub_db, "0109")
+    move_to(hub_db, "0121")
     with live.connect(hub_db) as conn:
         login = one(conn, _decision_row(ids, run_id, "wait-helper").values(category="login"))
         scope = one(conn, _decision_row(ids, run_id, "wait-helper"))
@@ -2805,7 +2858,7 @@ def test_0109_lets_a_run_ask_a_login_decision_and_going_back_deletes_those_with_
                 insert(t.run_inbox).values(run_id=run_id, sent_by=ids["user"], body="A.", decision_id=decision_id)
             )
 
-    move_to(hub_db, "0108", down=True)
+    move_to(hub_db, "0120", down=True)
     assert query(hub_db, select(t.decisions.c.id, t.decisions.c.category)) == [(scope, "scope")]
     assert query(hub_db, select(t.run_inbox.c.decision_id)) == [(scope,)]
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0109") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0121") :]

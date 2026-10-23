@@ -87,6 +87,10 @@ base64 with its SHA-256 and the signature, which a spec publishes and installs t
 through e2e/hub_serve.py, which puts the core plugin notes (tests/hub/core_notes.py) in its image: its table in the
 chain of migrations and its native page, which the web's end-to-end build carries.
 
+``pnpm screenshots`` seeds its demo through the API and three routes of ``demo/stack.py``: POST /demo/kg writes the
+demo's repos and harness and pushes and builds their graph, POST /demo/retime sets the times the hub stamped to the
+demo's fixed clock, and POST /demo/keepalive keeps its workers online and its runs leased.
+
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
 """
@@ -115,6 +119,7 @@ from urllib.parse import quote, unquote
 ROOT = Path(__file__).resolve().parents[2]  # the evo-agents checkout this web/ belongs to
 sys.path.insert(0, str(ROOT))
 
+from demo.stack import Demo  # noqa: E402
 from fake_browser import FakeBrowser  # noqa: E402
 from fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
 from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
@@ -710,6 +715,7 @@ def control_server(
     terminals: dict[int, FakeTerminal] = {}
     browsers: dict[int, FakeBrowser] = {}
     updates = iter(range(1, 1_000_000))
+    demo = Demo(seeder, dsn, STATE_DIR / "demo")
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status: int, payload: dict) -> None:
@@ -848,6 +854,11 @@ def control_server(
                 try:
                     self._reply(200, seeder.handle(self.path, body))
                 except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path in ("/demo/kg", "/demo/retime", "/demo/keepalive"):
+                try:
+                    self._reply(200, demo.handle(self.path, body))
+                except Exception as exc:  # the spec shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             else:
                 self._reply(404, {"error": "not found"})

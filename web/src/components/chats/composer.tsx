@@ -5,12 +5,15 @@ import { ArrowUp, Bot, Reply, TriangleAlert, X } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
+import { AttachButton, AttachmentTray, pastedFiles, useFileDrop } from "@/components/data/attachments";
 import { InlineError, type WriteFailure } from "@/components/feedback/notice";
 import { shortcutText } from "@/components/shell/shortcuts";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { FilesNotReady, useAttachments } from "@/hooks/use-attachments";
 import { TOUCH_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import { browserApi } from "@/lib/api/browser";
+import { chatUploadBase } from "@/lib/attachments";
 import { sendChatMessage } from "@/lib/chat-queries";
 import {
   type Chat,
@@ -67,6 +70,7 @@ export type Replying = { name: string; text: string; onCancel: () => void };
  */
 export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hint, testId, focusKey = null, replying = null }: Props) {
   const t = useTranslations("chats.composer");
+  const tFiles = useTranslations("attachments");
   const format = useFormatter();
   const ids = useId();
   const failure = useChatFailure();
@@ -78,15 +82,18 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
   const [at, setAt] = useState<MentionQuery | null>(null);
   const [active, setActive] = useState(0);
   const [closedAt, setClosedAt] = useState<number | null>(null);
-  const [problem, setProblem] = useState<"blank" | "long" | null>(null);
+  const [problem, setProblem] = useState<"blank" | "long" | "files" | null>(null);
   const [error, setError] = useState<WriteFailure | null>(null);
+  const files = useAttachments(chatUploadBase(chat.id));
+  useFileDrop(files.add);
 
   const send = useMutation({
-    mutationFn: ({ body, to }: { body: string; to: number | null }) => sendChatMessage(browserApi(), chat.id, body, to),
-    onError: (cause) => setError(failure(cause)),
+    mutationFn: async ({ body, to }: { body: string; to: number | null }) => sendChatMessage(browserApi(), chat.id, body, to, await files.settled()),
+    onError: (cause) => (cause instanceof FilesNotReady ? setProblem("files") : setError(failure(cause))),
     onSuccess: (message) => {
       setText("");
       setAt(null);
+      files.clear();
       onSent(message);
     },
   });
@@ -126,7 +133,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
     event?.preventDefault();
     if (send.isPending) return;
     setError(null);
-    if (!text.trim()) return setProblem("blank");
+    if (!text.trim() && files.count === 0) return setProblem("blank");
     if (utf8Bytes(text) > MAX_MESSAGE_BYTES) return setProblem("long");
     setProblem(null);
     send.mutate({ body: text, to: replyTo });
@@ -201,6 +208,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
             </Button>
           </div>
         ) : null}
+        <AttachmentTray files={files} testId={testId} />
         <label htmlFor={`${ids}-text`} className="sr-only">
           {label}
         </label>
@@ -217,6 +225,12 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
           }}
           onSelect={(event) => follow(event.currentTarget.value, event.currentTarget.selectionStart)}
           onBlur={() => setAt(null)}
+          onPaste={(event) => {
+            const pasted = pastedFiles(event);
+            if (!pasted.length) return;
+            event.preventDefault();
+            files.add(pasted);
+          }}
           onKeyDown={onKeyDown}
           aria-autocomplete="list"
           aria-controls={open ? menuId : undefined}
@@ -228,7 +242,8 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
           data-testid={`${testId}-text`}
         />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t p-2">
-          <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-48 items-start gap-1.5 pl-1 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
+          <AttachButton onFiles={files.add} testId={testId} />
+          <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-40 items-start gap-1.5 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
             {handed.length ? (
               <>
                 <Bot className="mt-px size-3.5 shrink-0 text-running" aria-hidden="true" />
@@ -271,7 +286,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
       {problem ? (
         <p id={`${ids}-problem`} className="flex items-center gap-1.5 text-xs font-medium text-danger" data-testid={`${testId}-problem`}>
           <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
-          {problem === "blank" ? t("blank") : t("long", { max: format.number(MAX_MESSAGE_BYTES) })}
+          {problem === "blank" ? t("blank") : problem === "long" ? t("long", { max: format.number(MAX_MESSAGE_BYTES) }) : tFiles("notReady")}
         </p>
       ) : null}
       {error ? <InlineError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}
