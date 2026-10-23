@@ -553,6 +553,11 @@ async def record_move(
 
         await replays.replay_ended(conn, found, old, new, reason=reason)
         return None
+    if found.kind == "probe":  # it writes no step: its sessions reach the hub through its own route
+        from evo_agents.hub.server import probe_runs  # it reads runs through the routes that import this module
+
+        await probe_runs.probe_ended(conn, found, old, new, reason=reason)
+        return None
     if found.kind == "history":  # it writes no step: its facets reach the hub through its own routes
         from evo_agents.hub.server import history  # it reads runs through the routes that import this module
 

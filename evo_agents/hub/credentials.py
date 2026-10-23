@@ -57,7 +57,8 @@ GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the to
 # Asked as well for a run that writes, when the workers' App holds it on the installation: GitHub refuses a push that
 # creates or updates a file of .github/workflows without it, whatever the pusher may do. Never for the Curator's App.
 GITHUB_WORKFLOW_PERMISSIONS = {"workflows": "write"}
-READ_ONLY_KINDS = ("review", "judge", "author", "replay", "history")  # the kinds of run whose GitHub token reads only
+# the kinds of run whose GitHub token reads only
+READ_ONLY_KINDS = ("review", "judge", "author", "replay", "history", "probe")
 NO_WORKFLOW_KINDS = ("release",)  # the kinds of run whose GitHub token never asks GITHUB_WORKFLOW_PERMISSIONS
 # The variables of the only env secrets a release run is leased: the login of Claude Code, its runtime
 # (evo_agents.hub.releases.RUNTIME).

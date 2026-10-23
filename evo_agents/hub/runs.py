@@ -138,7 +138,8 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 # plugin hands an agent type of its own; the replay of a past step (``hub.replay``); the night's reading of sessions and
 # runs (``hub.history``); a cut or a fix of a release cycle (``hub.releases``); a read-only question a core plugin asks
 # an agent type of its own (``hub.question_runs``); the login session of a browser identity, which a person drives in
-# the identity's Chromium with no agent (``hub.browser_login``). A session on a member's own machine, which no worker
+# the identity's Chromium with no agent (``hub.browser_login``); the weekly probe of a change of the Curator, k sessions
+# with its rule on and k with it off (``hub.probes``). A session on a member's own machine, which no worker
 # runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
 RUN_KINDS = (
     "step",
@@ -150,6 +151,7 @@ RUN_KINDS = (
     "task",
     "replay",
     "history",
+    "probe",
     "release",
     "question",
     "browser",
@@ -157,7 +159,8 @@ RUN_KINDS = (
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
-CURATOR_KINDS = ("review", "judge", "replay", "history")  # the kinds only the night shift queues, and the Builder
+# the kinds only the night shift queues, and the Builder
+CURATOR_KINDS = ("review", "judge", "replay", "history", "probe")
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers

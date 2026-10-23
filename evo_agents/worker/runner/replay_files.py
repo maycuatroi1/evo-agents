@@ -139,3 +139,60 @@ async def commit_all(path: Path, message: str, env: Mapping[str, str]) -> str:
         await _git(path, *AUTHOR, "commit", "--quiet", "--no-verify", "-m", message, env=env)
     _, out = await _git(path, "rev-parse", "HEAD", env=env)
     return out.decode().strip()
+
+
+# The git of a probe run (``evo_agents.worker.runner.probe``), which lays its arms out with the functions above
+
+
+def _names(out: bytes) -> list[str]:
+    return [path for path in out.decode(errors="surrogateescape").split("\0") if path]
+
+
+async def changed_between(checkout: Path, old: str, new: str, env: Mapping[str, str]) -> list[str]:
+    """Every path the commits from ``old`` to ``new`` of ``checkout`` touch."""
+    _, out = await _git(checkout, "diff", "-z", "--name-only", "--no-renames", old, new, env=env)
+    return _names(out)
+
+
+async def merge_base(checkout: Path, one: str, other: str, env: Mapping[str, str]) -> str | None:
+    code, out = await _git(checkout, "merge-base", one, other, env=env, check=False)
+    return out.decode().strip() or None if code == 0 else None
+
+
+async def first_parent_before(checkout: Path, ref: str, when: str, env: Mapping[str, str]) -> str | None:
+    """The commit of ``ref``'s first-parent line that was its tip at ``when`` (ISO 8601): the newest one made before."""
+    code, out = await _git(checkout, "rev-list", "-1", "--first-parent", f"--before={when}", ref, env=env, check=False)
+    return out.decode().strip() or None if code == 0 else None
+
+
+async def without_diff(
+    checkout: Path, tip: str, old: str, new: str, paths: list[str], scratch: Path, env: Mapping[str, str]
+) -> str:
+    """A commit of ``checkout`` whose tree is ``tip``'s less the diff of ``paths`` from ``old`` to ``new``, applied in
+    reverse in an index of its own under ``scratch``: neither the checkout's work tree nor its index is touched, and
+    no ref names the commit. GitError, with git's words, when the diff no longer comes off ``tip``."""
+    scratch.mkdir(parents=True, exist_ok=True)
+    patch, index = scratch / "change.diff", scratch / "index"
+    _, diff = await _git(
+        checkout, "diff", "--binary", "--no-renames", "--no-ext-diff", "--no-textconv", old, new, "--", *paths, env=env
+    )
+    patch.write_bytes(diff)
+    own = {**env, "GIT_INDEX_FILE": str(index)}
+    await _git(checkout, "read-tree", tip, env=own)
+    if diff:
+        await _git(checkout, "apply", "--cached", "--reverse", "--binary", str(patch.resolve()), env=own)
+    _, out = await _git(checkout, "write-tree", env=own)
+    tree = out.decode().strip()
+    message = "The harness of the default branch's tip, the change's diff taken off"
+    _, out = await _git(checkout, *AUTHOR, "commit-tree", tree, "-p", tip, "-m", message, env=own)
+    with contextlib.suppress(OSError):
+        index.unlink()
+    return out.decode().strip()
+
+
+async def changed_since(path: Path, start: str, env: Mapping[str, str]) -> list[str]:
+    """The files of the repository at ``path`` its work tree changed since commit ``start``, committed or not, and
+    those it added that no rule ignores; sorted."""
+    _, out = await _git(path, "diff", "-z", "--name-only", "--no-renames", start, env=env)
+    _, others = await _git(path, "ls-files", "-z", "--others", "--exclude-standard", env=env)
+    return sorted({*_names(out), *_names(others)})

@@ -13,6 +13,7 @@ Nothing here touches the database: the shape of a probe, read the same way by th
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import date, timedelta
 from pathlib import PurePosixPath
 
 from evo_agents.hub import replay
@@ -31,6 +32,43 @@ DEFAULT_K = 3
 MAX_K = 10
 MAX_MODELS = 10
 MAX_WEEK_BUDGET_USD = 7000.0  # probes.budget_usd, per ISO week: seven nights of curator.MAX_NIGHT_BUDGET_USD
+
+# A probe run (run kind ``probe``): one probe measured once on one runtime and model of the charter in an ISO week, k
+# new sessions with the change's rule on (arm ``on``: the harness files of the default branch's tip) and k with it off
+# (arm ``off``: that tip less the change's diff). One row of curator_probe_runs per probe, week, runtime and model.
+ARMS = ("on", "off")
+RUN_STATES = ("queued", "running", "done", "stale", "failed", "unmeasured")
+# queued: to run (again) this week; running: its run holds it; done: every session reported; stale: the change's diff
+# no longer comes off the tip, with why; failed: its runs ended short PROBE_ATTEMPTS times; unmeasured: the week's
+# money ran out before it
+PROBE_ATTEMPTS = 2  # the probe runs of one probe, model and week, before it fails
+MAX_REASON_CHARS = 2000
+MAX_COMMANDS = 200  # of the trace file: the commands the agent ran, each at most MAX_COMMAND_CHARS
+MAX_COMMAND_CHARS = 2000
+MAX_FILES = 500  # of the trace file: the files the agent changed
+PROBE_KEY_HEADER = "X-Evo-Probe-Key"  # a probe run's own key, which its claim hands the daemon
+TRACE_ENV = "EVO_PROBE_TRACE"  # names the trace file to the probe's verify: {"commands": [...], "files": [...]}
+CLAUDE_CODE = "claude-code"  # the runtime whose arms carry the repo's .claude/settings.json and .claude/hooks/
+
+
+def week_of(day: date) -> date:
+    """The Monday of the ISO week of ``day``: what a probe run's week is named by."""
+    return day - timedelta(days=day.weekday())
+
+
+def placed_paths(paths: Iterable[str], runtime: str) -> list[str]:
+    """The paths among ``paths`` the arms of a probe run on ``runtime`` place: a harness file always, the repo's
+    .claude/settings.json and .claude/hooks/ on claude-code alone."""
+    return [path for path in probe_paths(paths) if replay.harness_path(path) or runtime == CLAUDE_CODE]
+
+
+def probe_prompt(task: str, *, folder: str, harness_folder: str | None = None) -> str:
+    """The prompt of a session of a probe run: the probe's task alone, after the line that says where its repo is, and
+    where the files of the change's repo are when that is another repo (``harness_folder``); the same in both arms."""
+    where = f"The repository is in the folder {folder}/ of your working directory."
+    if harness_folder:
+        where += f" {harness_folder}/ holds files of another repository of the project that this work follows."
+    return f"{where}\n\n{task}"
 
 
 def probe_path(path: str) -> bool:

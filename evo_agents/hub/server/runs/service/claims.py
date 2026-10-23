@@ -174,6 +174,7 @@ def _claimable(
     judge_runs: bool = False,
     replay_runs: bool = False,
     history_runs: bool = False,
+    probe_runs: bool = False,
     author_runs: bool = False,
     chat_runs: bool = False,
     task_runs: bool = False,
@@ -193,8 +194,8 @@ def _claimable(
     repo), and, while the worker is not ``steady``, not the next attempt of a run it lost (``lost_here``). A run of one
     step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT
     or later (``plan_runs``); a review run one of every repo in its repos and a daemon that says it runs review runs
-    (``review_runs``), and a judge run, a replay run and a history run likewise (``judge_runs``, ``replay_runs``,
-    ``history_runs``; a history run has no repo); an author run one of its first repo, the project's harness, and a
+    (``review_runs``), and a judge run, a replay run, a history run and a probe run likewise (``judge_runs``,
+    ``replay_runs``, ``history_runs``, ``probe_runs``; a history run has no repo); an author run one of its first repo, the project's harness, and a
     daemon that says it runs author runs (``author_runs``): the worker
     leaves out the other repos it has no checkout of. A chat run is pinned to the worker the hub picked for it and
     needs a daemon that says it runs chat runs (``chat_runs``). A task run needs a checkout of one of its repos when it
@@ -237,7 +238,7 @@ def _claimable(
     if not clones:  # an older daemon fails a run of a repo it has no checkout of
         query = query.where(
             case(
-                (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "release")), every_repo),
+                (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "probe", "release")), every_repo),
                 (r.c.kind == "author", harness),
                 (
                     r.c.kind.in_(("chat", "browser")),
@@ -257,6 +258,7 @@ def _claimable(
     if not step_sessions:
         query = query.where(r.c.session_per_step.is_(False))
     said = {"review": review_runs, "judge": judge_runs, "replay": replay_runs, "history": history_runs}
+    said |= {"probe": probe_runs}
     said |= {"author": author_runs, "chat": chat_runs, "release": release_runs, "browser": browser_runs}
     left_out = [kind for kind, runs_it in said.items() if not runs_it]  # the kinds its daemon does not say it runs
     if left_out:
@@ -453,6 +455,7 @@ async def _claim_once(
             judge_runs="judge" in (kinds or ()),
             replay_runs="replay" in (kinds or ()),
             history_runs="history" in (kinds or ()),
+            probe_runs="probe" in (kinds or ()),
             author_runs="author" in (kinds or ()),
             chat_runs="chat" in (kinds or ()),
             task_runs="task" in (kinds or ()),
@@ -629,6 +632,7 @@ OWN_PROMPTS = (
     "judge",
     "replay",
     "history",
+    "probe",
     "release",
     "question",
 )  # whose prompt their module builds
@@ -663,6 +667,10 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.history import RUN_PROMPT
 
         return RUN_PROMPT
+    if view.kind == "probe":
+        from evo_agents.hub.server.probe_runs import run_prompt as probe_prompt
+
+        return await probe_prompt(conn, view)
     if view.kind == "release":
         from evo_agents.hub.server.release_claims import release_prompt  # it reads runs through this package
 

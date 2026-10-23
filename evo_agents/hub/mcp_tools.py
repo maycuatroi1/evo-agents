@@ -660,7 +660,9 @@ JUDGE_TOOLS = frozenset({*KG_TOOL_NAMES, "hub_projects"})
 REPLAY_TOOLS: frozenset[str] = frozenset()
 # What the agent of a history run may call: none, since each batch it reads is in its prompt.
 HISTORY_TOOLS: frozenset[str] = frozenset()
-RUN_TOOLS = {"judge": JUDGE_TOOLS, "replay": REPLAY_TOOLS, "history": HISTORY_TOOLS}  # whose agent calls only these
+PROBE_TOOLS: frozenset[str] = frozenset()  # a probe run's agent sees its task alone: no tool of the hub
+# the kinds of run whose agent calls only these
+RUN_TOOLS = {"judge": JUDGE_TOOLS, "replay": REPLAY_TOOLS, "history": HISTORY_TOOLS, "probe": PROBE_TOOLS}
 # What only a local session can call: the agent of a run asks its owner through the run's decisions.
 LOCAL_ONLY = frozenset({"ask_member"})
 

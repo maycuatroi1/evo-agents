@@ -94,6 +94,7 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "task",
         "replay",
         "history",
+        "probe",
         "release",
         "question",
         "browser",

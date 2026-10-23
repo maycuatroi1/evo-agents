@@ -12023,6 +12023,7 @@
             "task",
             "replay",
             "history",
+            "probe",
             "release",
             "question",
             "browser",
@@ -25884,6 +25885,7 @@
                       "task",
                       "replay",
                       "history",
+                      "probe",
                       "release",
                       "question",
                       "browser",
@@ -40842,6 +40844,120 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/probe": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report Probe",
+          "description": "One session's result of the probe run this worker holds, or why the probe is stale; with the run's key.",
+          "operationId": "report_probe_v1_worker_runs__run_id__probe_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Probe-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the probe run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Probe-Key"
+              },
+              "description": "the probe run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeReport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProbeRun"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -79120,7 +79236,8 @@
                 "builder",
                 "judge",
                 "replay",
-                "history"
+                "history",
+                "probe"
               ],
               "title": "Role"
             },
@@ -79263,6 +79380,29 @@
               ],
               "title": "History Key",
               "description": "a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); the daemon keeps it as a judge run's"
+            },
+            "probe": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProbeSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a probe run's probe and change; null for any other run"
+            },
+            "probe_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Probe Key",
+              "description": "a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's"
             }
           },
           "type": "object",
@@ -79270,7 +79410,7 @@
             "role"
           ],
           "title": "CuratorSpec",
-          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own\nkey (``evo_agents.hub.server.history``)."
+          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own\nkey (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key\n(``evo_agents.hub.server.probe_runs``)."
         },
         "CuratorStatus": {
           "properties": {
@@ -91886,6 +92026,7 @@
                 "task",
                 "replay",
                 "history",
+                "probe",
                 "release",
                 "question",
                 "browser",
@@ -96139,6 +96280,64 @@
           "title": "ProbeModel",
           "description": "A runtime and model the arms of a probe run on."
         },
+        "ProbeReport": {
+          "properties": {
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha",
+              "description": "the task's base commit the sessions start at"
+            },
+            "harness_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Harness Sha",
+              "description": "the tip of the default branch of the change's repo arm on runs with"
+            },
+            "session": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProbeSession"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "stale": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale",
+              "description": "why arm off cannot be made: the probe is stale for the week"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ProbeReport",
+          "description": "A session's result with the commits the arms run from; or why the change's diff no longer comes off the tip of\nthe default branch (``stale``)."
+        },
         "ProbeRetire": {
           "properties": {
             "note": {
@@ -96159,6 +96358,273 @@
           "additionalProperties": false,
           "type": "object",
           "title": "ProbeRetire"
+        },
+        "ProbeRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "probe_id": {
+              "type": "integer",
+              "title": "Probe Id"
+            },
+            "change_id": {
+              "type": "integer",
+              "title": "Change Id"
+            },
+            "week": {
+              "type": "string",
+              "format": "date",
+              "title": "Week",
+              "description": "the Monday of the ISO week, in the charter's time zone"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "k": {
+              "type": "integer",
+              "title": "K",
+              "description": "the sessions of each arm"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "done",
+                "stale",
+                "failed",
+                "unmeasured"
+              ],
+              "title": "State"
+            },
+            "attempts": {
+              "type": "integer",
+              "title": "Attempts"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "harness_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Harness Sha"
+            },
+            "sessions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Sessions",
+              "description": "ProbeSession, in the order they were reported"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "probe_id",
+            "change_id",
+            "week",
+            "runtime",
+            "model",
+            "k",
+            "run_id",
+            "state",
+            "attempts",
+            "base_sha",
+            "harness_sha",
+            "sessions",
+            "reason",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "ProbeRun"
+        },
+        "ProbeSession": {
+          "properties": {
+            "arm": {
+              "type": "string",
+              "enum": [
+                "on",
+                "off"
+              ],
+              "title": "Arm",
+              "description": "on: the change's rule in place; off: the change's diff taken off"
+            },
+            "index": {
+              "type": "integer",
+              "maximum": 10.0,
+              "minimum": 1.0,
+              "title": "Index",
+              "description": "which of the arm's k sessions, from 1"
+            },
+            "passed": {
+              "type": "boolean",
+              "title": "Passed",
+              "description": "the probe's verify exited 0 on the session's work"
+            },
+            "exit_code": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exit Code",
+              "description": "the verify's; null when it did not run"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "the agent's session; null when its runtime names none"
+            },
+            "turns": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turns"
+            },
+            "duration_ms": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Duration Ms",
+              "description": "the agent's time"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model the session ran on, as its runtime said it"
+            },
+            "agent_error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Error",
+              "description": "why its turn ended short"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "arm",
+            "index",
+            "passed",
+            "duration_ms",
+            "runtime"
+          ],
+          "title": "ProbeSession",
+          "description": "One session of a probe run: its arm, which of the arm's k it is, whether the probe's verify passed on its work,\nand what the agent took, on the runtime and the model it actually ran."
         },
         "ProbeSettings": {
           "properties": {
@@ -96198,6 +96664,95 @@
           "type": "object",
           "title": "ProbeSettings",
           "description": "How the probes of the Curator's changes run (``evo_agents.hub.probes``): how many arms of each probe, on which\nmodels, and the most they cost in an ISO week of the charter's time zone."
+        },
+        "ProbeSpec": {
+          "properties": {
+            "probe_run_id": {
+              "type": "integer",
+              "title": "Probe Run Id"
+            },
+            "probe_id": {
+              "type": "integer",
+              "title": "Probe Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "the repo of the probe's task"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha",
+              "description": "the task's base commit; null: the default branch's tip at made_at"
+            },
+            "made_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Made At",
+              "description": "when the probe was made"
+            },
+            "task": {
+              "type": "string",
+              "title": "Task",
+              "description": "the only text the agent of a session is given"
+            },
+            "verify": {
+              "type": "string",
+              "title": "Verify",
+              "description": "one shell line the worker runs on each session's work; never shown the agent"
+            },
+            "k": {
+              "type": "integer",
+              "title": "K",
+              "description": "the sessions of each arm"
+            },
+            "week": {
+              "type": "string",
+              "format": "date",
+              "title": "Week",
+              "description": "the Monday of the ISO week the run measures"
+            },
+            "change_repo": {
+              "type": "string",
+              "title": "Change Repo",
+              "description": "the repo of the change, which holds its rule"
+            },
+            "merge_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merge Sha",
+              "description": "the change's merge commit; null: its head against the default branch"
+            }
+          },
+          "type": "object",
+          "required": [
+            "probe_run_id",
+            "probe_id",
+            "repo",
+            "base_sha",
+            "made_at",
+            "task",
+            "verify",
+            "k",
+            "week",
+            "change_repo",
+            "merge_sha"
+          ],
+          "title": "ProbeSpec",
+          "description": "What the worker of a probe run is told (``evo_agents.hub.server.probe_runs``): the probe, the change whose rule\nits arms put on and take off, and the sessions of each arm."
         },
         "Problem": {
           "properties": {
@@ -101655,6 +102210,7 @@
                 "task",
                 "replay",
                 "history",
+                "probe",
                 "release",
                 "question",
                 "browser",
@@ -104295,6 +104851,7 @@
                 "task",
                 "replay",
                 "history",
+                "probe",
                 "release",
                 "question",
                 "browser"

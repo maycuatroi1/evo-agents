@@ -1279,6 +1279,7 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     from evo_agents.hub.server.changes import queue_builder, queue_judge  # it queues runs through this module
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
     from evo_agents.hub.server.history import queue_history  # it queues runs through this module
+    from evo_agents.hub.server.probe_runs import queue_probe  # it queues runs through this module
     from evo_agents.hub.server.replays import queue_replay  # it queues runs through this module
 
     word, gate = await gate_of(conn, due, any_hour=True)
@@ -1299,6 +1300,8 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     night, worker, budget = gate.night, gate.worker, gate.budget
     plan, why = await _next_plan(conn, gate.access, due.body, worker)
     if plan is None:
+        if await queue_probe(conn, due, gate) is not None:  # the probes queue after every other kind of the night
+            return "probe"
         log.info("night shift has no plan to run", extra={"project": due.project, "why": why})
         return "no_plan"
     try:

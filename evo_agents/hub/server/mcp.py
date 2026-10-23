@@ -162,11 +162,12 @@ RUN_ONLY = (
     f"a worker token opens {MOUNT} only for the agent of a run its worker holds, named in {RUN_HEADER}: "
     "`evo-agents hub mcp` sends it inside a run"
 )
-KIND_ONLY = {  # what a judge run, a replay run and a history run may call is mcp_tools.RUN_TOOLS
+KIND_ONLY = {  # what a judge, replay, history or probe run may call is mcp_tools.RUN_TOOLS
     "judge": "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is "
     "not for a judge run",
     "replay": "a replay run does a past step from its base commit alone; {tool} is not for a replay run",
     "history": "a history run reads the batch in its prompt alone; {tool} is not for a history run",
+    "probe": "a probe run does its task from its base commit alone; {tool} is not for a probe run",
 }
 
 
