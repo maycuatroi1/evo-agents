@@ -13,6 +13,8 @@ points imports it; its contributions' Python lives in modules the hub imports wh
   (plan living-lean-canvas).
 - ``pm``: the daily report of a project's delivery, read from the tables of tasks, srs, plans, runs and decisions
   (plan pm-daily-tracking, ``docs/pm-plugin.md``).
+- ``crm``: the contacts who found the project themselves, with a stage computed from hub data and counts pushed to
+  Signal (plan autonomous-oss-growth, ``docs/crm-plugin.md``).
 
 telegram and chats, the Telegram channel and the history of group chats in the knowledge graph, left for the
 distribution evo-agents-core-plugins (repository maycuatroi1/evo-agents-core-plugins), which deploy/hub/core-plugins.txt

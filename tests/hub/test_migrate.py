@@ -131,6 +131,7 @@ TABLES |= pg.ATTACHMENT_TABLES  # migration 0109
 TABLES |= pg.INVITE_TABLES  # migration 0110
 TABLES |= pg.AUTONOMY_LEVEL_TABLES  # migration 0112
 TABLES |= pg.AUTONOMY_STOP_TABLES  # migration 0116
+TABLES |= pg.CRM_TABLES  # migration 0118
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -212,8 +213,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_fifty_two_tables(hub_db):
-    assert len(TABLES) == 152  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_fifty_seven_tables(hub_db):
+    assert len(TABLES) == 157  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2777,3 +2778,41 @@ def test_0109_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_bac
         conn.execute(delete(t.chat_messages))
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0109") :]
+
+
+def test_0118_crm_keeps_one_contact_a_login_and_going_back_drops_the_tables(hub_db):
+    move_to(hub_db, "0117")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0118")
+    t = hub_tables
+    contact = {"project_id": ids["project"], "login": "octocat", "profile_url": "https://github.com/octocat"}
+    contact |= {"source": "issue"}
+    with live.connect(hub_db) as conn:
+        contact_id = one(conn, insert(t.crm_contacts).values(contact).returning(t.crm_contacts.c.id))
+        assert one(conn, select(t.crm_contacts.c.stage)) == "lead"
+        touch = {"contact_id": contact_id, "kind": "issue", "ref": "issue#1", "happened_at": func.now()}
+        conn.execute(insert(t.crm_touchpoints).values(touch))
+        conn.execute(insert(t.crm_touchpoints).values({**touch, "kind": "note", "ref": "n", "note": "asked about CI"}))
+        conn.execute(insert(t.crm_stage_history).values(contact_id=contact_id, stage="lead", reached_at=func.now()))
+        for bad in (
+            insert(t.crm_contacts).values(contact),  # one contact a login
+            insert(t.crm_contacts).values({**contact, "login": "Octo"}),  # lower case alone
+            insert(t.crm_contacts).values({**contact, "login": "other", "source": "email"}),
+            insert(t.crm_contacts).values({**contact, "login": "other", "stage": "customer"}),
+            insert(t.crm_touchpoints).values(touch),  # once a kind and reference
+            insert(t.crm_touchpoints).values({**touch, "ref": "issue#2", "note": "a note on an issue"}),
+            insert(t.crm_touchpoints).values({**touch, "kind": "note", "ref": "n2"}),  # a note has text
+            insert(t.crm_stage_history).values(contact_id=contact_id, stage="lead", reached_at=func.now()),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    with live.connect(hub_db) as conn:  # the contact takes its touchpoints and history with it
+        conn.execute(delete(t.crm_contacts).where(t.crm_contacts.c.id == contact_id))
+        assert one(conn, select(func.count()).select_from(t.crm_touchpoints)) == 0
+        assert one(conn, select(func.count()).select_from(t.crm_stage_history)) == 0
+    move_to(hub_db, "0117", down=True)
+    assert not {name for name in tables(hub_db) if name.startswith("crm_")}
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0118") :]

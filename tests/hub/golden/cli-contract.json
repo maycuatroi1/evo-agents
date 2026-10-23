@@ -3606,6 +3606,154 @@
       "options": [],
       "json": null
     },
+    "hub crm delete": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "deleted",
+          "touchpoints"
+        ],
+        "schema": "CrmDeleted"
+      }
+    },
+    "hub crm list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--stage"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "lead",
+            "invited",
+            "activated",
+            "retained"
+          ]
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "invite_request",
+            "invite_link",
+            "grant",
+            "issue",
+            "pull_request",
+            "discussion"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "counts",
+          "contacts"
+        ],
+        "schema": "CrmContacts"
+      }
+    },
+    "hub crm show": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "login",
+          "profile_url",
+          "source",
+          "stage",
+          "first_seen_at",
+          "stage_at",
+          "touchpoints",
+          "history"
+        ],
+        "schema": "CrmContactDetail"
+      }
+    },
     "hub curator changes": {
       "positionals": [],
       "options": [
@@ -43618,6 +43766,444 @@
           }
         }
       },
+      "/v1/x/crm/{project}/contacts": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Contacts",
+          "description": "The contacts of the project and how many are in each stage.",
+          "operationId": "list_contacts_v1_x_crm__project__contacts_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "stage",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "lead",
+                      "invited",
+                      "activated",
+                      "retained"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only contacts in this stage",
+                "title": "Stage"
+              },
+              "description": "only contacts in this stage"
+            },
+            {
+              "name": "source",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "invite_request",
+                      "invite_link",
+                      "grant",
+                      "issue",
+                      "pull_request",
+                      "discussion"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only contacts first seen from this source",
+                "title": "Source"
+              },
+              "description": "only contacts first seen from this source"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CrmContacts"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/crm/{project}/contacts/{login}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Contact",
+          "description": "One contact with its touchpoints and the stages it reached.",
+          "operationId": "show_contact_v1_x_crm__project__contacts__login__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$",
+                "description": "the contact's GitHub login",
+                "title": "Login"
+              },
+              "description": "the contact's GitHub login"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CrmContactDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Delete Contact",
+          "description": "Delete a contact on its request: the contact, every touchpoint and its stage history.",
+          "operationId": "delete_contact_v1_x_crm__project__contacts__login__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$",
+                "description": "the contact's GitHub login",
+                "title": "Login"
+              },
+              "description": "the contact's GitHub login"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CrmDeleted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/crm/{project}/contacts/{login}/notes": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Note",
+          "description": "A writer's note on a contact: kept as a touchpoint, deleted with the contact.",
+          "operationId": "add_note_v1_x_crm__project__contacts__login__notes_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$",
+                "description": "the contact's GitHub login",
+                "title": "Login"
+              },
+              "description": "the contact's GitHub login"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrmNoteIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CrmTouchpoint"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/pm/{project}/daily": {
         "get": {
           "tags": [
@@ -72121,6 +72707,261 @@
             "missing"
           ],
           "title": "Credentials"
+        },
+        "CrmContact": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the GitHub login, in lower case"
+            },
+            "profile_url": {
+              "type": "string",
+              "title": "Profile Url",
+              "description": "the public profile on GitHub"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "what it was first seen from: invite_request, invite_link, grant, issue, ..."
+            },
+            "stage": {
+              "type": "string",
+              "title": "Stage",
+              "description": "lead, invited, activated or retained; it only moves forward"
+            },
+            "first_seen_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "First Seen At"
+            },
+            "stage_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Stage At",
+              "description": "when it reached its stage"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "profile_url",
+            "source",
+            "stage",
+            "first_seen_at",
+            "stage_at"
+          ],
+          "title": "CrmContact"
+        },
+        "CrmContactDetail": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the GitHub login, in lower case"
+            },
+            "profile_url": {
+              "type": "string",
+              "title": "Profile Url",
+              "description": "the public profile on GitHub"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "what it was first seen from: invite_request, invite_link, grant, issue, ..."
+            },
+            "stage": {
+              "type": "string",
+              "title": "Stage",
+              "description": "lead, invited, activated or retained; it only moves forward"
+            },
+            "first_seen_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "First Seen At"
+            },
+            "stage_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Stage At",
+              "description": "when it reached its stage"
+            },
+            "touchpoints": {
+              "items": {
+                "$ref": "#/components/schemas/CrmTouchpoint"
+              },
+              "type": "array",
+              "title": "Touchpoints",
+              "description": "newest first"
+            },
+            "history": {
+              "items": {
+                "$ref": "#/components/schemas/CrmStageReached"
+              },
+              "type": "array",
+              "title": "History",
+              "description": "each stage the contact reached, in the order of the stages"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "profile_url",
+            "source",
+            "stage",
+            "first_seen_at",
+            "stage_at",
+            "touchpoints",
+            "history"
+          ],
+          "title": "CrmContactDetail"
+        },
+        "CrmContacts": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "stage -> how many of the contacts you can see are in it"
+            },
+            "contacts": {
+              "items": {
+                "$ref": "#/components/schemas/CrmContact"
+              },
+              "type": "array",
+              "title": "Contacts",
+              "description": "newest first, at most 500"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "counts",
+            "contacts"
+          ],
+          "title": "CrmContacts"
+        },
+        "CrmDeleted": {
+          "properties": {
+            "deleted": {
+              "type": "boolean",
+              "title": "Deleted",
+              "description": "true: the contact, its touchpoints and its history are gone"
+            },
+            "touchpoints": {
+              "type": "integer",
+              "title": "Touchpoints",
+              "description": "how many touchpoints went with it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "deleted",
+            "touchpoints"
+          ],
+          "title": "CrmDeleted"
+        },
+        "CrmNoteIn": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Note",
+              "description": "what to remember about the contact"
+            }
+          },
+          "type": "object",
+          "required": [
+            "note"
+          ],
+          "title": "CrmNoteIn"
+        },
+        "CrmStageReached": {
+          "properties": {
+            "stage": {
+              "type": "string",
+              "title": "Stage"
+            },
+            "reached_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Reached At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "stage",
+            "reached_at"
+          ],
+          "title": "CrmStageReached"
+        },
+        "CrmTouchpoint": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "invite_request, invite_link, grant, issue, pull_request, discussion or note"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "what makes it one touchpoint: issue#12, invite:3, a note's id"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "the text of a note a writer added; the other kinds have none"
+            },
+            "author": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Author",
+              "description": "the login of the member who wrote a note"
+            },
+            "happened_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Happened At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "ref",
+            "happened_at"
+          ],
+          "title": "CrmTouchpoint"
         },
         "Csrf": {
           "properties": {

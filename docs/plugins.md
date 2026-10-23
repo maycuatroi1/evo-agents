@@ -472,6 +472,16 @@ time zone. It reads the tables of tasks, srs, plans, runs and decisions and writ
 `chats:write`. Import-linter keeps it in its own package (contract pm-plugin-own-package): it imports no other core
 plugin.
 
+### CRM
+
+**crm** (`evo_agents/core_plugins/crm`, `docs/crm-plugin.md`) keeps the people who found the project themselves as
+contacts: a GitHub login, its public profile link, the source, a stage (lead, invited, activated, retained) computed from
+hub data and kept with its history, and touchpoints. The job `intake` reads the invites and grants of the hub and the
+issues, pull requests and discussions of the project's `repo`, and pushes the stage counts to Signal as `crm.*`. It
+contributes the routes under `/v1/x/crm/{project}/contacts`, the source `contacts` of the knowledge graph and the five
+`crm_*` tables, asks for no permission, and a contact can be deleted on request with all its touchpoints
+(`evo-agents hub crm delete`). Import-linter keeps it in its own package (contract crm-plugin-own-package).
+
 ### Notifications from a plugin
 
 A backend granted `notifications:send` sends a notice to members of the project through the hub's API for plugins, with
