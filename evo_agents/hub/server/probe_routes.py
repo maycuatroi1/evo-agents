@@ -12,7 +12,9 @@ retire that one first); PATCH .../curator/probes/{id} changes its repo, commit, 
 
 POST /v1/worker/runs/{id}/probes takes a probe from the agent of a review run the worker holds (404 for any other run),
 as the member who dispatched it, who must still hold writer on the project, for a merged change of the project that has
-no active probe (409 otherwise): ``evo-agents worker probe add``. Its answer shows no verify.
+no active probe (409 otherwise): ``evo-agents worker probe add``. Its answer shows no verify. With ``replaces``, the
+probe takes the place of the change's active probe that the weekly report found not reproduced on one model two weeks
+in a row (``probe_fixes``; 422 for any other probe), which the hub retires with a note.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import probes as probe_shape
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, probes
+from evo_agents.hub.server import audit, probe_fixes, probes
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -252,6 +254,20 @@ async def retire_probe(
 # A review run's probe of a merged change
 
 
+async def _replaceable(conn: AsyncConnection, run, access: ProjectAccess, change_id: int, probe_id: int) -> None:
+    """422 unless the weekly probe report asks review run ``run`` to replace probe ``probe_id`` of change
+    ``change_id`` (``probe_fixes.replace_assignment``)."""
+    night = await probe_fixes.run_night(conn, run.id)
+    found = await probe_fixes.replace_assignment(conn, access, run.owner, night, probe_id)
+    if found is None or found.change_id != change_id:
+        raise HTTPException(
+            422,
+            f"probe {probe_id} is not an active probe of change {change_id} that was not reproduced on one model in "
+            "the two weekly reports before this run's week: the hub asks for a replacement only then; nothing was "
+            "recorded",
+        )
+
+
 @worker_router.post("/runs/{run_id}/probes", status_code=201, response_model=probes.Probe, responses=REFUSALS)
 async def record_probe(request: Request, run_id: RunId, body: probes.ReviewProbe, user: CurrentUser) -> probes.Probe:
     """A probe from the agent of the review run this worker holds, for a merged change that has none."""
@@ -263,10 +279,22 @@ async def record_probe(request: Request, run_id: RunId, body: probes.ReviewProbe
             raise HTTPException(
                 409, f"change {change.id} is {change.state}: a review run adds a probe to a merged change alone"
             )
-        if (found := await probes.active_on_change(conn, change.id)) is not None:
+        found = await probes.active_on_change(conn, change.id)
+        if body.replaces is not None:
+            await _replaceable(conn, run, access, change.id, body.replaces)
+        elif found is not None:
             raise HTTPException(409, f"change {change.id} has probe #{found} already")
         if body.repo not in await _project_repos(conn, run.project_id):
             raise HTTPException(422, f"project {run.project} has no repo {body.repo}; nothing was recorded")
+        pr = tables.curator_probes
+        if body.replaces is not None:
+            note = f"not reproduced two weekly reports in a row: review run #{run_id} replaced it"
+            await conn.execute(
+                update(pr)
+                .values(state="retired", retired_at=func.now(), retired_note=note)
+                .values(updated_by=run.owner.user_id, updated_at=func.now())
+                .where(pr.c.id == body.replaces)
+            )
         probe_id = await probes.store(
             conn,
             project_id=run.project_id,
@@ -277,9 +305,11 @@ async def record_probe(request: Request, run_id: RunId, body: probes.ReviewProbe
             change_id=change.id,
             user_id=run.owner.user_id,
             run_id=run_id,
+            replaces=body.replaces,
         )
-        await write_event(conn, run_id, {"text": f"probe #{probe_id} of change #{change.id}", "probe": probe_id})
-        pr = tables.curator_probes
+        what = f"probe #{probe_id} of change #{change.id}"
+        what += f", in place of probe #{body.replaces}" if body.replaces is not None else ""
+        await write_event(conn, run_id, {"text": what, "probe": probe_id})
         row = (await conn.execute(probes.query().where(pr.c.id == probe_id))).one()
     log.info("probe recorded", extra={"run_id": run_id, "probe_id": probe_id, "change_id": change.id})
     return probes.view(access.name, row, shown=False)

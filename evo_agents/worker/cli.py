@@ -789,6 +789,8 @@ def cmd_finding(args) -> int:
         if text is not None:
             body["body"] = text
     body["evidence"] = evidence_items(args.evidence)
+    if args.fix_of is not None:
+        body["fix_of"] = args.fix_of
     workspaces = _workspaces(agent)
 
     async def work(hub) -> dict:
@@ -813,8 +815,11 @@ def cmd_propose(args) -> int:
             raise WorkerStateError(f"--path takes REPO:PATH, a path within a repo, not {text!r}")
         paths.append({"repo": found[0], "path": found[1]})
     evidence = evidence_items(args.evidence or [])
-    if not evidence and not args.finding:
-        raise WorkerStateError("a proposal rests on --finding ID, --evidence SPEC, or both: give at least one")
+    if not evidence and not args.finding and args.fix_of is None:
+        raise WorkerStateError(
+            "a proposal rests on --finding ID, --evidence SPEC, or both: give at least one (a fix proposal, "
+            "--fix-of CHANGE, rests on the probe results the hub adds)"
+        )
     body: dict = {
         "lens": args.lens,
         "kind": args.kind,
@@ -830,6 +835,8 @@ def cmd_propose(args) -> int:
             body["summary"] = text
     if args.probe_file:
         body["probe"] = probe_file(args.probe_file)
+    if args.fix_of is not None:
+        body["fix_of"] = args.fix_of
     workspaces = _workspaces(agent)
 
     async def work(hub) -> dict:
@@ -946,6 +953,13 @@ def _register_review(wsub) -> None:
     )
     finding.add_argument("--severity", choices=SEVERITIES, default="medium", help="low, medium (default) or high")
     finding.add_argument("--body-file", help="markdown that explains it, at most 16 KiB (- for stdin)")
+    finding.add_argument(
+        "--fix-of",
+        type=int,
+        metavar="CHANGE",
+        help="the change the prompt asked you to fix: why you propose no fix of its rule; the hub adds the probe "
+        "results",
+    )
     finding.set_defaults(func=cmd_finding)
 
     propose = wsub.add_parser(
@@ -967,6 +981,13 @@ def _register_review(wsub) -> None:
         "--probe-file",
         help="the probe, YAML or JSON: repo, commit, task and verify; required when the evidence cites a correction "
         "and a path is an AGENTS.md, a CLAUDE.md, a skill or the repo's .claude settings or hooks",
+    )
+    propose.add_argument(
+        "--fix-of",
+        type=int,
+        metavar="CHANGE",
+        help="the change the prompt asked you to fix, whose probe recurred two weeks in a row; at least tier 1, and "
+        "the hub adds the probe results as evidence",
     )
     propose.set_defaults(func=cmd_propose)
 

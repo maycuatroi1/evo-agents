@@ -1,9 +1,10 @@
 """``evo-agents worker probe add``: the probe of a merged change of the Curator that has none
 (``evo_agents.hub.probes``), which the agent of a review run writes.
 
-``probe add --change N --repo REPO [--commit SHA] (--task TEXT | --task-file PATH) --verify LINE``: the task an agent is
-given in REPO, from the base commit (none: the tip of the default branch), and the one-line verify that exits 0 when
-the agent does not repeat the mistake. The task and the verify are masked as a digest is (``evo_agents.hub.redact``)
+``probe add --change N --repo REPO [--commit SHA] (--task TEXT | --task-file PATH) --verify LINE [--replaces PROBE]``:
+the task an agent is given in REPO, from the base commit (none: the tip of the default branch), and the one-line verify
+that exits 0 when the agent does not repeat the mistake; with --replaces, in place of the change's probe that the
+weekly report found not reproduced two weeks in a row, which the hub retires. The task and the verify are masked as a digest is (``evo_agents.hub.redact``)
 before they leave this machine.
 
 It reads the run from EVO_RUN_ID and EVO_WORKER_HOME, as ``worker playbook`` does, refuses outside a review run of
@@ -106,8 +107,11 @@ def cmd_add(args) -> int:
     body = {"change_id": args.change, "repo": args.repo, "task": _task(args), "verify": verify}
     if args.commit:
         body["commit"] = args.commit
+    if args.replaces is not None:
+        body["replaces"] = args.replaces
     probe = _send(body)
-    print(f"Probe #{probe.get('id')} of change #{probe.get('change_id')} recorded, in {probe.get('repo')}.")
+    replaced = f", in place of probe #{args.replaces}" if args.replaces is not None else ""
+    print(f"Probe #{probe.get('id')} of change #{probe.get('change_id')} recorded, in {probe.get('repo')}{replaced}.")
     return 0
 
 
@@ -127,5 +131,11 @@ def register_probe(wsub) -> None:
         required=True,
         help=f"one shell line, at most {probes.MAX_VERIFY_CHARS} characters, that exits 0 when the agent does not "
         "repeat the mistake",
+    )
+    add.add_argument(
+        "--replaces",
+        type=int,
+        metavar="PROBE",
+        help="the change's probe, not reproduced two weeks in a row, that this one replaces; the hub retires it",
     )
     add.set_defaults(func=cmd_add)

@@ -148,3 +148,20 @@ def status_of(state: str | None, on_failed: int, off_runs: int, off_failed: int)
     if off_runs == 0 or off_failed == 0:
         return "not_reproduced"
     return "holds"
+
+
+# What a review run is asked to do of the report (criterion a5): fix the rule of a change whose probe recurred on one
+# runtime and model two weekly reports in a row (a fix proposal, at least tier 1, or a finding saying why not), and
+# replace a probe that was not reproduced on one runtime and model two weekly reports in a row.
+REPEAT_WEEKS = 2
+FIX_STATUS = "recurring"
+REPLACE_STATUS = "not_reproduced"
+MAX_ASSIGNED_TASK_BYTES = 2 * 1024  # the task of a probe to replace, in the prompt
+
+
+def repeated(weeks: list[dict], status: str) -> list:
+    """The keys ((probe, runtime, model) each) whose status is ``status`` in every one of ``weeks`` ({key: status}
+    each, as many as REPEAT_WEEKS), in the order of the first; none without weeks."""
+    if not weeks:
+        return []
+    return [key for key, found in weeks[0].items() if found == status and all(w.get(key) == status for w in weeks[1:])]

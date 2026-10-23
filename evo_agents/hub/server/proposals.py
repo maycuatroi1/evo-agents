@@ -76,7 +76,15 @@ from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
-from evo_agents.hub.server import audit, change_tiers, earlier, facet_figures, history_search, memory_promotion
+from evo_agents.hub.server import (
+    audit,
+    change_tiers,
+    earlier,
+    facet_figures,
+    history_search,
+    memory_promotion,
+    probe_fixes,
+)
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probes as stored_probes
@@ -160,6 +168,13 @@ class FindingIn(BaseModel):
     title: Title
     body: str | None = Field(None, min_length=1, max_length=review.MAX_BODY_BYTES, description="markdown, 16 KiB")
     evidence: list[EvidenceIn] = Field(min_length=1, max_length=review.MAX_EVIDENCE)
+    fix_of: int | None = Field(
+        None,
+        ge=1,
+        le=MAX_ID,
+        description="the merged change whose probe recurred two weekly reports in a row that the prompt asked this run "
+        "to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence",
+    )
 
     @model_validator(mode="after")
     def _bounded(self):
@@ -178,6 +193,7 @@ class Finding(BaseModel):
     body: str | None
     evidence: list[dict] = Field(description="each piece as the hub resolved it, with how (resolved)")
     created_at: datetime
+    fix_of: int | None = Field(None, description="the change it says why this run proposed no fix of")
 
 
 class FindingList(BaseModel):
@@ -217,11 +233,21 @@ class ProposalIn(BaseModel):
         description="a task and a verify that say whether an agent repeats the mistake; required when the evidence "
         "cites a correction and the paths include a file a probe arm can place",
     )
+    fix_of: int | None = Field(
+        None,
+        ge=1,
+        le=MAX_ID,
+        description="the merged change whose probe recurred two weekly reports in a row that the prompt asked this run "
+        "to fix; at least tier 1, and the hub adds the probe results as evidence",
+    )
 
     @model_validator(mode="after")
     def _supported(self):
-        if not self.finding_ids and not self.evidence:
-            raise ValueError("a proposal rests on findings, evidence of its own, or both: give at least one")
+        if not self.finding_ids and not self.evidence and self.fix_of is None:
+            raise ValueError(
+                "a proposal rests on findings, evidence of its own, or both: give at least one (a fix proposal, "
+                "fix_of, rests on the probe results the hub adds)"
+            )
         if (self.plan is None) == (self.promotion is None) or (self.promotion and self.kind != "memory"):
             raise ValueError("a proposal carries a draft plan, or in its place a promotion when its kind is memory")
         if self.summary is not None and len(self.summary.encode()) > review.MAX_BODY_BYTES:
@@ -255,6 +281,9 @@ class ProposalSummary(BaseModel):
     created_at: datetime
     revert_of: int | None = Field(
         None, description="the proposal whose merged change it reverts: the hub proposed it once its figures got worse"
+    )
+    fix_of: int | None = Field(
+        None, description="the merged change whose rule it fixes: its probe recurred two weekly reports in a row"
     )
 
 
@@ -449,6 +478,7 @@ def _findings():
         f.c.body,
         f.c.evidence,
         f.c.created_at,
+        f.c.fix_of,
         f.c.label,
     )
 
@@ -472,6 +502,8 @@ async def record_finding(request: Request, run_id: RunId, body: FindingIn, user:
                 409, f"run {run_id} recorded {review.MAX_FINDINGS} findings already, the most a run may"
             )
         evidence = await resolve(conn, request, run, access, body.evidence)
+        if body.fix_of is not None:
+            evidence += (await _fix_assigned(conn, run, access, body.fix_of)).results
         closed = await earlier.closed_like(conn, access, body.lens, body.title, evidence)
         if closed is not None:
             raise HTTPException(409, earlier.REPEATED.format(id=closed.id, lens=closed.lens, status=closed.status))
@@ -484,6 +516,7 @@ async def record_finding(request: Request, run_id: RunId, body: FindingIn, user:
             "body": body.body,
             "evidence": evidence,
             "label": label,
+            "fix_of": body.fix_of,
         }
         finding_id = (await conn.execute(insert(f).values(**values).returning(f.c.id))).scalar_one()
         await write_event(
@@ -607,6 +640,7 @@ def _proposals():
         p.c.note,
         p.c.label,
         p.c.revert_of,
+        p.c.fix_of,
         p.c.promotion,
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
@@ -639,6 +673,20 @@ async def _probe_needed(conn: AsyncConnection, run_id: int, body: ProposalIn, ev
         )
 
 
+async def _fix_assigned(conn: AsyncConnection, run: _ReviewRun, access: ProjectAccess, change_id: int):
+    """The fix assignment of change ``change_id`` for review run ``run`` (``probe_fixes.fix_assignment``); 422
+    without one."""
+    night = await probe_fixes.run_night(conn, run.id)
+    found = await probe_fixes.fix_assignment(conn, access, run.owner, night, change_id)
+    if found is None:
+        raise _refused(
+            "fix_of",
+            f"change {change_id} of project {run.project} has no probe that recurred on one model in the two weekly "
+            "reports before this run's week: the hub asks for a fix proposal only then",
+        )
+    return found
+
+
 def _summary(project: str, row) -> ProposalSummary:
     data = {key: row._mapping[key] for key in ProposalSummary.model_fields if key != "project"}
     return ProposalSummary(project=project, **data)
@@ -667,6 +715,14 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         if body.probe is not None and body.probe.repo not in repos:
             raise _refused("probe", f"project {run.project} has no repo {body.probe.repo}")
         evidence = await resolve(conn, request, run, access, body.evidence)
+        if body.fix_of is not None:
+            evidence += (await _fix_assigned(conn, run, access, body.fix_of)).results
+            if (found := await probe_fixes.open_fix(conn, body.fix_of)) is not None:
+                raise HTTPException(
+                    409,
+                    f"change {body.fix_of} has open fix proposal #{found} already: a change has one open fix proposal "
+                    "at a time",
+                )
         promotion, label = await memory_promotion.checked(conn, run, access, body.promotion, evidence, label)
         count = len(evidence) + await _finding_evidence(conn, access, body.finding_ids)
         paths = list(dict.fromkeys((item.repo, item.path) for item in body.paths))
@@ -674,7 +730,14 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         graph = await graph_view(request, run.owner, access, [f"{repo}:{path}" for repo, path in paths])
         impacted = sorted(graph.impacted) if graph is not None else None
         unknown = await change_tiers.unknown_paths(conn, run.project_id, paths, graph)
-        tier = tiers.tier_of(body.kind, paths, await _protected(conn, run.project_id), impacted or [], unknown=unknown)
+        tier = tiers.tier_of(
+            body.kind,
+            paths,
+            await _protected(conn, run.project_id),
+            impacted or [],
+            unknown=unknown,
+            fix_of=body.fix_of,
+        )
         fingerprint = tiers.fingerprint(body.kind, paths, body.title)
         rejected = await _rejected_like(conn, run.project_id, fingerprint)
         dropped = rejected is not None and tiers.drops(count, rejected.evidence_count)
@@ -698,6 +761,7 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
             "state": "dropped" if dropped else "open",
             "duplicate_of": rejected.id if dropped else None,
             "label": label,
+            "fix_of": body.fix_of,
         }
         proposal_id = (await conn.execute(insert(p).values(**values).returning(p.c.id))).scalar_one()
         if body.probe is not None:

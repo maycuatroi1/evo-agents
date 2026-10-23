@@ -8,7 +8,9 @@ change that has no row of the week on a model of the charter is unmeasured too. 
 sessions, and what its probe runs cost (the usage of the project's runs of kind probe whose night falls in the week)
 against the charter's probes.budget_usd. The report also names the merged changes born of a correction (their
 proposal's evidence cites ``corrections`` of the night's figures, ``ledger.cites_corrections``) that have no active
-probe, each with why, and the fix proposals of recurring probes with their state (``fixes``).
+probe, each with why, the fix proposals of recurring probes with their state (``fixes``) and the probes written in
+place of probes not reproduced (``replacements``), those still open or made since the oldest week shown
+(``evo_agents.hub.server.probe_fixes`` says when a review run is asked for them).
 
 GET /v1/projects/{p}/curator/probe-report (reader) answers it for ``weeks`` weeks, the newest first: the week of
 ``week`` (a day; default today in the charter's time zone, the week in progress, whose ``complete`` is false) and those
@@ -37,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, probes, runs, tables
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server import probe_fixes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.curator import _charter_row, _owner_access
 from evo_agents.hub.server.errors import ErrorBody
@@ -132,6 +135,16 @@ class ProbeFix(BaseModel):
     state: str
 
 
+class ProbeReplacement(BaseModel):
+    """A probe a review run wrote in place of one not reproduced two weeks in a row (criterion a5)."""
+
+    probe_id: int
+    replaces: int = Field(description="the probe it replaced, now retired")
+    change_id: int | None
+    state: str
+    created_at: datetime
+
+
 class ProbeWeekly(BaseModel):
     project: str
     k: int = Field(description="the charter's probes.k")
@@ -139,6 +152,9 @@ class ProbeWeekly(BaseModel):
     weeks: list[ProbeWeek] = Field(description="the newest first")
     unprobed: list[ProbeUnprobed] = Field(description="merged changes born of a correction without an active probe")
     fixes: list[ProbeFix] = Field(description="the fix proposals of recurring probes, with their state")
+    replacements: list[ProbeReplacement] = Field(
+        default_factory=list, description="the probes written in place of probes not reproduced two weeks in a row"
+    )
 
 
 # Reading
@@ -295,6 +311,54 @@ async def _unprobed(conn: AsyncConnection, access: ProjectAccess, reach: _Reach)
     return found
 
 
+async def _fixes(conn: AsyncConnection, access: ProjectAccess, reach: _Reach, since: date) -> list[ProbeFix]:
+    """The fix proposals of the project still open, or made since ``since``, the newest first."""
+    p = tables.proposals
+    rows = (
+        await conn.execute(
+            select(p.c.id, p.c.fix_of, p.c.title, p.c.state, p.c.label)
+            .where(
+                p.c.project_id == access.project_id,
+                p.c.fix_of.is_not(None),
+                p.c.state.in_(probe_fixes.OPEN) | (func.date(p.c.created_at) >= since),
+            )
+            .order_by(p.c.id.desc())
+            .limit(MAX_UNPROBED)
+        )
+    ).all()
+    return [
+        ProbeFix(proposal_id=row.id, change_id=row.fix_of, title=row.title, state=row.state)
+        for row in rows
+        if await reach(row.label)
+    ]
+
+
+async def _replacements(
+    conn: AsyncConnection, access: ProjectAccess, reach: _Reach, since: date
+) -> list[ProbeReplacement]:
+    """The probes of the project made since ``since`` in place of others, the newest first."""
+    pr = tables.curator_probes
+    rows = (
+        await conn.execute(
+            select(pr.c.id, pr.c.replaces, pr.c.change_id, pr.c.state, pr.c.created_at, pr.c.label)
+            .where(
+                pr.c.project_id == access.project_id,
+                pr.c.replaces.is_not(None),
+                func.date(pr.c.created_at) >= since,
+            )
+            .order_by(pr.c.id.desc())
+            .limit(MAX_UNPROBED)
+        )
+    ).all()
+    return [
+        ProbeReplacement(
+            probe_id=row.id, replaces=row.replaces, change_id=row.change_id, state=row.state, created_at=row.created_at
+        )
+        for row in rows
+        if await reach(row.label)
+    ]
+
+
 async def build(
     conn: AsyncConnection,
     access: ProjectAccess,
@@ -347,7 +411,8 @@ async def build(
         budget_usd=settings.get("budget_usd"),
         weeks=shown,
         unprobed=await _unprobed(conn, access, reach),
-        fixes=[],
+        fixes=await _fixes(conn, access, reach, listed[-1]),
+        replacements=await _replacements(conn, access, reach, listed[-1]),
     )
 
 
@@ -423,6 +488,24 @@ def week_lines(week: ProbeWeek, *, listed: int | None = None) -> list[str]:
     return lines
 
 
+def answer_lines(found: ProbeWeekly, *, listed: int | None = None) -> list[str]:
+    """The fix proposals and the replacement probes of the report."""
+    lines = []
+    if found.fixes:
+        shown = found.fixes if listed is None else found.fixes[:listed]
+        lines.append(f"Fix proposals of probes that recurred two weeks in a row: {len(found.fixes)}")
+        lines += [
+            f"- proposal #{fix.proposal_id} of change #{fix.change_id} ({fix.state}): {fix.title}" for fix in shown
+        ]
+    if found.replacements:
+        shown = found.replacements if listed is None else found.replacements[:listed]
+        lines.append(f"Probes written in place of probes not reproduced two weeks in a row: {len(found.replacements)}")
+        lines += [
+            f"- probe #{item.probe_id} of change #{item.change_id} in place of probe #{item.replaces}" for item in shown
+        ]
+    return lines
+
+
 def unprobed_lines(found: ProbeWeekly, *, listed: int | None = None) -> list[str]:
     if not found.unprobed:
         return []
@@ -444,9 +527,7 @@ async def mcp_answer(request: Request, project: str, user: Principal, arguments:
     for week in found.weeks:
         lines += week_lines(week)
     lines += unprobed_lines(found)
-    lines += [
-        f"Fix proposal #{fix.proposal_id} of change #{fix.change_id} ({fix.state}): {fix.title}" for fix in found.fixes
-    ]
+    lines += answer_lines(found)
     data = {**found.model_dump(mode="json"), "summary": f"{len(found.weeks)} weeks"}
     return "\n".join(lines), data
 
@@ -494,8 +575,10 @@ async def send(conn: AsyncConnection, due) -> str | None:
         *week_lines(shown, listed=MAX_NOTICE_LISTED),
     ]
     lines += unprobed_lines(found, listed=MAX_NOTICE_LISTED)
+    lines += answer_lines(found, listed=MAX_NOTICE_LISTED)
     details = {"week": week.isoformat(), **totals.model_dump(include=set(probes.STATUSES) | {"probes"})}
     details |= {"cost_usd": shown.cost_usd, "budget_usd": shown.budget_usd, "unprobed": len(found.unprobed)}
+    details |= {"fixes": len(found.fixes), "replacements": len(found.replacements)}
     await notify(
         conn,
         user_id=due.owner_id,

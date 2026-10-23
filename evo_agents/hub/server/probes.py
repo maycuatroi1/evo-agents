@@ -114,6 +114,13 @@ class ReviewProbe(ProbeIn):
     """A probe the agent of a review run adds to a merged change that has none."""
 
     change_id: int = Field(ge=1, le=MAX_ID)
+    replaces: int | None = Field(
+        None,
+        ge=1,
+        le=MAX_ID,
+        description="the change's active probe, not reproduced two weekly reports in a row, that this one replaces; "
+        "the hub retires it",
+    )
 
 
 class ProbeRetire(BaseModel):
@@ -139,6 +146,7 @@ class Probe(BaseModel):
     retired_note: str | None
     created_at: datetime
     updated_at: datetime
+    replaces: int | None = Field(None, description="the probe, not reproduced two weeks in a row, this one replaced")
 
 
 class ProbeList(BaseModel):
@@ -171,6 +179,7 @@ def query():
         pr.c.retired_note,
         pr.c.created_at,
         pr.c.updated_at,
+        pr.c.replaces,
         pr.c.label,
     ).select_from(pr.outerjoin(u, u.c.id == pr.c.created_by))
 
@@ -193,8 +202,10 @@ async def store(
     change_id: int | None = None,
     user_id: int | None = None,
     run_id: int | None = None,
+    replaces: int | None = None,
 ) -> int:
-    """Store ``probe`` (checked and masked already) for a proposal or a change of the project; its id."""
+    """Store ``probe`` (checked and masked already) for a proposal or a change of the project, in place of probe
+    ``replaces`` if any; its id."""
     pr = tables.curator_probes
     values = {
         "project_id": project_id,
@@ -208,6 +219,7 @@ async def store(
         "label": label,
         "created_by": user_id,
         "created_run_id": run_id,
+        "replaces": replaces,
     }
     return (await conn.execute(insert(pr).values(**values).returning(pr.c.id))).scalar_one()
 

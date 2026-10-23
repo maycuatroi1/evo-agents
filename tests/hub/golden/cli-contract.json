@@ -5223,7 +5223,8 @@
           "retired_at",
           "retired_note",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "replaces"
         ],
         "schema": "Probe"
       }
@@ -5343,7 +5344,8 @@
           "budget_usd",
           "weeks",
           "unprobed",
-          "fixes"
+          "fixes",
+          "replacements"
         ],
         "schema": "ProbeWeekly"
       }
@@ -5402,7 +5404,8 @@
           "retired_at",
           "retired_note",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "replaces"
         ],
         "schema": "Probe"
       }
@@ -5453,7 +5456,8 @@
           "retired_at",
           "retired_note",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "replaces"
         ],
         "schema": "Probe"
       }
@@ -5513,6 +5517,7 @@
           "inbox_at",
           "created_at",
           "revert_of",
+          "fix_of",
           "summary",
           "paths",
           "impacted",
@@ -5593,6 +5598,7 @@
           "inbox_at",
           "created_at",
           "revert_of",
+          "fix_of",
           "summary",
           "paths",
           "impacted",
@@ -5830,6 +5836,7 @@
           "inbox_at",
           "created_at",
           "revert_of",
+          "fix_of",
           "summary",
           "paths",
           "impacted",
@@ -5892,6 +5899,7 @@
           "inbox_at",
           "created_at",
           "revert_of",
+          "fix_of",
           "summary",
           "paths",
           "impacted",
@@ -16443,6 +16451,14 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--fix-of"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -16735,6 +16751,14 @@
           "value": "string",
           "required": true,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--replaces"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -16860,6 +16884,14 @@
             "--probe-file"
           ],
           "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--fix-of"
+          ],
+          "value": "integer",
           "required": false,
           "repeatable": false
         }
@@ -81736,6 +81768,18 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "fix_of": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fix Of",
+              "description": "the change it says why this run proposed no fix of"
             }
           },
           "type": "object",
@@ -81814,6 +81858,20 @@
               "maxItems": 50,
               "minItems": 1,
               "title": "Evidence"
+            },
+            "fix_of": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fix Of",
+              "description": "the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence"
             }
           },
           "type": "object",
@@ -96199,6 +96257,18 @@
               "type": "string",
               "format": "date-time",
               "title": "Updated At"
+            },
+            "replaces": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Replaces",
+              "description": "the probe, not reproduced two weeks in a row, this one replaced"
             }
           },
           "type": "object",
@@ -96517,6 +96587,49 @@
           "type": "object",
           "title": "ProbeModel",
           "description": "A runtime and model the arms of a probe run on."
+        },
+        "ProbeReplacement": {
+          "properties": {
+            "probe_id": {
+              "type": "integer",
+              "title": "Probe Id"
+            },
+            "replaces": {
+              "type": "integer",
+              "title": "Replaces",
+              "description": "the probe it replaced, now retired"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "probe_id",
+            "replaces",
+            "change_id",
+            "state",
+            "created_at"
+          ],
+          "title": "ProbeReplacement",
+          "description": "A probe a review run wrote in place of one not reproduced two weeks in a row (criterion a5)."
         },
         "ProbeReport": {
           "properties": {
@@ -97297,6 +97410,14 @@
               "type": "array",
               "title": "Fixes",
               "description": "the fix proposals of recurring probes, with their state"
+            },
+            "replacements": {
+              "items": {
+                "$ref": "#/components/schemas/ProbeReplacement"
+              },
+              "type": "array",
+              "title": "Replacements",
+              "description": "the probes written in place of probes not reproduced two weeks in a row"
             }
           },
           "type": "object",
@@ -98688,6 +98809,18 @@
               "title": "Revert Of",
               "description": "the proposal whose merged change it reverts: the hub proposed it once its figures got worse"
             },
+            "fix_of": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fix Of",
+              "description": "the merged change whose rule it fixes: its probe recurred two weekly reports in a row"
+            },
             "summary": {
               "anyOf": [
                 {
@@ -99042,6 +99175,20 @@
                 }
               ],
               "description": "a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place"
+            },
+            "fix_of": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fix Of",
+              "description": "the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix; at least tier 1, and the hub adds the probe results as evidence"
             }
           },
           "type": "object",
@@ -99221,6 +99368,18 @@
               ],
               "title": "Revert Of",
               "description": "the proposal whose merged change it reverts: the hub proposed it once its figures got worse"
+            },
+            "fix_of": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fix Of",
+              "description": "the merged change whose rule it fixes: its probe recurred two weekly reports in a row"
             }
           },
           "type": "object",
@@ -102383,6 +102542,20 @@
               "maximum": 9.223372036854776e+18,
               "minimum": 1.0,
               "title": "Change Id"
+            },
+            "replaces": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Replaces",
+              "description": "the change's active probe, not reproduced two weekly reports in a row, that this one replaces; the hub retires it"
             }
           },
           "additionalProperties": false,
