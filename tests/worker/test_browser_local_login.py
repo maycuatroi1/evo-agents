@@ -4,6 +4,8 @@ import argparse
 
 import pytest
 
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
 from evo_agents.worker.browser import chromium, cli, local_login
 from evo_agents.worker.home import WorkerStateError
 
