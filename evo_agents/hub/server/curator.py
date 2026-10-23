@@ -36,11 +36,11 @@ queued runs when it is paused, and outside its window those of the night (``shif
 one run (``gate_of`` says when it may): the night's review run first, when the night has none yet and the worker runs
 review runs (``evo_agents.hub.server.collect``), else the night's history run once its review run was queued
 (``evo_agents.hub.server.history``), these two inside the window alone, else the judge run of a change of the Curator
-that waits for one, else the replay run of a change that waits for one (``evo_agents.hub.server.replays``), else the
-Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else, inside the window, a plan run of the
-charter's night_plans, as ``evo_agents.hub.curator`` says, audited as curator.dispatch with the owner as actor and no
-token. GET .../curator also names the last review run of the project, with how many findings and proposals it wrote, and
-its last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each
+that waits for one, else the Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else the
+replay run of a change that waits for one (``evo_agents.hub.server.replays``), else, inside the window, a plan run of
+the charter's night_plans, as ``evo_agents.hub.curator`` says, audited as curator.dispatch with the owner as actor and
+no token. GET .../curator also names the last review run of the project, with how many findings and proposals it wrote,
+and its last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each
 agent session once at its largest total, as Claude Code reports a session's running total. The charter also names what
 the Curator's runs get of the owner's secrets (``git_secret``, ``env_secrets``): no other secret is leased to them.
 """
@@ -1285,10 +1285,10 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
         return "history"
     if await queue_judge(conn, due, gate) is not None:
         return "judge"
-    if await queue_replay(conn, due, gate) is not None:
-        return "replay"
     if await queue_builder(conn, due, gate, curator_app=curator_app) is not None:
         return "builder"
+    if await queue_replay(conn, due, gate) is not None:
+        return "replay"
     if not gate.inside:  # the night's plans wait for the window
         return "outside"
     night, worker, budget = gate.night, gate.worker, gate.budget

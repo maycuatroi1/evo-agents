@@ -2,17 +2,18 @@
 ``evo_agents.hub.replay`` holds the model and ``evo_agents.hub.replay_suite`` the job that builds each project's suite
 of replay tasks.
 
-The night shift (``curator._fire``) queues, after a judge run that waits, the replay run of the oldest change of the
-Curator that waits for one (``queue_replay``): a change built (its Builder ran, its branch is on origin) and not merged
-or closed (``replay.REPLAY_STATES``), whose proposal is of kind skill or names a skill, an AGENTS.md or a CLAUDE.md
-(``replay.harness_path``), with no run of its plan active. It takes the tasks of the holdout split of the project's
-suite in the order they came in, those not found unusable whose repos the worker on duty has, up to the charter's
-``replay.tasks`` per change, one replay run per task: a run of kind replay on the change's plan, pinned to the worker on
-duty, as the schedule's owner, with the runtime and model of the charter's Builder, and caps that keep the night's
-replay runs within ``replay.budget_usd`` (a charter without it, or with ``replay.tasks`` 0, replays nothing). A replay
-run that ends without both arms is replayed again, REPLAY_ATTEMPTS runs in all, then the replay fails with why
-(``replay_ended``); one whose worker refused it (no base commit for the task, no harness file in the change) fails at
-once, and a task whose commits are nowhere on origin is unusable from then on.
+The night shift (``curator._fire``) queues, after a judge run that waits and the Builder of a planned change, the replay
+run of the oldest change of the Curator that waits for one (``queue_replay``): a change built (its Builder ran, its
+branch is on origin), not merged or closed (``replay.REPLAY_STATES``) and not failed by the Judge (``passed`` false),
+whose proposal is of kind skill or names a skill, an AGENTS.md or a CLAUDE.md (``replay.harness_path``), with no run of
+its plan active. It takes the tasks of the holdout split of the project's suite in the order they came in, those not
+found unusable whose repos the worker on duty has, up to the charter's ``replay.tasks`` per change, one replay run per
+task: a run of kind replay on the change's plan, pinned to the worker on duty, as the schedule's owner, with the runtime
+and model of the charter's Builder, and caps that keep the night's replay runs within ``replay.budget_usd`` (a charter
+without it, or with ``replay.tasks`` 0, replays nothing). A replay run that ends without both arms is replayed again,
+REPLAY_ATTEMPTS runs in all, then the replay fails with why (``replay_ended``); one whose worker refused it (no base
+commit for the task, no harness file in the change) fails at once, and a task whose commits are nowhere on origin is
+unusable from then on.
 
 The claim of a replay run tells its worker the replay, the task and the change's branch and head, and hands it the
 run's own key (``replay_claim``), which the hub keeps as a SHA-256: the worker posts each arm's result with POST
@@ -212,6 +213,7 @@ async def _replayable(conn: AsyncConnection, project_id: int) -> list:
         .where(
             c.c.project_id == project_id,
             c.c.state.in_(replay.REPLAY_STATES),
+            c.c.passed.is_not(False),  # the Judge or the hub's detector failed it: no replay gives it its merge
             c.c.builder_run_id.is_not(None),
             c.c.branch.is_not(None),
             c.c.plan_id.is_not(None),
