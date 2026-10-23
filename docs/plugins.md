@@ -405,7 +405,8 @@ hub's /mcp with a kind, a target, the fields it sets and those it unsets, and a 
 | `plugin_config` | `{"plugin": ...}`, with `"agent"` for an agent's layer | the next version of that layer of the plugin's config | an admin of the project |
 | `agent` | `{"agent": handle}` | the next version of the profile (name, description, instructions, packs) | an admin of the project |
 | `policy` | none | the next revision of the project's autonomy policy, each key by its dotted path (`repos.<repo>.mode`) | an admin of the project |
-| `goal` | `{"goal": "G-<number>"}`, none for a new goal (the hub picks its code) | the next revision of the goal (statement, metric, deadline, canvas, rank, owner, status); rolled back, a new goal is closed | an admin of the project |
+| `problem` | `{"problem": "P-<number>"}`, none for a new problem (the hub picks its code) | the next revision of the problem (statement, who, when, workaround, metric, rank, owner, status, close_reason; `docs/problems.md`); rolled back, a new problem is dropped | a writer of the project |
+| `goal` | `{"goal": "G-<number>"}`, none for a new goal (the hub picks its code) | the next revision of the goal (statement, metric, deadline, canvas, problem, rank, owner, status); rolled back, a new goal is closed | an admin of the project |
 
 The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched, and for
 the agent of the Curator's review run on a night of the lens `product` (`docs/curator.md`, The lens product), which
@@ -415,7 +416,7 @@ It then checks the change as the route that writes the setting would. @builder n
 config, never sets a branding image (it may unset one), and never changes the project's default agent. A change that
 passes is kept pending in `builder_proposals` (migration 0043) at the setting's version. The hub shows it in the
 thread, and each member who may decide it gets an Inbox notice of kind `builder_proposal` that links to that
-message. Nothing changes until an admin approves it:
+message. Nothing changes until a member who may decide it (the table's last column) approves it:
 
 - in the thread, with `approve 12`, `reject 12` or `roll back 12`, which the hub reads through the event `chat.message`
   (a delivery made again does nothing new);

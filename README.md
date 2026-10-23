@@ -598,9 +598,12 @@ docs/         hub.md: running and using the hub; workers.md: workers, runs, plan
               grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
               retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
               hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks;
-              merge-queue.md: the autonomy policy and the hub's merge queue on GitLab; loop.md: goals and
-              the Loop of a project; roadmap.md: what works today and what is still being built; images/: the
-              screenshots of this README and the product page, from `pnpm screenshots` in web/
+              merge-queue.md: the autonomy policy and the hub's merge queue on GitLab; problems.md: the
+              problems of a project (P-<number>), what hurts before any solution, which goals, claims and
+              plans point to; loop.md: goals and the Loop of a project, which goes from the problem a goal
+              answers through a solution to a plan, use cases optional; roadmap.md: what works today and
+              what is still being built; images/: the screenshots of this README and the product page, from
+              `pnpm screenshots` in web/
 ```
 
 ## License

@@ -29,7 +29,9 @@ change.
 ### The Loop
 
 The Loop turns changes in a project, such as a revised goal or a plan an agent wrote, into work for the kinds of run
-the hub already has, and asks people at three gates. It is off by default ([loop.md](loop.md)).
+the hub already has, and asks people at three gates. It goes from the problem a goal answers
+([problems.md](problems.md)), and use cases are a step it takes only in a project that keeps them. It is off by
+default ([loop.md](loop.md)).
 
 ### Canvas
 

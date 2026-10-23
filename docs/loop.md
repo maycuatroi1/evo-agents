@@ -48,7 +48,7 @@ A work item (table `loop_items`) is one piece of work the Loop keeps track of. I
 - a kind and its cycle: `brainstorm`, `use_case` and `discover` of the business cycle, `build` and `deliver` of the
   development cycle;
 - its ancestors: the goal, the claim, the SRS document, use case and version, the frame task, the plan and the run;
-  and the work item it came of (`parent_id`), so a chain reads from the goal to the release;
+  and the work item it came of (`parent_id`), so a chain reads from the problem and the goal to the release;
 - the problem it goes from (`problem_id`): the one its goal answered when `rules/2` made it, or the one of the work
   item it came of; none for a goal that answers no problem, or a work item `rules/1` made;
 - a key, unique in the project (below);
@@ -313,9 +313,10 @@ writes as a revision (`evo-agents hub policy`, `docs/merge-queue.md`). A key a r
 ## Commands, routes and pages
 
 ```sh
+evo-agents hub problem list --project demo    # problems by rank (docs/problems.md)
 evo-agents hub goal list --project demo       # goals by rank
 evo-agents hub goal set --statement "..." --metric search.zero_rate --aggregate p50 --comparator "<=" --target 0.05 \
-  --window-days 30 --project demo             # a new goal, G-<next>
+  --window-days 30 --problem P-1 --project demo   # a new goal, G-<next>, that answers problem P-1
 evo-agents hub loop status --project demo     # on or off, its breaker, cursor, last tick, work items by state
 evo-agents hub loop resume --project demo     # an admin resets the breaker that tripped
 ```
@@ -325,9 +326,10 @@ evo-agents hub loop resume --project demo     # an admin resets the breaker that
 work item with its chain, the stages from the problem and the goal to the release, and its ledger; `GET .../loop/goals`
 each goal's metric now against its target with its work items by state; `POST .../loop/resume` the admin's reset.
 Reading needs a grant on the project; each ancestor shows as its own route shows it, and one the reader may not read is
-named in `hidden`. The web has the pages Goals (`/p/{p}/goals`), Loop (`/p/{p}/loop`, by state or by chain) and
-Decisions (`/p/{p}/decide`); an admin turns the Loop on or off and resets its breaker on the Loop page, and every other
-member reads.
+named in `hidden`. The web has the pages Problems (`/p/{p}/problems`, a problem's page with the chains that go from
+it), Goals (`/p/{p}/goals`), Loop (`/p/{p}/loop`, by state or by chain, each chain's rail starting from its problem)
+and Decisions (`/p/{p}/decide`); an admin turns the Loop on or off and resets its breaker on the Loop page, and every
+other member reads.
 
 ## Swapping the reconciler
 
