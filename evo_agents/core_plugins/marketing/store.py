@@ -2,7 +2,8 @@
 
 A channel account is one row of marketing_channels; a post is one row of marketing_posts that the gate moves through
 proposed, judging and then posted, draft, failed or withdrawn. The kill switch of a project is its row of
-marketing_state; the deny-list is marketing_denylist. Rows come back as SQLAlchemy rows: columns by name.
+marketing_state; the deny-list is marketing_denylist. A post for a browser channel goes on to queued and posting
+(``browser``). Rows come back as SQLAlchemy rows: columns by name.
 """
 
 from __future__ import annotations
@@ -20,6 +21,11 @@ from evo_agents.hub.server.projects import ProjectAccess
 PLUGIN = "marketing"
 MAX_LIST = 500
 OPEN = ("proposed", "judging")  # the states of a post the gate has not decided
+
+
+def post_columns() -> list:
+    """The columns of marketing_posts a read takes: all but the screenshot, which only its own route reads."""
+    return [column for column in tables.marketing_posts.c if column.name != "screenshot"]
 
 
 class MarketingError(Exception):
@@ -108,7 +114,7 @@ async def open_channels(conn: AsyncConnection, project_id: int, since: datetime)
 
 async def posts(conn: AsyncConnection, project_id: int, *, state: str | None = None, limit: int = MAX_LIST) -> list:
     t = tables.marketing_posts.c
-    query = select(tables.marketing_posts).where(t.project_id == project_id)
+    query = select(*post_columns()).where(t.project_id == project_id)
     if state:
         query = query.where(t.state == state)
     return list(await conn.execute(query.order_by(t.id.desc()).limit(limit)))
@@ -116,7 +122,7 @@ async def posts(conn: AsyncConnection, project_id: int, *, state: str | None = N
 
 async def post(conn: AsyncConnection, post_id: int, *, project_id: int | None = None, lock: bool = False):
     t = tables.marketing_posts
-    query = select(t).where(t.c.id == post_id)
+    query = select(*post_columns()).where(t.c.id == post_id)
     if project_id is not None:
         query = query.where(t.c.project_id == project_id)
     return (await conn.execute(query.with_for_update() if lock else query)).first()
@@ -132,10 +138,25 @@ async def save_post(conn: AsyncConnection, post_id: int, **values) -> None:
     await conn.execute(update(t).where(t.c.id == post_id).values(**values))
 
 
+async def screenshot(conn: AsyncConnection, post_id: int, project_id: int) -> bytes | None:
+    """The PNG a browser script took for the post, None when there is none."""
+    t = tables.marketing_posts.c
+    return await conn.scalar(select(t.screenshot).where(t.id == post_id, t.project_id == project_id))
+
+
+async def in_flight(conn: AsyncConnection, channel_id: int) -> bool:
+    """Whether a post of the channel waits for a worker's script or is being posted by one."""
+    t = tables.marketing_posts.c
+    found = await conn.scalar(
+        select(t.id).where(t.channel_id == channel_id, t.state.in_(("queued", "posting"))).limit(1)
+    )
+    return found is not None
+
+
 async def open_posts(conn: AsyncConnection, project_id: int) -> list:
     t = tables.marketing_posts.c
     found = await conn.execute(
-        select(tables.marketing_posts).where(t.project_id == project_id, t.state.in_(OPEN)).order_by(t.id)
+        select(*post_columns()).where(t.project_id == project_id, t.state.in_(OPEN)).order_by(t.id)
     )
     return list(found)
 
@@ -144,7 +165,7 @@ async def posted_since(conn: AsyncConnection, channel_id: int, since: datetime) 
     """The posts that went out on the channel since ``since`` (dry runs excluded), oldest first."""
     t = tables.marketing_posts.c
     found = await conn.execute(
-        select(tables.marketing_posts)
+        select(*post_columns())
         .where(t.channel_id == channel_id, t.state == "posted", t.dry_run.is_(False), t.posted_at >= since)
         .order_by(t.posted_at)
     )
@@ -155,7 +176,7 @@ async def last_posts(conn: AsyncConnection, channel_id: int, states: tuple[str, 
     """The newest ``limit`` posts of the channel in one of ``states``, newest first."""
     t = tables.marketing_posts.c
     found = await conn.execute(
-        select(tables.marketing_posts)
+        select(*post_columns())
         .where(t.channel_id == channel_id, t.state.in_(states))
         .order_by(t.id.desc())
         .limit(limit)

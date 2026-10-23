@@ -15,11 +15,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Path, Query, Request
+from fastapi import APIRouter, Path, Query, Request, Response
 from sqlalchemy import select
 
-from evo_agents.core_plugins.marketing import breaker, budget, flow, registry, settings, store
+from evo_agents.core_plugins.marketing import breaker, browser, budget, flow, registry, settings, store
 from evo_agents.core_plugins.marketing.models import (
+    MarketingBrowserClaim,
+    MarketingBrowserJob,
+    MarketingBrowserResult,
+    MarketingBrowserResultIn,
     MarketingBudget,
     MarketingChannel,
     MarketingChannelIn,
@@ -30,6 +34,7 @@ from evo_agents.core_plugins.marketing.models import (
     MarketingPost,
     MarketingPostIn,
     MarketingReasonIn,
+    MarketingSessionIn,
     MarketingStatus,
 )
 from evo_agents.hub import tables
@@ -82,6 +87,7 @@ def _channel(row, logins: dict) -> MarketingChannel:
         paused=row.paused_at is not None,
         paused_reason=row.paused_reason,
         autonomous_since=row.autonomous_since,
+        session_state=row.session_state,
     )
 
 
@@ -248,6 +254,31 @@ async def resume_channel(request: Request, project: ProjectName, channel_id: Cha
     return await _answer(request, work)
 
 
+@router.post("/{project}/channels/{channel_id}/session", response_model=MarketingChannel)
+async def set_session(
+    request: Request, project: ProjectName, channel_id: ChannelId, body: MarketingSessionIn, user: CurrentUser
+):
+    """Say whether the login session of a browser channel works: ``ok`` after its owner logged in
+    (``evo-agents hub marketing login``), which does not close a breaker; ``stale`` when it is known gone. The owner of a
+    personal account or an admin; never the scope of an agent's run."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        store.reader(access)
+        _no_agent(user, "the login session of a channel")
+        row = await _found(conn, access, channel_id, lock=True)
+        if row.adapter != "browser":
+            raise store.MarketingError(422, f"channel {channel_id} posts through its API: it has no browser session")
+        if not (user.user_id == row.owner_id or store_admin(access)):
+            raise store.MarketingError(403, "only the owner of the account or an admin says its session works")
+        await store.update_channel(conn, row.id, session_state=body.state)
+        await _audit(conn, user, access, f"marketing.session.{body.state}", f"channel:{row.id}")
+        fresh = await store.channel(conn, access.project_id, row.id)
+        return _channel(fresh, await _logins(conn, {fresh.owner_id} if fresh.owner_id else set()))
+
+    return await _answer(request, work)
+
+
 # The kill switch and the status
 
 
@@ -409,6 +440,75 @@ async def report_post(
             conn, access.project_id, project, channel, f"a report on post {post_id}: {body.reason}", by=user.user_id
         )
         return MarketingDone(ok=opened)
+
+    return await _answer(request, work)
+
+
+# The script on a worker with a browser
+
+
+def _no_agent(user, what: str) -> None:
+    if user.scope is not None:
+        raise store.MarketingError(403, f"{what} is not for an agent: only a login's script reaches a browser session")
+
+
+@router.post("/{project}/browser/claim", response_model=MarketingBrowserClaim)
+async def claim_browser_post(request: Request, project: ProjectName, user: CurrentUser):
+    """The next post the gate passed for a browser channel, with the sealed session of its account, for the script of
+    ``evo-agents hub marketing browser-post``. Needs the writer role and a login: the scope of an agent's run gets 403."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        store.writer(access, "posting through the browser")
+        _no_agent(user, "claiming a post for the browser")
+        cfg = await settings.config(conn, request.app.state.config, project)
+        found = await browser.claim(conn, cfg, access.project_id, _runtime(request).now())
+        return MarketingBrowserClaim(job=MarketingBrowserJob(**found) if found else None)
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/browser/{post_id}/result", response_model=MarketingBrowserResult)
+async def report_browser_post(
+    request: Request, project: ProjectName, post_id: PostId, body: MarketingBrowserResultIn, user: CurrentUser
+):
+    """What the script found: the link and a screenshot of the post, or the captcha, lock or login page it stopped at,
+    which opens the breaker of the channel."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        store.writer(access, "reporting a browser post")
+        _no_agent(user, "reporting a browser post")
+        done = await browser.report(
+            conn,
+            project,
+            access.project_id,
+            post_id,
+            body.outcome,
+            body.url,
+            body.detail,
+            body.screenshot,
+            _runtime(request).now(),
+        )
+        await _audit(conn, user, access, "marketing.browser.report", f"post:{post_id}")
+        return MarketingBrowserResult(**done)
+
+    return await _answer(request, work)
+
+
+@router.get(
+    "/{project}/posts/{post_id}/screenshot", response_class=Response, responses={200: {"content": {"image/png": {}}}}
+)
+async def show_screenshot(request: Request, project: ProjectName, post_id: PostId, user: CurrentUser):
+    """The PNG the script took after the post, or where it stopped (labelled internal in the audit)."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        store.writer(access, "reading a screenshot")
+        picture = await store.screenshot(conn, post_id, access.project_id)
+        if picture is None:
+            raise store.MarketingError(404, f"post {post_id} has no screenshot")
+        return Response(bytes(picture), media_type="image/png", headers={"Cache-Control": "no-store"})
 
     return await _answer(request, work)
 

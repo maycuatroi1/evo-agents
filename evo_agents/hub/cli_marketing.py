@@ -1,4 +1,4 @@
-"""``evo-agents hub marketing channels|posts|pause|resume|kill``: the channels and posts of a project that enabled the
+"""``evo-agents hub marketing channels|posts|pause|resume|kill|login|browser-post``: the channels and posts of a project that enabled the
 core plugin marketing, through its routes under ``/v1/x/marketing/<project>`` (``docs/marketing-plugin.md``). The
 plugin's code is ``evo_agents.core_plugins.marketing``, which this client never imports: it speaks HTTP only.
 
@@ -27,6 +27,7 @@ CHANNEL_KEYS = (
     "paused",
     "paused_reason",
     "autonomous_since",
+    "session_state",
 )
 POST_KEYS = (
     "id",
@@ -48,10 +49,10 @@ POST_KEYS = (
     "posted_at",
 )
 DONE_KEYS = ("ok",)
-STATES = ("proposed", "judging", "posted", "draft", "failed", "withdrawn")
+STATES = ("proposed", "judging", "queued", "posting", "posted", "draft", "failed", "withdrawn")
 
 
-def _path(project: str, *tail: str, **query: str | None) -> str:
+def path(project: str, *tail: str, **query: str | None) -> str:
     path = "/".join(["/v1/x/marketing", quote(project, safe=""), *tail])
     asked = {name: value for name, value in query.items() if value}
     return f"{path}?{urlencode(asked)}" if asked else path
@@ -60,7 +61,7 @@ def _path(project: str, *tail: str, **query: str | None) -> str:
 @client_command
 def cmd_channels(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", _path(args.project, "channels"))
+    found = hub.call("GET", path(args.project, "channels"))
     if args.json:
         print_json(found)
         return 0
@@ -75,7 +76,7 @@ def cmd_channels(args) -> int:
 @client_command
 def cmd_posts(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", _path(args.project, "posts", state=args.state))
+    found = hub.call("GET", path(args.project, "posts", state=args.state))
     if args.json:
         print_json(found)
         return 0
@@ -98,7 +99,7 @@ def _done(args, found: dict, said: str) -> int:
 @client_command
 def cmd_pause(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("POST", _path(args.project, "channels", str(args.channel_id), "pause"), {"reason": args.reason})
+    found = hub.call("POST", path(args.project, "channels", str(args.channel_id), "pause"), {"reason": args.reason})
     return _done(args, found, f"Breaker of channel {args.channel_id} is open")
 
 
@@ -106,16 +107,16 @@ def cmd_pause(args) -> int:
 def cmd_resume(args) -> int:
     hub, _ = signed_in()
     if args.channel_id is None:
-        found = hub.call("POST", _path(args.project, "resume"), {})
+        found = hub.call("POST", path(args.project, "resume"), {})
         return _done(args, found, "The kill switch is cleared")
-    found = hub.call("POST", _path(args.project, "channels", str(args.channel_id), "resume"), {})
+    found = hub.call("POST", path(args.project, "channels", str(args.channel_id), "resume"), {})
     return _done(args, found, f"Breaker of channel {args.channel_id} is closed")
 
 
 @client_command
 def cmd_kill(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("POST", _path(args.project, "kill"), {"reason": args.reason})
+    found = hub.call("POST", path(args.project, "kill"), {"reason": args.reason})
     return _done(args, found, "The kill switch is set: no channel posts")
 
 
@@ -148,3 +149,6 @@ def register_marketing(hsub) -> None:
     json_option(resume, returns_object(*DONE_KEYS, schema="MarketingDone"))
     kill = command("kill", "stop every channel of the project", cmd_kill, reason=True)
     json_option(kill, returns_object(*DONE_KEYS, schema="MarketingDone"))
+    from evo_agents.hub.cli_marketing_browser import register_browser
+
+    register_browser(msub, command)

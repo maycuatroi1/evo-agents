@@ -6461,6 +6461,35 @@
         "schema": "ProjectLoop"
       }
     },
+    "hub marketing browser-post": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "state",
+          "reason"
+        ],
+        "schema": "MarketingBrowserResult"
+      }
+    },
     "hub marketing channels": {
       "positionals": [],
       "options": [
@@ -6494,7 +6523,8 @@
           "target",
           "paused",
           "paused_reason",
-          "autonomous_since"
+          "autonomous_since",
+          "session_state"
         ],
         "schema": "MarketingChannel"
       }
@@ -6534,6 +6564,53 @@
           "ok"
         ],
         "schema": "MarketingDone"
+      }
+    },
+    "hub marketing login": {
+      "positionals": [
+        {
+          "name": "channel_id",
+          "metavar": "CHANNEL_ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "channel",
+          "account",
+          "kind",
+          "mode",
+          "adapter",
+          "owner",
+          "target",
+          "paused",
+          "paused_reason",
+          "autonomous_since",
+          "session_state"
+        ],
+        "schema": "MarketingChannel"
       }
     },
     "hub marketing pause": {
@@ -6602,6 +6679,8 @@
           "choices": [
             "proposed",
             "judging",
+            "queued",
+            "posting",
             "posted",
             "draft",
             "failed",
@@ -44902,6 +44981,110 @@
           }
         }
       },
+      "/v1/x/marketing/{project}/channels/{channel_id}/session": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Set Session",
+          "description": "Say whether the login session of a browser channel works: ``ok`` after its owner logged in\n(``evo-agents hub marketing login``), which does not close a breaker; ``stale`` when it is known gone. The owner of a\npersonal account or an admin; never the scope of an agent's run.",
+          "operationId": "set_session_v1_x_marketing__project__channels__channel_id__session_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "channel_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Channel Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingSessionIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingChannel"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/marketing/{project}/kill": {
         "post": {
           "tags": [
@@ -45193,6 +45376,8 @@
                     "enum": [
                       "proposed",
                       "judging",
+                      "queued",
+                      "posting",
                       "posted",
                       "draft",
                       "failed",
@@ -45606,6 +45791,284 @@
                     "$ref": "#/components/schemas/MarketingDone"
                   }
                 }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/browser/claim": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Claim Browser Post",
+          "description": "The next post the gate passed for a browser channel, with the sealed session of its account, for the script of\n``evo-agents hub marketing browser-post``. Needs the writer role and a login: the scope of an agent's run gets 403.",
+          "operationId": "claim_browser_post_v1_x_marketing__project__browser_claim_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingBrowserClaim"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/browser/{post_id}/result": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Report Browser Post",
+          "description": "What the script found: the link and a screenshot of the post, or the captcha, lock or login page it stopped at,\nwhich opens the breaker of the channel.",
+          "operationId": "report_browser_post_v1_x_marketing__project__browser__post_id__result_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "post_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Post Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketingBrowserResultIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingBrowserResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/posts/{post_id}/screenshot": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Screenshot",
+          "description": "The PNG the script took after the post, or where it stopped (labelled internal in the audit).",
+          "operationId": "show_screenshot_v1_x_marketing__project__posts__post_id__screenshot_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "post_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Post Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "image/png": {}
               }
             },
             "401": {
@@ -82630,6 +83093,151 @@
           ],
           "title": "LoopUseCaseRef"
         },
+        "MarketingBrowserClaim": {
+          "properties": {
+            "job": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MarketingBrowserJob"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the next post to make, none when nothing waits"
+            }
+          },
+          "type": "object",
+          "required": [
+            "job"
+          ],
+          "title": "MarketingBrowserClaim"
+        },
+        "MarketingBrowserJob": {
+          "properties": {
+            "post_id": {
+              "type": "integer",
+              "title": "Post Id"
+            },
+            "channel": {
+              "type": "string",
+              "title": "Channel"
+            },
+            "account": {
+              "type": "string",
+              "title": "Account"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "session": {
+              "type": "string",
+              "title": "Session",
+              "description": "Playwright's storage state as JSON"
+            }
+          },
+          "type": "object",
+          "required": [
+            "post_id",
+            "channel",
+            "account",
+            "target",
+            "body",
+            "session"
+          ],
+          "title": "MarketingBrowserJob",
+          "description": "What a worker's script posts. ``session`` is the sealed login session of the account: it goes to the script and\nto no other answer of the plugin."
+        },
+        "MarketingBrowserResult": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "posted or failed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state",
+            "reason"
+          ],
+          "title": "MarketingBrowserResult"
+        },
+        "MarketingBrowserResultIn": {
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "posted",
+                "captcha",
+                "lockout",
+                "session_expired",
+                "failed"
+              ],
+              "title": "Outcome"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the link of the post, when it went out"
+            },
+            "detail": {
+              "type": "string",
+              "maxLength": 1000,
+              "title": "Detail",
+              "description": "what the script saw, never the page's text",
+              "default": ""
+            },
+            "screenshot": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Screenshot",
+              "description": "a PNG after the post or where the script stopped, base64"
+            }
+          },
+          "type": "object",
+          "required": [
+            "outcome"
+          ],
+          "title": "MarketingBrowserResultIn"
+        },
         "MarketingBudget": {
           "properties": {
             "month": {
@@ -82735,6 +83343,12 @@
                 }
               ],
               "title": "Autonomous Since"
+            },
+            "session_state": {
+              "type": "string",
+              "title": "Session State",
+              "description": "none, ok or stale: whether the login session of a browser channel works",
+              "default": "none"
             }
           },
           "type": "object",
@@ -82945,7 +83559,7 @@
             "state": {
               "type": "string",
               "title": "State",
-              "description": "proposed, judging, posted, draft, failed or withdrawn"
+              "description": "proposed, judging, queued, posting, posted, draft, failed or withdrawn"
             },
             "reason": {
               "anyOf": [
@@ -83131,6 +83745,25 @@
           },
           "type": "object",
           "title": "MarketingReasonIn"
+        },
+        "MarketingSessionIn": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "none",
+                "ok",
+                "stale"
+              ],
+              "title": "State",
+              "description": "ok once the account's owner logged in and the session is sealed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "title": "MarketingSessionIn"
         },
         "MarketingSource": {
           "properties": {

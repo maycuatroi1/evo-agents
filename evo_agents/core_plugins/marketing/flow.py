@@ -7,7 +7,8 @@ draft (or, for the Judge, withdrawn) with the reason:
 2. the project's deny-list; 3. the source rule; 4. the channel's caps, minimum gap and self-promotion rules (``gate``);
 5. the Judge in a fresh context (``judge``), which may answer later: the post waits as ``judging``;
 6. the dry run of a channel that went autonomous lately; 7. the month's budget (``budget``);
-then the adapter of the channel posts it. A post that passes needs no human. Every layer's result, the Judge's scores,
+then the adapter of the channel posts it: an API adapter at once, a browser channel through the queue of the worker's
+script (``browser``). A post that passes needs no human. Every layer's result, the Judge's scores,
 the cost and the run that proposed it stay on the post (the audit), and each outcome writes an audit row.
 
 ``decide`` is safe to call again: it does nothing for a post that is decided, and a post that waits for the Judge goes on
@@ -24,9 +25,9 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.marketing import adapters, breaker, budget, gate, judge, registry, store
+from evo_agents.core_plugins.marketing import adapters, breaker, browser, budget, gate, judge, registry, store
+from evo_agents.core_plugins.marketing.outcome import finish as _finish
 from evo_agents.core_plugins.marketing.settings import Config
-from evo_agents.hub.server import audit
 from evo_agents.hub.tables_marketing import PERSONAL_AUTONOMOUS
 
 log = logging.getLogger(__name__)
@@ -57,23 +58,6 @@ def personal_guard(channel, kind: str = "post") -> str | None:
     if channel.mode != "autonomous":
         return "this personal account is draft_only: its owner switches it, and an agent drafts for them"
     return None
-
-
-async def _finish(
-    conn: AsyncConnection, project_id: int, post, state: str, reason: str | None, layers: dict, **more
-) -> str:
-    await store.save_post(
-        conn, post.id, state=state, reason=reason, layers=layers, decided_at=datetime.now(UTC), **more
-    )
-    await audit.record(
-        conn,
-        actor_id=post.proposed_by,
-        token_id=None,
-        action=f"marketing.post.{state}",
-        target=f"post:{post.id}",
-        project_id=project_id,
-    )
-    return state
 
 
 def _switches(channel, killed) -> gate.Layer:
@@ -207,11 +191,13 @@ async def _publish(
     reserved: float,
     now: datetime,
 ) -> str:
-    adapter = adapters.for_channel(channel.channel, rt.transport) if channel.adapter == "api" else None
-    token = cfg.token(channel.channel)
     month = budget.month_of(now)
+    if channel.adapter == "browser" or (not cfg.token(channel.channel) and browser.fallback(cfg, channel)):
+        return await _queue(conn, cfg, project_id, post, channel, layers, reserved, month, now)
+    adapter = adapters.for_channel(channel.channel, rt.transport)
+    token = cfg.token(channel.channel)
     missing = (
-        f"no {channel.adapter} adapter for {channel.channel} yet: a person posts it"
+        f"no api adapter for {channel.channel}: a person posts it"
         if adapter is None
         else None
         if token
@@ -245,6 +231,18 @@ async def _publish(
     if spent > cfg.budget_usd:
         await breaker.kill(conn, project_id, project, None, "the month's spend passed the budget")
     return state
+
+
+async def _queue(conn, cfg: Config, project_id: int, post, channel, layers: dict, reserved: float, month, now) -> str:
+    """A post for a browser channel: it goes into the queue of the worker's script, or is a draft with the reason. A
+    browser channel is free, so what the budget reserved goes back."""
+    await budget.settle(conn, project_id, month, reserved, 0)
+    why = await browser.not_ready(conn, cfg, post, channel)
+    if why:
+        layers["adapter"] = {"ok": False, "detail": why}
+        return await _finish(conn, project_id, post, "draft", why, layers)
+    layers["adapter"] = {"ok": True, "detail": "queued: a script on a worker with a browser posts it"}
+    return await _finish(conn, project_id, post, "queued", None, layers)
 
 
 async def _failed(

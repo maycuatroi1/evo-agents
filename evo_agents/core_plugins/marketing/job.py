@@ -2,7 +2,8 @@
 decided one step further, read the numbers of the posts that reached +24h or +7d, and push the numbers to Signal
 (``docs/marketing-plugin.md``).
 
-A post waits as ``judging`` until the Judge's run ended; the job reads the answer and goes on from there, so a post a
+A browser post no script reported on in 30 minutes is failed, one nobody claimed in a day a draft (``browser``). A post
+waits as ``judging`` until the Judge's run ended; the job reads the answer and goes on from there, so a post a
 route proposed and the Judge answered minutes later still goes out without a person. Every post is decided in a
 transaction of its own: one that fails leaves the rest their pass. A project that does not enable the plugin gets
 nothing written. The cron is every 5 minutes.
@@ -16,7 +17,7 @@ from datetime import UTC
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.core_plugins.marketing import flow, metrics, push, settings, store
+from evo_agents.core_plugins.marketing import browser, flow, metrics, push, settings, store
 from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.plugin_calls import CoreContext
@@ -49,6 +50,8 @@ async def run_project(
         except Exception:  # one post's failure leaves the others their pass
             log.exception("marketing post failed", extra={"project": project, "post": post_id})
             done["posts"][post_id] = "error"
+    async with engine.begin() as conn:
+        done["expired"] = await browser.expire(conn, project, project_id, runtime.now())
     async with engine.begin() as conn:
         done["metrics"] = await metrics.collect(
             conn, cfg, project, project_id, runtime.transport, runtime.now().astimezone(UTC)

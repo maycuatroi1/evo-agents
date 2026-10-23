@@ -1,6 +1,7 @@
 """The API adapters of the plugin marketing, one for each channel that has a posting API: GitHub (Releases and
-Discussions), X, LinkedIn, Reddit, Facebook Page and TikTok (Content Posting API). The browser adapter of the channels
-without one is a later step of the plan; until then ``for_channel`` answers None and a post there is a draft.
+Discussions), X, LinkedIn, Reddit, Facebook Page and TikTok (Content Posting API). The channels
+without one post through the browser adapter, which is a queue and a script, not an adapter of this package
+(``browser``): ``for_channel`` answers None for them.
 """
 
 from __future__ import annotations

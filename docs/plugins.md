@@ -490,7 +490,7 @@ gate: deny-list, source rule, caps and gap, a Judge in a fresh context, then the
 out with no human; one that fails is a draft with its reason. Each channel has a breaker, the project a kill switch, and
 every post an audit. The credentials are `x-secret` fields of the plugin's config. It contributes the routes under
 `/v1/x/marketing/{project}`, the job `advance`, the agent type `marketing-judge` and the six `marketing_*` tables, and
-asks for no permission (`evo-agents hub marketing channels|posts|pause|resume|kill`). Import-linter keeps it in its own
+asks for no permission (`evo-agents hub marketing channels|posts|pause|resume|kill|login|browser-post`); channels with no posting API post through a deterministic browser script on a worker (`login` once, `browser-post` on a schedule). Import-linter keeps it in its own
 package (contract marketing-plugin-own-package).
 
 ### Notifications from a plugin

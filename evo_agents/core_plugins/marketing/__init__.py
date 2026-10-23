@@ -13,8 +13,11 @@ budget, 50 USD by default (``budget``). A post that passes goes out with no huma
 the reason. The audit of a post holds its channel, account, text, links, run, the result of each layer and its cost.
 Each channel has a circuit breaker and the project a kill switch (``breaker``), with an Inbox and Telegram notice.
 
-API adapters (``adapters``) post to GitHub (Releases, Discussions), X, LinkedIn, Reddit, Facebook Page and TikTok; the
-browser adapter is a later step. The numbers of a post go to Signal at +24h and +7d (``metrics``, ``push``). The job
+API adapters (``adapters``) post to GitHub (Releases, Discussions), X, LinkedIn, Reddit, Facebook Page and TikTok. A
+channel with no API (Viblo, the Facebook profile; Hacker News is draft only) posts through the browser adapter
+(``browser``): a post that passes the gate is queued, and a deterministic script on a worker with a browser claims it,
+fills the form with the logged-in session of the account and reports the link and a screenshot; a captcha, a lock or an
+expired session stops the channel. The numbers of a post go to Signal at +24h and +7d (``metrics``, ``push``). The job
 ``advance`` (``job``) carries the posts the Judge answered later and reads the numbers. The routes under
 ``/v1/x/marketing/<project>`` (``server``, ``models``) and ``evo-agents hub marketing channels|posts|pause|resume|kill``
 are their client. A project that does not enable the plugin writes nothing and answers 404 on its routes. The package
@@ -71,6 +74,22 @@ CONFIG = {
         "reddit_token": {"title": "Reddit token", "description": "An OAuth token, once Reddit approved it.", **SECRET},
         "facebook_page_token": {"title": "Facebook Page token", "description": "A Page access token.", **SECRET},
         "tiktok_token": {"title": "TikTok token", "description": "A Content Posting API token.", **SECRET},
+        **{
+            f"{channel}_session": {
+                "title": f"{name} browser session",
+                "description": "The sealed login session of the account's browser, made once by `evo-agents hub "
+                "marketing login`; only the worker's script that posts for the channel receives it.",
+                **SECRET,
+            }
+            for channel, name in (
+                ("hackernews", "Hacker News"),
+                ("reddit", "Reddit"),
+                ("linkedin", "LinkedIn"),
+                ("viblo", "Viblo"),
+                ("facebook_profile", "Facebook profile"),
+                ("tiktok", "TikTok"),
+            )
+        },
     },
 }
 
