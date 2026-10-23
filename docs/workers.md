@@ -2035,6 +2035,14 @@ Inside such a run:
   into `runs/<run>/` (a relative path is relative to it), mode 0600. A path in a worktree or outside the run's
   directory is refused, as the file holds secrets.
 
+### Browser identities on the worker
+
+`evo-agents worker browser login NAME --project P` signs a browser identity in on the worker's own machine, with no run:
+the daemon's Chromium opens with a window (`chromium.start(headed=True)`; a Linux machine needs `DISPLAY` or
+`WAYLAND_DISPLAY`), and the profile goes back with `PUT /v1/worker/browser-identities/{id}/profile` once the window
+closes, after a window-less pass has deleted the cookies outside the identity's domains. See
+[docs/browser.md](browser.md).
+
 ### A run on the machine
 
 1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
