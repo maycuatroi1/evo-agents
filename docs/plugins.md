@@ -935,17 +935,22 @@ it routes as before.
 
 - `run_as`: the member whose name its runs go under, a writer or an admin of the project;
 - `workers`: the workers of that member its runs may take, by name, at most 16 (none: any the profile allows);
-- `daily_usd`: the cap of what its task runs may cost in 24 hours, above 0 and at most 1000.
+- `daily_usd`: the cap of what its task runs may cost in 24 hours, above 0 and at most 1000;
+- `handle`, optional: the handle of the profile the first enable makes.
 
 The first enable creates the type's profile in the project from the template:
 
 - its packs attached at the version of the plugin the project runs;
-- its environment, when it names one, as the only one its runs may take.
+- its environment, when it names one, as the only one its runs may take;
+- its handle: `handle` when the admin names one, else the template's. A handle is unique on the hub, deleted
+  profiles' included, and a core plugin's type is enabled in many projects, so when another agent or a project holds
+  the template's, the profile takes `<template's>-<project>`: @strategist in one project, @strategist-northwind in
+  the next.
 
-A handle another agent of the project holds, deleted ones included, refuses the enable (409), as does a plugin the
-project did not enable or turned off. Enabling the type again keeps that profile, which the project's admins edit like
-any other, and changes `run_as`, `workers` and `daily_usd`. A deleted profile refuses it (409): a handle is never
-taken again. `DELETE` on the same path turns the type off and keeps its row and profile. `GET
+None of those handles free refuses the enable (409), as does a plugin the project did not enable or turned off.
+Enabling the type again keeps that profile, which the project's admins edit like any other, and changes `run_as`,
+`workers` and `daily_usd`; a `handle` other than the profile's refuses it (409), since a handle never changes. A
+deleted profile refuses it (409): a handle is never taken again. `DELETE` on the same path turns the type off and keeps its row and profile. `GET
 /v1/projects/{project}/agent-types` lists the types of the plugins the project enabled, to every member, each with how
 it is enabled and what its task runs cost in the last 24 hours. The audit log keeps `agent-type.enable` and
 `agent-type.disable`.
