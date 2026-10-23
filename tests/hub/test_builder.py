@@ -522,6 +522,118 @@ def test_builder_proposal_of_a_goal_makes_it_writes_its_next_revision_and_rolls_
     ]
 
 
+# Proposals of a problem (plan problem-oriented-hub, criterion a1), and of the problem a goal answers (a2)
+
+PROBLEM = {
+    "statement": "Searches find nothing",
+    "who": "shoppers of lumen",
+    "when": "a search names a brand the shop sells under another name",
+    "workaround": "they leave, or ask support",
+}
+
+
+def problem(client, headers, ref: str) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/problems/{ref}", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_builder_proposal_of_a_problem_waits_for_a_writer_makes_it_writes_its_next_revision_and_rolls_back(
+    client, hub, hub_db
+):
+    run = started(client, hub, "@builder note the problem of the search")
+    for arguments, said in (
+        ({"set": {**PROBLEM, "budget_usd": 5}}, "budget_usd: a problem has no such field; nothing changed"),
+        ({"set": {"statement": "x"}}, "who: Field required"),  # a new problem says who, when and the workaround
+        ({"set": {"rank": 2}, "unset": ["who"]}, "who: a problem always has one"),
+        ({"target": {"problem": "P-4"}, "set": PROBLEM}, f"project {PROJECT} has no problem P-4; a new problem"),
+        ({"target": {"problem": "p-1"}, "set": PROBLEM}, "bad arguments for builder__propose: target.problem"),
+        ({"set": {**PROBLEM, "metric": {"key": "run.failed_rate", "aggregate": "mean", "target": 1}}}, "metric.target"),
+        (
+            {"set": {**PROBLEM, "status": "solved"}},
+            "problem: Value error, a solved or dropped problem has a close_reason",
+        ),
+        (
+            {"set": {**PROBLEM, "owner": READER}},
+            f"owner: {READER} holds reader on project {PROJECT}; a problem's owner holds the writer role or above",
+        ),
+    ):
+        text = proposed(client, run["agent"], kind="problem", summary="The search finds nothing", **arguments)
+        assert text.startswith(f"error: {said}"), text
+    first = made_proposal(client, run["agent"], kind="problem", summary="The search finds nothing", set=PROBLEM)
+    pending = shown(client, hub["reader"], first)
+    assert (pending["state"], pending["kind"], pending["base_version"], pending["approver"], pending["target"]) == (
+        "pending",
+        "problem",
+        0,
+        "project_writer",
+        {"problem": "P-1"},  # the code the hub picked for the new problem
+    )
+    assert client.get(f"/v1/projects/{PROJECT}/problems", headers=hub["reader"]).json() == [], "nothing applied yet"
+    assert notices(hub_db) == [(OWNER, first, "problem"), (OTHER, first, "problem")]  # its writers and admins
+    # a reader does not decide it; a writer approves it as the problem's first revision
+    assert "needs the writer role on project" in message(answer(client, hub["reader"], first, "approve"), 403)
+    approved = answer(client, hub["other"], first, "approve")
+    assert (approved.json()["state"], approved.json()["applied_version"]) == ("applied", 1), approved.text
+    made = problem(client, hub["reader"], "P-1")
+    assert (made["statement"], made["who"], made["owner"], made["created_by"], made["status"]) == (
+        "Searches find nothing",
+        "shoppers of lumen",
+        OTHER,
+        OTHER,
+        "open",
+    )
+    assert made["note"] == f"proposal {first} of @builder: The search finds nothing"
+    # a change of it, applied and rolled back to a copy of the revision before
+    second = made_proposal(
+        client,
+        run["agent"],
+        kind="problem",
+        summary="The synonyms solved it",
+        target={"problem": "P-1"},
+        set={"status": "solved", "close_reason": "the search reads synonyms"},
+    )
+    assert shown(client, hub["owner"], second)["base_version"] == 1
+    assert answer(client, hub["owner"], second, "approve").json()["applied_version"] == 2
+    solved = problem(client, hub["reader"], "P-1")
+    assert (solved["status"], solved["close_reason"]) == ("solved", "the search reads synonyms")
+    back = rollback(client, hub["other"], second)
+    assert (back.json()["state"], back.json()["rollback_version"]) == ("rolled_back", 3), back.text
+    again = problem(client, hub["reader"], "P-1")
+    assert (again["revision"], again["status"], again["close_reason"]) == (3, "open", None)
+    assert again["note"] == f"rollback of proposal {second} of @builder: a copy of revision 1"
+    # a new problem the proposal made is dropped when it rolls back
+    third = made_proposal(
+        client, run["agent"], kind="problem", summary="Tickets", set={**PROBLEM, "statement": "Tickets wait a week"}
+    )
+    assert answer(client, hub["other"], third, "approve").json()["applied_version"] == 1
+    assert rollback(client, hub["other"], third).json()["rollback_version"] == 2
+    dropped = problem(client, hub["reader"], "P-2")
+    assert (dropped["status"], dropped["close_reason"]) == ("dropped", f"rollback of proposal {third} of @builder")
+    assert [row[1] for row in audit_rows(hub_db, "problem")] == [
+        f"{PROJECT}/problem P-1 revision=1 fields=statement,who,when,workaround,rank,owner,status proposal={first}",
+        f"{PROJECT}/problem P-1 revision=2 fields=status,close_reason proposal={second}",
+        f"{PROJECT}/problem P-1 revision=3 fields=status,close_reason proposal={second} copy-of=1",
+        f"{PROJECT}/problem P-2 revision=1 fields=statement,who,when,workaround,rank,owner,status proposal={third}",
+        f"{PROJECT}/problem P-2 revision=2 fields=status,close_reason proposal={third} copy-of=0",
+    ]
+    # a goal proposal names the problem it answers, one that is not dropped
+    refused = proposed(client, run["agent"], kind="goal", summary="Tickets", set={"statement": "x", "problem": "P-2"})
+    assert refused.startswith("error: problem: problem P-2 is dropped"), refused
+    goal_id = made_proposal(
+        client, run["agent"], kind="goal", summary="Search", set={"statement": "Fewer empty searches", "problem": "P-1"}
+    )
+    assert "needs the admin role on project" in message(answer(client, hub["other"], goal_id, "approve"), 403)
+    assert answer(client, hub["owner"], goal_id, "approve").json()["state"] == "applied"
+    assert goal(client, hub["reader"], "G-1")["problem"] == "P-1"
+    assert [item["code"] for item in problem(client, hub["reader"], "P-1")["goals"]] == ["G-1"]
+    cleared = made_proposal(
+        client, run["agent"], kind="goal", summary="No problem", target={"goal": "G-1"}, unset=["problem"]
+    )
+    assert answer(client, hub["owner"], cleared, "approve").json()["applied_version"] == 2
+    assert goal(client, hub["reader"], "G-1")["problem"] is None
+
+
 # Proposals of a hub admin, answered in the thread
 
 

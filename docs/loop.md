@@ -14,7 +14,8 @@ did, the Curator runs as it did, and every older command and route is there.
 | Part | Where |
 | --- | --- |
 | the words of contract loop/1 and the engine's interface | `evo_agents/hub/server/loop/model.py` |
-| the engine of this release, `rules/1` | `evo_agents/hub/server/loop/rules.py` |
+| the engine of this release, `rules/2`, which goes from the problem a goal answers | `evo_agents/hub/server/loop/rules2.py` |
+| the engine before it, `rules/1`, on which `rules/2` builds | `evo_agents/hub/server/loop/rules.py` |
 | what a tick reads of a project | `evo_agents/hub/server/loop/view.py` |
 | the tick, which writes what the engine returns | `evo_agents/hub/server/loop/tick.py`, `evo_agents/hub/loop_jobs.py` |
 | admission and the caps of the runs | `evo_agents/hub/server/loop/admit.py`, `evo_agents/hub/server/loop/caps.py` |
@@ -23,14 +24,15 @@ did, the Curator runs as it did, and every older command and route is there.
 | on and off with the policy | `evo_agents/hub/server/loop/state.py` |
 | the decision board, the month's review, the brief | `evo_agents/hub/server/loop/board*.py`, `notices.py` |
 | the routes | `evo_agents/hub/server/loop/routes.py`, `items.py`, `chain.py`; goals in `evo_agents/hub/server/goals.py` |
-| the tables | `evo_agents/hub/tables_goals.py`, `evo_agents/hub/tables_loop.py` (schemas 0091 and 0093) |
+| the tables | `evo_agents/hub/tables_goals.py`, `evo_agents/hub/tables_loop.py` (schemas 0091, 0093, 0123 and 0136) |
 | the commands | `evo_agents/hub/cli_goals.py`, `evo_agents/hub/cli_loop.py` |
 
 ## Goal
 
 A goal says what a project is for and how to tell it is reached: a statement, an optional metric (a signal key of kind
-number, an aggregate over a window, a comparator and a target), a deadline, the canvas it drives, a rank, an owner and
-a status (`active`, `paused`, `closed` with a reason). Its code is `G-<number>`. An admin writes a goal as its next
+number, an aggregate over a window, a comparator and a target), a deadline, the canvas it drives, the problem of the
+project it answers (`P-<number>`, optional, `docs/problems.md`), a rank, an owner and a status (`active`, `paused`,
+`closed` with a reason). Its code is `G-<number>`. An admin writes a goal as its next
 revision and every revision is kept; the agent of a run only proposes one through @builder (kind `goal`). A goal of
 the Curator's charter becomes a goal without a metric the first time the goals are read. A goal has no budget.
 `docs/hub.md`, section Goals, has the commands, the routes and the fields.
@@ -43,15 +45,17 @@ names no canvas.
 
 A work item (table `loop_items`) is one piece of work the Loop keeps track of. It has:
 
-- a kind and its cycle: `brainstorm` and `use_case` of the business cycle, `build` and `deliver` of the development
-  cycle;
+- a kind and its cycle: `brainstorm`, `use_case` and `discover` of the business cycle, `build` and `deliver` of the
+  development cycle;
 - its ancestors: the goal, the claim, the SRS document, use case and version, the frame task, the plan and the run;
-  and the work item it came of (`parent_id`), so a chain reads from the goal to the release;
+  and the work item it came of (`parent_id`), so a chain reads from the problem and the goal to the release;
+- the problem it goes from (`problem_id`): the one its goal answered when `rules/2` made it, or the one of the work
+  item it came of; none for a goal that answers no problem, or a work item `rules/1` made;
 - a key, unique in the project (below);
 - a state and, for some states, a reason;
 - how often a run was handed out for it (`attempts`) and how often one failed (`failures`);
 - who it stands for (`owner`: `@strategist`, `@ba`, or the owner of worker `loop.worker`), the engine that made it
-  (`rules/1`) and a `detail` of what it waits on.
+  (`rules/1` or `rules/2`) and a `detail` of what it waits on.
 
 Every change of a work item adds a row to its ledger, `loop_item_events`, in the same transaction; the ledger is only
 ever added to. Its kinds are `created`, `ready`, `admitted`, `dispatched`, `waiting`, `failed`, `triaged`, `asked`,
@@ -68,7 +72,8 @@ ever added to. Its kinds are `created`, `ready`, `admitted`, `dispatched`, `wait
 
 ## The rule table
 
-The engine `rules/1` reads three sources of change: the rows of `hub_events` past the Loop's cursor, the clock, and
+The engine of this release is `rules/2`: the table of `rules/1` below with the changes of the next section. The engine
+`rules/1` reads three sources of change: the rows of `hub_events` past the Loop's cursor, the clock, and
 what each unfinished work item waits on, read again on each tick. Runs, plan steps and merge requests are not events:
 the Loop reads them from their tables when it reconciles a work item, so it needs no event kind beyond
 `srs.version.approved` and `tasks.status` (`docs/plugins.md`).
@@ -93,6 +98,31 @@ the Loop reads them from their tables when it reconciles a work item, so it need
 The Loop makes work only from state that took effect: a claim through an approved baseline, a use case through an
 approved version. An edit of a canvas or a draft of an SRS document makes nothing. A claim moved to validated makes no
 build: the result is written into its chain.
+
+### rules/2: from the problem
+
+`rules/2` (plan problem-oriented-hub) goes from the problem a goal answers, and only a solution goes through use cases
+of SRS documents, when the project keeps them. It changes row 3 and adds what every work item carries; every other row
+is `rules/1`'s.
+
+| # | Change | When | What the Loop does | Key |
+| --- | --- | --- | --- | --- |
+| 1, 2 | a goal's new revision, the weekly look | as `rules/1` | a `brainstorm`, whose task names the problem the goal answers, who it hurts, when, how they cope today, its metric, and the claims that link it | as `rules/1` |
+| 3a | `canvas.baseline` moves a claim of the cell Solution or Unique value proposition to testing | the claim serves an active goal with a metric, and the project is in use cases (`loop.use_cases`) | a `use_case`, as `rules/1`'s row 3, and its chain as rows 6 to 11 | `use_case:<canvas>:<claim>:b<baseline>` |
+| 3b | the same | the project is not in use cases | a `build` straight from the claim, its author run's request the problem, the goal, the claim and its test card; then rows 9 to 11 | `build:claim:<canvas>:<claim>:b<baseline>` |
+| 3c | `canvas.baseline` moves a claim of the Problem cell to testing | the claim serves an active goal with a metric | a `discover` of `@strategist`: a task run that runs the claim's test card, adds what it finds as evidence and proposes what the evidence argues for; done once the run is done | `discover:<canvas>:<claim>:b<baseline>` |
+| 3d | `canvas.baseline` moves a claim of any other cell to testing | | no core work item; a core plugin's rule decides (`docs/marketing-plugin.md` for the cells Channels and Customer segments) | |
+
+Each work item of 3a to 3c waits in `watching` (`stable`) until the baseline has been approved `loop.stable_hours`. A
+`discover` whose run fails, is lost or stops on its caps counts a failure as any kind does (below), and one whose claim
+is invalidated or retired is cancelled. A project is in use cases when `loop.use_cases` is `always`, or `auto` (the
+default) and the plugin srs is on in the project and it has an SRS document not archived; `never` puts none in.
+
+Every work item `rules/2` makes carries the problem its goal answers (`loop_items.problem_id`), and one that comes of
+another work item carries that one's when it has one: the `build` of a use case, the `deliver` of a build. A work item
+a core plugin's rule makes carries the problem of its goal too. The key forms of `rules/1` stay, so `rules/2` goes on
+from the cursor `rules/1` left and makes no work item again, and the work items `rules/1` made move as `rules/1` moves
+them; a work item made of one of them carries the problem of its goal.
 
 ### Keys
 
@@ -127,11 +157,11 @@ through the next baseline a writer opens. Turning it off cancels every unfinishe
 
 A core plugin adds rules to the Loop through the extension point `loop_rules` (version 1, `docs/plugins.md`). The core
 table above is unchanged: a plugin's rule runs beside it, so a baseline that moves a claim to testing still makes its
-`use_case` (row 3) whatever a plugin makes of the same event. A plugin declares the events its rule reads (events of the
-hub, or its own `plugin.<id>.<name>`), the kinds of work items it makes and how each gets its run: a task run of the
-plugin's own agent type, or the plugin's own job. The kinds are `growth_idea`, `growth_draft`, `growth_publish`,
-`growth_invite` and `growth_review`, all of cycle `business`; the routes and pages of the Loop list the four core kinds
-and not these.
+core work item (row 3 of `rules/2`) whatever a plugin makes of the same event. A plugin declares the events its rule
+reads (events of the hub, or its own `plugin.<id>.<name>`), the kinds of work items it makes and how each gets its run:
+a task run of the plugin's own agent type, or the plugin's own job. The kinds are `growth_idea`, `growth_draft`,
+`growth_publish`, `growth_invite` and `growth_review`, all of cycle `business`; the routes and pages of the Loop list
+the five core kinds and not these.
 
 A plugin's work items go through the same path as the core ones:
 
@@ -192,7 +222,8 @@ Every run goes through a run kind the hub already has:
 | --- | --- | --- |
 | `brainstorm` | a task run of agent type strategist of the plugin canvas: the goal, its metric and target, the canvas | `@strategist` |
 | `use_case` | a task run of agent type ba of the plugin srs: the claim, its test card, the goal and the use cases it links, and a reviewer's words once changes were asked; `srs__propose` takes its version with the goal's owner as author | `@ba` |
-| `build` | an author run in Loop mode on worker `loop.worker`: the frame task as its request, its child tasks as the plan's steps, the use case at its version, the claim | the worker's owner |
+| `build` | an author run in Loop mode on worker `loop.worker`: the frame task as its request, its child tasks as the plan's steps, the use case at its version, the claim; for a build `rules/2` made straight from a claim, the problem, the goal, the claim and its test card, and the plan's problems | the worker's owner |
+| `discover` | a task run of agent type strategist of the plugin canvas: the claim of the Problem cell, its test card to run, the goal and its problem; it adds evidence (`canvas__evidence`) and proposes (`canvas__propose`), and changes no claim | `@strategist` |
 | `deliver` | a plan run of the plan the build's author run wrote, on worker `loop.worker`, over the repos of its steps not done | the worker's owner |
 
 The owner of `loop.worker` must hold writer on the project. The author and plan runs are dispatched with a machine
@@ -277,24 +308,28 @@ writes as a revision (`evo-agents hub policy`, `docs/merge-queue.md`). A key a r
 | `loop.require_sprint` | false | a frame task is ready only in an active sprint |
 | `loop.caps.author.minutes`, `loop.caps.author.turns` | 60, 200 | the caps of an author run the Loop hands out |
 | `loop.caps.plan.minutes`, `loop.caps.plan.turns` | 240, 600 | the caps of a plan run the Loop hands out |
+| `loop.use_cases` | auto | whether a solution goes through use cases of SRS documents (`rules/2`): `always`, `never`, or `auto`, which does when the plugin srs is on and the project has an SRS document not archived |
 
 ## Commands, routes and pages
 
 ```sh
+evo-agents hub problem list --project demo    # problems by rank (docs/problems.md)
 evo-agents hub goal list --project demo       # goals by rank
 evo-agents hub goal set --statement "..." --metric search.zero_rate --aggregate p50 --comparator "<=" --target 0.05 \
-  --window-days 30 --project demo             # a new goal, G-<next>
+  --window-days 30 --problem P-1 --project demo   # a new goal, G-<next>, that answers problem P-1
 evo-agents hub loop status --project demo     # on or off, its breaker, cursor, last tick, work items by state
 evo-agents hub loop resume --project demo     # an admin resets the breaker that tripped
 ```
 
 `GET /v1/projects/{p}/loop` is the Loop's state; `GET .../loop/items` its work items (`?state=`, `?kind=`, `?goal=`,
-`?open=true`, `?limit=`); `GET .../loop/items/{id}` one work item with its chain, the stages from the goal to the
-release, and its ledger; `GET .../loop/goals` each goal's metric now against its target with its work items by state;
-`POST .../loop/resume` the admin's reset. Reading needs a grant on the project; each ancestor shows as its own route
-shows it, and one the reader may not read is named in `hidden`. The web has the pages Goals (`/p/{p}/goals`), Loop
-(`/p/{p}/loop`, by state or by chain) and Decisions (`/p/{p}/decide`); an admin turns the Loop on or off and resets
-its breaker on the Loop page, and every other member reads.
+`?problem=`, `?open=true`, `?limit=`), each with the problem it goes from (`problem`); `GET .../loop/items/{id}` one
+work item with its chain, the stages from the problem and the goal to the release, and its ledger; `GET .../loop/goals`
+each goal's metric now against its target with its work items by state; `POST .../loop/resume` the admin's reset.
+Reading needs a grant on the project; each ancestor shows as its own route shows it, and one the reader may not read is
+named in `hidden`. The web has the pages Problems (`/p/{p}/problems`, a problem's page with the chains that go from
+it), Goals (`/p/{p}/goals`), Loop (`/p/{p}/loop`, by state or by chain, each chain's rail starting from its problem)
+and Decisions (`/p/{p}/decide`); an admin turns the Loop on or off and resets its breaker on the Loop page, and every
+other member reads.
 
 ## Swapping the reconciler
 
@@ -322,9 +357,10 @@ counts a failure or spawns the next) or a `Note` (a result written once into a c
 | the routes and commands `hub goal` and `hub loop`, the decision board | |
 
 To swap it, write a class with a `name` and the three functions and pass it to the tick (`tick(engine, project_id,
-rules=NewEngine())`), or make it the default in `tick.py` once it is the one. Each work item records the engine that
-made it (`loop_items.engine`), so old rows stay readable; a new engine goes on from the cursor of `loop_states` with
-the same key forms, so it makes no work item again. A new engine passes the tests the old one passes:
-`tests/hub/test_loop_rules.py` hands the engine events and views and reads what it returns (its replay test reads a
-chain twice, and with the events renumbered, and gets the same keys), and `tests/hub/test_loop_tick.py` runs ticks on
-the hub with Postgres and checks that the same events read again make nothing more.
+rules=NewEngine())`), or make it the default in `tick.py` once it is the one, as `rules/2` is now. Each work item
+records the engine that made it (`loop_items.engine`), so old rows stay readable; a new engine goes on from the cursor
+of `loop_states` with the same key forms, so it makes no work item again. A new engine passes the tests the old one
+passes: `tests/hub/test_loop_rules.py` hands the engine events and views and reads what it returns (its replay test
+reads a chain twice, and with the events renumbered, and gets the same keys; each test of `rules/1` runs on `rules/2`
+too), and `tests/hub/test_loop_tick.py` runs ticks on the hub with Postgres and checks that the same events read again
+make nothing more.

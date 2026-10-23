@@ -128,6 +128,7 @@ describe("AppSidebar", () => {
       "nav-runs",
       "nav-mergeQueue",
       "nav-releases",
+      "nav-problems",
       "nav-goals",
       "nav-signals",
       "nav-loop",
@@ -231,6 +232,7 @@ describe("AppSidebar", () => {
     await user.click(fold);
     const menu = await screen.findByRole("menu");
     expect(within(menu).getAllByRole("menuitem").map((item) => item.getAttribute("data-testid"))).toEqual([
+      "nav-problems",
       "nav-goals",
       "nav-signals",
       "nav-loop",

@@ -8,7 +8,8 @@ label the hub sink must clear, the warnings of plan_semantics in the answer); th
 at the write (403 once lost); without if_revision a plan is never replaced (409); the history of the plan and the run
 name each other; an author run on a plan reads it with its revision and writes it with if_revision, 409 when it
 changed in between; a write that changes the plan's id or the progress the hub holds is 422; a worker token is still
-refused outside /v1/worker/, and the route takes only an author run the worker holds."""
+refused outside /v1/worker/, and the route takes only an author run the worker holds. As a put, a plan naming a problem
+the project lacks is 422 and one naming none is stored with a warning (plan problem-oriented-hub, criterion a4)."""
 
 import pytest
 
@@ -25,6 +26,7 @@ from sqlalchemy import select
 from evo_agents.hub import author, tables
 from evo_agents.hub.plans import MAX_PLAN_BYTES
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.plan_problems import NO_PROBLEMS
 from tests.hub import live
 from tests.hub.live import ADMIN, sql
 from tests.hub.test_author_runs import author_worker, dispatched_author, publish_skill
@@ -124,6 +126,7 @@ def test_an_author_run_puts_a_new_plan_as_its_dispatcher_and_the_history_names_t
     assert written["updated_by"] == OWNER and written["project"] == PROJECT
     assert written["label"]["level"] == "internal", "the project's default label, as a put without one"
     assert any("elsewhere" in item["message"] for item in written["warnings"]), "plan_semantics warns, and stores"
+    assert {"path": "problems", "message": NO_PROBLEMS} in written["warnings"], "a plan naming no problem: a warning"
 
     run = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}", headers=hub["owner"]).json()
     assert (run["plan_id"], run["plan_revision"]) == (NEW, 1), "the run points to the plan it wrote"
@@ -180,6 +183,8 @@ def test_an_author_put_is_checked_as_a_plan_put_schema_size_and_label(client, hu
     assert taken.status_code == 409 and taken.json()["error"] == "revision_conflict", "an existing plan stays"
     stomp = put(client, worker, run_id, {**plan_body(), "title": "Mine now"}, if_revision=1)
     assert stomp.status_code == 422 and "writes a new plan, so it replaces none" in stomp.json()["message"]
+    unknown = put(client, worker, run_id, {**new_plan(), "problems": ["P-4"]})
+    assert unknown.status_code == 422 and f"names problem P-4, which project {PROJECT}" in unknown.json()["message"]
     assert held_plans(hub_db) == before
     assert of_run(hub_db, run_id, "plan_id", "plan_revision") == [(None, None)]
 

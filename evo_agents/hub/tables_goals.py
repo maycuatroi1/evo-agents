@@ -7,8 +7,9 @@ a goal of the Curator's charter (the charter's id, unique in the project), and i
 go with the project.
 
 goal_revisions holds every revision of each goal, never changed: the statement, the metric (an object, or NULL), the
-deadline, the canvas it drives, the rank, the owner, the status with the reason of a closed one, the writer's note, who
-wrote it and when. A goal is its newest revision (``goals.revision``).
+deadline, the canvas it drives, the problem of the project it answers (0134, NULL for none), the rank, the owner, the
+status with the reason of a closed one, the writer's note, who wrote it and when. A goal is its newest revision
+(``goals.revision``). A problem a revision names is never deleted under it; one dropped later may stay named.
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("metric", JSONB(none_as_null=True)),  # None is SQL NULL: no metric
         Column("deadline", Date),
         Column("canvas_id", BigInteger),
+        Column("problem_id", BigInteger),  # 0134
         Column("rank", Integer, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
         Column("status", Text, nullable=False),
@@ -74,6 +76,8 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         _stamp("created_at"),
         _key(name, "goal_id", "goals", ondelete="CASCADE"),
         _key(name, "canvas_id", "canvas_canvases", ondelete="RESTRICT"),
+        # NO ACTION, checked at the end of the statement: a project's goals and problems go with it in one delete.
+        ForeignKeyConstraint(["problem_id"], ["problems.id"], name=f"{name}_problem_id_fkey"),
         _key(name, "owner_id", "users", ondelete="RESTRICT"),
         _key(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("goal_id", "revision", name="goal_revisions_pkey"),

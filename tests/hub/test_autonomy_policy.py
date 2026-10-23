@@ -96,6 +96,8 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "loop.caps.author.turns": 200,
         "loop.caps.plan.minutes": 240,
         "loop.caps.plan.turns": 600,
+        # plan problem-oriented-hub: a solution goes through use cases when the project keeps SRS documents
+        "loop.use_cases": "auto",
     }
     assert not [name for name in defaults if "budget" in name or "estimate" in name or "usd" in name]
     assert {key.name: key.default for key in autonomy.REPO_KEYS} == {
@@ -180,7 +182,7 @@ def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
         'loop.timezone: null or a time zone name such as Asia/Ho_Chi_Minh, at most 64 characters, not "Asia/Ho Chi '
         'Minh"',
         "loop.budget: no such key; loop takes enabled, worker, timezone, business, development, repo_max_running, "
-        "dispatches_per_hour, max_items_per_hour, stable_hours, brainstorm, require_sprint, caps",
+        "dispatches_per_hour, max_items_per_hour, stable_hours, brainstorm, require_sprint, caps, use_cases",
         "later: no such key; the policy takes repos, merge, judge, breaker, audit, loop",
     ]
     assert autonomy.problems(["merge"], FACTS) == [

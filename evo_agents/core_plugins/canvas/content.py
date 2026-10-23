@@ -7,10 +7,11 @@ contents field by field, the fields of the test card each on its own. A test car
 window_days, comparator, min_samples, tenant), with a deadline. Every field of it may be left out; a claim goes to
 testing only with a hypothesis, a test and a deadline (``evo_agents.core_plugins.canvas.rules``).
 
-A claim also links the use cases of the plugin srs that realize it, by code (``use_cases``), and the keys of the
-project's registry of signals that measure it (``signal_keys``): each a set, kept sorted, at most MAX_LINKS. Here they
-are checked for their shape alone; ``links`` checks a link a write adds against the project's SRS and registry, and
-names a use case by its code as the SRS holds it. A rev written before links existed reads as linking nothing.
+A claim also links the use cases of the plugin srs that realize it, by code (``use_cases``), the keys of the
+project's registry of signals that measure it (``signal_keys``), and the problems of the project it answers, by code
+P-<number> (``problems``, plan problem-oriented-hub): each a set, kept sorted, at most MAX_LINKS. Here they are checked
+for their shape alone; ``links`` checks a link a write adds against the project's SRS, registry and problems, and names
+a use case by its code as the SRS holds it. A rev written before links existed reads as linking nothing.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import re
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 
+from evo_agents.hub import problems as problem_model
 from evo_agents.hub.tables_canvas import CELLS, CONFIDENCES, MAX_TEXT_CHARS, STATUSES
 from evo_agents.hub.tables_srs import MAX_CODE_CHARS, code_key
 
@@ -32,8 +34,9 @@ MAX_CARD_TEXT_CHARS = 2_000  # of a test card's hypothesis and test
 MAX_TENANT_CHARS = 100
 MAX_SAMPLES = 1_000_000
 MAX_WINDOW_DAYS = 90
-MAX_LINKS = 20  # use cases a claim links, and signal keys
-LINKS = ("use_cases", "signal_keys")  # the fields of a claim's content that link it, each a sorted tuple
+MAX_LINKS = 20  # use cases a claim links, signal keys, and problems
+LINKS = ("use_cases", "signal_keys", "problems")  # the fields of a claim's content that link it, each a sorted tuple
+PROBLEM = re.compile(problem_model.REF)  # a problem's code, P-<number>
 FIELDS = ("cell", "position", "text", "status", "confidence", "test_card", "archived", *LINKS)  # of a claim's content
 CARD_FIELDS = (
     "hypothesis",
@@ -87,6 +90,7 @@ class Content:
     archived: bool = False
     use_cases: tuple[str, ...] = ()
     signal_keys: tuple[str, ...] = ()
+    problems: tuple[str, ...] = ()
 
     def as_json(self) -> dict:
         return {**asdict(self), **{name: list(getattr(self, name)) for name in LINKS}}
@@ -163,6 +167,12 @@ def _signal_key(value) -> str:
     return value
 
 
+def _problem(value) -> str:
+    if not (isinstance(value, str) and PROBLEM.match(value.strip())):
+        raise CanvasError(422, f"problems takes the codes of problems of the project, as P-3; {value!r} is not")
+    return value.strip()
+
+
 def checked_use_cases(value) -> tuple[str, ...]:
     """The use case codes ``value`` gives, each with its whitespace runs as one space, sorted, without repeats."""
     return _links("use_cases", value, _use_case)
@@ -171,6 +181,14 @@ def checked_use_cases(value) -> tuple[str, ...]:
 def checked_signal_keys(value) -> tuple[str, ...]:
     """The signal keys ``value`` gives, sorted, without repeats."""
     return _links("signal_keys", value, _signal_key)
+
+
+def checked_problems(value) -> tuple[str, ...]:
+    """The problem codes ``value`` gives, by number, without repeats."""
+    if not isinstance(value, list | tuple) or len(value) > MAX_LINKS:
+        raise CanvasError(422, f"problems takes a list of at most {MAX_LINKS}")
+    found = {_problem(item) for item in value}
+    return tuple(sorted(found, key=problem_model.number_of))
 
 
 CARD_CHECKS = {  # field of a test card -> what checks it and gives the value kept
@@ -211,6 +229,7 @@ CHECKS = {  # field of a claim -> what checks it and gives the value kept
     "test_card": checked_card,
     "use_cases": checked_use_cases,
     "signal_keys": checked_signal_keys,
+    "problems": checked_problems,
 }
 
 

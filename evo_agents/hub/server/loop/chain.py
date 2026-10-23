@@ -3,8 +3,9 @@
 
 The chain is every work item that came of the first one (``LoopItem.root``), in the order they came of each other; its
 path is the first one, down to this work item, then on through the one work item each came of it, while there is only
-one. The stages of the path run from the goal to the claim, the use case, the frame task, the plan, the runs handed
-out, the merge requests of the plan and the release, each as its own route shows it (``items``): an ancestor the reader
+one. The stages of the path run from the problem the chain goes from (plan problem-oriented-hub) and the goal to the
+claim, the use case, the frame task, the plan, the runs handed out, the merge requests of the plan and the release,
+each as its own route shows it (``items``): an ancestor the reader
 may not read is left out and named in ``hidden``, and so are the merge requests of a plan they may not read. The
 ledger is what happened to this work item, oldest first. Nothing here writes.
 """
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import goals, tables
+from evo_agents.hub import goals, problems, tables
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.loop import items
 from evo_agents.hub.server.loop.board_items import Reading, line
@@ -36,6 +37,12 @@ class LoopChainGoal(BaseModel):
     code: str
     statement: str
     status: Literal[goals.STATUSES]
+
+
+class LoopChainProblem(BaseModel):
+    code: str = Field(description="P-<number>")
+    statement: str = Field(description="its statement now, on one line")
+    status: Literal[problems.STATUSES]
 
 
 class LoopChainClaim(BaseModel):
@@ -82,6 +89,9 @@ class LoopChainMerge(BaseModel):
 class LoopChainStages(BaseModel):
     """The path of a chain from its goal to its release."""
 
+    problem: LoopChainProblem | None = Field(
+        default=None, description="the problem the chain goes from, as it stands now; null for none"
+    )
     goal: LoopChainGoal | None
     proposals: int | None = Field(description="the claims a brainstorm proposed")
     claim: LoopChainClaim | None
@@ -160,6 +170,20 @@ def _path(chain: Sequence[LoopItem], item_id: int) -> list[LoopItem]:
 
 def _deepest(path: Sequence[LoopItem], attribute: str):
     return next((getattr(entry, attribute) for entry in reversed(path) if getattr(entry, attribute)), None)
+
+
+async def _problem(conn: AsyncConnection, project_id: int, code: str | None) -> LoopChainProblem | None:
+    number = problems.number_of(code) if code else None
+    if number is None:
+        return None
+    p, r = tables.problems, tables.problem_revisions
+    query = (
+        select(r.c.statement, r.c.status)
+        .join_from(p, r, (r.c.problem_id == p.c.id) & (r.c.revision == p.c.revision))
+        .where(p.c.project_id == project_id, p.c.number == number)
+    )
+    row = (await conn.execute(query)).first()
+    return None if row is None else LoopChainProblem(code=code, statement=line(row.statement), status=row.status)
 
 
 async def _goal(conn: AsyncConnection, project_id: int, code: str | None) -> LoopChainGoal | None:
@@ -281,6 +305,7 @@ async def _stages(conn: AsyncConnection, reading: Reading, path: Sequence[LoopIt
     if "plan" in hidden:
         hidden.append("merges")
     return LoopChainStages(
+        problem=await _problem(conn, pid, _deepest(path, "problem")),
         goal=await _goal(conn, pid, _deepest(path, "goal")),
         proposals=_proposals(rows, path),
         claim=await _claim(conn, pid, path),
@@ -338,4 +363,4 @@ async def shown(conn: AsyncConnection, reading: Reading, item_id: int) -> LoopIt
     )
 
 
-__all__ = ["LoopChainStages", "LoopItemChain", "LoopItemEvent", "shown"]
+__all__ = ["LoopChainProblem", "LoopChainStages", "LoopItemChain", "LoopItemEvent", "shown"]

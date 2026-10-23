@@ -45,6 +45,7 @@ function claimOf(overrides: Partial<CanvasClaim> = {}): CanvasClaim {
     archived: false,
     use_cases: [],
     signal_keys: ["checkout.conversion"],
+    problems: [],
     rev: 2,
     evidence_count: 1,
     real_support_count: 0,

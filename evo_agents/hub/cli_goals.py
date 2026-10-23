@@ -7,8 +7,9 @@ next revision: without REF it makes a new goal under the project's next code, wh
 changes the options given and keeps the rest, at the revision the goal is at when it is read unless ``--if-revision``
 says another. A metric is ``--metric KEY`` with ``--aggregate``, ``--comparator`` and ``--target``, and
 ``--window-days`` and ``--tenant`` optional; on a goal that has one, an option given replaces its part alone.
-``--no-metric``, ``--no-deadline`` and ``--no-canvas`` clear those. ``close REF --reason`` closes a goal: achieved,
-dropped or expired.
+``--problem P-<number>`` names the problem of the project the goal answers (``evo-agents hub problem``), one that is
+not dropped. ``--no-metric``, ``--no-deadline``, ``--no-canvas`` and ``--no-problem`` clear those. ``close REF
+--reason`` closes a goal: achieved, dropped or expired.
 
 Every member of the project reads its goals; writing one needs the admin role on the project. Every command finds its
 project with ``--project``, or in the harness.yaml (``hub.project``) of the harness around the current directory.
@@ -40,6 +41,7 @@ GOAL_KEYS = (
     "metric",
     "deadline",
     "canvas",
+    "problem",
     "rank",
     "owner",
     "status",
@@ -57,8 +59,9 @@ METRIC_OPTIONS = {  # the part of a metric each option sets
     "tenant": "tenant",
 }
 NEEDED = ("metric", "aggregate", "comparator", "target")  # the options a metric cannot go without
-WRITTEN_FIELDS = ("statement", "metric", "deadline", "canvas", "rank", "owner", "status", "close_reason")
-GIVEN_FIELDS = ("statement", "deadline", "canvas", "rank", "owner", "status")  # the options that set one field each
+WRITTEN_FIELDS = ("statement", "metric", "deadline", "canvas", "problem", "rank", "owner", "status", "close_reason")
+GIVEN_FIELDS = ("statement", "deadline", "canvas", "problem", "rank", "owner", "status")  # one field an option
+CLEARED_FIELDS = ("deadline", "canvas", "problem")  # each with its --no-<field>
 
 
 def _project(args) -> str:
@@ -130,7 +133,7 @@ def _show(goal: dict, revisions: list[dict]) -> None:
     print(f"Goal {goal['code']}{alias} of project {goal['project']}, revision {goal['revision']}")
     print(f"  statement: {goal['statement']}")
     print(f"  metric: {goals.metric_text(goal['metric'])}")
-    for name in ("deadline", "canvas", "rank", "owner"):
+    for name in ("deadline", "canvas", "problem", "rank", "owner"):
         value = goal[name]
         print(f"  {name}: {'-' if value is None else value}")
     print(f"  status: {_status(goal)}")
@@ -182,7 +185,7 @@ def _body(args, held: dict) -> tuple[dict | None, str | None]:
         return None, why
     body = {name: held.get(name) for name in WRITTEN_FIELDS} | {"metric": metric}
     body |= {name: getattr(args, name) for name in GIVEN_FIELDS if getattr(args, name) is not None}
-    body |= {name: None for name in ("deadline", "canvas") if getattr(args, f"no_{name}")}
+    body |= {name: None for name in CLEARED_FIELDS if getattr(args, f"no_{name}")}
     if not body["statement"]:
         return None, "a new goal needs --statement"
     if args.status is not None:
@@ -194,8 +197,8 @@ def _body(args, held: dict) -> tuple[dict | None, str | None]:
 
 def _conflict(args) -> str | None:
     """Why options given together say two things; None when they do not."""
-    if (args.no_deadline and args.deadline) or (args.no_canvas and args.canvas):
-        return "--no-deadline and --no-canvas each go without the option they clear"
+    if any(getattr(args, f"no_{name}") and getattr(args, name) for name in CLEARED_FIELDS):
+        return "--no-deadline, --no-canvas and --no-problem each go without the option they clear"
     if args.no_metric and any(getattr(args, option) is not None for option in METRIC_OPTIONS):
         return "--no-metric goes without the options of a metric"
     return None
@@ -278,6 +281,8 @@ def _write_options(parser) -> None:
     parser.add_argument("--no-deadline", action="store_true", help="clear the deadline")
     parser.add_argument("--canvas", metavar="SLUG", help="the canvas whose product the goal drives")
     parser.add_argument("--no-canvas", action="store_true", help="clear the canvas")
+    parser.add_argument("--problem", metavar="P-N", help="the problem of the project the goal answers, not dropped")
+    parser.add_argument("--no-problem", action="store_true", help="clear the problem")
     parser.add_argument("--rank", type=int, metavar="N", help="its place among the goals, 1 first")
     parser.add_argument("--owner", metavar="LOGIN", help="a member with the writer role or above")
     parser.add_argument("--status", choices=(goals.ACTIVE, goals.PAUSED), help="active or paused")

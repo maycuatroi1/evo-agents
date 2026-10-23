@@ -463,6 +463,58 @@
       }
     },
     {
+      "name": "problem_list",
+      "description": "The problems of a project on the hub by rank, each with its code (P-<number>), status (open, solved, dropped), owner and metric: what hurts, before any solution. problem_show reads one whole.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "solved",
+              "dropped"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "problem_show",
+      "description": "One problem of a project on the hub by its code: what hurts, who is hurt, when it happens, how they cope today, its metric, rank, owner, status and revision, the goals that answer it, the claims of the project's canvases that link it and the plans that name it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^P-[1-9][0-9]{0,8}$",
+            "description": "P-<number>"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "an older one"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "ask_member",
       "description": "Ask the person who runs this session a question that has 2 to 6 options, in a session of a project on the hub: it reaches them as a decision in the Inbox, Telegram, the web and the run's page, and they can answer on any of them or on this machine with `evo-agents hub decision answer`. The first answer wins and comes back here with the words they wrote. It waits about 20 seconds; with no answer it says so, and you call it again with decision_id to wait longer or go on, and a late answer reaches you with the person's next message. Outside a hub project's session it is refused: use AskUserQuestion.",
       "inputSchema": {

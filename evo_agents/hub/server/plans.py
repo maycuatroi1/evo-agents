@@ -4,8 +4,10 @@ A plan is a row of ``plans`` (its area, label, body as jsonb, revision and diges
 ``plan_revisions`` per revision, only ever appended. Every write takes the plan's row lock, checks the body against
 plan.schema.json and ``plan_semantics`` (repos against the repos registered for the project; a schema error is a
 422, a semantic finding a warning in the answer), refuses with a 422 a verify new in the write that cannot be one shell
-command line on a step not done (``evo_agents.hub.plans.unrunnable_verify``), writes the plan and its revision, and
-adds one audit row naming the plan and the revision, never its content, all in one transaction.
+command line on a step not done (``evo_agents.hub.plans.unrunnable_verify``), refuses with a 422 a problem the write
+names anew that the project does not have (``plan_problems``), writes the plan and its revision, and adds one audit
+row naming the plan and the revision, never its content, all in one transaction. A PUT that writes a plan or a
+revision whose body names no problem says so in its warnings, and stores it all the same.
 
 - PUT creates a plan, or replaces it when ``if_revision`` is the revision the hub holds; anything else is a 409
   ``revision_conflict`` whose ``current`` is the plan as the hub holds it. A body equal to the one held (same digest
@@ -67,7 +69,7 @@ from evo_agents.hub.plans import (
     update_summary,
     verify_refusal,
 )
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, plan_problems
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -251,6 +253,7 @@ def _listed(project_id, area) -> Select:
             plans.c.updated_at,
             users.c.login.label("updated_by"),
             *step_counts(plans.c.body),
+            plans.c.body["problems"].label("problems"),
         )
         .join_from(plans, users, users.c.id == plans.c.updated_by)
         .where(plans.c.project_id == project_id)
@@ -535,6 +538,10 @@ async def _store(
     unrunnable = unrunnable_verify(None if held is None else held.body, body)
     if unrunnable:
         raise PlanError(422, verify_refusal(body["id"], unrunnable))
+    missing = await plan_problems.missing(conn, access.project_id, None if held is None else held.body, body)
+    if missing:
+        message, detail = plan_problems.refusal(access.name, body["id"], missing)
+        raise PlanError(422, message, detail=detail)
     refusal = await plan_write_refusal(
         conn,
         access.project_id,
@@ -698,6 +705,7 @@ async def write_plan(
             if stored is None:
                 continue
             _logged(project, stored, "created", user)
+            warnings += plan_problems.warnings(body)
             return _written(access, stored, created=True, changed=True, warnings=warnings)
         if not access.visible(held.label, _sink(access, None)):
             raise PlanError(409, f"plan {plan_id} already exists in project {project}")
@@ -729,6 +737,7 @@ async def write_plan(
             run_id=run_id,
         )
         _logged(project, stored, "replaced", user)
+        warnings += plan_problems.warnings(body)
         return _written(access, stored, created=False, changed=True, warnings=warnings)
     raise PlanError(409, f"plan {plan_id} was created and changed while this request ran; try again")
 

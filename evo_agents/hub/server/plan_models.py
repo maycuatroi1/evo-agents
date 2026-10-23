@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from evo_agents.hub.plans import AREAS, PLAN_ID, SECTIONS, UPDATABLE
 
@@ -29,6 +29,15 @@ class PlanSummary(BaseModel):
     steps_done: int
     updated_at: datetime
     updated_by: str
+    problems: list[str] = Field(
+        default_factory=list, description="the codes (P-<number>) of the problems of the project its body names"
+    )
+
+    @field_validator("problems", mode="before")
+    @classmethod
+    def _named(cls, value) -> list:
+        """The codes a body's problems hold; none when the body has no such list."""
+        return [code for code in value if isinstance(code, str)] if isinstance(value, list) else []
 
 
 class Plan(BaseModel):

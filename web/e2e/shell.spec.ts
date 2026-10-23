@@ -232,6 +232,7 @@ test.describe("shell", () => {
       "nav-runs",
       "nav-mergeQueue",
       "nav-releases",
+      "nav-problems",
       "nav-goals",
       "nav-signals",
       "nav-loop",

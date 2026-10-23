@@ -42,6 +42,7 @@ describe("nav", () => {
       ["runs", null],
       ["mergeQueue", "delivery"],
       ["releases", "delivery"],
+      ["problems", "improvement"],
       ["goals", "improvement"],
       ["signals", "improvement"],
       ["loop", "improvement"],

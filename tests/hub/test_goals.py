@@ -85,7 +85,9 @@ def test_goal_set_names_a_metric_it_cannot_make_before_asking_the_hub(monkeypatc
     result = goal("G-1", "--no-metric", "--target", "0.1")
     assert result.code == 2 and "--no-metric goes without the options of a metric" in result.err
     result = goal("G-1", "--deadline", "2026-12-31", "--no-deadline")
-    assert result.code == 2 and "--no-deadline and --no-canvas each go without" in result.err
+    assert result.code == 2 and "--no-deadline, --no-canvas and --no-problem each go without" in result.err
+    result = goal("G-1", "--problem", "P-1", "--no-problem")
+    assert result.code == 2 and "--no-deadline, --no-canvas and --no-problem each go without" in result.err
 
 
 # On the hub
@@ -353,18 +355,19 @@ def test_goals_from_the_command_line(hub_db, tmp_path, github, monkeypatch, caps
         second = goal("owner", "set", "--statement", "Answer every ticket in a day", "--owner", "alice", "--json")
         assert_json_keys("hub goal set", as_json(second))
         shown = ok(goal("reader", "show", "G-1")).out.splitlines()
-        assert shown[:7] == [
+        assert shown[:8] == [
             f"Goal G-1 of project {PROJECT}, revision 2",
             "  statement: Fewer searches find nothing",
             "  metric: search.zero_rate p50 over 30 days <= 0.03",
             "  deadline: 2026-12-31",
             "  canvas: -",
+            "  problem: -",
             "  rank: 1",
             "  owner: owner",
         ]
-        assert shown[7] == "  status: active" and shown[8].endswith("UTC: tighter")
-        assert shown[9:11] == ["Revisions:", "REVISION  WRITTEN (UTC)     BY     CHANGED"]
-        assert shown[11].startswith("2 ") and shown[11].endswith("owner  metric")
+        assert shown[8] == "  status: active" and shown[9].endswith("UTC: tighter")
+        assert shown[10:12] == ["Revisions:", "REVISION  WRITTEN (UTC)     BY     CHANGED"]
+        assert shown[12].startswith("2 ") and shown[12].endswith("owner  metric")
         listed = ok(goal("reader", "list")).out.splitlines()
         assert listed[0].split() == ["CODE", "STATUS", "RANK", "OWNER", "DEADLINE", "METRIC", "STATEMENT"]
         assert listed[1].startswith("G-1 ") and "search.zero_rate p50 over 30 days <= 0.03" in listed[1]
@@ -381,3 +384,98 @@ def test_goals_from_the_command_line(hub_db, tmp_path, github, monkeypatch, caps
         again = goal("owner", "close", "G-1", "--reason", "dropped", "--json")
         assert again.code == 1 and "is closed already (achieved)" in again.err
         assert_json_keys("hub goal close", as_json(goal("owner", "close", "G-2", "--reason", "dropped", "--json")))
+
+
+# The problem a goal answers (plan problem-oriented-hub, criterion a2)
+
+PROBLEM = {
+    "statement": "Searches find nothing",
+    "who": "shoppers of lumen",
+    "when": "a search names a brand the shop sells under another name",
+    "workaround": "they leave, or ask support",
+}
+
+
+def _problem(hub, ref: str, **changes) -> dict:
+    response = hub.client.put(
+        f"/v1/projects/{PROJECT}/problems/{ref}", json={**PROBLEM, **changes}, headers=hub.headers["alice"]
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@needs_pg
+def test_a_goal_answers_one_problem_of_its_project_that_is_not_dropped_and_one_without_runs_as_before(hub, hub_db):
+    _problem(hub, "P-1")
+    _problem(hub, "P-2", statement="Tickets wait a week")
+    _problem(hub, "P-3", statement="Old search", status="dropped", close_reason="the old search is gone")
+    # a goal without a problem reads and writes as before: its problem is null
+    plain = _written(_put(hub, "owner", "G-1", {"statement": "Fewer searches find nothing"}))
+    assert plain["problem"] is None and _get(hub, "reader", "/G-1")["problem"] is None
+    for ref, said in (
+        ("P-3", "problem: problem P-3 is dropped; a goal answers a problem that is open or solved"),
+        ("P-9", f"problem: project {PROJECT} has no problem P-9: see `evo-agents hub problem list`"),
+    ):
+        refused = _put(hub, "owner", "G-1", {"statement": "Fewer searches find nothing", "problem": ref})
+        assert refused.status_code == 422 and said in refused.json()["message"], refused.text
+    assert _put(hub, "owner", "G-1", {"statement": "x", "problem": "G-1"}).status_code == 422  # a problem's code
+    assert _put(hub, "owner", "G-1", {"statement": "x", "problem": ["P-1", "P-2"]}).status_code == 422  # one, at most
+    # it names one, changes it, and clears it; each a revision whose changed fields name problem
+    named = _written(_put(hub, "owner", "G-1", {"statement": "Fewer searches find nothing", "problem": "P-1"}))
+    assert (named["revision"], named["problem"]) == (2, "P-1")
+    moved = _written(_put(hub, "owner", "G-1", {"statement": "Fewer searches find nothing", "problem": "P-2"}))
+    assert moved["problem"] == "P-2"
+    assert [(item["revision"], item["changed"]) for item in _get(hub, "reader", "/G-1/revisions")][:2] == [
+        (3, ["problem"]),
+        (2, ["problem"]),
+    ]
+    # a problem dropped since the goal named it may stay named: the goal is written and closed as before
+    closed = hub.client.post(
+        f"/v1/projects/{PROJECT}/problems/P-2/close",
+        json={"status": "dropped", "reason": "tickets go to lumen's own desk"},
+        headers=hub.headers["alice"],
+    )
+    assert closed.status_code == 200, closed.text
+    kept = _written(_put(hub, "owner", "G-1", {"statement": "Fewer empty searches", "problem": "P-2"}))
+    assert (kept["revision"], kept["problem"]) == (4, "P-2")
+    done = _written(_close(hub, "owner", "G-1", {"reason": "achieved"}))
+    assert (done["status"], done["problem"]) == ("closed", "P-2")
+    assert _put(hub, "owner", "G-2", {"statement": "y", "problem": "P-2"}).status_code == 422  # a new one may not
+    assert audit_rows(hub_db, "goal")[1][1] == f"{PROJECT}/goal G-1 revision=2 fields=problem"
+
+
+@needs_pg
+def test_goal_set_problem_and_no_problem_from_the_command_line(hub_db, tmp_path, github, monkeypatch, capsys):
+    from evo_agents.hub.server.app import create_app
+
+    app = create_app(live.hub_config(hub_db, tmp_path, github))
+    with serving(app) as url:
+        import httpx
+
+        with httpx.Client(base_url=url, timeout=10) as client:
+            headers = _registered(client, github)
+            made = client.put(f"/v1/projects/{PROJECT}/problems/P-1", json=PROBLEM, headers=headers["alice"])
+            assert made.status_code == 200, made.text
+        homes = {
+            login: write_credentials(tmp_path / login, url, login, headers[login]["Authorization"].split()[1])
+            for login, _, _ in GRANTS
+        }
+
+        def goal(who: str, *args: str) -> SimpleNamespace:
+            return run_cli(monkeypatch, capsys, homes[who], "hub", "goal", *args, "--project", PROJECT)
+
+        made = as_json(
+            ok(goal("owner", "set", "--statement", "Fewer searches find nothing", "--problem", "P-1", "--json"))
+        )
+        assert (made["code"], made["problem"]) == ("G-1", "P-1")
+        shown = as_json(goal("reader", "show", "G-1", "--json"))
+        assert shown["problem"] == "P-1"
+        assert_json_keys("hub goal show", shown)
+        assert "  problem: P-1" in ok(goal("reader", "show", "G-1")).out.splitlines()
+        kept = as_json(ok(goal("owner", "set", "G-1", "--rank", "2", "--json")))
+        assert (kept["revision"], kept["problem"]) == (2, "P-1"), "an option left out keeps the problem"
+        cleared = as_json(ok(goal("owner", "set", "G-1", "--no-problem", "--json")))
+        assert (cleared["revision"], cleared["problem"]) == (3, None)
+        refused = goal("owner", "set", "G-1", "--problem", "P-7")
+        assert refused.code == 1 and f"project {PROJECT} has no problem P-7" in refused.err
+        assert_json_keys("hub goal list", as_json(goal("reader", "list", "--json")))

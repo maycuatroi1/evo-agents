@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  Bandage,
   BookOpen,
   BookMarked,
   Bot,
@@ -63,6 +64,7 @@ export type NavLabel =
   | "mergeQueue"
   | "insights"
   | "signals"
+  | "problems"
   | "goals"
   | "loop"
   | "curator"
@@ -146,6 +148,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
   { label: "mergeQueue", icon: GitMerge, segment: "merge-queue", group: "delivery" },
   { label: "releases", icon: Tags, segment: "releases", group: "delivery" },
+  { label: "problems", icon: Bandage, segment: "problems", group: "improvement" },
   { label: "goals", icon: Goal, segment: "goals", group: "improvement" },
   { label: "signals", icon: RadioTower, segment: "signals", group: "improvement" },
   { label: "loop", icon: IterationCw, segment: "loop", group: "improvement" },

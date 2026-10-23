@@ -7,7 +7,9 @@ claims and one running; the chain of plan ``released`` (a use case done, its bui
 deliver done after its merge request merged, with the ledger of the build); the build of UC ORD-4 done with plan ``held``,
 whose deliver waits for a person, its merge request blocked at gate 3; a build of UC ORD-2 queued for want of a worker; a use case
 waiting for its SRS version's review; and a build cancelled when the Loop was turned off. With ``tripped`` the Loop's
-breaker trips. The answer names the ids a test needs (``items``: name -> work item id, ``merges``: plan -> queue id).
+breaker trips. With ``problem`` (a code, P-<number>, of a problem G-1 answers), every work item goes from that problem,
+as rules/2 stamps them, and a discover of CL-1 runs. The answer names the ids a test needs (``items``: name -> work item
+id, ``merges``: plan -> queue id).
 """
 
 from __future__ import annotations
@@ -41,10 +43,14 @@ def seed(dsn: str, body: dict) -> dict:
         claim = one("SELECT id FROM canvas_claims WHERE project_id = %s AND number = %s", 1)
         document = one("SELECT id FROM srs_documents WHERE project_id = %s AND slug = %s", "demo-shop")
         task = one("SELECT id FROM tasks_items WHERE project_id = %s AND number = %s", 1)
+        code = body.get("problem")
+        problem = one("SELECT id FROM problems WHERE project_id = %s AND number = %s", int(code[2:])) if code else None
 
         def item(kind: str, key: str, state: str, hours: float, reason: str | None = None, **values) -> int:
-            cycle = "business" if kind in ("brainstorm", "use_case") else "development"
+            cycle = "business" if kind in ("brainstorm", "use_case", "discover") else "development"
             columns = {"project_id": pid, "kind": kind, "cycle": cycle, "key": key, "goal_id": goal, "state": state}
+            if problem is not None:
+                columns["problem_id"] = problem
             columns |= {"reason": reason, "engine": "rules/1", "created_at": ago(hours), "updated_at": ago(hours / 2)}
             if state in ("done", "cancelled"):
                 columns["finished_at"] = ago(hours / 2)
@@ -176,6 +182,16 @@ def seed(dsn: str, body: dict) -> dict:
             parent_id=items["use_case"],
             **ancestors,
         )
+        if problem is not None:
+            items["discover"] = item(
+                "discover",
+                "discover:northwind:CL-1:b1",
+                "running",
+                2,
+                owner="@strategist",
+                claim_id=claim,
+                engine="rules/2",
+            )
         if body.get("tripped"):
             conn.execute(
                 "UPDATE loop_states SET breaker = 'tripped', breaker_reason = %s, tripped_at = now() "

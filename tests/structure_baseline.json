@@ -27,7 +27,7 @@
     "evo_agents/kg/pipeline/binding.py::binding_item": {"complexity": 16},
     "evo_agents/kg/pipeline/link.py::Linker.scan": {"complexity": 37, "statements": 104},
     "evo_agents/kg/protocol/__init__.py::StreamChecker.feed": {"complexity": 21},
-    "evo_agents/schema.py::Validator._check_node": {"complexity": 27},
+    "evo_agents/schema.py::Validator._check_node": {"complexity": 24},
     "evo_agents/worker/cli.py::register": {"statements": 71},
     "evo_agents/worker/daemon.py::Daemon._beat": {"complexity": 20, "statements": 52},
     "evo_agents/worker/interactive.py::claude_transcript_events": {"complexity": 17},

@@ -12,6 +12,11 @@ makes its frame tasks, and the Loop's build waits on the frame task of UC ORD-1 
 for want of loop.worker (``tests.hub.test_loop_admission`` has the rest of admission). Reading the same events again,
 and an event told twice, make nothing more. A claim invalidated, a goal closed and the Loop turned off cancel what is
 left. A project with the Loop off is as before the plan: no state, no tick, no work item.
+
+The engine is rules/2 (plan problem-oriented-hub, criterion a6): once G-1 answers problem P-1, each work item carries
+P-1; in a project whose solutions skip use cases (``loop.use_cases`` never) CL-1 makes a build straight from the
+claim, a claim of the Problem cell a discover, and a claim of another cell no core work item; the routes name the
+problem of each work item and of a chain. rules/2 goes on from the cursor rules/1 left and makes no work item again.
 """
 
 from __future__ import annotations
@@ -34,7 +39,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import hub_events, jobs, loop_jobs, plugin_calls, tables
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.loop import rules
 from evo_agents.hub.server.loop.tick import fit_key, tick
+from evo_agents.hub.server.loop.view import use_cases
 from evo_agents.hub.tables_srs import frame_task_key
 from evo_agents.hub.worker import queue
 from evo_agents.plugins import core
@@ -70,6 +77,13 @@ JOBS = table(
 )
 FRAME = frame_task_key("demo-shop", 1, "UC ORD-1")
 HARNESS_ORIGIN = f"https://git.example.org/evo/{HARNESS}.git"
+LOOP_ITEMS = f"/v1/projects/{PROJECT}/loop/items"
+SHORTAGE = {
+    "statement": "Corner shops run out of milk between deliveries",
+    "who": "the owners of corner shops",
+    "when": "on the days before the weekly delivery",
+    "workaround": "they buy milk at a supermarket at retail price",
+}
 
 
 @pytest.fixture
@@ -93,13 +107,14 @@ def client(hub_db, tmp_path, github, app_key, s3, loop_core):  # noqa: F811
 @pytest.fixture
 def hub(client, members) -> dict:  # noqa: F811
     """``members`` with plugins canvas, srs and tasks on, chi's draft of demo-shop, chi's canvas of Northwind Pantry
-    with claim CL-1 linking use case UC ORD-1, a key of kind number, and goal G-1 of owner, whose metric is not met,
-    driving the canvas."""
+    with claim CL-1 of the Solution cell linking use case UC ORD-1, a key of kind number, and goal G-1 of owner, whose
+    metric is not met, driving the canvas. The project keeps an SRS document, so its solutions go through use cases
+    (``loop.use_cases`` auto)."""
     for plugin, permissions in (("canvas", ()), ("srs", ()), ("tasks", ["plans:read"])):
         enable(client, members["owner"], plugin, permissions)
     made = client.post(f"{BASE}/canvases", json={"slug": SLUG, "name": "Northwind Pantry"}, headers=members["chi"])
     assert made.status_code == 201, made.text
-    edit(client, members["chi"], {"cell": "problem", "text": "Corner shops run out of stock between deliveries"})
+    edit(client, members["chi"], {"cell": "solution", "text": "A reorder list built from the shop's last orders"})
     imported(client, members["chi"])  # demo-shop's version 1, a draft, holds UC ORD-1
     edit(client, members["chi"], {"claim": "CL-1", "base_rev": 1, "use_cases": ["UC ORD-1"]})
     add_key(client, members, NUMBER_KEY, "number")
@@ -237,7 +252,7 @@ def test_loop_tick_runs_a_goal_to_the_builds_of_its_claim_once_however_often_it_
     assert ticked(client, hub_db)["changed"] == 1
     assert items(hub_db) == [("brainstorm:G-1:r1", "brainstorm", "queued", None)]
     brainstorm = item(hub_db, "brainstorm:G-1:r1")
-    assert (brainstorm["owner"], brainstorm["engine"], brainstorm["cycle"]) == ("@strategist", "rules/1", "business")
+    assert (brainstorm["owner"], brainstorm["engine"], brainstorm["cycle"]) == ("@strategist", "rules/2", "business")
     # nothing new: the tick writes no work item, no ledger row and no run
     before = counts(hub_db)
     assert ticked(client, hub_db) == {"events": 0, "changed": 0}
@@ -365,3 +380,155 @@ def test_loop_tick_keeps_a_long_key_unique_within_its_column():
     assert fit_key(short) == short
     long_a, long_b = "build:" + "a" * 600, "build:" + "a" * 599 + "b"
     assert len(fit_key(long_a)) == 500 and fit_key(long_a) != fit_key(long_b)
+
+
+# rules/2: the Loop goes from the problem a goal answers
+
+
+def answers_shortage(client, hub, db) -> int:
+    """Problem P-1 of the project, which goal G-1 answers from its revision 2; P-1's id."""
+    written = client.put(f"/v1/projects/{PROJECT}/problems/P-1", json=SHORTAGE, headers=hub["chi"])
+    assert written.status_code == 200, written.text
+    goal = {"statement": "Corner shops reorder every week", "metric": METRIC, "canvas": SLUG, "problem": "P-1"}
+    named = client.put(f"{GOALS}/G-1", json=goal, headers=hub["owner"])
+    assert named.status_code == 200 and named.json()["problem"] == "P-1", named.text
+    p = tables.problems
+    return sql(db, select(p.c.id).where(p.c.number == 1))[0][0]
+
+
+def problems_of(db) -> dict[str, int | None]:
+    i = tables.loop_items
+    return dict(sql(db, select(i.c.key, i.c.problem_id).order_by(i.c.id)))
+
+
+def test_loop_tick_rules2_goes_from_a_problem_to_a_build_of_a_claim_and_a_discover_of_a_problem(client, hub, hub_db):
+    problem_id = answers_shortage(client, hub, hub_db)
+    policy(client, hub, {"enabled": True, "use_cases": "never"})
+    start = state(hub_db)[1]
+    ticked(client, hub_db)
+    assert items(hub_db) == [("brainstorm:G-1:r2", "brainstorm", "queued", None)]
+    assert item(hub_db, "brainstorm:G-1:r2")["engine"] == "rules/2"
+
+    # CL-1, a solution, in testing: a build straight from the claim, no use case (the project keeps none for the Loop)
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
+    push_baseline(client, hub, "CL-1")
+    # CL-2, a problem, in testing: a discover of @strategist; CL-3, a customer segment, makes no core work item
+    edit(client, hub["chi"], {"cell": "problem", "text": "Shops cannot tell what sold out", "problems": ["P-1"]})
+    edit(client, hub["chi"], {"cell": "customer_segments", "text": "Corner shops of one owner"})
+    for ref in ("CL-2", "CL-3"):
+        edit(client, hub["chi"], {"claim": ref, "base_rev": 1, "status": "testing", "test_card": CARD})
+        push_baseline(client, hub, ref)
+    ticked(client, hub_db)
+    build_key, discover_key = f"build:claim:{SLUG}:CL-1:b1", f"discover:{SLUG}:CL-2:b2"
+    assert items(hub_db)[1:] == [
+        (build_key, "build", "queued", "worker"),  # no loop.worker: admission holds it
+        (discover_key, "discover", "queued", None),
+    ]
+    built, found = item(hub_db, build_key), item(hub_db, discover_key)
+    assert (built["cycle"], built["engine"], built["use_case"], built["task_id"]) == (
+        "development",
+        "rules/2",
+        None,
+        None,
+    )
+    assert built["detail"] == {
+        "baseline": 1,
+        "from": "assumption",
+        "claim": "CL-1",
+        "canvas": SLUG,
+        "worker": None,
+        "why": "the policy names no loop.worker",
+    }
+    assert (found["cycle"], found["owner"], found["claim_id"]) == ("business", "@strategist", built["claim_id"] + 1)
+    assert set(problems_of(hub_db).values()) == {problem_id}, "each work item carries the problem of its goal"
+
+    # the routes name the problem of each work item and of a chain, and list a problem's work items and a discover
+    listed = client.get(LOOP_ITEMS, params={"problem": "P-1"}, headers=hub["reader"]).json()["items"]
+    assert sorted((entry["kind"], entry["problem"]) for entry in listed) == [
+        ("brainstorm", "P-1"),
+        ("build", "P-1"),
+        ("discover", "P-1"),
+    ]
+    assert client.get(LOOP_ITEMS, params={"problem": "P-9"}, headers=hub["reader"]).json()["items"] == []
+    (shown,) = client.get(LOOP_ITEMS, params={"kind": "discover"}, headers=hub["reader"]).json()["items"]
+    assert (shown["claim"], shown["owner"]) == ({"canvas": SLUG, "code": "CL-2"}, "@strategist")
+    chain = client.get(f"{LOOP_ITEMS}/{found['id']}", headers=hub["reader"]).json()
+    assert chain["stages"]["problem"] == {"code": "P-1", "statement": SHORTAGE["statement"], "status": "open"}
+    assert chain["stages"]["claim"]["code"] == "CL-2"
+    assert client.get(LOOP_ITEMS, params={"problem": "G-1"}, headers=hub["reader"]).status_code == 422
+
+    # reading the chain again, with the events renumbered by telling them again, makes nothing more
+    before = counts(hub_db)
+    s, e = tables.loop_states, tables.hub_events
+    sql(hub_db, update(s).values(cursor=start))
+    assert ticked(client, hub_db)["changed"] == 0
+    told = sql(hub_db, select(e.c.kind, e.c.payload).where(e.c.kind == hub_events.BASELINE).order_by(e.c.id))
+
+    async def told_again():
+        async with client.app.state.engine.begin() as conn:
+            for kind, payload in told:
+                await hub_events.record(conn, kind, project_id(hub_db), payload)
+
+    client.portal.call(told_again)
+    assert ticked(client, hub_db)["changed"] == 0
+    assert counts(hub_db) == before
+
+
+def test_loop_tick_rules2_goes_on_from_the_cursor_rules1_left_and_moves_its_work_items(client, hub, hub_db):
+    policy(client, hub, {"enabled": True})
+    start = state(hub_db)[1]
+    ticked_by_rules1 = partial(tick, client.app.state.engine, project_id(hub_db), rules=rules.RULES, dispatch=None)
+    client.portal.call(ticked_by_rules1)
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
+    push_baseline(client, hub, "CL-1")
+    client.portal.call(ticked_by_rules1)
+    case = item(hub_db, f"use_case:{SLUG}:CL-1:b1")
+    assert (case["engine"], case["state"], case["problem_id"]) == ("rules/1", "queued", None)
+    made = counts(hub_db)
+
+    # rules/2 from the cursor rules/1 left, and over the whole chain again: the same keys, nothing more
+    assert ticked(client, hub_db)["changed"] == 0
+    sql(hub_db, update(tables.loop_states).values(cursor=start))
+    assert ticked(client, hub_db)["changed"] == 0
+    assert counts(hub_db) == made
+
+    # the goal answers a problem now: rules/1's use case moves as it did, and the build that comes of it carries P-1
+    problem_id = answers_shortage(client, hub, hub_db)
+    submitted(client, hub["chi"], 1)
+    assert review(client, hub["other"], 1).json()["state"] == "approved"
+    ticked(client, hub_db)
+    assert item(hub_db, f"use_case:{SLUG}:CL-1:b1")["state"] == "done"
+    built = item(hub_db, f"build:{FRAME}")
+    assert (built["engine"], built["parent_id"], built["problem_id"]) == ("rules/2", case["id"], problem_id)
+    listed = client.get(LOOP_ITEMS, headers=hub["reader"]).json()["items"]
+    assert {entry["kind"]: entry["problem"] for entry in listed if entry["kind"] != "brainstorm"} == {
+        "build": "P-1",
+        "use_case": None,
+    }
+
+
+def test_loop_tick_use_cases_auto_follows_the_srs_documents_of_the_project(client, hub, hub_db):
+    pid = project_id(hub_db)
+
+    async def mode(value: str) -> bool:
+        async with client.app.state.engine.begin() as conn:
+            return await use_cases(conn, pid, {"use_cases": value})
+
+    # the plugin srs on and demo-shop not archived: auto goes through use cases; always and never fix it
+    assert [client.portal.call(mode, value) for value in ("auto", "always", "never")] == [True, True, False]
+    assert policy(client, hub, {"enabled": True})["effective"]["loop"]["use_cases"] == "auto"
+    d = tables.srs.documents
+    sql(hub_db, update(d).values(archived_at=func.now()))
+    assert [client.portal.call(mode, value) for value in ("auto", "always", "never")] == [False, True, False]
+    refused = client.put(POLICY, json={"policy": {"loop": {"use_cases": "sometimes"}}}, headers=hub["owner"])
+    assert refused.status_code == 422 and "loop.use_cases: one of always, never, auto" in refused.text
+
+    # with no SRS document left, a solution in testing makes a build straight from its claim
+    ticked(client, hub_db)
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
+    push_baseline(client, hub, "CL-1")
+    ticked(client, hub_db)
+    assert [row[:2] for row in items(hub_db)] == [
+        ("brainstorm:G-1:r1", "brainstorm"),
+        (f"build:claim:{SLUG}:CL-1:b1", "build"),
+    ]

@@ -1,6 +1,7 @@
 """The text the hub's MCP tools ``digest_show`` and ``run_events`` give the model (``mcp.HubMcp``), kept under
-TEXT_CHARS characters, and the lines that name a memory in what ``memory_search``, ``memory_get`` and ``memory_write``
-give it.
+TEXT_CHARS characters, the lines that name a memory in what ``memory_search``, ``memory_get`` and ``memory_write``
+give it, and the lines of a problem in what ``problem_list`` and ``problem_show`` give it (``problem_line``,
+``problem_lines``).
 
 The envelope of ``kg serve`` cuts a text over CAP_CHARS and gives the rest through kg_more, and the spool hook of the
 evo-hub plugin leaves the hub's tools whole, so these two keep under the cut themselves: the Curator's review reads
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import json
 
+from evo_agents.hub import problems
 from evo_agents.hub.memory import FRONTMATTER, frontmatter
 from evo_agents.kg.serve import CAP_CHARS
 
@@ -106,3 +108,45 @@ def event_lines(events) -> list[str]:
         lines.append(line)
         used += len(line) + 1
     return lines
+
+
+def problem_line(problem: dict) -> str:
+    """A problem of ``problem_list`` in one line: its code, status, rank, owner, metric and statement."""
+    return (
+        f"{problem['code']} ({problems.status_text(problem)}, rank {problem['rank']}, owner {problem['owner']}, "
+        f"{problems.metric_text(problem['metric'])}): {one_line(problem['statement'], EXCERPT)}"
+    )
+
+
+def _listed(title: str, none: str, lines: list[str]) -> list[str]:
+    return [title, *lines] if lines else [none]
+
+
+def problem_lines(project: str, problem: dict) -> list[str]:
+    """What ``problem_show`` says of a problem (its JSON, as ProjectProblemShown has it): its fields, then the goals
+    that answer it, the claims that link it and the plans that name it."""
+    goals = [
+        f"- {goal['code']} ({goal['status']}): {one_line(goal['statement'], EXCERPT)}" for goal in problem["goals"]
+    ]
+    claims = [
+        f"- {claim['code']} in canvas {claim['canvas']}, cell {claim['cell']} ({claim['status']}): "
+        + one_line(claim["text"], EXCERPT)
+        for claim in problem["claims"]
+    ]
+    plans = [
+        f"- {plan['plan_id']} ({plan['area']}, {plan['steps_done']}/{plan['steps_total']} steps done)"
+        + (f": {one_line(plan['title'], EXCERPT)}" if plan["title"] else "")
+        for plan in problem["plans"]
+    ]
+    return [
+        f"# Problem {problem['code']} of project {project}, revision {problem['revision']}",
+        f"statement: {problem['statement']}",
+        f"who: {problem['who']}",
+        f"when: {problem['when']}",
+        f"workaround: {problem['workaround']}",
+        f"metric: {problems.metric_text(problem['metric'])}",
+        f"rank: {problem['rank']}; owner: {problem['owner']}; status: {problems.status_text(problem)}",
+        *_listed("goals that answer it:", "no goal answers it yet", goals),
+        *_listed("claims that link it:", "no claim links it yet", claims),
+        *_listed("plans that name it:", "no plan names it yet", plans),
+    ]

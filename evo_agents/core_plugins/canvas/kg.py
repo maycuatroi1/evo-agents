@@ -4,8 +4,8 @@
 A canvas is the item ``plugin.canvas:canvas:<slug>`` of kind ``doc``, a Document of the graph, with the product's name,
 the canvas's label and the time it or a claim of it last changed. Each cell that holds a claim is a fragment keyed by
 the cell (``problem``), a Section, and each claim a fragment under its cell keyed by its code (``CL-3``): its text,
-status, confidence, test card and signal keys, so search finds a claim by what it says. Its use cases are edges only:
-named in its text, a code with no approved version would become a node of its own.
+status, confidence, test card, signal keys and problems, so search finds a claim by what it says. Its use cases are
+edges only: named in its text, a code with no approved version would become a node of its own.
 
 A claim is a Claim node with the id a mention of its code gets (``claim:CL-3``), holding its code alone, as a use case
 of the plugin srs does: a mention of the code in a document of a lower label shows the node at that label, so its text
@@ -18,7 +18,10 @@ and status stay in its fragment, which keeps the canvas's label. Declared edges,
   dangling. A task implements its use case and a plan step its task, so kg_path from a claim goes along implements to
   its use cases, their tasks and the steps of those;
 - the claim is ``measured_by`` each signal key it links and the key its test card's metric names: a SignalKey node
-  ``signalkey:<key>`` the claim's fragment declares with its key alone.
+  ``signalkey:<key>`` the claim's fragment declares with its key alone;
+- the claim ``addresses`` each problem of the project it links (plan problem-oriented-hub, criterion a5): the node
+  ``problem:P-3`` the hub's source of problems declares (``evo_agents.hub.kg_problems``), and the edge is dropped as
+  dangling while no such node is.
 
 The identifiers are the pattern of a claim's code, so a mention of ``CL-3`` in a chat, a plan or a document links to
 the claim's node. A canvas links its page on the hub's web (``uri``) when the hub knows its public URL.
@@ -32,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.canvas import links, store
 from evo_agents.core_plugins.canvas.content import FEEDBACK
+from evo_agents.hub.kg_problems import ADDRESSES, problem_node_id
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.tables_canvas import CELLS
 from evo_agents.hub.tables_srs import kg_node_id
@@ -86,6 +90,8 @@ def _claim_text(row: store.ClaimRow) -> str:
         lines.append(card)
     if row.signal_keys:
         lines.append(f"Signal keys: {', '.join(row.signal_keys)}.")
+    if row.problems:
+        lines.append(f"Problems: {', '.join(row.problems)}.")
     return "\n".join(lines)
 
 
@@ -125,6 +131,8 @@ def _graph(item_id: str, claims: list[store.ClaimRow], with_srs: bool) -> dict:
             node = signal_key_node_id(key)
             nodes.append({"id": node, "kind": SIGNAL_KEY, "name": key, "props": {"key": key}, "anchor": anchor})
             edges.append({"src": claim, "rel": "measured_by", "dst": node, "anchor": anchor})
+        for problem in row.problems:
+            edges.append({"src": claim, "rel": ADDRESSES, "dst": problem_node_id(problem), "anchor": anchor})
     return {"nodes": nodes, "edges": edges}
 
 
