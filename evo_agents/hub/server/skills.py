@@ -1,9 +1,15 @@
 """Skills: versions of skill directories whose bundles live in the blob store, for ``hub skills sync`` to write into
 the skills directories of every runtime.
 
-A skill is global (every signed-in member reads it, a hub admin publishes it) or belongs to a project (the members
-of the project read it; publishing follows the write rule of ``evo_agents.hub.access``: the writer role, and a hub
-sink that clears the project's default label). Asking about a project skill without a grant on the project is a
+A skill is global (a hub admin publishes it) or belongs to a project (the members of the project read it; publishing
+follows the write rule of ``evo_agents.hub.access``: the writer role, and a hub sink that clears the project's default
+label). A global skill has an audience: ``everyone`` signed in reads it, or hub ``admins`` alone (a project skill is
+always ``everyone``, its project's grants deciding). Whoever is not a hub admin never sees an ``admins`` skill: the
+list leaves it out, and asking for it or its bundle is a 404, the same as for a skill that does not exist. The agent
+of a run reads what the run's owner reads: the admins skills when the owner is a hub admin. Publishing a new global
+skill sets its audience, ``everyone`` by default; publishing a version with an audience changes it, and PUT
+/v1/skills/global/{name}/audience changes it alone (both for a hub admin). Every change adds one audit row,
+``skill:global/<name> audience=<was>-><is>``. Asking about a project skill without a grant on the project is a
 403, the same whether the project exists or not; a hub admin without a grant reads nothing there either, and the
 agent of a run (``Principal.scope``) reads the global skills and those of the run's project alone. Names are unique in
 their scope ignoring case, since a name is a directory name on every machine.
@@ -39,7 +45,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import Select, and_, func, insert, or_, select, true
+from sqlalchemy import Select, and_, func, insert, or_, select, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -52,13 +58,16 @@ from evo_agents.hub.server.blobs import GLOBAL, blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.projects import PRINTABLE, project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal
 from evo_agents.hub.skills import MAX_BUNDLE, MAX_DESCRIPTION, BundleError, name_problem, read_bundle
 
 log = logging.getLogger(__name__)
 
 PUBLISH = "skill.publish"  # audit action; the target is skill:global/<name> or skill:project/<project>/<name>
+AUDIENCE = "skill.audience"  # audit action; the target is skill:global/<name> audience=<was>-><is>
 SCOPES = ("global", "project")
+AUDIENCES = ("everyone", "admins")  # who reads a global skill: every signed-in member, or hub admins alone
+EVERYONE, ADMINS = AUDIENCES
 MAX_SOURCE_REPO = 200
 SKILL_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # evo_agents.hub.skills.NAME
 UNAVAILABLE = "the blob store did not answer; no version was created, try again shortly"
@@ -68,6 +77,8 @@ VersionNumber = Annotated[int | None, Query(ge=1, le=2**31 - 1, description="def
 READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 PUBLISH_REFUSALS = {code: {"model": ErrorBody} for code in (403, 422, 503)}
 BUNDLE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 503)}
+AUDIENCE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
+AUDIENCE_TEXT = "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
 
 router = APIRouter(prefix="/v1/skills", tags=["skills"], responses={401: {"model": ErrorBody}})
 
@@ -77,6 +88,9 @@ class PublishRequest(BaseModel):
     size: int = Field(ge=1, le=MAX_BUNDLE, description="bytes of the bundle")
     source_repo: str | None = Field(None, min_length=1, max_length=MAX_SOURCE_REPO, pattern=PRINTABLE)
     source_commit: str | None = Field(None, pattern=r"^[0-9a-f]{7,64}$", description="hex, abbreviated or whole")
+    audience: Literal[AUDIENCES] | None = Field(
+        None, description="a global skill's audience: default everyone for a new skill, unchanged for one that exists"
+    )
 
     @model_validator(mode="after")
     def _source_whole(self):
@@ -110,6 +124,7 @@ class Skill(BaseModel):
     source_commit: str | None
     published_by: str
     published_at: datetime
+    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
 
 
 class SkillHistory(BaseModel):
@@ -118,6 +133,7 @@ class SkillHistory(BaseModel):
     name: str
     created_at: datetime
     versions: list[Version] = Field(description="the latest first")
+    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
 
 
 class Published(BaseModel):
@@ -126,6 +142,17 @@ class Published(BaseModel):
     name: str
     created: bool = Field(description="false when the latest version has this bundle already")
     latest: Version
+    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
+
+
+class AudienceChange(BaseModel):
+    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
+
+
+class SkillAudience(BaseModel):
+    name: str
+    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
+    changed: bool = Field(description="false when the skill had this audience already")
 
 
 class BundleTicket(BaseModel):
@@ -141,11 +168,12 @@ class BundleTicket(BaseModel):
 
 @dataclass(frozen=True)
 class Place:
-    """Where a skill lives: global, or a project the caller has a grant on."""
+    """Where a skill lives: global, or a project the caller has a grant on; with the audiences the caller reads there."""
 
     scope: str
     project_id: int | None
     project: str | None
+    audiences: tuple[str, ...] = AUDIENCES
 
     def target(self, name: str) -> str:
         """The skill ``name`` here, as audit rows name it."""
@@ -158,17 +186,26 @@ class Place:
 GLOBAL_PLACE = Place("global", None, None)
 
 
+def audiences(request: Request, user: Principal) -> tuple[str, ...]:
+    """The audiences of the global skills ``user`` reads: every one for a hub admin and for the agent of a run whose
+    owner is one (the agent is never a hub admin itself, ``Principal.admin``, but reads what its owner reads);
+    everyone's alone for anyone else."""
+    if user.admin or (user.scope is not None and request.app.state.config.is_admin(user.login)):
+        return AUDIENCES
+    return (EVERYONE,)
+
+
 def _no_grant(project: str) -> HTTPException:
     return HTTPException(
         403, f"skills of project {project} are for its members: ask an admin of the project for a grant"
     )
 
 
-async def _readable(conn: AsyncConnection, user: Principal, project: str | None) -> Place:
-    """The place of ``project``'s skills (global without one) when ``user`` may read them; 403 otherwise, the same
-    for a project that does not exist."""
+async def _readable(request: Request, conn: AsyncConnection, user: Principal, project: str | None) -> Place:
+    """The place of ``project``'s skills (global without one, with the audiences ``user`` reads) when ``user`` may read
+    them; 403 otherwise, the same for a project that does not exist."""
     if project is None:
-        return GLOBAL_PLACE
+        return Place("global", None, None, audiences(request, user))
     if not user.reaches(project):  # the agent of a run reads the skills of the run's project alone
         raise _no_grant(project)
     projects, grants = tables.projects, tables.grants
@@ -209,8 +246,8 @@ def _checked_name(name: str) -> str:
     return name
 
 
-def _skills(with_global: bool, project_ids: list[int]) -> Select:
-    """The skills of Skill, column by field name, each with its latest version: the global ones with
+def _skills(with_global: tuple[str, ...], project_ids: list[int]) -> Select:
+    """The skills of Skill, column by field name, each with its latest version: the global ones whose audience is in
     ``with_global``, and those of the projects ``project_ids``."""
     skills, projects, users, versions = tables.skills, tables.projects, tables.users, tables.skill_versions
     latest = (
@@ -222,7 +259,7 @@ def _skills(with_global: bool, project_ids: list[int]) -> Select:
     )
     wanted = [and_(skills.c.scope == "project", skills.c.project_id.in_(project_ids))]
     if with_global:
-        wanted.insert(0, skills.c.scope == "global")
+        wanted.insert(0, and_(skills.c.scope == "global", skills.c.audience.in_(with_global)))
     return (
         select(
             skills.c.scope,
@@ -236,6 +273,7 @@ def _skills(with_global: bool, project_ids: list[int]) -> Select:
             latest.c.source_commit,
             users.c.login.label("published_by"),
             latest.c.published_at,
+            skills.c.audience,
         )
         .select_from(
             skills.outerjoin(projects, projects.c.id == skills.c.project_id)
@@ -268,16 +306,16 @@ async def list_skills(
     project: Annotated[str | None, Query(pattern=PROJECT_NAME, description="only this project's skills")] = None,
     page: Paging = WHOLE,
 ) -> list[Skill]:
-    """The skills the caller sees, each with its latest version: the global ones and those of every project the
-    caller has a grant on."""
+    """The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and
+    those of every project the caller has a grant on."""
     if project is not None and scope == "global":
         raise HTTPException(422, "a global skill belongs to no project: pass scope=project with a project, or neither")
     async with request.app.state.engine.begin() as conn:
         if project is not None:
-            projects = [(await _readable(conn, user, project)).project_id]
+            projects = [(await _readable(request, conn, user, project)).project_id]
         else:
             projects = list((await conn.execute(_granted(user))).scalars())
-        with_global = scope in (None, "global") and project is None
+        with_global = audiences(request, user) if scope in (None, "global") and project is None else ()
         rows = await page.rows(conn, _skills(with_global, projects if scope in (None, "project") else []))
     return [Skill(**row._mapping) for row in rows]
 
@@ -303,12 +341,14 @@ def _versions(skill_id: int) -> Select:
 
 
 async def _find(conn: AsyncConnection, place: Place, name: str, *, lock: bool = False):
-    """(id, name, created_at) of skill ``name`` in ``place``, matched ignoring case; None when there is none."""
+    """(id, name, created_at, audience) of skill ``name`` in ``place``, matched ignoring case; None when there is none
+    or it is for an audience the caller is not in."""
     skills = tables.skills
-    query = select(skills.c.id, skills.c.name, skills.c.created_at).where(
+    query = select(skills.c.id, skills.c.name, skills.c.created_at, skills.c.audience).where(
         skills.c.scope == place.scope,
         skills.c.project_id.is_not_distinct_from(place.project_id),
         func.lower(skills.c.name) == func.lower(name),
+        skills.c.audience.in_(place.audiences),
     )
     if lock:
         query = query.with_for_update()
@@ -322,14 +362,19 @@ def _not_found(place: Place, name: str) -> HTTPException:
 
 async def _history(request: Request, user: Principal, project: str | None, name: str) -> SkillHistory:
     async with request.app.state.engine.begin() as conn:
-        place = await _readable(conn, user, project)
+        place = await _readable(request, conn, user, project)
         found = await _find(conn, place, name)
         if found is None:
             raise _not_found(place, name)
         rows = (await conn.execute(_versions(found.id))).all()
     versions = [Version(**row._mapping) for row in rows]
     return SkillHistory(
-        scope=place.scope, project=place.project, name=found.name, created_at=found.created_at, versions=versions
+        scope=place.scope,
+        project=place.project,
+        name=found.name,
+        created_at=found.created_at,
+        versions=versions,
+        audience=found.audience,
     )
 
 
@@ -379,14 +424,31 @@ async def _latest(conn: AsyncConnection, skill_id: int) -> Version:
     return Version(**(await conn.execute(_versions(skill_id).limit(1))).one()._mapping)
 
 
+async def _audience(conn: AsyncConnection, user: Principal, place: Place, found, wanted: str | None) -> str:
+    """The audience of skill ``found`` (a row of ``_find``) once set to ``wanted``, adding one audit row when that
+    changes it; unchanged without ``wanted``."""
+    if wanted is None or wanted == found.audience:
+        return found.audience
+    skills = tables.skills
+    await conn.execute(update(skills).where(skills.c.id == found.id).values(audience=wanted))
+    target = f"{place.target(found.name)} audience={found.audience}->{wanted}"
+    await record(conn, actor_id=user.user_id, token_id=user.token_id, action=AUDIENCE, target=target)
+    log.info("skill audience changed", extra={"skill": found.name, "audience": wanted})
+    return wanted
+
+
 async def _publish(request: Request, user: Principal, project: str | None, name: str, body: PublishRequest):
     name = _checked_name(name)
+    if project is not None and body.audience not in (None, EVERYONE):
+        raise HTTPException(
+            422, f"a skill of a project is for its members: audience {body.audience} is a global skill's"
+        )
     store = blob_store(request)
     engine = request.app.state.engine
     async with engine.begin() as conn:
         place = await _writable(conn, user, project)
         await _committed(conn, place, body)
-        found = await _find(conn, place, name)
+        found = await _find(conn, place, name, lock=body.audience is not None)
         if found is not None:
             if found.name != name:
                 raise HTTPException(422, f"the {place.describe()} have {found.name}, a name differing only in case")
@@ -398,6 +460,7 @@ async def _publish(request: Request, user: Principal, project: str | None, name:
                     name=name,
                     created=False,
                     latest=await _latest(conn, found.id),
+                    audience=await _audience(conn, user, place, found, body.audience),
                 )
     bundle = io.BytesIO()
     try:
@@ -418,12 +481,18 @@ async def _publish(request: Request, user: Principal, project: str | None, name:
         await _committed(conn, place, body)
         skills = tables.skills
         new_skill = pg_insert(skills).values(
-            scope=place.scope, project_id=place.project_id, name=name, created_by=user.user_id
+            scope=place.scope,
+            project_id=place.project_id,
+            name=name,
+            created_by=user.user_id,
+            audience=body.audience or EVERYONE,
         )
         await conn.execute(new_skill.on_conflict_do_nothing().returning(skills.c.id))
-        skill_id, held, _ = await _find(conn, place, name, lock=True)  # the version numbers follow one at a time
+        found = await _find(conn, place, name, lock=True)  # the version numbers follow one at a time
+        skill_id, held = found.id, found.name
         if held != name:
             raise HTTPException(422, f"the {place.describe()} have {held}, a name differing only in case")
+        audience = await _audience(conn, user, place, found, body.audience)
         latest = (await conn.execute(_latest_bundle(skill_id))).first()
         created = latest is None or latest.sha256 != body.sha256
         if created:
@@ -448,7 +517,9 @@ async def _publish(request: Request, user: Principal, project: str | None, name:
         "skill published" if created else "skill unchanged",
         extra={"scope": place.scope, "project": place.project, "skill": name, "version": version.version},
     )
-    return Published(scope=place.scope, project=place.project, name=name, created=created, latest=version)
+    return Published(
+        scope=place.scope, project=place.project, name=name, created=created, latest=version, audience=audience
+    )
 
 
 @router.post("/global/{name}/versions", response_model=Published, responses=PUBLISH_REFUSALS)
@@ -465,6 +536,18 @@ async def publish_project(
     return await _publish(request, user, project, name, body)
 
 
+@router.put("/global/{name}/audience", response_model=SkillAudience, responses=AUDIENCE_REFUSALS)
+async def set_audience(request: Request, name: SkillName, body: AudienceChange, user: AdminUser) -> SkillAudience:
+    """Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one
+    audit row; the audience it has already changes nothing."""
+    async with request.app.state.engine.begin() as conn:
+        found = await _find(conn, GLOBAL_PLACE, name, lock=True)
+        if found is None:
+            raise _not_found(GLOBAL_PLACE, name)
+        audience = await _audience(conn, user, GLOBAL_PLACE, found, body.audience)
+    return SkillAudience(name=found.name, audience=audience, changed=found.audience != audience)
+
+
 # Downloading
 
 
@@ -479,7 +562,7 @@ def _bundle_of(skill_id: int, version: int | None) -> Select:
 
 async def _bundle(request: Request, user: Principal, project: str | None, name: str, version: int | None):
     async with request.app.state.engine.begin() as conn:
-        place = await _readable(conn, user, project)
+        place = await _readable(request, conn, user, project)
         found = await _find(conn, place, name)
         row = None if found is None else (await conn.execute(_bundle_of(found.id, version))).first()
     if row is None:

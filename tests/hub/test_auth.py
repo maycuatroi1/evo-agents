@@ -105,6 +105,7 @@ HUB_TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
 HUB_TABLES |= pg.SHARE_TABLES  # migration 0105
 HUB_TABLES |= pg.WORKER_SHARE_TABLES  # migration 0107
 HUB_TABLES |= pg.ATTACHMENT_TABLES  # migration 0109
+HUB_TABLES |= pg.INVITE_TABLES  # migration 0110
 
 
 @pytest.fixture

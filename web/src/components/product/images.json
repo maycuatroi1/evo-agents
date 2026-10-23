@@ -1,0 +1,39 @@
+{
+  "sources": {
+    "kg-search-1440-dark.png": "64426cafc7c10ed1b39b7e93b6376877af64fe99d0452599e90f0d1fc0b996f8",
+    "kg-search-1440-light.png": "9ad3719edcb72d7cbc38cf5f124f954be3e9a250492cf6e45dc5c327428d2e71",
+    "kg-search-375-dark.png": "66a3b1f067c2d089e9438a6bc9129d3714348f89e0e428a3c557815bf8c0d97e",
+    "kg-search-375-light.png": "0cef097784f227e1c6568763df592ddc4dbec19c95359ad18a4dc9c6678f3575",
+    "monitor-1440-dark.png": "abf895df1f09ef624ae787e1665e30e1245acdcfea5dd448afafb3df4863fe4f",
+    "monitor-1440-light.png": "87bdb6898147677c0c101efaec502bca13e97353045dbb4691377fd3faaa717c",
+    "monitor-375-dark.png": "1e760c62308ba361c8defc4573342c6b217d44fe34e1e459c660123aeb6a6be1",
+    "monitor-375-light.png": "a5248d1a07cf4743e57afb46dc4dd45f50bad46e3736a67e77ddfd59244587b4",
+    "plan-run-1440-dark.png": "bc8618ff43d39ccafc0faa0509adb439c1b7deb93faaf7d0a568f722c3b520a5",
+    "plan-run-1440-light.png": "8eeb2233a727e07274ded4eaae8f30d6c9335704a4f54a8db86caf87979bacf1",
+    "plan-run-375-dark.png": "95ee0d42a6ae8159b85ed1cb80766c276f7b9cd3a8e8d91ba8d3e92d8edd49b7",
+    "plan-run-375-light.png": "409835b49eb39924082d7a79bf8e6368e795fa1939228c25f43863f7a3359889",
+    "run-spool-1440-dark.png": "a6acc572454a2c22651246c3c3420d711057995d9ba016ef5042958801f11a74",
+    "run-spool-1440-light.png": "18a4fb049550d394bf6e3477882ba08c42673c2dd538b3d2365e8ba534605073",
+    "run-spool-375-dark.png": "16eba4b39f769838ad391be59ac37fb173e55a1508c38f58fc98981c108cd3e8",
+    "run-spool-375-light.png": "f7b9a6091519131df6b996ae7f222514e797101d6d80955280474f231b220f02"
+  },
+  "outputs": {
+    "kg-search-phone-dark.png": "bd01ad56a33ac345bc323c6f7a45c9729a665069e11c64113e606152523f5b85",
+    "kg-search-phone-light.png": "bb34fd7f23c8c9c7e38f69cb3e1bcccda8f96665700d4a6b75e5cecfea65a910",
+    "kg-search-wide-dark.png": "56f90d0e11133f37416afaa85cf632f883cec93681eb4c81818ea3abc9dc9612",
+    "kg-search-wide-light.png": "f4cae8b81d06aaf9fa5d2c5cdd1e03620f4901122c6d7a30b524bf3e3a9c1e3c",
+    "monitor-phone-dark.png": "19a58764dda8c4618d05cd8f406ce41faf3555b6c4a80137965e20bb3b1c8555",
+    "monitor-phone-light.png": "147bd68bc13dc390f6f2a87540fe8d9dfc74a69deeb299456e607e52e1e1cc3c",
+    "monitor-wide-dark.png": "98e34bcfccda81b2f0c0d31cb17de4c1bcb3329c2899f5e8c9c0634210a05fd4",
+    "monitor-wide-light.png": "8ac8f310f692ec69e1241d2be86f4dfeacdeabbd66fc9a92d5e8b310fca8391e",
+    "og.png": "a3a33f96a264af5ad0d5cd62eac3676724991fd1e6e919b0364891d21e698b1e",
+    "plan-run-phone-dark.png": "8e4c6dfec2256bbabc77bfaabf0aba2d78ac1f2a3974e3e4dd11b45a11d85a89",
+    "plan-run-phone-light.png": "a08cb93b4a31aafc66d49660d0db31f0cced197efb8c4f7f9dce23d82c0fe716",
+    "plan-run-wide-dark.png": "d6ee0a73022f9e5e251b3af5ea2bf88327f141ab4cfdafd03340374af3fa97fd",
+    "plan-run-wide-light.png": "3a82382f6b1b4a4a6976c559fa650e54349d795ae68f638e9f2f8ff7b05cfae5",
+    "run-spool-phone-dark.png": "51e08e1d666d096d42badaaa0ea5a008ee5e7641068a5d959e84d7cb14f561c1",
+    "run-spool-phone-light.png": "8f98d56a2ec3890f89bd91a3819dd3de612b1cdc12d124afe10596b25338d858",
+    "run-spool-wide-dark.png": "2b59e4ded1f054e2b9dbbc09350c9259f883f57fdb3e322f2a999d92313ced66",
+    "run-spool-wide-light.png": "eb436bea93cbce9cd399cf621da302957b3c56c1c651baa7e45a738f2f4ab02b"
+  }
+}

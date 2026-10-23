@@ -8,6 +8,7 @@ import { Fragment, type ReactNode, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { InlineError, type WriteFailure } from "@/components/admin/notice";
+import { CommandLine } from "@/components/data/command-line";
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { stepHref } from "@/components/plans/links";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CommandLine } from "@/components/workers/command-line";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { useRunControl, useRunFailure } from "./hooks";

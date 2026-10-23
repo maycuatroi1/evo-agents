@@ -770,8 +770,8 @@ class HubMcp(MCPServer):
             caller.request, caller.user, scope=arguments.get("scope"), project=arguments.get("project")
         )
         lines = [
-            f"{s.name} ({'global' if s.project is None else f'project {s.project}'}, version {s.version}): "
-            f"{one_line(s.description, EXCERPT)}"
+            f"{s.name} ({'global' if s.project is None else f'project {s.project}'}, version {s.version}"
+            f"{', hub admins only' if s.audience == skills.ADMINS else ''}): {one_line(s.description, EXCERPT)}"
             for s in found
         ]
         data = {"skills": [s.model_dump(mode="json") for s in found], "summary": f"{len(found)} skills"}

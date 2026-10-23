@@ -19,6 +19,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { InlineError } from "@/components/admin/notice";
+import { CommandLine } from "@/components/data/command-line";
 import type { Notice } from "@/components/feedback/toast";
 import { useNow } from "@/components/kg/use-now";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,6 @@ import { projectsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { ChipList } from "./badges";
-import { CommandLine } from "./command-line";
 import { useWorkerFailure, useWorkerWrite } from "./hooks";
 import {
   INSTALL_COMMAND,

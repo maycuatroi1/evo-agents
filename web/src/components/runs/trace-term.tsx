@@ -9,6 +9,28 @@ import { LinkedText } from "./links";
 import { cutOutput } from "./trace-model";
 
 /**
+ * The note a hook of the hub leaves on a line of its own in an output it cut, `[evo-hub: ...]` (hub/spool.py), with the
+ * line break that ends it. It says where the whole output is, so it wraps at the block's width where the lines around
+ * it keep their columns and scroll.
+ */
+const HUB_NOTE = /^(\[evo-hub: [^\n]*\]$\n?)/m;
+
+/** Plain output: the hub's notes wrap, the rest keeps its lines as written. */
+function Output({ text }: { text: string }) {
+  const parts = text.split(HUB_NOTE);
+  if (parts.length === 1) return <LinkedText text={text} tone="term" />;
+  return parts.map((part, index) =>
+    index % 2 === 1 ? (
+      <span key={index} className="block whitespace-pre-wrap [overflow-wrap:anywhere]" data-testid="trace-hub-note">
+        <LinkedText text={part} tone="term" />
+      </span>
+    ) : part ? (
+      <LinkedText key={index} text={part} tone="term" />
+    ) : null,
+  );
+}
+
+/**
  * Text on the terminal surface of the Trace, cut at 20 lines unless the person asks for all of it: a tool's output and
  * change, a system line's output, a step report's verify. `diff` colours `+` and `-` lines; `wrap` breaks long lines
  * (a command) instead of scrolling them.
@@ -57,7 +79,7 @@ export function TermBlock({
                   </span>
                 );
               })
-            : <LinkedText text={body} tone="term" />}
+            : <Output text={body} />}
       </pre>
       {cut ? (
         <button

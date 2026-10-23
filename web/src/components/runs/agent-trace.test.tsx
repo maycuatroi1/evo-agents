@@ -100,6 +100,23 @@ describe("AgentTrace", () => {
     expect(more).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("wraps the note the hub's hook left in a cut output, and keeps the log's lines as written", () => {
+    seq = 0;
+    const note = "[evo-hub: this output has 26,344 characters and only its start and end are shown here; all of it is in /tmp/out.txt (kept 7 days).]";
+    const text = ["tests/test_a.py::test_one PASSED    [ 50%]", "", note, "", "tests/test_b.py::test_two PASSED    [100%]"].join("\n");
+    show([
+      ev("tool_call", { toolCallId: "c1", title: "Bash", kind: "execute", rawInput: { command: "uv run pytest -v" } }, 1),
+      ev("tool_call_update", { toolCallId: "c1", status: "failed", rawOutput: { exitCode: 1 }, content: [{ type: "content", content: { type: "text", text } }] }, 2),
+    ]);
+    const output = screen.getByTestId("trace-tool-output");
+    const pre = output.querySelector("pre");
+    expect(pre).toHaveClass("whitespace-pre");
+    expect(pre?.textContent).toBe(text);
+    const wrapped = within(output).getByTestId("trace-hub-note");
+    expect(wrapped).toHaveClass("block", "whitespace-pre-wrap");
+    expect(wrapped.textContent).toBe(`${note}\n`);
+  });
+
   it("links Asked you to the decision's card while it is open on the page, to the Inbox otherwise", () => {
     seq = 0;
     const events = [ev("system", { text: "decision #7 asked (scope): Publish now?", decision: { id: 7, step: "13", category: "scope" } })];

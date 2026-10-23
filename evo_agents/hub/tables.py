@@ -38,6 +38,7 @@ from evo_agents.hub import (
     tables_attachments,
     tables_curator,
     tables_goals,
+    tables_invites,
     tables_kg,
     tables_loop,
     tables_memory_agents,
@@ -291,6 +292,7 @@ skills = Table(
     Column("name", Text, nullable=False),
     Column("created_by", BigInteger, nullable=False),
     _stamp("created_at"),
+    Column("audience", Text, nullable=False, server_default="everyone"),  # or "admins", a global skill only
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="skills_created_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
     PrimaryKeyConstraint("id", name="skills_pkey"),
@@ -956,6 +958,7 @@ pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
 org_units, org_seats, autonomy_ceilings, worker_shares = tables_org.org_tables(metadata)  # 0099, 0107
 credential_shares, credential_share_projects = tables_accounts.share_tables(metadata, credential_leases)  # 0105
+invites = tables_invites.invite_tables(metadata)  # the invite links (0110)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

@@ -45,7 +45,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "plans"
 COMPLETED = sorted((FIXTURES / "completed").glob("*.yaml"))
 PROJECT = "evo-agents"
 LEVELS = ["public", "internal", "customer", "secret"]
-REPOS = ["evo-agents", "northwind-harness", "evo-cli", "agent-skills", "evo-lms-harness"]
+REPOS = ["evo-agents", "northwind-harness", "evo-cli", "agent-skills", "fabrikam-lms-harness"]
 MARKER = "Zebra-Quokka-Plan-Content"  # in plan bodies only: must never reach an audit row or a log line
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
@@ -76,7 +76,7 @@ def draft(plan_id: str = "rollout", steps: int = 3) -> dict:
 
 
 def test_the_fixtures_are_the_three_completed_plans_of_the_harness():
-    assert [p.stem for p in COMPLETED] == ["evo-lms-migration", "kg-assertion-layer", "kg-prototype"]
+    assert [p.stem for p in COMPLETED] == ["fabrikam-lms-migration", "kg-assertion-layer", "kg-prototype"]
     for path in COMPLETED:
         found = read_plan(path)
         assert found.area == "completed" and found.plan_id == path.stem and found.hub is None
@@ -1091,7 +1091,7 @@ def test_the_cli_imports_exports_commits_and_restores_a_hand_edited_copy(hub_db,
         listed = json.loads(ok(evo(["hub", "plan", "list", "--json"], home, cwd=root)).stdout)
         assert_json_keys("hub plan list", listed)
         assert [(p["plan_id"], p["area"]) for p in listed] == [
-            ("evo-lms-migration", "completed"),
+            ("fabrikam-lms-migration", "completed"),
             ("kg-assertion-layer", "completed"),
             ("kg-prototype", "completed"),
             ("rollout", "completed"),
