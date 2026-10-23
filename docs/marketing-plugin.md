@@ -198,12 +198,18 @@ evo-agents hub marketing channels --project P [--json]
 evo-agents hub marketing add --project P --channel C --account A [--kind project|personal] [--adapter api|browser] [--target T] [--json]
 evo-agents hub marketing check --project P [--channel-id ID] [--json]
 evo-agents hub marketing posts --project P [--state draft] [--json]
+evo-agents hub marketing mode --project P CHANNEL_ID autonomous|draft_only [--json]
 evo-agents hub marketing pause --project P CHANNEL_ID [--reason TEXT]
 evo-agents hub marketing resume --project P [CHANNEL_ID]
 evo-agents hub marketing kill --project P [--reason TEXT]
+evo-agents hub marketing denylist --project P [--add term|domain|person VALUE | --remove ID] [--json]
 evo-agents hub marketing login --project P CHANNEL_ID
 evo-agents hub marketing browser-post --project P [--json]
 ```
+
+`mode` is for a member signed in on the CLI: the hub refuses it from an agent's scoped token, a project account
+needs an admin and a personal one its owner. `denylist` lists the entries (a writer reads them); `--add` and `--remove`
+need an admin and land in the audit.
 
 ## Browser adapter
 

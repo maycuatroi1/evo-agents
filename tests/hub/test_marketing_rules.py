@@ -375,9 +375,11 @@ def test_marketing_health_of_an_account_browser_draft_only_and_no_credential():
 
 def test_marketing_cli_commands_are_in_the_contract():
     printed = commands()
-    verbs = ("channels", "add", "check", "posts", "pause", "resume", "kill")
+    verbs = ("channels", "add", "check", "posts", "mode", "pause", "resume", "kill", "denylist")
     assert {f"hub marketing {verb}" for verb in verbs} <= set(printed)
     assert printed["hub marketing channels"]["json"]["schema"] == "MarketingChannel"
     assert printed["hub marketing posts"]["json"]["kind"] == "array"
     options = {o["flags"][0]: o for o in printed["hub marketing kill"]["options"]}
     assert options["--project"]["required"] and "--json" in options
+    assert printed["hub marketing mode"]["json"]["schema"] == "MarketingChannel"
+    assert printed["hub marketing denylist"]["json"]["schema"] == "MarketingDeny"
