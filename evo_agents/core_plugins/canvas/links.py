@@ -1,5 +1,6 @@
-"""What a claim links (``Content.use_cases``, ``Content.signal_keys``), checked against the project when a write adds a
-link (``resolved``), or kept to what the project holds when a canvas is imported (``kept``).
+"""What a claim links (``Content.use_cases``, ``Content.signal_keys``, ``Content.problems``), checked against the
+project when a write adds a link (``resolved``), or kept to what the project holds when a canvas is imported
+(``kept``).
 
 - A use case is named by any code or alias an item of the plugin srs ever held (compared as ``srs_codes.code_key``
   holds them) while the project enables srs. The item must be a use case, not dropped from its document, in a
@@ -7,20 +8,30 @@ link (``resolved``), or kept to what the project holds when a canvas is imported
   typed reads as that code, which is the id of the use case's node in the knowledge graph (``kg``). The plugin reads
   the SRS through the hub's tables (``evo_agents.hub.tables.srs``), never through the plugin srs.
 - A signal key is a key of the project's registry (``signal_keys``) that is not archived.
+- A problem is one of the project's problems (``evo_agents.hub.problems``), by its code P-<number>, that is not
+  dropped: open or solved.
 
-Only what a write adds is checked: a link the claim holds already stays though its use case was dropped or its key
-archived since, and an undo puts back what the rev before held with no check, as that link was checked once.
+Only what a write adds is checked: a link the claim holds already stays though its use case was dropped, its key
+archived or its problem dropped since, and an undo puts back what the rev before held with no check, as that link was
+checked once.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.canvas import store
-from evo_agents.core_plugins.canvas.content import CanvasError, Content, checked_signal_keys, checked_use_cases
+from evo_agents.core_plugins.canvas.content import (
+    CanvasError,
+    Content,
+    checked_problems,
+    checked_signal_keys,
+    checked_use_cases,
+)
+from evo_agents.hub import problems as problem_model
 from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.projects import ProjectAccess
@@ -84,6 +95,27 @@ async def _signal_keys(conn: AsyncConnection, access: ProjectAccess, keys: list[
     return refused
 
 
+async def _problems(conn: AsyncConnection, access: ProjectAccess, codes: list[str]) -> dict[str, str]:
+    """For each of ``codes`` the project lacks or dropped, why a claim cannot link it."""
+    if not codes:
+        return {}
+    p, r = tables.problems, tables.problem_revisions
+    numbers = {code: problem_model.number_of(code) for code in codes}
+    query = (
+        select(p.c.number, r.c.status)
+        .join_from(p, r, and_(r.c.problem_id == p.c.id, r.c.revision == p.c.revision))
+        .where(p.c.project_id == access.project_id, p.c.number.in_(list(numbers.values())))
+    )
+    held = {row.number: row.status for row in await conn.execute(query)}
+    refused = {}
+    for code, number in numbers.items():
+        if number not in held:
+            refused[code] = f"project {access.name} has no problem {code}: see `evo-agents hub problem list`"
+        elif held[number] == problem_model.DROPPED:
+            refused[code] = f"problem {code} of project {access.name} is dropped: link one that is open or solved"
+    return refused
+
+
 async def _check(
     conn: AsyncConnection, access: ProjectAccess, sink: str | None, before: Content | None, after: Content
 ) -> tuple[Content, dict[str, str]]:
@@ -93,11 +125,14 @@ async def _check(
     added_cases = [code for code in after.use_cases if code_key(code) not in held_cases]
     found, refused = await _use_cases(conn, access, sink, added_cases)
     refused |= await _signal_keys(conn, access, [key for key in after.signal_keys if key not in held_keys])
+    held_problems = set(before.problems if before else ())
+    refused |= await _problems(conn, access, [code for code in after.problems if code not in held_problems])
     named = [held_cases.get(code_key(code)) or found.get(code, code) for code in after.use_cases if code not in refused]
     content = replace(
         after,
         use_cases=checked_use_cases(named),
         signal_keys=checked_signal_keys([key for key in after.signal_keys if key not in refused]),
+        problems=checked_problems([code for code in after.problems if code not in refused]),
     )
     return content, refused
 

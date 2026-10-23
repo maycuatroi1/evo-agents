@@ -1,6 +1,9 @@
 """What a claim of the core plugin canvas links, as criterion a7 of plan living-lean-canvas names it: the use cases of
 the plugin srs that realize it and the keys of the project's registry of signals that measure it
-(``evo_agents.core_plugins.canvas.links``).
+(``evo_agents.core_plugins.canvas.links``); and, as criterion a3 of plan problem-oriented-hub names it, the problems of
+the project it answers: one open or solved links, a code the project lacks or a dropped problem is refused, a link held
+before its problem was dropped stays, an export holds them and an import leaves out those the project lacks, problem
+show lists the claims that link it, and canvas__read names them.
 
 Checked here, on the hub: an edit links a use case by its code or an alias and keeps the code the SRS names it by, and
 links a declared signal key; the links are part of the claim's content, so each change is a rev with its diff, and an
@@ -178,3 +181,123 @@ def test_canvas_export_holds_the_links_and_an_import_leaves_out_those_the_projec
     )
     made_claim = shown(client, hub["eve"], "CL-2", slug="lumen-notes")
     assert (made_claim["use_cases"], made_claim["signal_keys"]) == (["UC ORD-2"], [STOCKOUTS])
+
+
+# Problems (plan problem-oriented-hub, criterion a3)
+
+STOCK_OUTS = {
+    "statement": "Corner shops run out of milk between deliveries",
+    "who": "the owners of corner shops",
+    "when": "by Thursday of a week with one delivery",
+    "workaround": "they drive to a cash and carry",
+}
+
+
+def problem_made(client, headers, ref: str, body: dict = STOCK_OUTS) -> dict:
+    answer = client.put(f"/v1/projects/{PROJECT}/problems/{ref}", json=body, headers=headers)
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+def problem_closed(client, headers, ref: str, status: str, reason: str) -> None:
+    body = {"status": status, "reason": reason}
+    answer = client.post(f"/v1/projects/{PROJECT}/problems/{ref}/close", json=body, headers=headers)
+    assert answer.status_code == 200, answer.text
+
+
+def test_canvas_claim_links_problems_that_are_open_or_solved_and_keeps_one_dropped_since(client, hub):
+    for ref in ("P-1", "P-2", "P-3"):
+        problem_made(client, hub["alice"], ref, {**STOCK_OUTS, "statement": f"{STOCK_OUTS['statement']} ({ref})"})
+    problem_closed(client, hub["alice"], "P-3", "solved", "a second delivery on Wednesday")
+    made_one = edit(client, hub["alice"], problem(problems=["P-3", "P-1", "P-1"]))
+    assert made_one["claims"][0]["problems"] == ["P-1", "P-3"]  # by number, once each; a solved one links
+    changed = edit(client, hub["bao"], {"claim": "CL-1", "base_rev": 1, "problems": ["P-2", "P-1"]})
+    assert changed["claims"][0]["problems"] == ["P-1", "P-2"]
+    whole = shown(client, hub["eve"], "CL-1")
+    assert [(c["field"], c["before"], c["after"]) for c in whole["revs"][1]["changes"]] == [
+        ("problems", ["P-1", "P-3"], ["P-1", "P-2"])
+    ]
+    assert whole["revs"][0]["content"]["problems"] == ["P-1", "P-3"]
+    for change, why in (
+        ({"problems": ["P-9"]}, f"project {PROJECT} has no problem P-9"),
+        ({"problems": ["p-1"]}, "problems takes the codes of problems of the project, as P-3"),
+        ({"problems": [f"P-{n}" for n in range(1, 22)]}, ""),
+    ):
+        answer = client.post(
+            f"{BASE}/canvases/{SLUG}/edit", json={"changes": [problem(**change)]}, headers=hub["alice"]
+        )
+        assert answer.status_code == 422 and why in answer.json()["message"], answer.text
+    assert shown(client, hub["eve"], "CL-1")["rev"] == 2  # nothing was written
+
+    problem_closed(client, hub["owner"], "P-2", "dropped", "the same as P-1")
+    kept = edit(client, hub["alice"], {"claim": "CL-1", "base_rev": 2, "text": "Shops run out by Thursday"})
+    assert kept["claims"][0]["problems"] == ["P-1", "P-2"]  # linked before it was dropped: it stays
+    refused(client, hub["alice"], problem(problems=["P-2"]), f"problem P-2 of project {PROJECT} is dropped")
+    taken_back = undo(client, hub["bao"], ("CL-1", 3))["claims"][0]
+    assert taken_back["problems"] == ["P-1", "P-2"]
+    cleared = edit(client, hub["alice"], {"claim": "CL-1", "base_rev": 4, "problems": []})
+    assert cleared["claims"][0]["problems"] == []
+    again = edit(client, hub["alice"], {"claim": "CL-1", "base_rev": 5, "problems": ["P-1"]})
+    assert again["claims"][0]["problems"] == ["P-1"]
+
+
+def test_problem_show_lists_the_claims_that_link_it_and_an_export_holds_them(client, hub):
+    problem_made(client, hub["alice"], "P-1")
+    edit(client, hub["alice"], problem(problems=["P-1"]), {"cell": "solution", "text": "Reorder in one tap"})
+    edit(client, hub["alice"], {"claim": "CL-2", "base_rev": 1, "problems": ["P-1"]})
+    made(client, hub["alice"], slug="lumen-notes", name="Lumen Notes")
+    edit(client, hub["alice"], problem("Notes get lost", problems=["P-1"]), slug="lumen-notes")
+    edit(client, hub["alice"], {"claim": "CL-3", "base_rev": 1, "archived": True}, slug="lumen-notes")
+    answer = client.get(f"/v1/projects/{PROJECT}/problems/P-1", headers=hub["eve"])
+    assert answer.status_code == 200, answer.text
+    assert [(c["canvas"], c["code"], c["cell"], c["status"]) for c in answer.json()["claims"]] == [
+        (SLUG, "CL-1", "problem", "assumption"),
+        (SLUG, "CL-2", "solution", "assumption"),
+    ]  # an archived claim is left out
+    assert answer.json()["claims"][0]["canvas_name"] == "Northwind Pantry"
+    assert answer.json()["plans"] == []
+
+    exported = client.get(f"{BASE}/canvases/{SLUG}/export", headers=hub["eve"]).json()
+    assert [claim["problems"] for claim in exported["claims"]] == [["P-1"], ["P-1"]]
+    file = copy.deepcopy(exported)
+    file["canvas"] = {"slug": "fabrikam-milk", "name": "Fabrikam Milk"}
+    file["claims"] = [{"cell": "problem", "text": "Milk runs out", "problems": ["P-1", "P-9"]}]
+    done = client.post(f"{BASE}/canvases/import", json={"data": file}, headers=hub["alice"])
+    assert done.status_code == 200, done.text
+    (warning,) = done.json()["problems"]
+    assert "link P-9 left out" in warning["message"] and "has no problem P-9" in warning["message"]
+    assert shown(client, hub["eve"], "CL-4", slug="fabrikam-milk")["problems"] == ["P-1"]
+
+
+def test_canvas_read_names_the_problems_a_claim_links():
+    from datetime import UTC, datetime
+
+    from evo_agents.core_plugins.canvas import tools
+    from evo_agents.core_plugins.canvas.agent import CLAIM_FIELDS, _claim_lines
+    from evo_agents.core_plugins.canvas.store import ClaimRow
+    from evo_agents.hub import problems as problem_model
+
+    now = datetime.now(UTC)
+    row = ClaimRow(
+        id=1,
+        canvas_id=1,
+        number=3,
+        cell="problem",
+        position=0,
+        text="Shops run out of milk",
+        status="assumption",
+        confidence="medium",
+        test_card=None,
+        rev=1,
+        label={},
+        created_by="alice",
+        created_at=now,
+        updated_at=now,
+        archived_at=None,
+        problems=["P-1", "P-4"],
+    )
+    assert "  problems: P-1, P-4" in _claim_lines(row, [])
+    assert (
+        "problems" in CLAIM_FIELDS and "problems" in tools.EDIT_SCHEMA["properties"]["changes"]["items"]["properties"]
+    )
+    assert tools.PROBLEM_REF == problem_model.REF

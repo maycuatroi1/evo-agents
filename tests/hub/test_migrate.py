@@ -3210,3 +3210,28 @@ def test_0130_keeps_the_revisions_of_problems_the_problem_of_a_goal_and_proposal
     assert query(hub_db, select(n.c.details["kind"].as_string())) == [("goal",)]
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0130") :]
+
+
+def test_0131_keeps_the_problems_a_claim_links_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0131")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "cell": "problem", "text": "Shops run out of milk", "label": {}, **owner}
+        conn.execute(insert(k.claims).values(number=1, **claim))  # links no problem by default
+        conn.execute(insert(k.claims).values(number=2, problems=["P-1", "P-3"], use_cases=["UC ORD-1"], **claim))
+        with pytest.raises(errors.CheckViolation):  # at most 20, as of each link of 0078
+            conn.execute(insert(k.claims).values(number=3, problems=[f"P-{n}" for n in range(1, 22)], **claim))
+    held = select(k.claims.c.number, k.claims.c.problems, k.claims.c.use_cases).order_by(k.claims.c.number)
+    assert query(hub_db, held) == [(1, [], []), (2, ["P-1", "P-3"], ["UC ORD-1"])]
+    move_to(hub_db, "0130", down=True)
+    assert "problems" not in columns(hub_db, "canvas_claims")
+    assert {"use_cases", "signal_keys"} <= columns(hub_db, "canvas_claims")
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the check of 0078 is back
+        conn.execute(insert(k.claims).values(number=4, use_cases=[f"UC ORD-{n}" for n in range(21)], **claim))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0131") :]

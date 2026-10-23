@@ -1463,6 +1463,9 @@ def test_problem_tools_list_and_show_the_projects_problems_with_the_goals_that_a
     assert [p["code"] for p in listed["structuredContent"]["problems"]] == ["P-1", "P-2"]
     dropped = ok(hub, "bob", "problem_list", {"status": "dropped"})["structuredContent"]["problems"]
     assert [p["code"] for p in dropped] == ["P-2"]
+    plan = {"id": "brand-names", "title": "Brand names", "problems": ["P-1"], "steps": [{"id": 1, "what": "aliases"}]}
+    named = hub.client.put(f"/v1/projects/{PROJECT}/plans/brand-names", json={"body": plan}, headers=hub.alice)
+    assert named.status_code == 200, named.text
     shown = ok(hub, "bob", "problem_show", {"code": "P-1"})
     assert shown["content"][0]["text"].splitlines() == [
         f"# Problem P-1 of project {PROJECT}, revision 1",
@@ -1474,8 +1477,12 @@ def test_problem_tools_list_and_show_the_projects_problems_with_the_goals_that_a
         "rank: 1; owner: alice; status: open",
         "goals that answer it:",
         "- G-1 (active): Fewer empty searches",
+        "no claim links it yet",
+        "plans that name it:",
+        "- brand-names (active, 0/1 steps done): Brand names",
     ]
     assert shown["structuredContent"]["problem"]["goals"][0]["code"] == "G-1"
+    assert shown["structuredContent"]["problem"]["plans"][0]["plan_id"] == "brand-names"
     assert "no goal answers it yet" in ok(hub, "bob", "problem_show", {"code": "P-2"})["content"][0]["text"]
     assert "has no problem P-9" in failed(hub, "bob", "problem_show", {"code": "P-9"})
     assert "has no problem P-1 revision 4" in failed(hub, "bob", "problem_show", {"code": "P-1", "revision": 4})

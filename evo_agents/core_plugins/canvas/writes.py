@@ -22,7 +22,7 @@ from sqlalchemy import func, insert, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.canvas import events, links, rules, store
-from evo_agents.core_plugins.canvas.content import CanvasError, Content, changed, code, diff, number_of
+from evo_agents.core_plugins.canvas.content import LINKS, CanvasError, Content, changed, code, diff, number_of
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow
 from evo_agents.hub import tables
 from evo_agents.hub.server.projects import ProjectAccess
@@ -158,8 +158,7 @@ async def write_rev(
         "confidence": after.confidence,
         "test_card": null() if after.test_card is None else after.test_card,
         "archived_at": archived_at,
-        "use_cases": list(after.use_cases),
-        "signal_keys": list(after.signal_keys),
+        **{name: list(getattr(after, name)) for name in LINKS},
         "rev": k.c.rev + 1,
         "updated_at": func.now(),
     }
@@ -256,8 +255,7 @@ async def insert_claim(
         "confidence": content.confidence,
         "test_card": null() if content.test_card is None else content.test_card,
         "archived_at": func.now() if content.archived else None,
-        "use_cases": list(content.use_cases),
-        "signal_keys": list(content.signal_keys),
+        **{name: list(getattr(content, name)) for name in LINKS},
         "label": canvas.label,
         "created_by": writer.author.user_id,
     }

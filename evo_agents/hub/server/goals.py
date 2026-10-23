@@ -43,6 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import goals, tables
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -590,6 +591,13 @@ async def _reader(conn: AsyncConnection, user: Principal, project: str) -> Proje
     return access
 
 
+async def _graph_changed(request: Request, conn: AsyncConnection, access: ProjectAccess, changed: bool) -> None:
+    """Queue a build of the project's knowledge graph, which holds the goals that answer a problem
+    (``evo_agents.hub.kg_problems``), once a write changed a goal."""
+    if changed:
+        await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
+
+
 async def _writer(conn: AsyncConnection, user: Principal, project: str) -> ProjectAccess:
     access = await project_access(conn, user, project)
     refused = refusal(user, access)
@@ -673,6 +681,7 @@ async def write_goal(
     async with request.app.state.engine.begin() as conn:
         access = await _writer(conn, user, project)
         shown, changed = await write(conn, user, access, ref, body)
+        await _graph_changed(request, conn, access, changed)
     return ProjectGoalWritten(**shown.model_dump(), changed=changed)
 
 
@@ -690,4 +699,5 @@ async def close_goal(
                 409, f"goal {ref} of project {access.name} is closed already ({held.close_reason}); nothing changed"
             )
         shown, changed = await write(conn, user, access, ref, closing(held, body.reason, body.note, body.if_revision))
+        await _graph_changed(request, conn, access, changed)
     return ProjectGoalWritten(**shown.model_dump(), changed=changed)

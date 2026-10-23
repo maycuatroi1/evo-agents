@@ -3282,6 +3282,14 @@
         },
         {
           "flags": [
+            "--problems"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--archive"
           ],
           "value": null,
@@ -3974,6 +3982,7 @@
               "archived",
               "use_cases",
               "signal_keys",
+              "problems",
               "rev",
               "evidence_count",
               "real_support_count",
@@ -9847,7 +9856,8 @@
           "steps_total",
           "steps_done",
           "updated_at",
-          "updated_by"
+          "updated_by",
+          "problems"
         ],
         "schema": "PlanSummary"
       }
@@ -11493,7 +11503,9 @@
           "note",
           "created_by",
           "created_at",
-          "goals"
+          "goals",
+          "claims",
+          "plans"
         ],
         "schema": "ProjectProblemShown"
       }
@@ -75115,6 +75127,22 @@
               ],
               "title": "Signal Keys",
               "description": "the keys of the project's signals that measure it, as declared in its registry: the whole list, [] for none"
+            },
+            "problems": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problems",
+              "description": "the codes of the problems of the project it answers, as P-3, each open or solved when a change adds it: the whole list, [] for none"
             }
           },
           "type": "object",
@@ -75206,6 +75234,14 @@
               "title": "Signal Keys",
               "description": "the keys of the project's signals it links, sorted"
             },
+            "problems": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
             "rev": {
               "type": "integer",
               "title": "Rev",
@@ -75266,6 +75302,7 @@
             "archived",
             "use_cases",
             "signal_keys",
+            "problems",
             "rev",
             "evidence_count",
             "real_support_count",
@@ -75363,6 +75400,14 @@
               "title": "Signal Keys",
               "description": "the keys of the project's signals it links, sorted"
             },
+            "problems": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
             "rev": {
               "type": "integer",
               "title": "Rev",
@@ -75446,6 +75491,7 @@
             "archived",
             "use_cases",
             "signal_keys",
+            "problems",
             "rev",
             "evidence_count",
             "real_support_count",
@@ -75536,6 +75582,14 @@
               "type": "array",
               "title": "Signal Keys",
               "description": "the keys of the project's signals it links, sorted"
+            },
+            "problems": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "the codes (P-<number>) of the problems of the project it answers, by number"
             }
           },
           "type": "object",
@@ -75548,7 +75602,8 @@
             "test_card",
             "archived",
             "use_cases",
-            "signal_keys"
+            "signal_keys",
+            "problems"
           ],
           "title": "CanvasContent",
           "description": "A claim at one rev."
@@ -76123,6 +76178,14 @@
               "title": "Signal Keys",
               "description": "the keys of the project's signals it links, sorted"
             },
+            "problems": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
             "code": {
               "type": "string",
               "title": "Code"
@@ -76150,6 +76213,7 @@
             "archived",
             "use_cases",
             "signal_keys",
+            "problems",
             "code",
             "rev",
             "evidence"
@@ -95021,6 +95085,14 @@
             "updated_by": {
               "type": "string",
               "title": "Updated By"
+            },
+            "problems": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "the codes (P-<number>) of the problems of the project its body names"
             }
           },
           "type": "object",
@@ -98734,6 +98806,53 @@
           ],
           "title": "Problem"
         },
+        "ProblemClaim": {
+          "properties": {
+            "canvas": {
+              "type": "string",
+              "title": "Canvas",
+              "description": "the canvas's slug"
+            },
+            "canvas_name": {
+              "type": "string",
+              "title": "Canvas Name",
+              "description": "the product's name"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "CL-<number>"
+            },
+            "cell": {
+              "type": "string",
+              "title": "Cell"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "confidence": {
+              "type": "string",
+              "title": "Confidence"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "canvas",
+            "canvas_name",
+            "code",
+            "cell",
+            "status",
+            "confidence",
+            "text"
+          ],
+          "title": "ProblemClaim",
+          "description": "A claim of a canvas of the project that links the problem: not archived, in a canvas that is not."
+        },
         "ProblemGoal": {
           "properties": {
             "code": {
@@ -98828,6 +98947,70 @@
           ],
           "title": "ProblemMetric",
           "description": "How much a problem hurts: a key of the project's signals summed up over a window, as a goal's metric is, with\nno target."
+        },
+        "ProblemPlan": {
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "area": {
+              "type": "string",
+              "enum": [
+                "active",
+                "completed"
+              ],
+              "title": "Area"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the status the plan's body gives, if any"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "steps_total": {
+              "type": "integer",
+              "title": "Steps Total"
+            },
+            "steps_done": {
+              "type": "integer",
+              "title": "Steps Done",
+              "description": "its steps done or descoped"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan_id",
+            "area",
+            "title",
+            "status",
+            "revision",
+            "steps_total",
+            "steps_done"
+          ],
+          "title": "ProblemPlan",
+          "description": "A plan of the project whose body names the problem in its problems."
         },
         "ProblemRevision": {
           "properties": {
@@ -100249,6 +100432,22 @@
               "type": "array",
               "title": "Goals",
               "description": "the goals whose newest revision answers it, by code"
+            },
+            "claims": {
+              "items": {
+                "$ref": "#/components/schemas/ProblemClaim"
+              },
+              "type": "array",
+              "title": "Claims",
+              "description": "the claims that link it, by canvas and code: those the member sees"
+            },
+            "plans": {
+              "items": {
+                "$ref": "#/components/schemas/ProblemPlan"
+              },
+              "type": "array",
+              "title": "Plans",
+              "description": "the plans that name it, by plan id: those the member sees"
             }
           },
           "type": "object",
@@ -100269,7 +100468,9 @@
             "note",
             "created_by",
             "created_at",
-            "goals"
+            "goals",
+            "claims",
+            "plans"
           ],
           "title": "ProjectProblemShown"
         },

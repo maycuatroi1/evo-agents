@@ -36,6 +36,7 @@ NEW_CLAIM_FIELDS = (  # what a proposed new claim may set
     "test_card",
     "use_cases",
     "signal_keys",
+    "problems",
 )
 
 

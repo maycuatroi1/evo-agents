@@ -36,6 +36,7 @@ MAX_JUDGED = 50  # judging.MAX_ITEMS
 MAX_SIGNAL_DAYS = 400  # the hub keeps signals 400 days by default (EVO_HUB_SIGNAL_DAYS)
 MAX_LINKS = 20  # content.MAX_LINKS
 MAX_CODE_CHARS = 100  # tables_srs.MAX_CODE_CHARS
+PROBLEM_REF = "^P-[1-9][0-9]{0,8}$"  # evo_agents.hub.problems.REF
 
 STRATEGIST_INSTRUCTIONS = (
     "You are @strategist, the agent of this project's Lean Canvases on the evo-agents hub. You read the canvases and "
@@ -99,6 +100,13 @@ _CLAIM_FIELDS = {
         "items": _SIGNAL_KEY,
         "description": "the signal keys that measure the claim, as canvas__signals lists them: the whole list, [] for "
         "none",
+    },
+    "problems": {
+        "type": "array",
+        "maxItems": MAX_LINKS,
+        "items": {"type": "string", "pattern": PROBLEM_REF},
+        "description": "the codes of the problems of the project the claim answers, as problem_list of evo-hub lists "
+        "them (P-3), each open or solved: the whole list, [] for none",
     },
 }
 _CHANGE = {"type": "object", "additionalProperties": False, "properties": _CLAIM_FIELDS}
