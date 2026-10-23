@@ -96,6 +96,7 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "history",
         "release",
         "question",
+        "browser",
     )
     assert ACTORS == ("worker", "owner", "reaper")
     assert set(TRANSITIONS) == set(RUN_STATES)
@@ -373,6 +374,7 @@ def test_decisions_and_notices_the_plan_names():
         "plugin_notice",
         "autonomy",
         "worker_doctor",
+        "browser_needs_login",
     )
     assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
