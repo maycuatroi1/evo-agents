@@ -10067,6 +10067,11 @@ export interface components {
              * @description what its task runs may cost in 24 hours; a task past it is refused
              */
             daily_usd: number;
+            /**
+             * Handle
+             * @description the handle of the profile the first enable makes; none: the template's, or <template's>-<project> when another agent of the hub holds it. A handle never changes, so a later enable names the profile's or none
+             */
+            handle?: string | null;
         };
         /** AgentVersion */
         AgentVersion: {
