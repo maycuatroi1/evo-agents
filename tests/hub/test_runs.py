@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import extract, func, insert, literal, select, update
 
 from evo_agents.harness import plan_digest
-from evo_agents.hub import jobs, runs, tables
+from evo_agents.hub import autonomy_card, jobs, runs, tables
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
@@ -422,7 +422,7 @@ def test_the_claimed_run_comes_with_its_spec_and_prompt(client, hub):
     assert (spec["repo"], spec["branch"], spec["parent_run_id"]) == ("evo-agents", "feat/queue", None)
     lease = datetime.fromisoformat(spec["lease_expires_at"]) - datetime.now(UTC)
     assert 280 < lease.total_seconds() <= runs.LEASE_SECONDS
-    prompt = spec["prompt"]
+    prompt = autonomy_card.without_card(spec["prompt"])  # the card opens it (autonomy-levels)
     assert prompt.startswith(f"You are running step 2 of the plan {PLAN} from the evo-agents hub.")
     assert "# Step 2: Queue" in prompt and "the queue" in prompt and "Branch: feat/queue." in prompt
     assert "evo-agents@abc1234: 40 tests pass" in prompt  # the evidence of step 1, which it depends on
@@ -1526,7 +1526,14 @@ def test_events_of_runs_that_ended_long_ago_are_pruned(client, hub, hub_db):
     )
     context = SimpleNamespace(additional_context={"hub": found})
     report_ = client.portal.call(queue.tasks[jobs.PRUNE_RUN_EVENTS].func, context)
-    assert report_ == {"deleted": 1, "days": 30, "tokens_dropped": 0, "tool_outputs": 0, "tool_output_bytes": 0}
+    assert report_ == {
+        "deleted": 1,
+        "days": 30,
+        "tokens_dropped": 0,
+        "tool_outputs": 0,
+        "tool_output_bytes": 0,
+        "attachments": 0,
+    }
     events = tables.run_events
     left = dict(sql(hub_db, select(events.c.run_id, func.count()).group_by(events.c.run_id)))
     assert left == {recent: 1, running: 1}

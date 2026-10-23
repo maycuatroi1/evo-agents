@@ -38,6 +38,7 @@ from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
+from evo_agents.hub.server import attachment_store, autonomy_hold, run_autonomy
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
@@ -48,6 +49,7 @@ from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
+from evo_agents.hub.server.runs.models.attachment_parts import as_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.worker_fit import unfit_worker, workers_of
 from evo_agents.hub.server.security import MACHINE
@@ -221,12 +223,14 @@ async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
     text = rules.inbox_text(hand.author, hand.message_id, hand.body)
     left = insert(i).values(run_id=run_id, sent_by=hand.dispatcher_id, body=text).returning(i.c.id)
     inbox_id = (await conn.execute(left)).scalar_one()
+    files = (await attachment_store.of_messages(conn, [hand.message_id])).get(hand.message_id, [])
+    await attachment_store.link_inbox(conn, inbox_id, files)  # the chat message's files go with it
     event = {"text": text, "from": hand.dispatcher, "message_id": inbox_id, "chat_message_id": hand.message_id}
-    await write_user_message(conn, run_id, event)
+    await write_user_message(conn, run_id, event | ({"attachments": as_event(files)} if files else {}))
 
 
 CONTINUED = ("kind", "project_id", "title", "mode", "approval", "timeout_s", "repos", "branch", "model", "chat_id")
-CONTINUED += ("profile_id", "profile_version", "session_id", "runtime")
+CONTINUED += ("profile_id", "profile_version", "session_id", "runtime", "principal_id", "autonomy")
 
 
 def _continue_run(previous: int, values: dict):
@@ -265,7 +269,9 @@ async def _woken_title(conn: AsyncConnection, run_id: int, text: str) -> str | N
 
 
 async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
-    """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``, its title."""
+    """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``, its title;
+    ``autonomy_hold.Stopped`` while a stop of autonomy holds its principal."""
+    await autonomy_hold.hold_run(conn, previous.id)
     values = {
         "dispatched_by": hand.owner_id,
         "dispatched_via": hand.run_via,
@@ -366,7 +372,9 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
         "hop": hand.hop,
         "budget": rules.run_budget(),
     }
-    run_id = await insert_run(conn, values)
+    run_as = None if hand.route is None else hand.route.user_id
+    who = await run_autonomy.of_message(conn, hand.message_id, run_as, hand.dispatcher_id, names)
+    run_id = await insert_run(conn, values, who)
     branch = rules.branch_of(run_id)
     repos = [{"repo": name, "branch": branch} for name in names] or null()  # SQL NULL, not a JSON null
     r = tables.runs
@@ -465,11 +473,17 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         and session.session_id
         and not session.revoked
     ):
-        return await _go_on(conn, session, hand), None
+        try:
+            return await _go_on(conn, session, hand), None
+        except autonomy_hold.Stopped as exc:
+            return None, exc.detail
     worker, why = await pick_worker(conn, hand)
     if worker is None:
         return None, why
-    return await _start(conn, hand, worker), None
+    try:
+        return await _start(conn, hand, worker), None
+    except autonomy_hold.Stopped as exc:  # refused before anything was written
+        return None, exc.detail
 
 
 async def hand_mentions(conn: AsyncConnection, hand: Hand, kept: list[dict]) -> list[str]:
@@ -779,6 +793,9 @@ async def chat_prompt(
     shown = {row.id: _message(row, authors) for row in rows if all(reader.sees(row.label) for reader in readers)}
     in_thread = [shown[row.id]["body"] for row in rows if row.id in shown and root_id in (row.id, row.thread_root_id)]
     trigger = shown.pop(found.message_id, None) or {"id": found.message_id, "author": found.dispatcher, "body": ""}
+    files = (await attachment_store.of_messages(conn, [found.message_id])).get(found.message_id, [])
+    if files:  # the worker saves them before the first turn and lists their paths after the prompt
+        trigger["files"] = [{"name": f.name, "media_type": f.media_type, "size": f.size} for f in files]
     root = shown.pop(root_id, None) if root_id != found.message_id else None
     blocks = rules.snapshot(
         root,

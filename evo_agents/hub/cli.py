@@ -12,8 +12,8 @@ registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_cha
 ``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``pm`` by ``cli_pm``, ``canvas`` by ``cli_canvas``,
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by
 ``release_cli``, ``policy`` by ``cli_policy``, ``goal`` by ``cli_goals``, ``merge`` by ``cli_merge``, ``loop`` by
-``cli_loop``, and ``org`` and ``autonomy`` by ``cli_org``; they need nothing beyond the core package, so they work
-on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
+``cli_loop``, ``org`` by ``cli_org`` and ``autonomy`` by ``cli_autonomy``; they need nothing beyond the core
+package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
 document; ``hub contract check`` does not.
 """
 
@@ -235,7 +235,8 @@ def _register_client_commands(hsub) -> None:
 
     register_loop(hsub)
 
-    from evo_agents.hub.cli_org import register_autonomy, register_org
+    from evo_agents.hub.cli_autonomy import register_autonomy
+    from evo_agents.hub.cli_org import register_org
 
     register_org(hsub)
     register_autonomy(hsub)
@@ -243,6 +244,9 @@ def _register_client_commands(hsub) -> None:
     from evo_agents.hub.cli_browser import register_browser
 
     register_browser(hsub)
+    from evo_agents.hub.cli_stop import register_stop
+
+    register_stop(hsub)
 
 
 def register(sub) -> None:

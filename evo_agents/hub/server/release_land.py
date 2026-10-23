@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import judge, release_ci, release_runs, releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, pulls
+from evo_agents.hub.server import audit, autonomy_gates, pull_trailers, pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.projects import project_access
@@ -271,6 +271,8 @@ async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[
     if problem is not None:
         raise Refusal(problem)
     if number is None:
+        async with engine.connect() as conn:
+            signed = await pull_trailers.block(conn, row.run_id)
         made = await pulls.open_pull(
             app,
             token,
@@ -279,7 +281,7 @@ async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[
             branch=row.branch,
             base=default,
             title=f"Release {row.version}",
-            body=_pull_text(row, row.tag),
+            body=_pull_text(row, row.tag) + signed,
         )
         number, url = made.get("number"), made.get("html_url")
         if type(number) is not int:
@@ -396,6 +398,9 @@ async def land(engine: AsyncEngine, app: GitHubApp | None, row: Landing) -> str:
         return await _refuse(engine, row, "this hub has no GitHub App: it opens, merges and tags nothing")
     if where is None:
         return await _refuse(engine, row, f"repo {row.repo} of project {row.project} has no origin on GitHub")
+    held = await _autonomy(engine, row)
+    if held is not None:
+        return held
     try:
         merge = await pulls.with_token(app, *where, "merge", lambda token: _land(engine, app, token, where, row))
     except Refusal as exc:
@@ -404,7 +409,26 @@ async def land(engine: AsyncEngine, app: GitHubApp | None, row: Landing) -> str:
         return await _try_failed(engine, row, str(exc))
     except GitHubRefused as exc:
         return await _refuse(engine, row, str(exc))
-    return await _done(engine, row, merge)
+    tagged = await _done(engine, row, merge)
+    async with engine.begin() as conn:
+        title = f"The hub merged {row.branch} and tagged {row.tag} of {row.repo} for release run {row.run_id}"
+        await autonomy_gates.tell_after(conn, row.run_id, "K6", key=f"release {row.tag}", title=title, repo=row.repo)
+    return tagged
+
+
+async def _autonomy(engine: AsyncEngine, row: Landing) -> str | None:
+    """K6 of the principal of release run ``row`` (``autonomy_gates``): None to land it; waiting while the principal
+    is asked, the reason kept; refused on a deny or a refusal, its cycle stopped."""
+    what = f"merge {row.branch} into {row.target_ref} and tag {row.tag} of {row.repo}"
+    async with engine.begin() as conn:
+        said = await autonomy_gates.check(conn, row.run_id, "K6", key=f"release {row.tag}", what=what, repo=row.repo)
+        if said.waits:
+            rr = tables.release_runs
+            reason = releases.clip_reason(said.reason)
+            await conn.execute(update(rr).where(rr.c.run_id == row.run_id).values(land_reason=reason))
+    if said.act:
+        return None
+    return "waiting" if said.waits else await _refuse(engine, row, said.reason)
 
 
 async def land_releases(engine: AsyncEngine, app: GitHubApp | None) -> dict:

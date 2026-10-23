@@ -1,4 +1,4 @@
-"""The table of browser identities (0105), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
+"""The table of browser identities (0117), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
 attribute (``tables.browser_identities``): queries name it there.
 
 A browser identity is a Chromium profile kept logged in to some sites, which runs of a project use on the one worker
@@ -68,7 +68,7 @@ def browser_tables(metadata: MetaData) -> Table:
         Column("name", Text, nullable=False),
         Column("domains", ARRAY(Text), nullable=False),
         Column("worker_id", BigInteger, nullable=False),
-        Column("login_url", Text),  # the page a login session opens; null: the home page of the first domain (0108)
+        Column("login_url", Text),  # the page a login session opens; null: the home page of the first domain (0120)
         Column("status", Text, nullable=False, server_default="active"),
         Column("version", Integer, nullable=False, server_default="0"),
         Column("held_by_run", BigInteger),

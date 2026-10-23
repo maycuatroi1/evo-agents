@@ -100,6 +100,11 @@ class WorkerConfig:
         return config
 
 
+def dir_bytes(path: Path) -> int:
+    """The bytes of the files directly in directory ``path``; 0 when it is not one."""
+    return sum(item.stat().st_size for item in path.iterdir() if item.is_file()) if path.is_dir() else 0
+
+
 def revoked_exit(env: Mapping[str, str]) -> int:
     """The exit status for a machine that is no longer a worker: EVO_WORKER_REVOKED_EXIT when it holds a status from
     0 to 255, else EXIT_REVOKED."""

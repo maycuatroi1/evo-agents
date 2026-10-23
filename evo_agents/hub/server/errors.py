@@ -25,6 +25,7 @@ CODES = {
     404: "not_found",
     405: "method_not_allowed",
     409: "conflict",
+    410: "gone",  # an invite link accepted, revoked or expired
     413: "too_large",
     421: "misdirected",  # /mcp for a host the hub does not answer MCP for
     422: "invalid_request",

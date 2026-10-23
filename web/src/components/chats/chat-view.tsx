@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { FileDropFrame } from "@/components/data/attachments";
 import { InFrame } from "@/components/data/data-card";
 import { notifyFailure } from "@/components/feedback/toast";
 import { useLiveSignal } from "@/components/live/live-context";
@@ -191,50 +192,52 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   return (
     <div className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`}>
-        <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} />
-        <MessageList
-          chat={chat}
-          me={me}
-          feed={live.feed}
-          highlight={thread === null ? highlight : null}
-          loadOlder={live.loadOlder}
-          onReact={onReact}
-          onThread={openThread}
-          onReply={replyTo}
-          onQuote={showQuote}
-          reacting={reacting}
-          under={under}
-        />
-        {ended ? (
-          <div role="alert" className="flex flex-wrap items-start gap-3 border-t bg-surface-sunken px-4 py-3 text-sm" data-testid="chat-ended">
-            <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <p className="font-medium">{t("endedTitle")}</p>
-              {live.ended ? <p className="text-xs break-words text-muted-foreground">{t("hubSays", { message: live.ended })}</p> : null}
+        <FileDropFrame className="flex min-h-0 flex-1 flex-col" data-testid="chat-drop">
+          <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} />
+          <MessageList
+            chat={chat}
+            me={me}
+            feed={live.feed}
+            highlight={thread === null ? highlight : null}
+            loadOlder={live.loadOlder}
+            onReact={onReact}
+            onThread={openThread}
+            onReply={replyTo}
+            onQuote={showQuote}
+            reacting={reacting}
+            under={under}
+          />
+          {ended ? (
+            <div role="alert" className="flex flex-wrap items-start gap-3 border-t bg-surface-sunken px-4 py-3 text-sm" data-testid="chat-ended">
+              <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <p className="font-medium">{t("endedTitle")}</p>
+                {live.ended ? <p className="text-xs break-words text-muted-foreground">{t("hubSays", { message: live.ended })}</p> : null}
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link href={chatsHref()}>{t("backToChats")}</Link>
+              </Button>
             </div>
-            <Button asChild variant="outline" size="sm">
-              <Link href={chatsHref()}>{t("backToChats")}</Link>
-            </Button>
-          </div>
-        ) : (
-          <div className="border-t p-3">
-            <ChatComposer
-              chat={chat}
-              me={me}
-              replyTo={replying?.id ?? null}
-              onSent={(message) => {
-                live.sent(message);
-                setReplying(null);
-              }}
-              label={t("composerLabel", { title: chat.title })}
-              placeholder={direct ? t("directPlaceholder", { name: agentName }) : t("placeholder")}
-              hint={direct ? t(replying ? "directReplyHint" : "directHint", { name: agentName }) : t("hint")}
-              testId="chat-composer"
-              focusKey={replying ? `reply-${replyFocus}` : compose}
-              replying={replying ? { name: authorLabel(replying.author, me), text: preview(replying.body), onCancel: () => setReplying(null) } : null}
-            />
-          </div>
-        )}
+          ) : (
+            <div className="border-t p-3">
+              <ChatComposer
+                chat={chat}
+                me={me}
+                replyTo={replying?.id ?? null}
+                onSent={(message) => {
+                  live.sent(message);
+                  setReplying(null);
+                }}
+                label={t("composerLabel", { title: chat.title })}
+                placeholder={direct ? t("directPlaceholder", { name: agentName }) : t("placeholder")}
+                hint={direct ? t(replying ? "directReplyHint" : "directHint", { name: agentName }) : t("hint")}
+                testId="chat-composer"
+                focusKey={replying ? `reply-${replyFocus}` : compose}
+                replying={replying ? { name: authorLabel(replying.author, me), text: preview(replying.body), onCancel: () => setReplying(null) } : null}
+              />
+            </div>
+          )}
+        </FileDropFrame>
       </section>
       {wide ? panel : null}
       {!wide ? (

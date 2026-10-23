@@ -79,7 +79,7 @@ GITHUB_OWNER = "maycuatroi1"
 OWNER_GITHUB_ID = 902
 BRANCHES = {REPO: "feat/leased", APP_REPO: "feat/app-token"}
 STEPS = {REPO: 1, APP_REPO: 2}
-OTHER_PROJECT = "evo-lms"  # a project the owner writes in too; the agent of a run of PROJECT reaches none of it
+OTHER_PROJECT = "fabrikam-lms"  # a project the owner writes in too; the agent of a run of PROJECT reaches none of it
 OTHER_PLAN = "lms-rollout"
 WORKER = "mac-mini"
 GIT_USER = "oauth2"  # the user the git secret goes with, as GitLab takes a project access token
@@ -344,7 +344,7 @@ class Machine:
 
 class World:
     """The hub with the secrets key and the GitHub App, the git http-backend, project evo-agents (evo-agents behind
-    the git http-backend, evo-cli on github.com) and project evo-lms, the owner a writer of both, the plan of each
+    the git http-backend, evo-cli on github.com) and project fabrikam-lms, the owner a writer of both, the plan of each
     pushed, a graph of evo-agents, and the App installed on maycuatroi1/evo-cli; the worker, once ``machine`` made
     it."""
 
@@ -642,7 +642,8 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     helpers = [value for key, value in entries if key == f"credential.{https}.helper"]
     assert helpers[0] == "" and helpers[1].endswith(f" worker git-credential --run {run_id}"), entries
     assert (f"url.{https}.insteadOf", world.origins[REPO]) in entries
-    assert {key for key, _ in entries} == {
+    # core.hooksPath names the hooks of the run's trailers Evo-Principal and Evo-Agent (autonomy-levels)
+    assert {key for key, _ in entries} - {"core.hooksPath"} == {
         f"credential.{https}.helper",
         f"credential.{https}.useHttpPath",
         f"url.{https}.insteadOf",

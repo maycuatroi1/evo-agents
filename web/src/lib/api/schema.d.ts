@@ -416,6 +416,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invites
+         * @description Every invite link, newest first, with its status; never a token.
+         */
+        get: operations["list_invites_v1_admin_invites_get"];
+        put?: never;
+        /**
+         * Create
+         * @description Make a one-time invite link; the answer holds its token, which the hub shows this once.
+         */
+        post: operations["create_v1_admin_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/invites/{invite_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description Revoke an open link, or the unused right an accepted register link gave.
+         */
+        post: operations["revoke_v1_admin_invites__invite_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description What an invite link gives, for its page: public, the token being the credential; never the login it is bound
+         *     to, and its project and role only to someone it is for.
+         */
+        post: operations["preview_v1_invites_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept
+         * @description Accept an invite link: a join link gives its grant, a register link the right to register one project.
+         */
+        post: operations["accept_v1_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -836,8 +921,8 @@ export interface paths {
         };
         /**
          * List Skills
-         * @description The skills the caller sees, each with its latest version: the global ones and those of every project the
-         *     caller has a grant on.
+         * @description The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and
+         *     those of every project the caller has a grant on.
          */
         get: operations["list_skills_v1_skills_get"];
         put?: never;
@@ -922,6 +1007,27 @@ export interface paths {
          * @description A new version of a skill of a project from a bundle the project committed.
          */
         post: operations["publish_project_v1_skills_projects__project___name__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/global/{name}/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Audience
+         * @description Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one
+         *     audit row; the audience it has already changes nothing.
+         */
+        put: operations["set_audience_v1_skills_global__name__audience_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3309,6 +3415,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload To Run
+         * @description Upload a file for a message to the run's agent: the run's owner, while the run takes messages.
+         */
+        post: operations["upload_to_run_v1_projects__project__runs__run_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Run Upload
+         * @description Take back an upload of yours for the run that no message holds.
+         */
+        delete: operations["delete_run_upload_v1_projects__project__runs__run_id__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Content
+         * @description The bytes of a file of a message to the run, for its readers.
+         */
+        get: operations["run_content_v1_projects__project__runs__run_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload To Chat
+         * @description Upload a file for a message of the chat: a member of it.
+         */
+        post: operations["upload_to_chat_v1_chats__chat_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Chat Upload
+         * @description Take back an upload of yours for the chat that no message holds.
+         */
+        delete: operations["delete_chat_upload_v1_chats__chat_id__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Content
+         * @description The bytes of a file a message of the chat carries, for a member who reads that message.
+         */
+        get: operations["chat_content_v1_chats__chat_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Content
+         * @description The bytes of a file for the agent of a run the worker claimed: a file of a message its inbox took, or of a chat
+         *     message the agent may read.
+         */
+        get: operations["worker_content_v1_worker_runs__run_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/changes": {
         parameters: {
             query?: never;
@@ -4063,6 +4310,212 @@ export interface paths {
          */
         put: operations["set_ceiling_v1_org_ceilings_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Autonomy
+         * @description The effective autonomy of a person, alone or running an agent profile on a repo, with the source of each mode.
+         */
+        get: operations["show_autonomy_v1_autonomy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Pref
+         * @description The next revision of the caller's own preference; one above their ceilings is stored, the ceilings still
+         *     decide.
+         */
+        put: operations["set_pref_v1_autonomy_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/stops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Autonomy
+         * @description Stop the runs of a person, a unit or the hub, and hold new ones until the stop is lifted.
+         */
+        post: operations["stop_autonomy_v1_autonomy_stops_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/stops/lift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift Stop
+         * @description Lift the stop that holds for a person, a unit or the hub.
+         */
+        post: operations["lift_stop_v1_autonomy_stops_lift_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/stops/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Stop
+         * @description How many runs and people a stop of that scope would cover now, and whether one holds already.
+         */
+        get: operations["preview_stop_v1_autonomy_stops_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Settings
+         * @description The caller's own autonomy, preference, ceiling, stop and 30-day figures, for the web's settings page.
+         */
+        get: operations["show_settings_v1_autonomy_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Org Autonomy
+         * @description Every seat's effective mode of each class, and the stops that hold, for the web's org page.
+         */
+        get: operations["show_org_autonomy_v1_autonomy_org_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Worker Shares
+         * @description The caller's live workers, every live worker for a hub admin, with whom each is shared.
+         */
+        get: operations["list_worker_shares_v1_org_workers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/workers/{worker_id}/units/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Share Worker
+         * @description Narrow the worker to a live unit of the org chart, sharing it when it was not.
+         */
+        put: operations["share_worker_v1_org_workers__worker_id__units__slug__put"];
+        post?: never;
+        /**
+         * Unshare Worker
+         * @description Take a unit back from the worker; with its last unit, sharing ends too.
+         */
+        delete: operations["unshare_worker_v1_org_workers__worker_id__units__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Doctor
+         * @description Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a
+         *     high finding stops it taking the runs of the units it is shared with.
+         */
+        post: operations["report_doctor_v1_worker_doctor_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5419,6 +5872,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/secrets/{name}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shares
+         * @description The shares of the caller's secret or account ``name``, revoked ones too, newest first.
+         */
+        get: operations["list_shares_v1_secrets__name__shares_get"];
+        put?: never;
+        /**
+         * Create Share
+         * @description Share the caller's secret or account ``name``; a personal subscription token needs ``terms_ack``.
+         */
+        post: operations["create_share_v1_secrets__name__shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares/{share_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Share
+         * @description Revoke a share: its secret's owner may, and a hub admin may revoke any.
+         */
+        delete: operations["revoke_share_v1_shares__share_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/credentials": {
         parameters: {
             query?: never;
@@ -5494,7 +5991,8 @@ export interface paths {
         };
         /**
          * Get Account
-         * @description The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.
+         * @description The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;
+         *     404 for a name that is neither.
          */
         get: operations["get_account_v1_accounts__name__get"];
         put?: never;
@@ -5593,6 +6091,47 @@ export interface paths {
          *     module says.
          */
         post: operations["report_rate_limit_v1_worker_runs__run_id__rate_limit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Backup
+         * @description Record a backup the run's agent made, as the module says.
+         */
+        post: operations["record_backup_v1_worker_runs__run_id__backups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/autonomy-acts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Autonomy Act
+         * @description The mode of the class of a command the run's agent is about to run, and whether its decision is answered; the
+         *     principal told when the mode is notify, as the module says.
+         */
+        post: operations["autonomy_act_v1_worker_runs__run_id__autonomy_acts_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7994,6 +8533,16 @@ export interface components {
              * @description the runs a worker holds now with it
              */
             held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Cost By Principal
+             * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
+             */
+            cost_by_principal: components["schemas"]["PrincipalCost"][];
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -8941,6 +9490,34 @@ export interface components {
             /** Session Id */
             session_id?: string | null;
         };
+        /** Attachment */
+        Attachment: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** AudienceChange */
+        AudienceChange: {
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+        };
         /** AudienceIn */
         AudienceIn: {
             /**
@@ -9085,6 +9662,61 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** AutonomyActIn */
+        AutonomyActIn: {
+            /**
+             * Klass
+             * @description the class of the command
+             * @enum {string}
+             */
+            klass: "K5" | "K6" | "K8" | "K9" | "K10" | "K12";
+            /**
+             * What
+             * @description the command, cut, never a credential's value
+             */
+            what: string;
+            /**
+             * Decision Id
+             * @description for a class in ask: the decision of the run, of the class's category, that the agent asked first
+             */
+            decision_id?: number | null;
+        };
+        /** AutonomyActOut */
+        AutonomyActOut: {
+            /**
+             * Mode
+             * @description the class's mode for the run's principal now, the stricter of its snapshot and the value now; null for a run without a snapshot
+             */
+            mode: ("deny" | "ask" | "notify" | "auto") | null;
+            /**
+             * Told
+             * @description whether the hub told the principal (mode notify)
+             */
+            told: boolean;
+            /**
+             * Answered
+             * @description whether decision_id is a decision of the run, of the class, answered
+             */
+            answered: boolean;
+        };
+        /** AutonomyClass */
+        AutonomyClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets the mode: pref:<login>, seat:<id>, unit:<slug>, policy:<project>/<repo>, profile:<handle>, credential_share or instance
+             */
+            source: string;
+            /**
+             * Detail
+             * @description how that source sets it, with the condition the mode acts under
+             */
+            detail: string;
+        };
         /**
          * AutonomyPolicy
          * @description One revision of a project's autonomy policy.
@@ -9121,6 +9753,98 @@ export interface components {
             /** Created At */
             created_at: string | null;
         };
+        /**
+         * AutonomySettings
+         * @description The caller's own autonomy: the effective level and classes, the preference, the ceiling over it, the stop that
+         *     holds them and the figures of each class.
+         */
+        AutonomySettings: {
+            /** Principal */
+            principal: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Level Source */
+            level_source: string;
+            /**
+             * Revision
+             * @description the preference's newest revision; null when none was set
+             */
+            revision: number | null;
+            /** Pref Level */
+            pref_level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Pref Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            pref_classes: {
+                [key: string]: string;
+            };
+            /**
+             * Ceiling
+             * @description the lowest level the sources other than the preference set
+             * @enum {string}
+             */
+            ceiling: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Ceiling Source */
+            ceiling_source: string;
+            /**
+             * Ceiling Detail
+             * @description what that source is, in words
+             */
+            ceiling_detail: string;
+            /** Classes */
+            classes: {
+                [key: string]: components["schemas"]["SettingsClass"];
+            };
+            /** @description the stop that holds the caller; null when none does */
+            stop: components["schemas"]["HeldStop"] | null;
+            /**
+             * Days
+             * @default 30
+             */
+            days: number;
+        };
+        /** AutonomyView */
+        AutonomyView: {
+            /**
+             * Principal
+             * @description the login of the person whose autonomy it is
+             */
+            principal: string;
+            /** Project */
+            project: string | null;
+            /**
+             * Agent
+             * @description the handle of the agent profile it runs as; null for the person alone
+             */
+            agent: string | null;
+            /**
+             * Level
+             * @description the lowest level the sources set
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Classes
+             * @description K1 to K12, each its effective mode
+             */
+            classes: {
+                [key: string]: components["schemas"]["AutonomyClass"];
+            };
+            /**
+             * Environments
+             * @description the environments allowed; null: no limit
+             */
+            environments: string[] | null;
+            /**
+             * Workers
+             * @description the workers allowed; null: no limit
+             */
+            workers: string[] | null;
+        };
         /** AvatarUpload */
         AvatarUpload: {
             /**
@@ -9151,6 +9875,47 @@ export interface components {
             retry_at: string | null;
             /** Reported At */
             reported_at: string | null;
+        };
+        /** BackupIn */
+        BackupIn: {
+            /**
+             * Target
+             * @description what was backed up: a database, a table, a bucket
+             */
+            target: string;
+            /**
+             * Location
+             * @description where the backup is: a path, a URL, a snapshot id
+             */
+            location: string;
+            /**
+             * Made At
+             * @description when it was made, with its time zone; now when absent
+             */
+            made_at?: string | null;
+            /**
+             * Restore
+             * @description the command that restores it
+             */
+            restore?: string | null;
+        };
+        /** BackupOut */
+        BackupOut: {
+            /**
+             * Seq
+             * @description the run event that records the backup
+             */
+            seq: number;
+            /**
+             * Made At
+             * Format: date-time
+             */
+            made_at: string;
+            /**
+             * Fresh
+             * @description made within the last 24 hours: it opens the floor S2 of K9
+             */
+            fresh: boolean;
         };
         /** Blob */
         Blob: {
@@ -11052,6 +11817,23 @@ export interface components {
             level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
             /** Note */
             note?: string | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes?: {
+                [key: string]: string;
+            };
+            /**
+             * Environments
+             * @description the environments it allows; empty: no limit
+             */
+            environments?: string[];
+            /**
+             * Workers
+             * @description the workers it allows; empty: no limit
+             */
+            workers?: string[];
         };
         /** CeilingWritten */
         CeilingWritten: {
@@ -11079,6 +11861,23 @@ export interface components {
             previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
             /** Note */
             note: string | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes: {
+                [key: string]: string;
+            };
+            /**
+             * Environments
+             * @description the environments it allows; empty: no limit
+             */
+            environments: string[];
+            /**
+             * Workers
+             * @description the workers it allows; empty: no limit
+             */
+            workers: string[];
         };
         /**
          * Change
@@ -11733,12 +12532,17 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /**
+             * Attachments
+             * @description the files of the owner's message, whose bytes GET /v1/projects/{p}/runs/{id}/attachments/{aid}/content serves
+             */
+            attachments?: components["schemas"]["SentFile"][];
         };
         /** ChatMessageIn */
         ChatMessageIn: {
             /**
              * Body
-             * @description at most 16384 bytes of UTF-8
+             * @description at most 16384 bytes of UTF-8; empty only with attachment_ids
              */
             body: string;
             /**
@@ -11746,6 +12550,11 @@ export interface components {
              * @description the message it answers: it goes in its thread
              */
             reply_to?: number | null;
+            /**
+             * Attachment Ids
+             * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
+             */
+            attachment_ids?: number[];
         };
         /** ChatPage */
         ChatPage: {
@@ -12105,6 +12914,42 @@ export interface components {
              */
             spent_seconds: number;
         };
+        /**
+         * ClassFigures
+         * @description What the hub saw of one class over the last FIGURE_DAYS days for the person's runs.
+         */
+        ClassFigures: {
+            /**
+             * Refused
+             * @description the acts a gate or the worker's hook refused (autonomy.decided result=refused)
+             */
+            refused: number;
+            /**
+             * Asked
+             * @description the acts a gate held for an answer (result=asked)
+             */
+            asked: number;
+            /**
+             * Decisions
+             * @description the decisions asked in the class's categories
+             */
+            decisions: number;
+            /**
+             * Merged
+             * @description K5: the merges of the person's runs
+             */
+            merged?: number | null;
+            /**
+             * Reverted
+             * @description K5: those of them the hub reverted
+             */
+            reverted?: number | null;
+            /**
+             * Rolled Back
+             * @description K6: those of them PROD was rolled back from
+             */
+            rolled_back?: number | null;
+        };
         /** Clearance */
         Clearance: {
             /** Level */
@@ -12252,6 +13097,82 @@ export interface components {
              * @description when it stops working; ask again before, for a GitHub token
              */
             expires_at: string | null;
+        };
+        /**
+         * CredentialShare
+         * @description A share of a secret or an account, as its owner sees it.
+         */
+        CredentialShare: {
+            /** Id */
+            id: number;
+            /**
+             * Secret
+             * @description the name of the secret or account shared
+             */
+            secret: string;
+            /**
+             * Credential
+             * @description subscription (a personal Claude account, shared only after its owner acknowledged the terms warning), api_key, git or env
+             * @enum {string}
+             */
+            credential: "subscription" | "api_key" | "git" | "env";
+            /**
+             * Grantee Kind
+             * @description user: one member; unit: a unit and below; all: everyone
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Grantee
+             * @description the member's login or the unit's slug; null for all
+             */
+            grantee: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to; null for none
+             */
+            level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD; null for none
+             */
+            budget_usd: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description 1 to 100: no run takes the account while its usage is at this percent or above; null for none
+             */
+            usage_ceiling_pct: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once; null for no limit
+             */
+            max_running: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; null for no end
+             */
+            expires_at: string | null;
+            /**
+             * Terms Ack At
+             * @description when its owner acknowledged the terms warning; null for none
+             */
+            terms_ack_at: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
         };
         /** Credentials */
         Credentials: {
@@ -12439,7 +13360,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "login";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login";
             /** Question */
             question: string;
             /**
@@ -12461,9 +13382,14 @@ export interface components {
             state: "open" | "answered" | "expired" | "cancelled";
             /**
              * Owner
-             * @description the login of the run's owner, the one member who may answer
+             * @description the login of the run's owner
              */
             owner: string;
+            /**
+             * Asked Of
+             * @description the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0115
+             */
+            asked_of: string;
             /** Answer Option */
             answer_option: string | null;
             /** Answer Text */
@@ -12500,7 +13426,7 @@ export interface components {
              * @description the agent asks only about these
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "triage";
             /** Question */
             question: string;
             /**
@@ -12788,6 +13714,44 @@ export interface components {
              * @enum {string}
              */
             value: "any" | "web";
+        };
+        /** DoctorAnswer */
+        DoctorAnswer: {
+            /** Worker Id */
+            worker_id: number;
+            /**
+             * Doctor At
+             * Format: date-time
+             * @description when the hub took the report
+             */
+            doctor_at: string;
+            /** Doctor High */
+            doctor_high: number;
+            /** Doctor Medium */
+            doctor_medium: number;
+        };
+        /** DoctorFinding */
+        DoctorFinding: {
+            /**
+             * Code
+             * @description what the doctor found, as `worker doctor --json` names it
+             */
+            code: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
+            /**
+             * Detail
+             * @description what it found, as the doctor prints it
+             */
+            detail: string;
+        };
+        /** DoctorReport */
+        DoctorReport: {
+            /** Findings */
+            findings: components["schemas"]["DoctorFinding"][];
         };
         /** EarlierFinding */
         EarlierFinding: {
@@ -13600,6 +14564,11 @@ export interface components {
              * @description the files of its run it carries, oldest first, each with the chat's URL of its bytes
              */
             outputs?: components["schemas"]["RunOutput"][];
+            /**
+             * Attachments
+             * @description the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes
+             */
+            attachments?: components["schemas"]["LinkedAttachment"][];
         };
         /** GroupSample */
         GroupSample: {
@@ -13759,6 +14728,35 @@ export interface components {
         HeldRequest: {
             /** Session Ids */
             session_ids: string[];
+        };
+        /** HeldStop */
+        HeldStop: {
+            /** Id */
+            id: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Target
+             * @description login:<login>, unit:<slug> or all
+             */
+            target: string;
+            /** Login */
+            login: string | null;
+            /**
+             * Unit
+             * @description the unit's slug, for a stop of a unit
+             */
+            unit: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Stopped At
+             * Format: date-time
+             */
+            stopped_at: string;
         };
         /** HeldTranscript */
         HeldTranscript: {
@@ -14234,6 +15232,244 @@ export interface components {
              * @description the decision this message answers; null for any other message
              */
             decision_id?: number | null;
+            /**
+             * Attachments
+             * @description the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves
+             */
+            attachments?: components["schemas"]["Attachment"][];
+        };
+        /** InviteAccept */
+        InviteAccept: {
+            /**
+             * Token
+             * @description the token of the link, evn_...
+             */
+            token: string;
+        };
+        /** InviteCreated */
+        InviteCreated: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
+            /**
+             * Token
+             * @description evn_...: shown this once, the hub keeps only its SHA-256
+             */
+            token: string;
+            /**
+             * Url
+             * @description the link to hand out, EVO_HUB_PUBLIC_URL + /invite/ + token; null without one
+             */
+            url: string | null;
+        };
+        /** InvitePreview */
+        InvitePreview: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Invited By
+             * @description the hub admin who made the link
+             */
+            invited_by: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Bound
+             * @description whether one GitHub login alone may accept the link; which one is never shown
+             */
+            bound: boolean;
+            /**
+             * Viewer
+             * @description the login signed in on the web that asks; null for a visitor
+             */
+            viewer: string | null;
+            /**
+             * For Viewer
+             * @description whether the viewer may accept the link: signed in, and it unbound or theirs
+             */
+            for_viewer: boolean;
+            /**
+             * Accepted By Viewer
+             * @description whether the viewer accepted the link
+             */
+            accepted_by_viewer: boolean;
+            /**
+             * Project
+             * @description join: the project; register: the project its right registered, once used. Null unless the link is open and for the viewer (unbound, anyone), or the viewer accepted it
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives, shown as the project is
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches, shown as the project is
+             */
+            max_level: string | null;
+        };
+        /** InviteRequest */
+        InviteRequest: {
+            /**
+             * Kind
+             * @description join: a grant on an existing project; register: the right to register one new project
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on
+             */
+            project?: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role?: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level of the project's ladder it reaches
+             */
+            max_level?: string | null;
+            /**
+             * For Login
+             * @description the one GitHub login that may accept the link; anyone signed in if left out
+             */
+            for_login?: string | null;
+            /**
+             * Days
+             * @description how long the link stays open
+             * @default 7
+             */
+            days: number;
+        };
+        /** InviteRow */
+        InviteRow: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
         };
         /** Job */
         Job: {
@@ -14700,6 +15936,30 @@ export interface components {
              */
             created_at: string;
         };
+        /** LinkedAttachment */
+        LinkedAttachment: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Url
+             * @description the hub's URL of its bytes, for those who may read the message
+             */
+            url: string;
+        };
         /**
          * ListedAgentAccount
          * @description An account of an agent, with the project and the agent it belongs to.
@@ -14857,7 +16117,7 @@ export interface components {
              * @default question
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question";
             /** Question */
             question: string;
             /**
@@ -15774,14 +17034,24 @@ export interface components {
              * @description when the worker took it for the agent
              */
             delivered_at: string | null;
+            /**
+             * Attachments
+             * @description the files it carries
+             */
+            attachments?: components["schemas"]["Attachment"][];
         };
         /** MessageIn */
         MessageIn: {
             /**
              * Text
-             * @description at most 8 KiB of UTF-8
+             * @description at most 8 KiB of UTF-8; empty only with attachment_ids
              */
             text: string;
+            /**
+             * Attachment Ids
+             * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
+             */
+            attachment_ids?: number[];
         };
         /** MissingBlobs */
         MissingBlobs: {
@@ -16127,7 +17397,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "browser_needs_login") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -16278,6 +17548,17 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * OrgAutonomy
+         * @description Every seat's effective mode of each class (its ceiling, its units' and the instance's) and the stops that
+         *     hold.
+         */
+        OrgAutonomy: {
+            /** Seats */
+            seats: components["schemas"]["SeatClasses"][];
+            /** Stops */
+            stops: components["schemas"]["HeldStop"][];
         };
         /** OrgChartView */
         OrgChartView: {
@@ -16745,7 +18026,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "login";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login";
             /** Question */
             question: string;
             /**
@@ -18497,6 +19778,77 @@ export interface components {
              */
             changed: boolean;
         };
+        /**
+         * PrefSet
+         * @description The next revision of the caller's own preference: a level, class overrides merged onto those before, or a reset
+         *     that drops them (to A5 without a level).
+         */
+        PrefSet: {
+            /** Level */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes?: {
+                [key: string]: string;
+            };
+            /**
+             * Reset
+             * @default false
+             */
+            reset: boolean;
+        };
+        /** PrefWritten */
+        PrefWritten: {
+            /** Login */
+            login: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Previous
+             * @description the level of the revision before; null for the first
+             */
+            previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes: {
+                [key: string]: string;
+            };
+        };
+        /** PrincipalCost */
+        PrincipalCost: {
+            /**
+             * Principal
+             * @description the member the runs were made for, by login; null for one now gone
+             */
+            principal: string | null;
+            /** Runs 24H */
+            runs_24h: number;
+            /** Runs 7D */
+            runs_7d: number;
+            /**
+             * Runs Month
+             * @description the runs that took it since the month began, UTC
+             */
+            runs_month: number;
+            /** Cost 24H Usd */
+            cost_24h_usd: number;
+            /** Cost 7D Usd */
+            cost_7d_usd: number;
+            /**
+             * Cost Month Usd
+             * @description what those runs cost since the month began, in USD, an estimate
+             */
+            cost_month_usd: number;
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -19383,6 +20735,11 @@ export interface components {
              * @description hex, abbreviated or whole
              */
             source_commit?: string | null;
+            /**
+             * Audience
+             * @description a global skill's audience: default everyone for a new skill, unchanged for one that exists
+             */
+            audience?: ("everyone" | "admins") | null;
         };
         /** Published */
         Published: {
@@ -19401,6 +20758,12 @@ export interface components {
              */
             created: boolean;
             latest: components["schemas"]["Version"];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** Queued */
         Queued: {
@@ -19630,6 +20993,11 @@ export interface components {
             sent_at: string;
             /** Body */
             body: string;
+            /**
+             * Attachments
+             * @description the files its author attached to it; a run's agent fetches their bytes with GET /v1/worker/runs/{id}/attachments/{aid}/content
+             */
+            attachments?: components["schemas"]["Attachment"][];
         };
         /** ReadRequest */
         ReadRequest: {
@@ -20988,6 +22356,13 @@ export interface components {
              * @description the last time a local run's session said anything; null for any other run
              */
             last_activity_at?: string | null;
+            /**
+             * Principal
+             * @description the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null for a local run and one queued before the hub knew principals
+             */
+            principal?: string | null;
+            /** @description the autonomy it acts under; null where principal is */
+            autonomy?: components["schemas"]["RunAutonomy"] | null;
         };
         /** RunAccount */
         RunAccount: {
@@ -21000,10 +22375,10 @@ export interface components {
             account: string | null;
             /**
              * How
-             * @description picked by hand, bound to the worker, by the charter, the pool, cooling
+             * @description picked by hand, bound to the worker, by the charter, the pool, cooling, shared by another member
              * @enum {string}
              */
-            how: "manual" | "worker" | "charter" | "pool" | "cooling";
+            how: "manual" | "worker" | "charter" | "pool" | "cooling" | "shared";
             /**
              * Failovers
              * @description the times the run moved to another account
@@ -21048,6 +22423,88 @@ export interface components {
              * @description until when the account cools down
              */
             cooldown_until: string | null;
+        };
+        /**
+         * RunAutonomy
+         * @description The autonomy a run acts under: its principal's effective autonomy as the hub took it when it queued the run,
+         *     made stricter by every gate that found it lower since (``run_autonomy.recheck``).
+         */
+        RunAutonomy: {
+            /**
+             * Level
+             * @description the lowest level of the sources, A0 to A5
+             */
+            level: string;
+            /**
+             * Level Source
+             * @description the source that sets that level
+             */
+            level_source: string;
+            /**
+             * Classes
+             * @description K1 to K12, each its mode
+             */
+            classes: {
+                [key: string]: components["schemas"]["RunAutonomyClass"];
+            };
+            /**
+             * Environments
+             * @description the environments it may run in; null: no limit
+             */
+            environments?: string[] | null;
+            /**
+             * Workers
+             * @description the workers (names, lowered) that may take it; null: any
+             */
+            workers?: string[] | null;
+            /**
+             * Restricted
+             * @description whether a class is below auto, so only a daemon that applies the modes takes it
+             * @default false
+             */
+            restricted: boolean;
+            /**
+             * Also
+             * @description logins besides the principal whose autonomy bounds it
+             */
+            also?: string[];
+            /**
+             * Taken At
+             * Format: date-time
+             * @description when the hub took it
+             */
+            taken_at: string;
+            /**
+             * Tightened At
+             * @description when a gate last made it stricter; null: never
+             */
+            tightened_at?: string | null;
+        };
+        /**
+         * RunAutonomyClass
+         * @description One class of a run's autonomy snapshot (plan autonomy-levels): its mode, the source that set it and how.
+         */
+        RunAutonomyClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets the mode, as GET /v1/autonomy names it
+             */
+            source: string;
+            /**
+             * Detail
+             * @description how that source sets it
+             */
+            detail: string;
+            /**
+             * Condition
+             * @description the condition the mode acts under; null for none
+             */
+            condition?: string | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -21099,6 +22556,42 @@ export interface components {
              * @description the agent time it may use; a Codex run stops there
              */
             max_seconds?: number | null;
+        };
+        /**
+         * RunCard
+         * @description The autonomy card of a run (plan autonomy-levels, ``autonomy_card.card``): what its prompt opens with, built
+         *     from the run's snapshot and its principal when the worker claims it.
+         */
+        RunCard: {
+            /**
+             * Card
+             * @description the card's text, first in the run's prompt
+             */
+            card: string;
+            /**
+             * Modes
+             * @description K1 to K12, the mode each acts in for the agent: an ask a project policy sets shows as auto
+             */
+            modes: {
+                [key: string]: "deny" | "ask" | "notify" | "auto";
+            };
+            /**
+             * Categories
+             * @description the categories of decision its agent may ask
+             */
+            categories: string[];
+            /**
+             * Sources
+             * @description K1 to K12, what set the mode of each: a ceiling, a preference, a policy
+             */
+            sources?: {
+                [key: string]: string;
+            };
+            /**
+             * Principal
+             * @description the login of the run's principal, which its commits name in the trailer Evo-Principal
+             */
+            principal?: string | null;
         };
         /** RunChat */
         RunChat: {
@@ -22021,6 +23514,18 @@ export interface components {
             packs?: components["schemas"]["RunPack"][];
             /** @description a release run's cycle, mode and start commit; null for any other run */
             release?: components["schemas"]["ReleaseSpec"] | null;
+            /** @description the autonomy card its prompt opens with; null for a run without a snapshot of autonomy */
+            autonomy?: components["schemas"]["RunCard"] | null;
+            /**
+             * Attachments
+             * @description a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run
+             */
+            attachments?: components["schemas"]["Attachment"][];
+            /**
+             * Chat Message Id
+             * @description a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run
+             */
+            chat_message_id?: number | null;
         };
         /** RunState */
         RunState: {
@@ -22388,6 +23893,28 @@ export interface components {
             /** Ends On */
             ends_on?: string | null;
         };
+        /** SeatClass */
+        SeatClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /** Source */
+            source: string;
+        };
+        /** SeatClasses */
+        SeatClasses: {
+            /** Id */
+            id: number;
+            /**
+             * Classes
+             * @description K1 to K12, the effective mode of the seat and its units
+             */
+            classes: {
+                [key: string]: components["schemas"]["SeatClass"];
+            };
+        };
         /**
          * SeatEdit
          * @description The fields to change; a field left out keeps its value, reports_to or ends_on null clears it.
@@ -22437,6 +23964,11 @@ export interface components {
              */
             username: string | null;
             /**
+             * Environment
+             * @description kind env: the environment it is labelled for (test)
+             */
+            environment?: string | null;
+            /**
              * Projects
              * @description the projects whose runs get it
              */
@@ -22459,6 +23991,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
         };
         /** SecretWrite */
         SecretWrite: {
@@ -22483,6 +24020,11 @@ export interface components {
              * @description kind git only: the user git sends with the value; oauth2 when left out
              */
             username?: string | null;
+            /**
+             * Environment
+             * @description kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is leased the env secrets labelled test alone (docs/autonomy.md)
+             */
+            environment?: "test" | null;
             /**
              * Projects
              * @description the projects whose runs get it; the writer role on each, the admin role for kind forge
@@ -22532,6 +24074,11 @@ export interface components {
              */
             username: string | null;
             /**
+             * Environment
+             * @description kind env: the environment it is labelled for (test)
+             */
+            environment?: string | null;
+            /**
              * Projects
              * @description the projects whose runs get it
              */
@@ -22554,6 +24101,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
             /**
              * Created
              * @description false when a secret of this name was replaced
@@ -22597,6 +24149,26 @@ export interface components {
             error_at?: string | null;
             /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
             update_now?: components["schemas"]["UpdateNowReport"] | null;
+        };
+        /**
+         * SentFile
+         * @description A file as a ``user_message`` event names it (``as_event``).
+         */
+        SentFile: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
         };
         /**
          * SessionDigest
@@ -22709,6 +24281,52 @@ export interface components {
              */
             transcripts: components["schemas"]["TranscriptFile"][];
         };
+        /** SettingsClass */
+        SettingsClass: {
+            /**
+             * Name
+             * @description what the class covers, in words
+             */
+            name: string;
+            /**
+             * Mode
+             * @description the effective mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets it, as AutonomyClass.source
+             */
+            source: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Modes
+             * @description the modes the class takes, the strictest first
+             */
+            modes: ("deny" | "ask" | "notify" | "auto")[];
+            /**
+             * Ceiling
+             * @description the loosest mode the sources other than the preference allow
+             * @enum {string}
+             */
+            ceiling: "deny" | "ask" | "notify" | "auto";
+            /** Ceiling Source */
+            ceiling_source: string;
+            /**
+             * Pref
+             * @description the mode the preference sets; null without a preference
+             */
+            pref: ("deny" | "ask" | "notify" | "auto") | null;
+            /**
+             * Lowered
+             * @description the effective mode is stricter than the preference sets
+             */
+            lowered: boolean;
+            /** @description null for a class no gate records */
+            figures: components["schemas"]["ClassFigures"] | null;
+        };
         /**
          * SettingsLayer
          * @description One layer of a setting at one version.
@@ -22781,6 +24399,61 @@ export interface components {
              * @description 409 unless the layer is at this version now
              */
             if_version?: number | null;
+        };
+        /** ShareWrite */
+        ShareWrite: {
+            /**
+             * Grantee Kind
+             * @description user: one member, named by login; unit: a unit of the org chart and every unit below it, named by unit; all: everyone on the hub
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Login
+             * @description grantee_kind user only: the member's login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description grantee_kind unit only: the unit's slug
+             */
+            unit?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it, each one the secret is bound to
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to
+             */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD
+             */
+            budget_usd?: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description no run takes the account while its usage is at this percent or above
+             */
+            usage_ceiling_pct?: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once
+             */
+            max_running?: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Terms Ack
+             * @description the owner acknowledges the terms warning, which sharing a personal subscription token needs
+             * @default false
+             */
+            terms_ack: boolean;
         };
         /** Sign */
         Sign: {
@@ -23133,6 +24806,28 @@ export interface components {
              * Format: date-time
              */
             published_at: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+        };
+        /** SkillAudience */
+        SkillAudience: {
+            /** Name */
+            name: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+            /**
+             * Changed
+             * @description false when the skill had this audience already
+             */
+            changed: boolean;
         };
         /** SkillCount */
         SkillCount: {
@@ -23212,6 +24907,12 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** SkillStat */
         SkillStat: {
@@ -24443,6 +26144,109 @@ export interface components {
              * @description whether the report wrote a revision; false for a resend that changed nothing
              */
             written: boolean;
+        };
+        /**
+         * StopPreview
+         * @description What a stop of that scope would do now, once the caller may write it.
+         */
+        StopPreview: {
+            /** Target */
+            target: string;
+            /**
+             * Runs
+             * @description the runs it would cancel or ask to stop
+             */
+            runs: number;
+            /**
+             * People
+             * @description the people it covers; null for the whole hub
+             */
+            people: number | null;
+            /**
+             * Holds
+             * @description a stop of that scope holds already
+             */
+            holds: boolean;
+        };
+        /**
+         * StopSet
+         * @description What to stop, or lift the stop of: a person, a unit and those below it, or the whole hub.
+         */
+        StopSet: {
+            /**
+             * Scope
+             * @description login: a person; unit: a unit and below; all: the hub
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Login
+             * @description the person, for login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description the unit's slug, for unit
+             */
+            unit?: string | null;
+            /**
+             * Reason
+             * @description why; a lift takes none
+             */
+            reason?: string | null;
+        };
+        /**
+         * StopView
+         * @description A stop of autonomy, as written or lifted.
+         */
+        StopView: {
+            /** Id */
+            id: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Target
+             * @description login:<login>, unit:<slug> or all
+             */
+            target: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Stopped By
+             * @description the login of who stopped
+             */
+            stopped_by: string;
+            /**
+             * Stopped At
+             * Format: date-time
+             */
+            stopped_at: string;
+            /**
+             * Lifted By
+             * @description the login of who lifted it; null while it holds
+             */
+            lifted_by: string | null;
+            /** Lifted At */
+            lifted_at: string | null;
+            /**
+             * Runs
+             * @description the runs this call cancelled or asked to stop; empty for a lift
+             */
+            runs?: number[];
+            /**
+             * Leases
+             * @description how many leases this call ended
+             * @default 0
+             */
+            leases: number;
+            /**
+             * Told
+             * @description the logins told
+             */
+            told?: string[];
         };
         /** StorageCounts */
         StorageCounts: {
@@ -26317,7 +28121,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "run-output" | "plugin-bundle";
+            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "run-output" | "attachment" | "plugin-bundle";
         };
         /** UploadRequest */
         UploadRequest: {
@@ -26852,6 +28656,49 @@ export interface components {
             projects?: string[];
         };
         /**
+         * WorkerShares
+         * @description Whom a worker is shared with: its owner's writers, narrowed to ``units`` when it names any.
+         */
+        WorkerShares: {
+            /** Id */
+            id: number;
+            /**
+             * Worker
+             * @description the worker's name, unique among its owner's live workers
+             */
+            worker: string;
+            /**
+             * Owner
+             * @description the login of the member who registered it
+             */
+            owner: string;
+            /**
+             * Shared
+             * @description whether other members' runs may go to it
+             */
+            shared: boolean;
+            /**
+             * Units
+             * @description the slugs of the units it is narrowed to, sorted; none: shared with every writer of a project it serves
+             */
+            units: string[];
+            /**
+             * Doctor At
+             * @description when its daemon sent the newest doctor report; null: none
+             */
+            doctor_at?: string | null;
+            /**
+             * Doctor High
+             * @description findings of severity high in that report; null: no report
+             */
+            doctor_high?: number | null;
+            /**
+             * Doctor Medium
+             * @description findings of severity medium in that report; null: no report
+             */
+            doctor_medium?: number | null;
+        };
+        /**
          * WorkerUpdate
          * @description What PATCH /v1/workers/{id} changes: each field it gives, at least one; a field left out or null stays.
          */
@@ -27358,7 +29205,10 @@ export interface operations {
     };
     web_login_v1_auth_web_login_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the page of the hub to come back to, a relative path; any other is ignored */
+                next?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27371,6 +29221,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
             /** @description web sign-in is not configured */
             503: {
@@ -28238,6 +30097,316 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_invites_v1_admin_invites_get: {
+        parameters: {
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_v1_admin_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_v1_admin_invites__invite_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_v1_invites_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_v1_invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the link was accepted, revoked or has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -30210,6 +32379,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_audience_v1_skills_global__name__audience_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudienceChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillAudience"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -38883,6 +41115,622 @@ export interface operations {
             };
         };
     };
+    upload_to_run_v1_projects__project__runs__run_id__attachments_post: {
+        parameters: {
+            query: {
+                /** @description the file's name */
+                name: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the file's bytes, at most 52428800; Content-Type is its media type */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_run_upload_v1_projects__project__runs__run_id__attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_content_v1_projects__project__runs__run_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_to_chat_v1_chats__chat_id__attachments_post: {
+        parameters: {
+            query: {
+                /** @description the file's name */
+                name: string;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the file's bytes, at most 52428800; Content-Type is its media type */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_chat_upload_v1_chats__chat_id__attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_content_v1_chats__chat_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                chat_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    worker_content_v1_worker_runs__run_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_changes_v1_projects__project__curator_changes_get: {
         parameters: {
             query?: never;
@@ -41561,6 +44409,626 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_autonomy_v1_autonomy_get: {
+        parameters: {
+            query?: {
+                login?: string | null;
+                project?: string | null;
+                agent?: string | null;
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_pref_v1_autonomy_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrefSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrefWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stop_autonomy_v1_autonomy_stops_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lift_stop_v1_autonomy_stops_lift_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_stop_v1_autonomy_stops_preview_get: {
+        parameters: {
+            query: {
+                scope: "login" | "unit" | "all";
+                login?: string | null;
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopPreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_settings_v1_autonomy_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomySettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_org_autonomy_v1_autonomy_org_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgAutonomy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_worker_shares_v1_org_workers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    share_worker_v1_org_workers__worker_id__units__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unshare_worker_v1_org_workers__worker_id__units__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_doctor_v1_worker_doctor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoctorReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoctorAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -47068,6 +50536,205 @@ export interface operations {
             };
         };
     };
+    list_shares_v1_secrets__name__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_share_v1_secrets__name__shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_share_v1_shares__share_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the id of the share */
+                share_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_credentials_v1_projects__project__runs__run_id__credentials_get: {
         parameters: {
             query?: never;
@@ -47276,7 +50943,10 @@ export interface operations {
     };
     get_account_v1_accounts__name__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the member who shared the account with the caller; omit for one's own */
+                owner?: string | null;
+            };
             header?: never;
             path: {
                 /** @description one of the caller's env secrets */
@@ -47684,6 +51354,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RateLimitAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_backup_v1_worker_runs__run_id__backups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    autonomy_act_v1_worker_runs__run_id__autonomy_acts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutonomyActIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyActOut"];
                 };
             };
             /** @description Unauthorized */

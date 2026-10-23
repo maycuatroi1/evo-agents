@@ -60,9 +60,18 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import browser, chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
+from evo_agents.worker import backup_cli, chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
 from evo_agents.worker.agent_input import attest, decision_option, evidence_items, plan_file, promotion_file, read_text
-from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
+from evo_agents.worker.browser import register_browser
+from evo_agents.worker.home import (
+    NotJoined,
+    PidLock,
+    WorkerConfig,
+    WorkerHome,
+    WorkerStateError,
+    dir_bytes,
+    revoked_exit,
+)
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 
 EXIT_FAILED = 1
@@ -295,15 +304,6 @@ def cmd_run(args) -> int:
         lock.release()
 
 
-def _dir_bytes(path) -> int:
-    total = 0
-    if path.is_dir():
-        for item in path.iterdir():
-            if item.is_file():
-                total += item.stat().st_size
-    return total
-
-
 @worker_command
 def cmd_attach(args) -> int:
     from evo_agents.worker import interactive
@@ -373,7 +373,7 @@ def cmd_status(args) -> int:
         "tmux": {"path": tmux.binary, "version": tmux.version()},
         "allow_web_terminal": config.allow_web_terminal,
         "checkouts": found,
-        "spool_bytes": _dir_bytes(home.spool_dir),
+        "spool_bytes": dir_bytes(home.spool_dir),
         "runs": [{k: r.get(k) for k in ("id", "state", "worktree", "finished_at")} for r in records],
         "hub": hub_view,
         "hub_error": hub_error,
@@ -486,7 +486,7 @@ MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
 # The parsers of a run's agent in group chats, of `repo open` of a chat run's, of a triage thread's for a failed run, of
 # a review run's on the playbook, and of any run's outputs
 AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
-AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output)
+AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output, backup_cli.register_backup)
 
 
 @dataclass
@@ -1083,5 +1083,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    for extra in (*AGENT_PARSERS, projects_cli.register_projects, browser.register_browser):
+    for extra in (*AGENT_PARSERS, projects_cli.register_projects, register_browser):
         extra(wsub)

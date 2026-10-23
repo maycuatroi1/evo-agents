@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Ellipsis, SlidersHorizontal, Hourglass, type LucideIcon, Pencil, Activity, Star, UserMinus } from "lucide-react";
+import { Bot, Ellipsis, SlidersHorizontal, Hourglass, type LucideIcon, OctagonX, Pencil, Activity, Star, UserMinus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Fragment } from "react";
@@ -20,6 +20,8 @@ import {
 import { type OrgAction, useOrgView } from "./context";
 import { endDay, runsHref, seatNote } from "./model";
 import type { OrgSeat, OrgUnit } from "./queries";
+import { SeatClasses, StopFlag } from "./stop-parts";
+import { heldStop, seatTarget } from "./stops";
 
 export type MenuItem = { id: string; label: string; icon: LucideIcon; action: OrgAction; destructive?: boolean };
 
@@ -114,7 +116,7 @@ function RunsLink({ login }: { login: string }) {
 export function SeatRow({ seat }: { seat: OrgSeat }) {
   const t = useTranslations("org");
   const tRole = useTranslations("org.roles");
-  const { units, rights, today } = useOrgView();
+  const { units, rights, today, autonomy, mayStop } = useOrgView();
   const note = today ? seatNote(units, seat, today) : null;
   const ends = endDay(units, seat);
   const who = seat.login ?? seat.agent ?? "";
@@ -122,6 +124,9 @@ export function SeatRow({ seat }: { seat: OrgSeat }) {
   const live = !seat.ended_at;
   if (live && rights.seat(seat.unit, seat.role)) items.push({ id: "edit-seat", label: t("actions.editSeat"), icon: Pencil, action: { kind: "editSeat", seat } });
   if (live && rights.seatCeiling(seat)) items.push({ id: "seat-ceiling", label: t("actions.setCeiling"), icon: SlidersHorizontal, action: { kind: "seatCeiling", seat } });
+  const target = live ? seatTarget(seat) : null;
+  const stop = target ? heldStop(autonomy, target) : undefined;
+  if (target && autonomy && !stop && mayStop(target)) items.push({ id: "stop-runs", label: t("actions.stopRuns"), icon: OctagonX, action: { kind: "stop", target }, destructive: true });
   if (live && rights.seat(seat.unit, seat.role)) items.push({ id: "end-seat", label: t("actions.endSeat"), icon: UserMinus, action: { kind: "endSeat", seat }, destructive: true });
   const details = [
     seat.reports_to ? t("reportsTo", { login: seat.reports_to }) : null,
@@ -156,12 +161,14 @@ export function SeatRow({ seat }: { seat: OrgSeat }) {
               {note.days === 0 ? t("endsToday") : t("endsIn", { count: note.days })}
             </Badge>
           ) : null}
+          {stop ? <StopFlag stop={stop} testId="org-seat-stopped" /> : null}
         </div>
         {details.length > 0 ? <p className="text-xs text-pretty text-muted-foreground [overflow-wrap:anywhere]">{details.join(" · ")}</p> : null}
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <LevelLine of={seat} seat={seat} />
           {seat.login ? <RunsLink login={seat.login} /> : null}
         </div>
+        {live ? <SeatClasses seat={seat} /> : null}
       </div>
       <ActionMenu label={t("actions.seatMenu", { who })} items={items} testId="org-seat-menu" />
     </li>

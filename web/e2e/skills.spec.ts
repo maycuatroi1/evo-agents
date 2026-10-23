@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
 
+import { call } from "../src/lib/api/client";
+
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, type HubAdmin, newAccount, registration, uniqueName } from "./support/hub";
 import { apiOf } from "./support/memories";
 import { type Bundle, packSkill, publishSkill, sha256 } from "./support/skills";
+import { toast } from "./support/toast";
 
 test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
@@ -147,4 +150,55 @@ test("the skills pages fit 375 px without sideways scrolling", async ({ page, ad
   // On a phone each version still offers its download.
   await page.goto(`/p/${project}/skills/team-notes`);
   await expect(page.locator("#main").getByTestId("skill-versions").getByTestId("download-v1")).toBeVisible();
+});
+
+test("a hub admin keeps a shared skill for hub admins on its page, members stop seeing it, each change audited", async ({
+  page,
+  signInAs,
+}) => {
+  const name = uniqueName("release-keys");
+  const adminApi = await apiOf(ADMIN_ACCOUNT);
+  await publishSkill(adminApi, await packSkill(name, "Rotate the keys.", "Use when rotating release keys"), name, null);
+  const memberApi = await apiOf(newAccount("member"));
+  const memberReads = async () =>
+    (await memberApi.GET("/v1/skills/global/{name}", { params: { path: { name } } })).response.status;
+  const audited = async () =>
+    (await call(adminApi.GET("/v1/admin/audit", { params: { query: { action: "skill.audience", limit: 100 } } }))).items
+      .filter((row) => row.target.startsWith(`skill:global/${name} `))
+      .map((row) => [row.actor, row.target]);
+  expect(await memberReads()).toBe(200);
+  await signInAs(ADMIN_ACCOUNT);
+
+  await page.goto(`/skills/${name}`);
+  const card = page.locator("#main").getByTestId("skill-audience");
+  const flip = card.getByRole("switch", { name: "Chỉ quản trị viên hub" });
+  await expect(flip).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator("#main").getByTestId("skill-audience-admins")).toHaveCount(0);
+  await flip.click();
+  await expect(toast(page, `${name} giờ chỉ dành cho quản trị viên hub`)).toBeVisible();
+  await expect(flip).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#main").getByTestId("skill-audience-admins")).toHaveText("Chỉ quản trị viên hub");
+  expect(await memberReads()).toBe(404);
+  const names = (await call(memberApi.GET("/v1/skills", { params: { query: { scope: "global" } } }))).map((s) => s.name);
+  expect(names).not.toContain(name);
+
+  // The admin's list tags it.
+  await page.goto("/skills");
+  const row = page
+    .locator("#main")
+    .getByTestId("skills-table")
+    .locator("tr")
+    .filter({ has: page.locator(`[data-skill-name="${name}"]`) });
+  await expect(row.getByTestId("skill-audience-admins")).toBeVisible();
+
+  await page.goto(`/skills/${name}`);
+  await flip.click();
+  await expect(toast(page, `${name} giờ dành cho mọi thành viên đã đăng nhập`)).toBeVisible();
+  await expect(flip).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator("#main").getByTestId("skill-audience-admins")).toHaveCount(0);
+  expect(await memberReads()).toBe(200);
+  expect(await audited()).toEqual([
+    [ADMIN_ACCOUNT.login, `skill:global/${name} audience=admins->everyone`],
+    [ADMIN_ACCOUNT.login, `skill:global/${name} audience=everyone->admins`],
+  ]);
 });

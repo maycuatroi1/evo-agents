@@ -1,9 +1,8 @@
 """The hub's tables as SQLAlchemy Core metadata, which queries are written on and Alembic autogenerates the next
-migration from (``migrations/env.py``); the modules ``tables_<area>`` imported below hold them by area, and
-``tables.srs``, ``tables.tasks`` and ``tables.canvas`` are core plugins'. The migrations make the schema and this
-module describes it; ``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server
-defaults, identities, keys and indexes, named as the migrations name them (CHECK constraints and triggers live in the
-migrations only). A table is an attribute of its name."""
+migration from (``migrations/env.py``); modules ``tables_<area>`` hold them by area, and ``tables.srs``, ``.tasks`` and
+``.canvas`` are core plugins'. The migrations make the schema and this module describes it; the test
+``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server defaults, identities,
+keys and indexes as the migrations name them (CHECK constraints and triggers are the migrations' alone)."""
 
 from __future__ import annotations
 
@@ -36,9 +35,11 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 from evo_agents.hub import (
     tables_accounts,
+    tables_attachments,
     tables_browser,
     tables_curator,
     tables_goals,
+    tables_invites,
     tables_kg,
     tables_loop,
     tables_memory_agents,
@@ -292,6 +293,7 @@ skills = Table(
     Column("name", Text, nullable=False),
     Column("created_by", BigInteger, nullable=False),
     _stamp("created_at"),
+    Column("audience", Text, nullable=False, server_default="everyone"),  # or "admins", a global skill only
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="skills_created_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
     PrimaryKeyConstraint("id", name="skills_pkey"),
@@ -402,7 +404,7 @@ Index(
 
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
-workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0106
+workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0119
 
 runs = Table(
     "runs",
@@ -462,8 +464,8 @@ runs = Table(
     _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
     Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     Column("session_per_step", Boolean, nullable=False, server_default=false()),  # a session for each step (0025)
-    Column("browser", Boolean, nullable=False, server_default=false()),  # its agent gets a Chromium of its own (0106)
-    # The browser identities its Chromium opens with, the first one's profile and the others' cookies (0107).
+    Column("browser", Boolean, nullable=False, server_default=false()),  # its agent gets a Chromium of its own (0118)
+    # The browser identities its Chromium opens with, the first one's profile and the others' cookies (0119).
     Column("browser_identities", ARRAY(BigInteger), nullable=False, server_default="{}"),
     # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
     # Claude Code session id, and its worker_id stays NULL.
@@ -569,7 +571,9 @@ decisions = Table(
     _stamp("asked_at"),
     _when("answered_at"),
     _when("delivered_at"),
+    Column("asked_of", BigInteger),  # who answers it, as the run's principal routes it; NULL before 0115: its owner
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
+    ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="decisions_run_id_fkey"),
     PrimaryKeyConstraint("id", name="decisions_pkey"),
@@ -943,6 +947,7 @@ hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_ta
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
+attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
 goals, goal_revisions = tables_goals.goal_tables(metadata)  # the goals of a project (0091)
@@ -957,8 +962,13 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
-org_units, org_seats, autonomy_ceilings = tables_org.org_tables(metadata)  # the org chart (0099)
-browser_identities = tables_browser.browser_tables(metadata)  # the browser identities of projects and members (0105)
+# the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)
+org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops, worker_shares = tables_org.org_tables(
+    metadata, runs, secrets
+)
+credential_shares, credential_share_projects = tables_accounts.share_tables(metadata, credential_leases)  # 0105
+invites = tables_invites.invite_tables(metadata)  # the invite links (0110)
+browser_identities = tables_browser.browser_tables(metadata)  # the browser identities of projects and members (0117)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

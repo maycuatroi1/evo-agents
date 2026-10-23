@@ -598,7 +598,11 @@ async def _send(
     options: Collection[str] = (),
 ) -> None:
     """``git push`` of ``source`` (HEAD, or a commit) to ``branch`` of the remote, never forced; PushDeclined when the
-    remote declined it by a rule of its own, whose reason (``REMOTE_REJECTED``) ends the message."""
+    remote declined it by a rule of its own, whose reason (``REMOTE_REJECTED``) ends the message; PushRefused when a
+    commit it would send holds the value of one of the run's leases (``lease_leaks``, floor S3)."""
+    from evo_agents.worker import lease_leaks
+
+    await lease_leaks.check(cwd, source, remote)
     sent = [f"--push-option={option}" for option in options]
     code, out, err = await git(
         cwd,

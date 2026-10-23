@@ -109,7 +109,7 @@ export function NeighbourTable({
                         </button>
                         <Link
                           href={nodeHref(project, row.node.id)}
-                          className="-my-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          className="relative -my-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors after:absolute after:-inset-2 hover:bg-muted hover:text-foreground md:after:hidden"
                           aria-label={t("open", { name: other })}
                           title={t("open", { name: other })}
                         >

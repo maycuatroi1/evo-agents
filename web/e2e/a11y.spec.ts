@@ -31,6 +31,7 @@ import {
   setupNote,
   signedInPerson,
 } from "./support/chats";
+import { ceilingOver, prefByApi, stopOwnByApi } from "./support/autonomy";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { promotionNight, seedCurator } from "./support/curator";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -72,6 +73,7 @@ import { decidePath, goalsPath, itemPath as loopItemPath, loopPath, seedLoop, se
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
+import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import {
   documentPath,
   editItem,
@@ -855,6 +857,25 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "autonomy settings under a ceiling, with a lowered class and a stop that holds",
+    open: async ({ page, me }) => {
+      await ceilingOver(me.login, "A2");
+      await prefByApi(me, { level: "A4", classes: { K10: "deny" } });
+      await stopOwnByApi(me, { reason: "a check" });
+      await page.goto("/settings/autonomy");
+      await expect(page.locator("#main").getByTestId("autonomy-lowered")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("autonomy-stop")).toBeVisible();
+    },
+  },
+  {
+    name: "autonomy settings on a small screen",
+    open: async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/settings/autonomy");
+      await expect(page.locator("#main").getByTestId("autonomy-classes")).toBeVisible();
+    },
+  },
+  {
     name: "accounts with no account yet",
     open: async ({ page }) => {
       await page.goto("/accounts");
@@ -879,6 +900,47 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/accounts");
       await expect(page.locator("#main").getByTestId("accounts-group-service")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts shared with a member and a unit, a share ending soon, the cost by member, and the share dialog with the terms warning",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      const lan = await otherMember("lan-tran");
+      const unit = await unitByApi("a11y-share");
+      const projects = [me.projects[0]];
+      await shareByApi(me, "claude-sub", { grantee_kind: "user", login: lan.login, projects, budget_usd: 40, terms_ack: true });
+      await shareByApi(me, "anthropic-key", { grantee_kind: "unit", unit, projects, expires_at: `${dayFromNow(2)}T00:00:00Z` });
+      await page.goto("/accounts");
+      const shares = page.locator("#main").getByTestId("account-shares");
+      await expect(shares.getByTestId("share-row")).toHaveCount(2);
+      await expect(shares.getByTestId("share-ends-soon")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("accounts-cost-empty")).toBeVisible();
+      await expectNoSeriousViolations(page, "accounts with their shares");
+      await shares.getByTestId("share-open").click();
+      const dialog = page.getByTestId("share-dialog");
+      await dialog.getByTestId("share-secret").selectOption("claude-sub");
+      await expect(dialog.getByTestId("share-terms-text")).toBeVisible();
+      await dialog.getByTestId("share-kind").selectOption("unit");
+      await expect(dialog.getByTestId("share-save")).toBeDisabled();
+      await dialog.getByTestId("share-terms-ack").check();
+      await dialog.getByTestId("share-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("share-unit-error")).toBeVisible();
+    },
+  },
+  {
+    name: "worker detail with its Sharing card: a unit, a high doctor finding and the switch locked",
+    open: async ({ page, me }) => {
+      const live = await liveWorker(me, me.projects[0], uniqueName("studio"));
+      const unit = await unitByApi("a11y-worker");
+      await doctorReport(live, CLEAN_REPORT);
+      await narrowByApi(me, live, unit);
+      await doctorReport(live, HIGH_REPORT);
+      await page.goto(`/workers/${live.worker.id}`);
+      const card = page.locator("#main").getByTestId("worker-sharing");
+      await expect(card.getByTestId("worker-doctor-high")).toBeVisible();
+      await expect(card.getByTestId("worker-shared-locked")).toBeVisible();
+      await expect(card.locator(`[data-unit="${unit}"]`)).toBeVisible();
     },
   },
   {
@@ -2066,6 +2128,24 @@ const PAGES: Entry[] = [
       await expect(page.frameLocator('[data-testid="plugin-frame"]').locator("#runs")).toHaveText(/^allowed/);
     },
   },
+  {
+    name: "invite page as the login it is for, then accepted with its Get started list",
+    open: async ({ page, me, hidden }) => {
+      const created = await new HubAdmin().invite({
+        kind: "join",
+        project: hidden,
+        role: "writer",
+        max_level: "internal",
+        for_login: me.login,
+        days: 7,
+      });
+      await page.goto(`/invite/${created.token}`);
+      await expect(page.getByTestId("invite-summary")).toHaveAttribute("data-state", "for-viewer");
+      await expectNoSeriousViolations(page, "invite page for its login");
+      await page.getByTestId("invite-accept").click();
+      await expect(page.getByTestId("invite-get-started")).toBeVisible();
+    },
+  },
 ];
 
 /**
@@ -2078,6 +2158,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void>; slow?: s
     name: "org chart as a hub admin, with Unplaced and the add-seat form with errors",
     slow: "two axe passes over /org, whose Unplaced lists every member the suite made so far",
     open: async (page) => {
+      test.setTimeout(60_000); // two axe passes, which went past 30 s on a loaded machine
       const slug = await unitByApi("a11y-org");
       await page.goto("/org");
       await expect(page.locator("#main").getByTestId("org-unplaced")).toBeVisible();
@@ -2230,6 +2311,27 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void>; slow?: s
       await expect(page.getByTestId("plugin-upgrade-dialog")).toBeVisible();
     },
   },
+  {
+    name: "admin invite links with a link of each kind, the new-link form, then the link made",
+    open: async (page) => {
+      const hub = new HubAdmin();
+      const project = uniqueName("a11y-invites");
+      await hub.registerProject(project);
+      await hub.invite({ kind: "join", project, role: "reader", max_level: "public", for_login: newAccount("a11y-invitee").login, days: 7 });
+      await hub.invite({ kind: "register", days: 1 });
+      await page.goto("/admin/invites");
+      await expect(page.locator("#main").getByTestId("invites-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "admin invite links");
+      await page.getByTestId("invite-open").click();
+      const dialog = page.getByTestId("invite-dialog");
+      await dialog.getByTestId("invite-kind-join").click();
+      await expect(dialog.getByTestId("invite-project")).toBeVisible();
+      await expectNoSeriousViolations(page, "new invite link form");
+      await dialog.getByTestId("invite-kind-register").click();
+      await dialog.getByTestId("invite-create").click();
+      await expect(dialog.getByTestId("invite-created")).toBeVisible();
+    },
+  },
 ];
 
 for (const scheme of ["light", "dark"] as const) {
@@ -2244,6 +2346,26 @@ for (const scheme of ["light", "dark"] as const) {
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
         await expectNoSeriousViolations(page, `/login (${scheme})`);
+      });
+
+      for (const path of ["/", "/about"]) {
+        test(`product page at ${path} has no serious axe violation (${scheme})`, async ({ page }) => {
+          await page.goto(path);
+          await expect(page.getByTestId("product-page")).toBeVisible();
+          await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
+          await expectNoSeriousViolations(page, `product page at ${path} (${scheme})`);
+        });
+      }
+
+      test(`invite page of a visitor has no serious axe violation (${scheme})`, async ({ page, admin }) => {
+        test.skip(isDeployed, "makes an invite link on the local stack");
+        const project = uniqueName("a11y-invite");
+        await admin.registerProject(project);
+        const created = await admin.invite({ kind: "join", project, role: "writer", max_level: "internal", days: 7 });
+        await page.goto(`/invite/${created.token}`);
+        await expect(page.getByTestId("invite-sign-in")).toBeVisible();
+        await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
+        await expectNoSeriousViolations(page, `invite page signed out (${scheme})`);
       });
     });
 

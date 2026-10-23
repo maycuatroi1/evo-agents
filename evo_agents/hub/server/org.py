@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import org
-from evo_agents.hub.server import org_expiry, org_writes, overview
+from evo_agents.hub.server import org_expiry, org_writes, overview, route_autonomy
 from evo_agents.hub.server.credentials import revoker
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.org_models import (
@@ -46,7 +46,9 @@ WRITE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 UnitSlug = Annotated[str, Path(pattern=org.SLUG_PATTERN)]
 SeatId = Annotated[int, Path(ge=1, le=MAX_SEAT_ID)]
 
-router = APIRouter(prefix="/v1/org", tags=["org"], responses={401: {"model": ErrorBody}})
+router = APIRouter(
+    prefix="/v1/org", tags=["org"], dependencies=[route_autonomy.K12], responses={401: {"model": ErrorBody}}
+)
 
 
 def actor(user: Principal) -> org.Actor:
