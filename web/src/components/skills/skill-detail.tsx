@@ -27,7 +27,8 @@ import {
   skillQuery,
   type SkillVersion,
 } from "./queries";
-import { ByteSize, HashText, ScopeBadge, SourceLink } from "./skill-bits";
+import { SkillAudienceCard } from "./skill-audience";
+import { AudienceBadge, ByteSize, HashText, ScopeBadge, SourceLink } from "./skill-bits";
 import type { RepoOrigin } from "./source";
 
 const NARROW_HIDDEN = {
@@ -75,6 +76,7 @@ function Detail({ place, skill }: { place: SkillPlace; skill: SkillHistory }) {
         tags={
           <>
             <ScopeBadge project={skill.project} />
+            <AudienceBadge audience={skill.audience} />
             {latest ? <Identifier value={`v${latest.version}`} testId="skill-version" /> : null}
           </>
         }
@@ -89,6 +91,7 @@ function Detail({ place, skill }: { place: SkillPlace; skill: SkillHistory }) {
       ) : (
         <p className="text-sm text-muted-foreground">{t("detail.noVersions")}</p>
       )}
+      <SkillAudienceCard skill={skill} />
     </>
   );
 }

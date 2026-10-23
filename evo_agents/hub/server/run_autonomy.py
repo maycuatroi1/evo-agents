@@ -240,7 +240,7 @@ async def recheck(
     """The autonomy of run ``run_id`` at a gate: the stricter of its snapshot and the value now, on ``repo`` when the
     gate acts on one (the run's repos without it), under the credential shares it is leased under and those
     ``lending`` (source 6), written back when stricter than the snapshot. None for a run without a snapshot (a local
-    run, one queued before schema 0111): the gate acts as before."""
+    run, one queued before schema 0113): the gate acts as before."""
     from evo_agents.hub.server.org_store import user_by_login
 
     r = tables.runs

@@ -89,7 +89,7 @@ higher one only the runs queued after it.
 Source 6 joins at the lease: a run is queued before it holds any lease, so its snapshot starts without the share, and
 the lease that lends a shared credential rechecks the run with that share's level, which only ever lowers it. Every
 lease records the run's principal (`credential_leases.principal_id`), the dispatcher for a run queued before schema
-0111, and a credential share is matched against that principal.
+0113, and a credential share is matched against that principal.
 
 A worker claims a run only when its name is among the snapshot's workers and the host or an environment it takes is
 among its environments; a restricted run goes only to a daemon that reports the feature `autonomy`, on claude-code.
@@ -115,7 +115,7 @@ A git secret withheld leaves its repo on GitHub to the App, and any other repo m
 GitHub whose ruleset cannot keep the App off its default branch gets a token that reads only, with the reason in the
 audit row: the hub cannot give a token that writes to a run branch alone there. A lease that withheld anything writes
 `autonomy.refused` naming the class, the mode, the source and what it kept back. `hub secret set --environment test`
-labels an env secret (schema 0112 adds `secrets.environment`).
+labels an env secret (schema 0114 adds `secrets.environment`).
 
 **K5 at the merge** (`evo_agents/hub/server/autonomy_gates.py`): the GitLab merge queue (`merge_gate.ready`) and the
 Curator's tier merge (`changes`). **K6 at the deploy and the release**: the PROD deploy of the policy (`post_merge`) and
@@ -232,11 +232,11 @@ ceiling.
 ## Routes and schema
 
 `GET /v1/autonomy?login=&project=&agent=&repo=` answers the effective autonomy, `PUT /v1/autonomy/prefs` writes the
-caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0110 adds the
+caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0112 adds the
 table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
-`workers` of `autonomy_ceilings`. Schema 0111 adds `principal_id` and `autonomy` to `runs`. Schema 0112 adds
-`secrets.environment`, the decision category `autonomy` and the notice kind `autonomy`. Schema 0113 adds the decision
-categories `merge`, `credential` and `access`, and `decisions.asked_of`. Schema 0114 adds `autonomy_stops`, every stop
+`workers` of `autonomy_ceilings`. Schema 0113 adds `principal_id` and `autonomy` to `runs`. Schema 0114 adds
+`secrets.environment`, the decision category `autonomy` and the notice kind `autonomy`. Schema 0115 adds the decision
+categories `merge`, `credential` and `access`, and `decisions.asked_of`. Schema 0116 adds `autonomy_stops`, every stop
 with who lifted it and when, never deleted. `POST /v1/autonomy/stops` and `POST /v1/autonomy/stops/lift` stop and
 lift, and `GET /v1/autonomy/stops/preview` answers what a stop would cancel, writing nothing.
 

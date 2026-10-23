@@ -207,7 +207,7 @@ export function FoldedContext({ text, screen = false }: { text: string; screen?:
         ref={box}
         role="group"
         aria-label={t("context")}
-        className={cn("w-full", screen ? "text-[15px] leading-[22px]" : "text-[13px] leading-relaxed", !open && "line-clamp-4")}
+        className={cn("w-full max-w-prose", screen ? "text-[15px] leading-[22px]" : "text-[13px] leading-relaxed", !open && "line-clamp-4")}
         onFocus={() => {
           if (!open && overflows) setOpen(true);
         }}

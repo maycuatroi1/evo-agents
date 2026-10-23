@@ -1,7 +1,8 @@
-"""``evo-agents hub skills publish|list|sync``: the client commands over ``evo_agents.hub.skill_sync``.
+"""``evo-agents hub skills publish|list|sync|audience``: the client commands over ``evo_agents.hub.skill_sync``.
 
 ``publish`` prints the version it created, or that the hub had this bundle as the latest version already. ``list``
-prints the skills one sees with their latest version. ``sync`` prints what it did per skills directory, ``--check``
+prints the skills one sees with their latest version and audience. ``audience`` makes a global skill everyone's or hub
+admins' alone, and prints whether that changed it. ``sync`` prints what it did per skills directory, ``--check``
 what it would do without writing anything; ``--quiet`` prints only errors on stderr and, with ``--check``, the number
 of differences. ``--json`` prints the whole answer or report. Exit status 1 when something failed, 0 otherwise,
 differences found by ``--check`` included.
@@ -14,6 +15,7 @@ import sys
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.skill_sync import (
+    AUDIENCES,
     CURRENT,
     DONE,
     RUNTIMES,
@@ -23,6 +25,7 @@ from evo_agents.hub.skill_sync import (
     parse_runtimes,
     parse_scope,
     publish,
+    set_audience,
     sync,
 )
 
@@ -47,6 +50,7 @@ SKILL_KEYS = (
     "source_commit",
     "published_by",
     "published_at",
+    "audience",
 )
 
 
@@ -64,7 +68,7 @@ def _where(skill: dict) -> str:
 def cmd_skills_publish(args) -> int:
     _, project = parse_scope(args.scope)
     hub, _ = _signed_in()
-    published = publish(hub, args.dir, project, args.source_repo, args.source_commit)
+    published = publish(hub, args.dir, project, args.source_repo, args.source_commit, args.audience)
     if args.json:
         _print_json(published)
         return 0
@@ -74,6 +78,23 @@ def cmd_skills_publish(args) -> int:
         print(f"Published {what} version {latest['version']} ({_size(latest['size'])}, sha256 {latest['sha256']}).")
     else:
         print(f"The hub holds this bundle as {what} version {latest['version']} already; nothing changed.")
+    if project is None and published.get("audience") == "admins":
+        print("Hub admins alone see it: `evo-agents hub skills audience NAME everyone` opens it to every member.")
+    return 0
+
+
+@_client_command
+def cmd_skills_audience(args) -> int:
+    hub, _ = _signed_in()
+    changed = set_audience(hub, args.name, args.audience)
+    if args.json:
+        _print_json(changed)
+        return 0
+    who = "every signed-in member" if changed["audience"] == "everyone" else "hub admins alone"
+    if changed["changed"]:
+        print(f"Global skill {changed['name']} is for {who} now.")
+    else:
+        print(f"Global skill {changed['name']} is for {who} already; nothing changed.")
     return 0
 
 
@@ -98,10 +119,11 @@ def cmd_skills_list(args) -> int:
             _when(s["published_at"]),
             s["published_by"],
             f"{s['source_repo']}@{s['source_commit'][:12]}" if s.get("source_repo") else "-",
+            s.get("audience", "everyone"),
         )
         for s in found
     ]
-    _table(("PROJECT", "NAME", "VERSION", "SHA256", "SIZE", "PUBLISHED (UTC)", "BY", "SOURCE"), rows)
+    _table(("PROJECT", "NAME", "VERSION", "SHA256", "SIZE", "PUBLISHED (UTC)", "BY", "SOURCE", "AUDIENCE"), rows)
     return 0
 
 
@@ -160,7 +182,9 @@ def cmd_skills_sync(args) -> int:
 
 
 def register_skills(hsub) -> None:
-    skills = hsub.add_parser("skills", help="skills on the hub: publish a directory, list them, sync every runtime")
+    skills = hsub.add_parser(
+        "skills", help="skills on the hub: publish a directory, list them, sync every runtime, set who reads one"
+    )
     ssub = skills.add_subparsers(dest="skills_command", required=True)
 
     publish_parser = ssub.add_parser(
@@ -174,10 +198,16 @@ def register_skills(hsub) -> None:
     )
     publish_parser.add_argument("--source-repo", help="the repo the directory comes from, such as agent-skills")
     publish_parser.add_argument("--source-commit", help="the commit of --source-repo it was published from")
+    publish_parser.add_argument(
+        "--audience",
+        choices=AUDIENCES,
+        help="who reads a global skill: everyone signed in, or hub admins alone; default: everyone for a new skill, "
+        "unchanged for one that exists",
+    )
     json_option(
         publish_parser,
         returns_object(
-            "scope", "project", "name", "created", "latest", "bundle", schema="Published", added=("bundle",)
+            "scope", "project", "name", "created", "latest", "audience", "bundle", schema="Published", added=("bundle",)
         ),
     )
     publish_parser.set_defaults(func=cmd_skills_publish)
@@ -186,6 +216,15 @@ def register_skills(hsub) -> None:
     listed.add_argument("--scope", help="global, project (every project you see) or project:NAME; default: all")
     json_option(listed, returns_array(*SKILL_KEYS, schema="Skill"))
     listed.set_defaults(func=cmd_skills_list)
+
+    audience = ssub.add_parser(
+        "audience",
+        help="make a global skill everyone's or hub admins' alone (a hub admin only); one audit row a change",
+    )
+    audience.add_argument("name", metavar="NAME", help="the global skill")
+    audience.add_argument("audience", choices=AUDIENCES, help="everyone signed in, or hub admins alone")
+    json_option(audience, returns_object("name", "audience", "changed", schema="SkillAudience"))
+    audience.set_defaults(func=cmd_skills_audience)
 
     synced = ssub.add_parser(
         "sync",

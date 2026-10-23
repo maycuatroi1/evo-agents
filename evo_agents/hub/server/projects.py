@@ -3,12 +3,14 @@
 PUT /v1/projects/{project} takes what ``evo-agents hub project register`` read in a harness: the ladder (levels and
 locations) and the sinks of its knowledge.yaml, the default label of its memories and plans (the harness
 source's), its repos, and where the harness and the repos sit relative to a workspace. Registering a new project
-needs a hub admin; registering it again, to bring the hub up to date with its harness, needs a hub admin or the
-admin role on the project. The same body twice changes nothing and writes no audit row. A change replaces the sinks
-and repos in the same transaction and adds one audit row naming the project, never what it holds; a change that
-drops a level some grant reaches is refused until the grant is changed. A new project gets its default agent profile
-(``profile_store.ensure_default``), whose handle is the project's name; a name that is the handle of another project's
-agent is refused (409), since @<name> would name both.
+needs a hub admin, or a member holding an unused right to register one, which an accepted invite link gives
+(``evo_agents.hub.server.invites``): in the same transaction the project is created, the member gets the admin role at
+its highest level, and the right is marked used. Registering it again, to bring the hub up to date with its harness,
+needs a hub admin or the admin role on the project. The same body twice changes nothing and writes no audit row. A
+change replaces the sinks and repos in the same transaction and adds one audit row naming the project, never what it
+holds; a change that drops a level some grant reaches is refused until the grant is changed. A new project gets its
+default agent profile (``profile_store.ensure_default``), whose handle is the project's name; a name that is the
+handle of another project's agent is refused (409), since @<name> would name both.
 
 GET /v1/projects lists the projects the caller holds a grant on, all of them for a hub admin, with the caller's
 role and max level; GET /v1/projects/{project} is one of them. A project that is not registered and one the caller
@@ -39,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.harness import load_schema
 from evo_agents.hub import tables
 from evo_agents.hub.access import HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, invites
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Page, Paging
@@ -450,6 +452,26 @@ def _locked(name: str):
     return select(projects.c.id).where(projects.c.name == name).with_for_update()
 
 
+async def _create(conn: AsyncConnection, user: Principal, project: str, fields: dict, top: str) -> int | None:
+    """Insert the new project ``project`` as a hub admin, or as a member spending a right to register one, who becomes
+    its admin at level ``top``; None when another request registered it a moment ago, and the right stays unused."""
+    right = None if user.admin else await invites.register_right(conn, user)
+    if not user.admin and right is None:
+        raise HTTPException(403, _refusal(project))
+    await _refuse_agent_handle(conn, project)
+    projects = tables.projects
+    inserted = await conn.execute(
+        pg_insert(projects)
+        .values(name=project, created_by=user.user_id, **fields)
+        .on_conflict_do_nothing(index_elements=[projects.c.name])
+        .returning(projects.c.id)
+    )
+    project_id = inserted.scalar()
+    if project_id is not None and right is not None:
+        await invites.spend_register_right(conn, right, user, project_id, top)
+    return project_id
+
+
 @router.put("/{project}", response_model=Registered, responses=REFUSALS)
 async def register(request: Request, body: Registration, project: ProjectName, user: CurrentUser) -> Registered:
     """Register ``project`` from its harness, or bring the hub's copy up to date with it."""
@@ -469,16 +491,7 @@ async def register(request: Request, body: Registration, project: ProjectName, u
         project_id = (await conn.execute(_locked(project))).scalar()
         created = False
         if project_id is None:
-            if not user.admin:
-                raise HTTPException(403, _refusal(project))
-            await _refuse_agent_handle(conn, project)
-            inserted = await conn.execute(
-                pg_insert(projects)
-                .values(name=project, created_by=user.user_id, **fields)
-                .on_conflict_do_nothing(index_elements=[projects.c.name])
-                .returning(projects.c.id)
-            )
-            project_id = inserted.scalar()
+            project_id = await _create(conn, user, project, fields, desired["levels"][-1])
             created = project_id is not None
             if not created:  # registered by another request a moment ago: this one updates it
                 project_id = (await conn.execute(_locked(project))).scalar_one()

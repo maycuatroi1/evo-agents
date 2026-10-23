@@ -24,7 +24,7 @@ import { GraphCanvas, type LayoutName, LAYOUTS } from "./graph-canvas";
 import { NeighbourTable } from "./neighbour-table";
 
 const SEGMENT =
-  "inline-flex h-8 items-center rounded-sm px-3 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground";
+  "inline-flex h-8 items-center rounded-sm px-3 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground max-md:h-11";
 
 function HopsToggle({ project, id, hops }: { project: string; id: string; hops: Hops }) {
   const t = useTranslations("kg.graph");

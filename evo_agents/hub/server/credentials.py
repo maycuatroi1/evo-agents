@@ -182,7 +182,7 @@ class _Run:
     profile_default: bool = False  # the project's default profile, which the audit leaves unnamed
     credentials: dict | None = None  # its credential axis at that version
     profile_project_id: int | None = None  # the project of the profile: where its accounts are bound
-    principal_id: int | None = None  # who it acts for (runs.principal_id); None for a local run or one before 0111
+    principal_id: int | None = None  # who it acts for (runs.principal_id); None for a local run or one before 0113
 
     @property
     def agent_owned(self) -> bool:

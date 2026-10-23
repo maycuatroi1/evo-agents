@@ -1,7 +1,7 @@
 """The stop of autonomy S4: autonomy_stops.
 
-Revision ID: 0114
-Revises: 0113
+Revision ID: 0116
+Revises: 0115
 Create Date: 2026-10-23
 
 The names below are copies of ``evo_agents.hub.tables_org`` as of this revision, never imports, so a later change to
@@ -18,8 +18,8 @@ Going back drops autonomy_stops; the stops and their history are lost.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0114"
-down_revision = "0113"
+revision = "0116"
+down_revision = "0115"
 branch_labels = None
 depends_on = None
 

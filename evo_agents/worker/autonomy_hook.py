@@ -22,7 +22,7 @@ The floor S2 (``FLOORS`` of ``autonomy_levels``): a command of K9 whose mode let
 a backup made within the last 24 hours (``evo-agents worker backup``, kept in the run's ``backups.jsonl``); otherwise
 the hook refuses it and says to make a backup first. This holds for every principal, A5 included.
 
-A run without a snapshot (a local run, one queued before schema 0111) gets no hook of autonomy. The hook is a second
+A run without a snapshot (a local run, one queued before schema 0113) gets no hook of autonomy. The hook is a second
 layer, never the boundary: a command written to a script first, piped through base64, or run in a subshell the
 classifier does not read gets past it (``command_classes``). What the hub leases the run, and its gates on merges,
 deploys and releases, are the boundary.

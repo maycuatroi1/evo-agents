@@ -39,7 +39,7 @@ from urllib.parse import urlsplit
 
 SECRET_KINDS = ("env", "git", "forge")  # a variable of the agent's environment, what git asks for, or the hub's own
 LEASED_KINDS = ("env", "git")  # the kinds a run is leased; a forge secret never leaves the hub (FORGE_KIND)
-# The environment an env secret is labelled for (secrets.environment, schema 0112): a run whose K7 is
+# The environment an env secret is labelled for (secrets.environment, schema 0114): a run whose K7 is
 # auto:test_secrets is leased those labelled test (evo_agents.hub.server.lease_autonomy)
 TEST_ENVIRONMENT = "test"
 SECRET_ENVIRONMENTS = (TEST_ENVIRONMENT,)

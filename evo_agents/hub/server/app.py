@@ -42,7 +42,7 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import GraphCache, Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, user_emails, web_auth
+from evo_agents.hub.server import admin, auth, blobs, errors, health, invites, projects, tokens, user_emails, web_auth
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
@@ -207,6 +207,8 @@ def create_app(config: HubConfig) -> FastAPI:
         tokens.router,
         user_emails.router,
         admin.router,
+        invites.router,  # /v1/admin/invites
+        invites.accept_router,  # POST /v1/invites/accept
         projects.router,
         blobs.router,
         restore_routes,  # POST /v1/memories/{id}/restore

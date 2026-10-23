@@ -76,7 +76,7 @@ def _refs(work, **more) -> dict:
 
 def _decisions():
     """The open decisions of runs, each with the person it is asked of (``asked``: decisions.asked_of, or its run's
-    owner for one asked before schema 0113)."""
+    owner for one asked before schema 0115)."""
     d, r = tables.decisions, tables.runs
     asked = func.coalesce(d.c.asked_of, r.c.dispatched_by).label("asked")
     return (

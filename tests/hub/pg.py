@@ -183,9 +183,11 @@ SHARE_TABLES = frozenset({"credential_shares", "credential_share_projects"})
 WORKER_SHARE_TABLES = frozenset({"worker_shares"})
 # migration 0109: the files people attach to messages, and the run inbox rows that carry them
 ATTACHMENT_TABLES = frozenset({"attachments", "run_inbox_attachments"})
-# migration 0110: the revisions of each person's own autonomy preference (plan autonomy-levels)
+# migration 0110: the invite links
+INVITE_TABLES = frozenset({"invites"})
+# migration 0112: the revisions of each person's own autonomy preference (plan autonomy-levels)
 AUTONOMY_LEVEL_TABLES = frozenset({"autonomy_prefs"})
-# migration 0114: the stops of autonomy S4 (plan autonomy-levels)
+# migration 0116: the stops of autonomy S4 (plan autonomy-levels)
 AUTONOMY_STOP_TABLES = frozenset({"autonomy_stops"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

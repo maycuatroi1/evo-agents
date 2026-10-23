@@ -100,7 +100,7 @@ CANDIDATES = {
             "worker": "laptop",
             "fit": False,
             "rank": None,
-            "reasons": ["is offline", "has no checkout of evo-lms"],
+            "reasons": ["is offline", "has no checkout of fabrikam-lms"],
             "is_run_worker": False,
             "online": False,
             "free_slots": 0,
@@ -123,23 +123,23 @@ CANDIDATES = {
         },
         {
             "profile_id": 9,
-            "handle": "evo-lms",
-            "name": "evo-lms",
+            "handle": "fabrikam-lms",
+            "name": "fabrikam-lms",
             "is_default": True,
             "fit": True,
             "rank": 2,
-            "reasons": ["a worker of yours can take it", "the run's error names evo-lms"],
-            "project": "evo-lms",
+            "reasons": ["a worker of yours can take it", "the run's error names fabrikam-lms"],
+            "project": "fabrikam-lms",
         },
     ],
     "accounts": [{"name": "claude-main", "state": "ready", "workers": ["any"], "used_by_run": True}],
     "other_projects": [
         {
-            "project": "evo-lms",
+            "project": "fabrikam-lms",
             "role": "writer",
-            "named": "evo-lms",
+            "named": "fabrikam-lms",
             "fit": True,
-            "reasons": ["the owner is a writer of project evo-lms"],
+            "reasons": ["the owner is a writer of project fabrikam-lms"],
         }
     ],
     "cause_inferred": False,
@@ -164,11 +164,11 @@ def test_candidates_prints_the_workers_agents_and_accounts_with_why(monkeypatch,
     result = ok(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo"))
     assert hub.calls == [("GET", "/v1/projects/demo/runs/161/rerun-candidates")]
     assert "Run #161 (step) failed, cause missing_tool: who can run it again" in result.out
-    assert "studio  #1   claude-code" in result.out and "is offline; has no checkout of evo-lms" in result.out
+    assert "studio  #1   claude-code" in result.out and "is offline; has no checkout of fabrikam-lms" in result.out
     squeezed = " ".join(result.out.split())
     assert "@demo #1" in squeezed and "claude-main ready any" in squeezed
-    assert "@evo-lms (evo-lms) #2" in squeezed and "Other projects the error names" in squeezed
-    assert "evo-lms writer evo-lms" in squeezed
+    assert "@fabrikam-lms (fabrikam-lms) #2" in squeezed and "Other projects the error names" in squeezed
+    assert "fabrikam-lms writer fabrikam-lms" in squeezed
     assert (
         as_json(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo", "--json"))
         == CANDIDATES

@@ -38,6 +38,7 @@ from evo_agents.hub import (
     tables_attachments,
     tables_curator,
     tables_goals,
+    tables_invites,
     tables_kg,
     tables_loop,
     tables_memory_agents,
@@ -291,6 +292,7 @@ skills = Table(
     Column("name", Text, nullable=False),
     Column("created_by", BigInteger, nullable=False),
     _stamp("created_at"),
+    Column("audience", Text, nullable=False, server_default="everyone"),  # or "admins", a global skill only
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="skills_created_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
     PrimaryKeyConstraint("id", name="skills_pkey"),
@@ -565,7 +567,7 @@ decisions = Table(
     _stamp("asked_at"),
     _when("answered_at"),
     _when("delivered_at"),
-    Column("asked_of", BigInteger),  # who answers it, as the run's principal routes it; NULL before 0113: its owner
+    Column("asked_of", BigInteger),  # who answers it, as the run's principal routes it; NULL before 0115: its owner
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
@@ -956,11 +958,12 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
-# the org chart (0099), shared workers (0107), autonomy levels (0110 to 0112) and their stops (0114)
+# the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)
 org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops, worker_shares = tables_org.org_tables(
     metadata, runs, secrets
 )
 credential_shares, credential_share_projects = tables_accounts.share_tables(metadata, credential_leases)  # 0105
+invites = tables_invites.invite_tables(metadata)  # the invite links (0110)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

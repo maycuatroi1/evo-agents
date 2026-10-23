@@ -1,7 +1,7 @@
 """The categories of a decision for each class of action that takes ask, and the person a decision is asked of.
 
-Revision ID: 0113
-Revises: 0112
+Revision ID: 0115
+Revises: 0114
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.runs`` as of this revision, never imports, so a later change to them
@@ -14,18 +14,18 @@ the person the decision goes to: the person an intern reports to for a run whose
 for a run the hub made on its own, the principal for any other; NULL for a decision asked before, which its run's
 owner answers as before.
 
-Going back deletes the decisions of the three categories, puts the check of 0112 back and drops the column.
+Going back deletes the decisions of the three categories, puts the check of 0114 back and drops the column.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0113"
-down_revision = "0112"
+revision = "0115"
+down_revision = "0114"
 branch_labels = None
 depends_on = None
 
-CATEGORIES_0112 = (  # decisions_category_check as 0112 set it
+CATEGORIES_0114 = (  # decisions_category_check as 0114 set it
     "deploy",
     "delete_data",
     "live_migration",
@@ -40,7 +40,7 @@ CATEGORIES_0112 = (  # decisions_category_check as 0112 set it
     "autonomy",
 )
 NEW = ("merge", "credential", "access")  # evo_agents.hub.autonomy_card.CLASS_CATEGORIES of K5, K8 and K12
-CATEGORIES = (*CATEGORIES_0112, *NEW)  # evo_agents.hub.runs.SHOWN_DECISION_CATEGORIES
+CATEGORIES = (*CATEGORIES_0114, *NEW)  # evo_agents.hub.runs.SHOWN_DECISION_CATEGORIES
 
 col = sa.column
 
@@ -61,4 +61,4 @@ def downgrade() -> None:
     op.execute(decisions.delete().where(decisions.c.category.in_(NEW)))
     op.drop_constraint("decisions_asked_of_fkey", "decisions", type_="foreignkey")
     op.drop_column("decisions", "asked_of")
-    _check(CATEGORIES_0112)
+    _check(CATEGORIES_0114)

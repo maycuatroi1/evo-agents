@@ -416,6 +416,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invites
+         * @description Every invite link, newest first, with its status; never a token.
+         */
+        get: operations["list_invites_v1_admin_invites_get"];
+        put?: never;
+        /**
+         * Create
+         * @description Make a one-time invite link; the answer holds its token, which the hub shows this once.
+         */
+        post: operations["create_v1_admin_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/invites/{invite_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description Revoke an open link, or the unused right an accepted register link gave.
+         */
+        post: operations["revoke_v1_admin_invites__invite_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description What an invite link gives, for its page: public, the token being the credential; never the login it is bound
+         *     to, and its project and role only to someone it is for.
+         */
+        post: operations["preview_v1_invites_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept
+         * @description Accept an invite link: a join link gives its grant, a register link the right to register one project.
+         */
+        post: operations["accept_v1_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -836,8 +921,8 @@ export interface paths {
         };
         /**
          * List Skills
-         * @description The skills the caller sees, each with its latest version: the global ones and those of every project the
-         *     caller has a grant on.
+         * @description The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and
+         *     those of every project the caller has a grant on.
          */
         get: operations["list_skills_v1_skills_get"];
         put?: never;
@@ -922,6 +1007,27 @@ export interface paths {
          * @description A new version of a skill of a project from a bundle the project committed.
          */
         post: operations["publish_project_v1_skills_projects__project___name__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/global/{name}/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Audience
+         * @description Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one
+         *     audit row; the audience it has already changes nothing.
+         */
+        put: operations["set_audience_v1_skills_global__name__audience_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9212,6 +9318,15 @@ export interface components {
             /** Sha256 */
             sha256: string;
         };
+        /** AudienceChange */
+        AudienceChange: {
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+        };
         /** AudienceIn */
         AudienceIn: {
             /**
@@ -12826,7 +12941,7 @@ export interface components {
             owner: string;
             /**
              * Asked Of
-             * @description the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0113
+             * @description the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0115
              */
             asked_of: string;
             /** Answer Option */
@@ -14662,6 +14777,239 @@ export interface components {
              * @description the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves
              */
             attachments?: components["schemas"]["Attachment"][];
+        };
+        /** InviteAccept */
+        InviteAccept: {
+            /**
+             * Token
+             * @description the token of the link, evn_...
+             */
+            token: string;
+        };
+        /** InviteCreated */
+        InviteCreated: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
+            /**
+             * Token
+             * @description evn_...: shown this once, the hub keeps only its SHA-256
+             */
+            token: string;
+            /**
+             * Url
+             * @description the link to hand out, EVO_HUB_PUBLIC_URL + /invite/ + token; null without one
+             */
+            url: string | null;
+        };
+        /** InvitePreview */
+        InvitePreview: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Invited By
+             * @description the hub admin who made the link
+             */
+            invited_by: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Bound
+             * @description whether one GitHub login alone may accept the link; which one is never shown
+             */
+            bound: boolean;
+            /**
+             * Viewer
+             * @description the login signed in on the web that asks; null for a visitor
+             */
+            viewer: string | null;
+            /**
+             * For Viewer
+             * @description whether the viewer may accept the link: signed in, and it unbound or theirs
+             */
+            for_viewer: boolean;
+            /**
+             * Accepted By Viewer
+             * @description whether the viewer accepted the link
+             */
+            accepted_by_viewer: boolean;
+            /**
+             * Project
+             * @description join: the project; register: the project its right registered, once used. Null unless the link is open and for the viewer (unbound, anyone), or the viewer accepted it
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives, shown as the project is
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches, shown as the project is
+             */
+            max_level: string | null;
+        };
+        /** InviteRequest */
+        InviteRequest: {
+            /**
+             * Kind
+             * @description join: a grant on an existing project; register: the right to register one new project
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on
+             */
+            project?: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role?: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level of the project's ladder it reaches
+             */
+            max_level?: string | null;
+            /**
+             * For Login
+             * @description the one GitHub login that may accept the link; anyone signed in if left out
+             */
+            for_login?: string | null;
+            /**
+             * Days
+             * @description how long the link stays open
+             * @default 7
+             */
+            days: number;
+        };
+        /** InviteRow */
+        InviteRow: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
         };
         /** Job */
         Job: {
@@ -19915,6 +20263,11 @@ export interface components {
              * @description hex, abbreviated or whole
              */
             source_commit?: string | null;
+            /**
+             * Audience
+             * @description a global skill's audience: default everyone for a new skill, unchanged for one that exists
+             */
+            audience?: ("everyone" | "admins") | null;
         };
         /** Published */
         Published: {
@@ -19933,6 +20286,12 @@ export interface components {
              */
             created: boolean;
             latest: components["schemas"]["Version"];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** Queued */
         Queued: {
@@ -23946,6 +24305,28 @@ export interface components {
              * Format: date-time
              */
             published_at: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+        };
+        /** SkillAudience */
+        SkillAudience: {
+            /** Name */
+            name: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+            /**
+             * Changed
+             * @description false when the skill had this audience already
+             */
+            changed: boolean;
         };
         /** SkillCount */
         SkillCount: {
@@ -24025,6 +24406,12 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** SkillStat */
         SkillStat: {
@@ -28315,7 +28702,10 @@ export interface operations {
     };
     web_login_v1_auth_web_login_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the page of the hub to come back to, a relative path; any other is ignored */
+                next?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28328,6 +28718,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
             /** @description web sign-in is not configured */
             503: {
@@ -29195,6 +29594,316 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_invites_v1_admin_invites_get: {
+        parameters: {
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_v1_admin_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_v1_admin_invites__invite_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_v1_invites_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_v1_invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the link was accepted, revoked or has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -31167,6 +31876,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_audience_v1_skills_global__name__audience_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudienceChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillAudience"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

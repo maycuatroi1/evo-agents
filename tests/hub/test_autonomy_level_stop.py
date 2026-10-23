@@ -67,10 +67,10 @@ def project_id(db) -> int:
     return sql(db, select(p.c.id).where(p.c.name == PROJECT))[0][0]
 
 
-def test_autonomy_level_stop_migration_0109_adds_autonomy_stops_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0113", down=True)
+def test_autonomy_level_stop_migration_0116_adds_autonomy_stops_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0115", down=True)
     assert not columns(hub_db, "autonomy_stops")
-    move_to(hub_db, "0114")
+    move_to(hub_db, "0116")
     assert {"scope", "user_id", "unit_id", "reason", "stopped_by", "lifted_at"} <= columns(hub_db, "autonomy_stops")
 
 
