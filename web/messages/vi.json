@@ -4047,11 +4047,22 @@
         "parkedLong": "Tạm gác",
         "reviewLong": "Chờ duyệt"
       },
+      "curatorBuild": {
+        "title": "Chạy Builder của Curator ngay?",
+        "body": "Hub xếp Builder của <plan>{id}</plan> ngay lập tức, chạy song song với các run khác của ca đêm thay vì đợi chúng xong.",
+        "rules": "Đây vẫn là Builder của ca đêm: chạy trên worker đang trực, dưới tên chủ ca đêm, trên nhánh riêng của plan, với runtime và trần chi phí của charter.",
+        "confirm": "Chạy Builder ngay",
+        "pending": "Đang xếp hàng…",
+        "cancel": "Huỷ",
+        "conflict": "Hub không xếp Builder.",
+        "forbidden": "Cần quyền writer để chạy plan của dự án này.",
+        "notFound": "Plan này không phải plan của Curator, hoặc bạn không đọc được nó.",
+        "hubSays": "Hub báo: {message}"
+      },
       "lock": {
         "loading": "Đang kiểm tra các run của plan…",
         "planRun": "Plan run #{id} đang ở trạng thái {state}.",
         "stepRun": "Run #{id} của bước {step} đang ở trạng thái {state}; plan run phải chờ run này kết thúc.",
-        "curator": "Plan của Curator: ca đêm tự chạy plan này, vào bất kỳ giờ nào.",
         "noPending": "Không còn bước nào đang chờ làm."
       },
       "model": {

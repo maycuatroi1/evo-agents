@@ -168,9 +168,9 @@ A charter makes one schedule of kind `night_shift` (`schedules`, schema 0012). E
   still holds writer on the project, and the worker on duty is live and fit for the run;
 - the run it queues is the first of these that has work: the night's review run, while the night has none; the
   night's history run, once the night's review run was queued, while the night has none, an item waits for a facet of
-  the model or a group of facets has no name; the judge run of a change of the Curator that waits for one; the replay
-  run of a change that waits for one, while the night's replay runs cost less than `replay.budget_usd`; the Builder of
-  a change the Curator planned; a plan run of the first plan of `night_plans` that has a ready step and no active run.
+  the model or a group of facets has no name; the judge run of a change of the Curator that waits for one; the Builder
+  of a change the Curator planned; the replay run of a change that waits for one and that the Judge did not fail, while
+  the night's replay runs cost less than `replay.budget_usd`; a plan run of the first plan of `night_plans` that has a ready step and no active run.
 
 The night a moment belongs to is the local date the window last opened on, so the hours after midnight count toward
 the night that began the evening before. Every run the night shift queues is pinned to the worker on duty, headless,
@@ -330,7 +330,11 @@ data, not no friction.
 **The Builder** is a plan run of `curator-<proposal>-<slug>`, a plan the hub made in the same transaction as the
 accepting answer: in the one repo the proposal names, every step pending. Its what, goal, context, verify and
 acceptance stay as the hub made them; a write may change only the progress of its steps. No member dispatches a run of
-it: the night shift alone does, at any hour, not only inside its window. Its agent holds no push credential: the daemon alone pushes, only the branch
+it: the night shift alone does, at any hour, not only inside its window. Run plan on its page (`POST
+/v1/projects/{p}/curator/plans/{plan_id}/build`, a writer of the project) asks for its Builder now: the night shift's
+Builder in every other way, queued beside the night shift's other runs instead of after them, and refused (409 with
+why) while the night shift is paused, past its caps, or the change is not ready; audited as `curator.build_now`. Its
+agent holds no push credential: the daemon alone pushes, only the branch
 `curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request. An
 accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
 the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project

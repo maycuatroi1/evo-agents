@@ -39,12 +39,14 @@ from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture)
     MINE,
+    OTHER,
     app_key,
     env_secret,
     git_secret,
     install,
     leased,
 )
+from tests.hub.test_credentials_api import PLAN as MEMBERS_PLAN
 from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
@@ -321,10 +323,7 @@ def test_curator_plan_no_member_dispatches_it(world):
         ("runs", {"plan_id": PLAN_ID, "steps": [1], "worker_id": worker_id}),
     ):
         refused = world.client.post(f"/v1/projects/{PROJECT}/{route}", json=body, headers=owner)
-        assert (
-            refused.status_code == 409
-            and "the night shift of the project's charter runs it itself, at any hour" in refused.text
-        )
+        assert refused.status_code == 409 and "the night shift runs it itself, at any hour" in refused.text
     assert sql(world.db, select(func.count()).select_from(tables.runs).where(tables.runs.c.plan_id == PLAN_ID)) == [
         (0,)
     ]
@@ -535,6 +534,47 @@ def test_curator_plan_a_builder_queued_at_night_outlives_the_window(world):
     assert fire(world.client, DAY) == {"busy": 1}  # still queued, not cancelled with the night's own runs
     spec = claim(world.client, world.worker)
     assert spec["plan_id"] == PLAN_ID and spec["curator"]["role"] == "builder"
+
+
+def build_now(world, plan_id: str = PLAN_ID, headers=None):
+    """Run plan on a Curator's plan: POST .../curator/plans/{plan_id}/build."""
+    return world.client.post(path("plans", plan_id, "build"), headers=headers or world.headers["owner"])
+
+
+def test_curator_plan_run_plan_queues_its_builder_now_beside_the_night_shifts_other_runs(world):
+    accepted(world)
+    r, e = tables.runs, tables.run_events
+    sql(world.db, update(r).values(state="queued", worker_id=None, finished_at=None).where(r.c.kind == "review"))
+    assert protect(world).json()["protected"] is True
+    assert fire(world.client, NIGHT) == {"busy": 1}  # the night shift waits for its review run
+    made = build_now(world)  # at the hub's now, inside the window or not
+    assert made.status_code == 201, made.text
+    run = made.json()
+    assert (run["kind"], run["plan_id"], run["state"], run["dispatched_by"]) == ("plan", PLAN_ID, "queued", "owner")
+    columns = (r.c.pinned_worker_id, r.c.dispatched_via, r.c.budget)
+    budget = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}  # the charter's caps
+    assert sql(world.db, select(*columns).where(r.c.id == run["id"])) == [(world.worker["id"], "schedule", budget)]
+    texts = [row[0].get("text", "") for row in sql(world.db, select(e.c.body).where(e.c.run_id == run["id"]))]
+    assert any("asked for it from Run plan" in text for text in texts)
+    (target,) = sql(world.db, select(tables.audit.c.target).where(tables.audit.c.action == "curator.build_now"))
+    assert target[0] == f"{PROJECT}/{PLAN_ID} run:{run['id']} change:{one_change(world)['id']}"
+    again = build_now(world)
+    assert again.status_code == 409 and f"a run of its plan {PLAN_ID} is still active" in again.text
+
+
+def test_curator_plan_run_plan_refusals_say_why_and_queue_nothing(world):
+    accepted(world)
+    refused = build_now(world)  # the ruleset is not checked yet
+    assert refused.status_code == 409 and "has not checked the ruleset of repo evo-agents" in refused.text
+    assert build_now(world, MEMBERS_PLAN).status_code == 404  # a member's plan runs from its own dialog
+    grant(world.client, world.headers, OTHER, "reader")
+    assert build_now(world, headers=world.headers["other"]).status_code == 403
+    assert protect(world).json()["protected"] is True
+    assert world.client.post(path("pause"), headers=world.headers["owner"]).status_code == 200
+    paused = build_now(world)
+    assert paused.status_code == 409 and "the night shift is paused" in paused.text
+    r = tables.runs
+    assert sql(world.db, select(func.count()).select_from(r).where(r.c.plan_id == PLAN_ID)) == [(0,)]
 
 
 def test_curator_plan_a_planned_change_whose_plan_left_the_hub_says_so(world):

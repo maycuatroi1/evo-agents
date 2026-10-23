@@ -17,7 +17,7 @@ import { type PlanStep, percent } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 import { useCanDispatch, useViewer } from "./hooks";
-import { activePlanRun, type PlanRunLock, planRunLock, planRunPhase } from "./model";
+import { activePlanRun, isCuratorPlan, type PlanRunLock, planRunLock, planRunPhase } from "./model";
 import {
   decisionHref,
   isActiveState,
@@ -40,6 +40,7 @@ import {
  * plans table) do not carry the dialog's form in their first load.
  */
 const PlanRunDialog = dynamic(() => import("./plan-run-dialog").then((module) => module.PlanRunDialog), { ssr: false });
+const CuratorBuildDialog = dynamic(() => import("./curator-build-dialog").then((module) => module.CuratorBuildDialog), { ssr: false });
 
 export function usePlanActivity(project: string, planId: string, enabled = true) {
   const query = useQuery({ ...runsQuery(browserApi, project, planActiveRunsQuery(planId)), enabled });
@@ -53,7 +54,6 @@ function useLockText() {
   const tState = useStatusText("run");
   return (lock: PlanRunLock | "loading"): string => {
     if (lock === "loading") return t("loading");
-    if (lock.kind === "curator") return t("curator");
     if (lock.kind === "planRun") return t("planRun", { id: lock.id, state: tState(lock.state) });
     if (lock.kind === "stepRun") return t("stepRun", { id: lock.id, state: tState(lock.state), step: lock.step });
     return t("noPending");
@@ -62,8 +62,7 @@ function useLockText() {
 
 /**
  * Run plan, for a writer of the project (whoami's grants; the API decides again). It is offered but locked, with the
- * reason beside it, for a Curator's plan, which the night shift runs itself, and while the plan has an active run or no
- * step left to run; `pending` is how many steps are pending
+ * reason beside it, while the plan has an active run or no step left to run; `pending` is how many steps are pending
  * (on the list, how many are not done). `layout` stack puts the reason under the button; row, on a table's row
  * that holds two lines at most, puts it in a tooltip on the button and in its description for screen readers.
  */
@@ -121,9 +120,12 @@ export function RunPlanButton({
       {t("button")}
     </Button>
   );
-  const dialog = opened ? (
+  // On a Curator's plan it asks the hub for the plan's Builder now, by the Curator's rules, instead of a plan run.
+  const dialog = !opened ? null : isCuratorPlan(planId) ? (
+    <CuratorBuildDialog project={project} planId={planId} open={open} onOpenChange={setOpen} onDispatched={onDispatched} />
+  ) : (
     <PlanRunDialog project={project} planId={planId} open={open} onOpenChange={setOpen} onDispatched={onDispatched} />
-  ) : null;
+  );
   if (layout === "row") {
     return (
       <>
