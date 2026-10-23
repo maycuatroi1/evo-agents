@@ -2,7 +2,8 @@
 
 The core depends only on the standard library and PyYAML, so this module implements the subset of
 JSON Schema the harness and protocol schemas use: type, enum, const, pattern, required, properties,
-additionalProperties, items, minItems, minimum, maximum, minLength, maxLength, anyOf, oneOf and local $ref.
+additionalProperties, items, minItems, uniqueItems, minimum, maximum, minLength, maxLength, anyOf, oneOf and local
+$ref.
 
 Two extensions keep readers lenient while writers stay strict: ``"x-unknown": "warn"`` on an object
 schema reports keys outside ``properties`` as warnings instead of errors, and ``"x-severity":
@@ -121,11 +122,7 @@ class Validator:
                 issues.append(Issue(path, f"must be <= {schema['maximum']}"))
 
         if isinstance(value, list):
-            if "minItems" in schema and len(value) < schema["minItems"]:
-                issues.append(Issue(path, f"needs at least {schema['minItems']} item(s)"))
-            if "items" in schema:
-                for i, item in enumerate(value):
-                    self._check(item, schema["items"], _join(path, i), issues)
+            self._check_array(value, schema, path, issues)
 
         if isinstance(value, dict):
             for key in schema.get("required", []):
@@ -141,6 +138,20 @@ class Validator:
                 elif extra is False:
                     severity = "warning" if schema.get("x-unknown") == "warn" else "error"
                     issues.append(Issue(_join(path, key), "unknown key", severity))
+
+    def _check_array(self, value: list, schema: dict, path: str, issues: list[Issue]) -> None:
+        if "minItems" in schema and len(value) < schema["minItems"]:
+            issues.append(Issue(path, f"needs at least {schema['minItems']} item(s)"))
+        if schema.get("uniqueItems"):
+            seen: list = []
+            for i, item in enumerate(value):
+                if item in seen:
+                    issues.append(Issue(_join(path, i), f"repeats {item!r}: each item may appear once"))
+                else:
+                    seen.append(item)
+        if "items" in schema:
+            for i, item in enumerate(value):
+                self._check(item, schema["items"], _join(path, i), issues)
 
     def _errors_only(self, value, schema: dict, path: str) -> list[Issue]:
         found: list[Issue] = []

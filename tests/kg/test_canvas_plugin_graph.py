@@ -231,3 +231,19 @@ def test_canvas_kinds_and_relation_are_the_hubs_added_only():
     assert {"Claim", "SignalKey"} <= known_kinds({"node_kinds": ["Shelf"]})
     issues = validate_ontology({"node_kinds": ["Claim"], "relations": ["measured_by"]})
     assert [issue.path for issue in issues] == ["node_kinds[0]", "relations[0]"]
+
+
+def test_problem_kinds_and_the_relation_addresses_are_the_hubs_and_a_plan_addresses_what_it_names():
+    from evo_agents.kg.pipeline import stages
+
+    assert {"Problem", "Goal"} <= set(HUB_KINDS) and HUB_RELATIONS["addresses"] == ("*", "Problem")
+    issues = validate_ontology({"node_kinds": ["Problem"], "relations": ["addresses"]})
+    assert [issue.path for issue in issues] == ["node_kinds[0]", "relations[0]"]
+    data = {"id": "restock", "problems": ["P-1", "p-2", 3, "P-10"], "steps": []}
+    facts = stages._plan("harness:file:plans/active/restock.yaml", data, "unit")
+    edges = [(f["src"], f["rel"], f["dst"], f["needs"]) for f in facts if f["t"] == "edge" and f["rel"] == "addresses"]
+    assert edges == [  # only codes of problems, each needing the node the hub's source declares
+        ("plan:restock", "addresses", "problem:P-1", ["problem:P-1"]),
+        ("plan:restock", "addresses", "problem:P-10", ["problem:P-10"]),
+    ]
+    assert not [f for f in stages._plan("x", {"id": "plain", "steps": []}, "u") if f.get("rel") == "addresses"]

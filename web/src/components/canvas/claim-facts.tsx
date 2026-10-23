@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { Identifier } from "@/components/data/identifier";
+import { ProblemChips } from "@/components/data/problem-chips";
 import { signalsHref } from "@/lib/signal-queries";
 import { cn } from "@/lib/utils";
 
@@ -75,12 +76,15 @@ export function TestCardFacts({ project, claim }: { project: string; claim: Canv
   );
 }
 
-/** The use cases that realize a claim and the signal keys that measure it, each key opening its signals. */
+/** The problems a claim addresses, the use cases that realize it and the signal keys that measure it, each opening its page. */
 export function ClaimLinks({ project, claim }: { project: string; claim: CanvasClaimDetail }) {
   const t = useTranslations("canvas.links");
   return (
     <SectionCard title={t("heading")} headingId="claim-links-title" testId="claim-links">
       <dl className="grid min-w-0 gap-x-6 gap-y-3 sm:grid-cols-2">
+        <Fact term={t("problems")} testId="claim-problems">
+          {claim.problems.length === 0 ? <span className="text-fg-subtle">{t("none")}</span> : <ProblemChips project={project} codes={claim.problems} />}
+        </Fact>
         <Fact term={t("useCases")}>
           {claim.use_cases.length === 0 ? (
             <span className="text-fg-subtle">{t("none")}</span>

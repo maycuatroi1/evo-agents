@@ -1,5 +1,7 @@
 """The engine ``rules/1``: the table of rules from a delta to a work item of the report's section Loop (plan loop-engine,
-criterion a4), as three pure functions over a ``View`` (``model.Engine``). Nothing here reads a table or writes.
+criterion a4), as three pure functions over a ``View`` (``model.Engine``). Nothing here reads a table or writes. The
+engine of this release is ``rules/2`` (``rules2``), which builds on these functions; rules/1 stays as it was, and the
+work items it made read and move as before.
 
 What an event makes (``rules``):
 
@@ -59,7 +61,6 @@ from evo_agents.hub.server.loop.model import (
     DONE_EVENT,
     DRAFT,
     ENDED_CLAIMS,
-    ENGINE,
     FAILED,
     IN_REVIEW,
     MERGE_FINAL,
@@ -69,6 +70,7 @@ from evo_agents.hub.server.loop.model import (
     QUEUED,
     READY,
     REVERTED,
+    RULES_1,
     RUNNING,
     STRATEGIST,
     TESTING,
@@ -101,7 +103,7 @@ ENDED_COMMENT = "Claim {claim} of canvas {canvas} is {status} since baseline {ba
 # What an event makes
 
 
-def _use_case(event: Event, view: View, moved: dict) -> list[Effect]:
+def use_case_work(event: Event, view: View, moved: dict) -> list[Effect]:
     """Row 3: a claim moved to testing by a baseline."""
     payload = event.payload
     goal = view.goal_of_canvas(payload["canvas_id"])
@@ -127,7 +129,7 @@ def _use_case(event: Event, view: View, moved: dict) -> list[Effect]:
     ]
 
 
-def _noted(event: Event, view: View, moved: dict) -> list[Effect]:
+def noted(event: Event, view: View, moved: dict) -> list[Effect]:
     """Rows 4 and 5: a claim validated, invalidated or retired by a baseline, noted in its chain."""
     payload, to = event.payload, moved["to"]
     chain = view.chain(moved["claim_id"])
@@ -152,9 +154,9 @@ def _baseline(event: Event, view: View) -> list[Effect]:
     effects: list[Effect] = []
     for moved in event.payload.get("transitions") or []:
         if moved.get("to") == TESTING:
-            effects.extend(_use_case(event, view, moved))
+            effects.extend(use_case_work(event, view, moved))
         elif moved.get("to") in NOTED_RESULTS:
-            effects.extend(_noted(event, view, moved))
+            effects.extend(noted(event, view, moved))
     return effects
 
 
@@ -188,7 +190,7 @@ def _chains(event: Event, view: View) -> list[tuple[ItemView, list[str]]]:
     return [found[key] for key in sorted(found)]
 
 
-def _approved(event: Event, view: View) -> list[Effect]:
+def approved(event: Event, view: View) -> list[Effect]:
     """Row 6: a version answering a use_case work item, approved."""
     payload, effects = event.payload, []
     for item, codes in _chains(event, view):
@@ -256,13 +258,13 @@ def _stale(item: ItemView, view: View) -> Transition | None:
     return None
 
 
-def _run_of(item: ItemView, view: View) -> RunView | None:
+def run_of(item: ItemView, view: View) -> RunView | None:
     return view.runs.get(item.run_id) if item.run_id is not None else None
 
 
 def _run_end(item: ItemView, view: View) -> Transition | None:
     """A run of the work item that ended other than done: cancelled by a person, or a failure."""
-    run = _run_of(item, view)
+    run = run_of(item, view)
     if run is None or not run.ended or run.state == "done":
         return None
     if run.state == "cancelled":
@@ -312,7 +314,7 @@ def _asks(item: ItemView, run: RunView, reason: str) -> Transition | None:
 
 def _brainstormed(item: ItemView, view: View) -> Transition | None:
     """A brainstorm whose task run is done, with the proposals it made."""
-    run = _run_of(item, view)
+    run = run_of(item, view)
     if item.state == RUNNING and run is not None and run.state == "done":
         return Transition(item.id, DONE, DONE_EVENT, detail={"run_id": run.id, "proposals": run.proposals})
     return None
@@ -346,7 +348,7 @@ def _drafted(item: ItemView, view: View) -> Transition | None:
         if stable_at is None or view.now >= datetime.fromisoformat(stable_at):
             return Transition(item.id, QUEUED, READY)
         return None
-    run = _run_of(item, view)
+    run = run_of(item, view)
     if item.state not in (RUNNING, WAITING_HUMAN) or (run is not None and not run.ended):
         return None
     version = view.drafts.get(item.id)
@@ -375,12 +377,12 @@ def _frame(item: ItemView, view: View) -> Transition | None:
     return None
 
 
-def _build(item: ItemView, view: View) -> Transition | None:
+def move_build(item: ItemView, view: View) -> Transition | None:
     """Rows 7 and 9: a build to its frame task; its author run waiting for a person's answer; written and ended, a
     deliver of its plan."""
     if item.state == WATCHING:
         return _frame(item, view)
-    run = _run_of(item, view) if item.state in (RUNNING, WAITING_HUMAN) else None
+    run = run_of(item, view) if item.state in (RUNNING, WAITING_HUMAN) else None
     if run is None:
         return None
     asking = _asks(item, run, "author_question")
@@ -455,7 +457,7 @@ def _merged(item: ItemView, view: View) -> Transition | None:
 
 def _deliver(item: ItemView, view: View) -> Transition | None:
     """A deliver's plan run, its decisions included, then the merge requests of its plan."""
-    run = _run_of(item, view)
+    run = run_of(item, view)
     if run is not None and (item.state == RUNNING or item.reason == "run_decision"):
         asking = _asks(item, run, "run_decision")
         if asking is not None or run.state != "done":
@@ -469,15 +471,15 @@ def _deliver(item: ItemView, view: View) -> Transition | None:
 
 
 class Rules:
-    """The engine of this release (``model.ENGINE``)."""
+    """The engine ``rules/1`` (``model.RULES_1``)."""
 
-    name = ENGINE
+    name = RULES_1
 
     def rules(self, event: Event, view: View) -> list[Effect]:
         if event.kind == BASELINE:
             return _baseline(event, view)
         if event.kind == SRS_APPROVED:
-            return _approved(event, view)
+            return approved(event, view)
         return []
 
     def scheduled(self, view: View) -> list[Effect]:
@@ -501,10 +503,16 @@ class Rules:
             return _triaged(item, view)
         if item.state == WAITING_HUMAN and item.reason == "loop_decision":
             return None  # the person's answer moves it (``stall.answer``)
-        return MOVES[item.kind](item, view)
+        return self.move(item, view)
+
+    def move(self, item: ItemView, view: View) -> Transition | None:
+        """Where an unfinished work item of a core kind moves by its kind's own rule; None for a kind this engine has
+        no rule of (a discover of rules/2 read by rules/1)."""
+        move = MOVES.get(item.kind)
+        return None if move is None else move(item, view)
 
 
-MOVES = {BRAINSTORM: _brainstormed, USE_CASE: _drafted, BUILD: _build, DELIVER: _deliver}
+MOVES = {BRAINSTORM: _brainstormed, USE_CASE: _drafted, BUILD: move_build, DELIVER: _deliver}
 RULES = Rules()
 
-__all__ = ["RULES", "Rules"]
+__all__ = ["NOTED_RESULTS", "RULES", "Rules", "approved", "move_build", "noted", "run_of", "use_case_work"]

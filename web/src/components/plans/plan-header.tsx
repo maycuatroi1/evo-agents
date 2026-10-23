@@ -6,10 +6,12 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useRef } from "react";
 
 import { Identifier, useClipboard } from "@/components/data/identifier";
+import { ProblemChips } from "@/components/data/problem-chips";
 import { PageHeader } from "@/components/shell/page-header";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { countSteps, type Plan, parsePlan, planState } from "@/lib/plans";
+import { problemsOf } from "@/lib/problem-links";
 import { cn } from "@/lib/utils";
 
 import { planHref, revisionsHref } from "./links";
@@ -98,8 +100,8 @@ function PlanTabs({ project, planId, current }: { project: string; planId: strin
 
 /**
  * The head of every page of one plan, on `PageHeader`'s one row. On the plan's own pages (`current` names the tab) the
- * h1 is the plan's title in the interface face, beside the plan's state, its id and its revision as chips, with Run
- * plan on the right (`actions`); the line under it says who changed the plan last, and the plan's tabs follow. On a
+ * h1 is the plan's title in the interface face, beside the plan's state, its id, its revision and the problems it
+ * names as chips, with Run plan on the right (`actions`); the line under it says who changed the plan last, and the plan's tabs follow. On a
  * step's page `title` is the step's own h1 and `status` its state; the line under it links the plan.
  */
 export function PlanHeader({
@@ -165,6 +167,7 @@ export function PlanHeader({
                 <Identifier value={plan.plan_id} copy copyLabel={t("copyId", { id: plan.plan_id })} testId="plan-id" />
               ) : null}
               {revision}
+              <ProblemChips project={project} codes={problemsOf(plan.body)} marked testId="plan-problems" />
             </>
           }
           actions={actions ? <div className="contents" data-testid="plan-actions">{actions}</div> : null}

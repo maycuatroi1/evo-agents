@@ -30,7 +30,9 @@ are removed. A source that fails, or answers what version 1 does not allow, fail
 message names no content): the project keeps its latest graph. Source ids starting with ``plugin.`` are the hub's: one
 the knowledge config declares gives way to the plugin's.
 
-Projects that enable no such plugin build exactly as before: their config and corpus are left as they are.
+Projects that enable no such plugin build exactly as before: their config and corpus are left as they are. The hub
+reads one source of its own the same way, the problems of a project that has any (``kg_problems``, id
+``plugin.hub_problems``, plan problem-oriented-hub).
 
 A project's graph holds its group chats while it enables a core plugin whose source it grants ``chats:read`` (the
 core plugin chats; ``reads_chats``): a message then queues a build (``evo_agents.hub.server.chat_store``), and the
@@ -47,6 +49,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from evo_agents.hub import kg_problems
 from evo_agents.hub.plugin_calls import CoreContext, effective_grant, enabled_plugins, load
 from evo_agents.hub.plugin_events import PERMISSION
 from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
@@ -65,6 +68,7 @@ IDENTIFIER_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 MAX_IDENTIFIERS = 50  # patterns one source adds
 MAX_PATTERN_CHARS = 500
 CURSOR_KEYS = frozenset({"item", "at"})
+HUB = "hub"  # what PluginSource.plugin names for a source of the hub's own
 READS_CHATS = PERMISSION["chat.message"]  # chats:read: a plugin granted it reads the project's group chats
 
 
@@ -204,9 +208,20 @@ async def _read(engine: AsyncEngine, config, row, item: dict, project_id: int, p
     return found
 
 
+async def _hub_problems(engine: AsyncEngine, config, project_id: int, project: str, knowledge: dict) -> list:
+    """The hub's own source of the project's problems (``evo_agents.hub.kg_problems``), as a plugin's source is read:
+    none for a project without a problem."""
+    base_url = getattr(config, "public_url", None)
+    async with engine.begin() as conn:
+        answer = await kg_problems.read(conn, project_id, project, base_url if isinstance(base_url, str) else None)
+    if not answer["items"]:
+        return []
+    return [checked(kg_problems.SOURCE, HUB, answer, knowledge, project)]
+
+
 async def read_sources(engine: AsyncEngine, config, project_id: int, project: str, knowledge: dict) -> list:
-    """What the source of each core plugin the project enables gives a build of its graph, by plugin name; raises
-    SourceFailure."""
+    """What the source of each core plugin the project enables gives a build of its graph, by plugin name, then the
+    hub's source of the project's problems when it has one; raises SourceFailure."""
     async with engine.begin() as conn:
         rows = await enabled_plugins(conn, project_id)
     found = []
@@ -214,7 +229,7 @@ async def read_sources(engine: AsyncEngine, config, project_id: int, project: st
         contributed = (row.manifest.get("contributes") or {}).get(POINT) or []
         if row.tier == "core" and contributed and contributed[0].get("python"):
             found.append(await _read(engine, config, row, contributed[0], project_id, project, knowledge))
-    return found
+    return found + await _hub_problems(engine, config, project_id, project, knowledge)
 
 
 async def reads_chats(conn: AsyncConnection, project_id: int) -> bool:

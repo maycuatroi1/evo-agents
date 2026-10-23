@@ -5,10 +5,12 @@ its target with its work items by state, for the hub's web at ``/p/<project>/loo
 A work item says what it is (kind, cycle), where it stands and why (``state``, ``reason`` and the figures of that
 reason, ``waiting``), how often a run was handed out for it and failed, who it stands for, and its ancestors by their
 codes: the goal, the claim of a canvas, the use case of an SRS document and its version, the frame task, the plan and
-the run in flight, the work item it came of and the first of its chain (``root``). Each ancestor shows as its own
-route shows it: a claim, a document and a task under their labels through the reader's sink, a plan and its run when
-the reader reads that plan's runs (``board_items.Reading``); one the reader may not read is left out and named in
-``hidden``. Nothing here writes, and a project whose Loop is off reads as one with no work item.
+the run in flight, the work item it came of and the first of its chain (``root``), and the problem it goes from (plan
+problem-oriented-hub: the one its goal answered when the engine rules/2 made it; every member reads a problem). Each
+ancestor shows as its own route shows it: a claim, a document and a task under their labels through the reader's
+sink, a plan and its run when the reader reads that plan's runs (``board_items.Reading``); one the reader may not read
+is left out and named in ``hidden``. Nothing here writes, and a project whose Loop is off reads as one with no work
+item.
 """
 
 from __future__ import annotations
@@ -18,10 +20,10 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import goals, tables
+from evo_agents.hub import goals, problems, tables
 from evo_agents.hub.server.loop.board_items import Reading
 from evo_agents.hub.server.loop.model import ALL_REASONS, CYCLES, FINISHED, KINDS, STATES
 from evo_agents.hub.server.loop.view import COMPARE, measure
@@ -72,6 +74,10 @@ class LoopItem(BaseModel):
     failures: int = Field(description="its failures since a person last let it go on")
     owner: str | None = Field(description="the agent type or the member it stands for")
     goal: str | None = Field(description="the code of its goal")
+    problem: str | None = Field(
+        default=None,
+        description="the code (P-<number>) of the problem it goes from: the one its goal answered when it was made",
+    )
     claim: LoopClaimRef | None
     use_case: LoopUseCaseRef | None
     task: int | None = Field(description="the number of its frame task in the plugin tasks")
@@ -120,9 +126,10 @@ def figures(reason: str | None, detail: Mapping) -> dict[str, Figure]:
 
 def _query():
     i, g, c, k = tables.loop_items, tables.goals, tables.canvas.claims, tables.canvas.canvases
-    d, t, r = tables.srs.documents, tables.tasks.items, tables.runs
+    d, t, r, p = tables.srs.documents, tables.tasks.items, tables.runs, tables.problems
     joined = (
         i.outerjoin(g, g.c.id == i.c.goal_id)
+        .outerjoin(p, p.c.id == i.c.problem_id)
         .outerjoin(c, c.c.id == i.c.claim_id)
         .outerjoin(k, k.c.id == c.c.canvas_id)
         .outerjoin(d, d.c.id == i.c.srs_document_id)
@@ -132,6 +139,7 @@ def _query():
     return select(
         i,
         g.c.number.label("goal_number"),
+        p.c.number.label("problem_number"),
         c.c.number.label("claim_number"),
         c.c.label.label("claim_label"),
         k.c.slug.label("canvas_slug"),
@@ -147,7 +155,8 @@ def _query():
 async def rows_of(conn: AsyncConnection, project_id: int, *where, limit: int | None = None) -> list:
     """The project's work items matching ``where``, the newest first, with what their ancestors are named by."""
     i = tables.loop_items
-    # the kinds of a core plugin's Loop rules (``model.PLUGIN_KINDS``) are not listed here: the routes name four kinds
+    # the kinds of a core plugin's Loop rules (``model.PLUGIN_KINDS``) are not listed here: the routes name the core
+    # kinds alone
     query = _query().where(i.c.project_id == project_id, i.c.kind.in_(KINDS), *where).order_by(i.c.id.desc())
     return list(await conn.execute(query if limit is None else query.limit(limit)))
 
@@ -228,6 +237,7 @@ def _item(reading: Reading, row, root: int, labels: Mapping[str, Mapping]) -> Lo
         failures=row.failures,
         owner=row.owner,
         goal=goals.code(row.goal_number) if row.goal_number is not None else None,
+        problem=problems.code(row.problem_number) if row.problem_number is not None else None,
         claim=claim,
         use_case=use_case,
         task=task,
@@ -259,11 +269,15 @@ async def listed(
     goal: str | None = None,
     open_only: bool = False,
     limit: int = DEFAULT_ITEMS,
+    problem: str | None = None,
 ) -> LoopItems:
-    """The project's work items of ``state``, ``kind`` and goal code ``goal`` (each when given; only unfinished ones
-    with ``open_only``), the newest ``limit``."""
-    i, g = tables.loop_items, tables.goals
+    """The project's work items of ``state``, ``kind``, goal code ``goal`` and problem code ``problem`` (each when
+    given; only unfinished ones with ``open_only``), the newest ``limit``."""
+    i, g, p = tables.loop_items, tables.goals, tables.problems
     where = []
+    if problem is not None:
+        number = problems.number_of(problem)
+        where.append(p.c.number == number if number is not None else false())
     if state is not None:
         where.append(i.c.state == state)
     if kind is not None:

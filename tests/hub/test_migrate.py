@@ -137,6 +137,7 @@ TABLES |= pg.MARKETING_TABLES  # migration 0125
 TABLES |= pg.GROWTH_TABLES  # migration 0127
 TABLES |= pg.PROBE_TABLES  # migration 0130
 TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
+TABLES |= pg.PROBLEM_TABLES  # migration 0134
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -218,8 +219,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_sixty_eight_tables(hub_db):
-    assert len(TABLES) == 168  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_seventy_tables(hub_db):
+    assert len(TABLES) == 170  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3100,3 +3101,190 @@ def test_0133_fix_proposals_one_open_per_change_findings_and_replacement_probes_
         conn.execute(delete(t.runs).where(t.runs.c.id == run_id))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0133") :]
+
+
+def test_0134_keeps_the_revisions_of_problems_the_problem_of_a_goal_and_proposals_of_one_and_going_back_drops_them(
+    hub_db,
+):
+    move_to(hub_db, "0133")
+    t = hub_tables
+    p, r, g, gr, b, n = t.problems, t.problem_revisions, t.goals, t.goal_revisions, t.builder_proposals, t.notifications
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    goal_row = {"revision": 1, "statement": "Fewer empty searches", "rank": 1, "owner_id": ids["user"]}
+    goal_row |= {"status": "active", "created_by": ids["user"]}
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # 0091 knows no problem proposal
+            conn.execute(insert(b).values({**proposal, "kind": "problem"}))
+        goal_id = one(conn, insert(g).values(project_id=ids["project"], number=1, revision=1).returning(g.c.id))
+        conn.execute(insert(gr).values({**goal_row, "goal_id": goal_id}))  # a goal of 0133: it answers no problem
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0134")
+    assert columns(hub_db, "problems") == {"id", "project_id", "number", "revision", "created_at"}
+    assert columns(hub_db, "problem_revisions") == {
+        "problem_id",
+        "revision",
+        "statement",
+        "who",
+        "when",
+        "workaround",
+        "metric",
+        "rank",
+        "owner_id",
+        "status",
+        "close_reason",
+        "note",
+        "created_by",
+        "created_at",
+    }
+    assert "problem_id" in columns(hub_db, "goal_revisions")
+    assert query(hub_db, select(gr.c.problem_id)) == [(None,)]  # the goal of 0133 answers none
+    texts = {"statement": "Searches find nothing", "who": "shoppers", "when": "a brand has two names"}
+    row = {**texts, "workaround": "they ask support", "revision": 1, "rank": 1, "owner_id": ids["user"]}
+    row |= {"status": "open", "created_by": ids["user"]}
+    with live.connect(hub_db) as conn:
+        problem_id = one(conn, insert(p).values(project_id=ids["project"], number=1, revision=1).returning(p.c.id))
+        row["problem_id"] = problem_id
+        conn.execute(insert(r).values(row))
+        metric = {"key": "search.zero_rate", "aggregate": "p50"}
+        dropped = {"status": "dropped", "close_reason": "the search reads synonyms", "metric": metric, "note": "gone"}
+        conn.execute(insert(r).values({**row, "revision": 2, **dropped}))
+        conn.execute(insert(r).values({**row, "revision": 3, "status": "solved", "close_reason": "synonyms"}))
+        for bad in (
+            insert(p).values(project_id=ids["project"], number=1, revision=1),  # one number a project
+            insert(p).values(project_id=ids["project"], number=0, revision=1),
+            insert(r).values(row),  # one row per revision of a problem
+            insert(r).values({**row, "revision": 0}),
+            insert(r).values({**row, "revision": 4, "statement": "  "}),
+            insert(r).values({**row, "revision": 4, "who": ""}),
+            insert(r).values({**row, "revision": 4, "when": " "}),
+            insert(r).values({**row, "revision": 4, "workaround": "x" * 2001}),
+            insert(r).values({**row, "revision": 4, "metric": ["search.zero_rate"]}),
+            insert(r).values({**row, "revision": 4, "rank": 0}),
+            insert(r).values({**row, "revision": 4, "status": "closed", "close_reason": "x"}),
+            insert(r).values({**row, "revision": 4, "status": "dropped"}),  # a closed problem names its reason
+            insert(r).values({**row, "revision": 4, "close_reason": "x"}),  # and only a closed one does
+            insert(r).values({**row, "revision": 4, "status": "solved", "close_reason": " "}),
+            insert(r).values({**row, "revision": 4, "note": ""}),
+            insert(gr).values({**goal_row, "goal_id": goal_id, "revision": 2, "problem_id": problem_id + 99}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        conn.execute(insert(gr).values({**goal_row, "goal_id": goal_id, "revision": 2, "problem_id": problem_id}))
+        with pytest.raises(errors.ForeignKeyViolation):  # a problem a goal names is never deleted under it
+            conn.execute(delete(p).where(p.c.id == problem_id))
+        conn.execute(insert(b).values({**proposal, "kind": "problem", "target": {"problem": "P-2"}}))
+        conn.execute(insert(b).values({**proposal, "kind": "goal"}))
+        notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "Problem"}
+        conn.execute(insert(n).values({**notice, "details": {"proposal": 1, "kind": "problem"}}))
+        conn.execute(insert(n).values({**notice, "details": {"proposal": 2, "kind": "goal"}}))
+        # a project's goals and problems go with it in one statement: the goal's key waits for the statement's end
+        lumen = one(
+            conn,
+            insert(t.projects)
+            .values(name="lumen", levels=["internal"], locations=["any"], default_label={"level": "internal"})
+            .values(created_by=ids["user"])
+            .returning(t.projects.c.id),
+        )
+        lumen_problem = one(conn, insert(p).values(project_id=lumen, number=1, revision=1).returning(p.c.id))
+        conn.execute(insert(r).values({**row, "problem_id": lumen_problem}))
+        lumen_goal = one(conn, insert(g).values(project_id=lumen, number=1, revision=1).returning(g.c.id))
+        conn.execute(insert(gr).values({**goal_row, "goal_id": lumen_goal, "problem_id": lumen_problem}))
+        conn.execute(delete(t.projects).where(t.projects.c.id == lumen))
+    assert query(hub_db, select(r.c.revision, r.c.status).order_by(r.c.revision)) == [
+        (1, "open"),
+        (2, "dropped"),
+        (3, "solved"),
+    ]
+    assert query(hub_db, select(gr.c.revision, gr.c.problem_id).order_by(gr.c.revision)) == [
+        (1, None),
+        (2, problem_id),
+    ]
+    # Going back drops the problems and the problem of a goal, and the proposals of a problem with their notices.
+    move_to(hub_db, "0133", down=True)
+    assert not {"problems", "problem_revisions"} & tables(hub_db)
+    assert "problem_id" not in columns(hub_db, "goal_revisions")
+    assert query(hub_db, select(b.c.kind)) == [("goal",)]
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("goal",)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0134") :]
+
+
+def test_0135_keeps_the_problems_a_claim_links_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0135")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "cell": "problem", "text": "Shops run out of milk", "label": {}, **owner}
+        conn.execute(insert(k.claims).values(number=1, **claim))  # links no problem by default
+        conn.execute(insert(k.claims).values(number=2, problems=["P-1", "P-3"], use_cases=["UC ORD-1"], **claim))
+        with pytest.raises(errors.CheckViolation):  # at most 20, as of each link of 0078
+            conn.execute(insert(k.claims).values(number=3, problems=[f"P-{n}" for n in range(1, 22)], **claim))
+    held = select(k.claims.c.number, k.claims.c.problems, k.claims.c.use_cases).order_by(k.claims.c.number)
+    assert query(hub_db, held) == [(1, [], []), (2, ["P-1", "P-3"], ["UC ORD-1"])]
+    move_to(hub_db, "0134", down=True)
+    assert "problems" not in columns(hub_db, "canvas_claims")
+    assert {"use_cases", "signal_keys"} <= columns(hub_db, "canvas_claims")
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the check of 0078 is back
+        conn.execute(insert(k.claims).values(number=4, use_cases=[f"UC ORD-{n}" for n in range(21)], **claim))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0135") :]
+
+
+def test_0136_keeps_the_problem_of_a_work_item_and_the_kind_discover_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0135")
+    t = hub_tables
+    i, e = t.loop_items, t.loop_item_events
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        item = {"project_id": ids["project"], "kind": "brainstorm", "cycle": "business", "key": "brainstorm:G-1:r1"}
+        item |= {"engine": "rules/1", "owner": "@strategist"}
+        conn.execute(insert(i).values(item))  # a work item of rules/1, before any problem
+        with pytest.raises(errors.CheckViolation):  # 0123 knows no discover
+            conn.execute(insert(i).values({**item, "key": "discover:c:CL-1:b1", "kind": "discover"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0136")
+    assert "problem_id" in columns(hub_db, "loop_items")
+    assert query(hub_db, select(i.c.key, i.c.problem_id)) == [("brainstorm:G-1:r1", None)]
+    texts = {"statement": "Shops run out of milk", "who": "shop owners", "when": "before a delivery"}
+    row = {**texts, "workaround": "they buy it retail", "revision": 1, "rank": 1, "owner_id": ids["user"]}
+    row |= {"status": "open", "created_by": ids["user"]}
+    p = t.problems
+    with live.connect(hub_db) as conn:
+        problem_id = one(conn, insert(p).values(project_id=ids["project"], number=1, revision=1).returning(p.c.id))
+        conn.execute(insert(t.problem_revisions).values({**row, "problem_id": problem_id}))
+        found = {**item, "key": "discover:c:CL-1:b1", "kind": "discover", "engine": "rules/2", "problem_id": problem_id}
+        found_id = one(conn, insert(i).values(found).returning(i.c.id))
+        conn.execute(insert(e).values(item_id=found_id, kind="created", state="queued"))
+        built = {**found, "key": "build:claim:c:CL-2:b1", "kind": "build", "cycle": "development", "owner": None}
+        conn.execute(insert(i).values(built))
+        for bad in (
+            insert(i).values({**found, "key": "x", "cycle": "development"}),  # a discover is of the business cycle
+            insert(i).values({**found, "key": "y", "problem_id": problem_id + 99}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        # a problem deleted under a work item leaves it, its link cleared
+        conn.execute(delete(t.problem_revisions).where(t.problem_revisions.c.problem_id == problem_id))
+        conn.execute(delete(p).where(p.c.id == problem_id))
+    held = select(i.c.key, i.c.kind, i.c.problem_id).order_by(i.c.id)
+    assert query(hub_db, held) == [
+        ("brainstorm:G-1:r1", "brainstorm", None),
+        ("discover:c:CL-1:b1", "discover", None),
+        ("build:claim:c:CL-2:b1", "build", None),
+    ]
+    # going back deletes the discover with its ledger and drops the column; the rest stays
+    move_to(hub_db, "0135", down=True)
+    assert "problem_id" not in columns(hub_db, "loop_items")
+    assert query(hub_db, select(i.c.key).order_by(i.c.id)) == [("brainstorm:G-1:r1",), ("build:claim:c:CL-2:b1",)]
+    assert query(hub_db, select(func.count()).select_from(e)) == [(0,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the check of 0123 is back
+        conn.execute(insert(i).values({**item, "key": "discover:c:CL-3:b1", "kind": "discover"}))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0136") :]

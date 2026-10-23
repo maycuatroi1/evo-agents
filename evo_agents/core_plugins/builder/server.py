@@ -207,7 +207,7 @@ async def _propose(conn: AsyncConnection, change: proposals.Change, context: Cor
     log.info("builder proposal made", extra={"proposal": proposal_id, "kind": change.kind, "run_id": run.run_id})
     return (
         f"Proposal {proposal_id} waits for {approver}: the hub showed it in the thread and told {told} member(s). "
-        "Nothing is applied until an admin approves it; say so to the member, and do not answer for them."
+        f"Nothing is applied until {approver} approves it; say so to the member, and do not answer for them."
     )
 
 
@@ -369,8 +369,8 @@ async def answer_proposal(
     request: Request, project: ProjectName, proposal_id: ProposalId, body: BuilderProposalAnswer, user: CurrentUser
 ) -> BuilderProposal:
     """Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
-    it could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the
-    others."""
+    it could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one
+    of a problem, an admin of the project the others."""
     return await _answered(request, user, project, proposal_id, body.answer)
 
 

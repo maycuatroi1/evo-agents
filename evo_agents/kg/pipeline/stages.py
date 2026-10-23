@@ -56,6 +56,8 @@ NODE_PROPS = {
 DECLARED_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")  # the kind of a node an item declares, as an ontology names one
 DECLARED_REL = re.compile(r"^[a-z][a-z_]*$")  # the relation of an edge it declares
 MAX_DECLARED_ID = 500  # characters of the id of a node an item declares, or of an edge's ends
+PROBLEM_KIND = "Problem"  # the node of a problem of a hub project, problem:P-3, as the hub's source declares it
+PROBLEM_CODE = re.compile(r"P-[1-9][0-9]{0,8}")  # evo_agents.hub.problems.REF, which this package does not import
 
 FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)^(?:---|\.\.\.)[ \t]*\r?$", re.S | re.M)
 
@@ -287,6 +289,18 @@ def _step_text(step: dict) -> list[tuple[str, str]]:
     return out
 
 
+def _plan_problems(pid: str, data: dict, unit: str) -> list[dict]:
+    """The plan ``addresses`` each problem of its hub project it names (``problems``): the node the hub's source of
+    problems declares (``evo_agents.hub.kg_problems``), which the edge needs, so without it there is no edge."""
+    found = data.get("problems") if isinstance(data.get("problems"), list) else []
+    facts = []
+    for code in found:
+        if isinstance(code, str) and PROBLEM_CODE.fullmatch(code):
+            target = f"{PROBLEM_KIND.lower()}:{code}"
+            facts.append(edge(pid, "addresses", target, [unit], needs=[target]))
+    return facts
+
+
 def _plan(item_id: str, data: dict, unit: str) -> list[dict]:
     plan_id = data.get("id")
     if not isinstance(plan_id, str):
@@ -314,6 +328,7 @@ def _plan(item_id: str, data: dict, unit: str) -> list[dict]:
         name = seam.get("name") if isinstance(seam, dict) else seam
         if isinstance(name, str):
             facts.append(ref(pid, "touches", {"type": "seam", "value": name}, [unit]))
+    facts += _plan_problems(pid, data, unit)
     for index, step in enumerate(steps):
         number = step.get("id", index + 1)
         stid = f"{pid}/step:{number}"

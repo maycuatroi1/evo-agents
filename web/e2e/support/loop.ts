@@ -40,15 +40,18 @@ export function decidePath(project: string): string {
   return `/p/${project}/decide`;
 }
 
-async function putGoal(account: Account, project: string, ref: string, body: GoalWrite) {
+export async function putGoal(account: Account, project: string, ref: string, body: GoalWrite) {
   const api = bearerClient(await machineToken(account));
   return call(api.PUT("/v1/projects/{project}/goals/{ref}", { params: { path: { project, ref } }, body }));
 }
 
-async function putPlan(account: Account, project: string, id: string, goal: string) {
+/** A plan of one step, done, in repo api; naming `problems` when given, as the revision after `ifRevision`. */
+export async function putPlan(account: Account, project: string, id: string, goal: string, problems: string[] = [], ifRevision?: number) {
   const api = bearerClient(await machineToken(account));
-  const body = { id, goal, repos: [{ repo: "api" }], steps: [{ id: 1, title: "Change api", repo: "api", what: "the change in api", status: "done" }] };
-  return call(api.PUT("/v1/projects/{project}/plans/{plan_id}", { params: { path: { project, plan_id: id } }, body: { body } }));
+  const steps = [{ id: 1, title: "Change api", repo: "api", what: "the change in api", status: "done" }];
+  const body = { id, goal, ...(problems.length > 0 ? { problems } : {}), repos: [{ repo: "api" }], steps };
+  const put = { body, ...(ifRevision ? { if_revision: ifRevision } : {}) };
+  return call(api.PUT("/v1/projects/{project}/plans/{plan_id}", { params: { path: { project, plan_id: id } }, body: put }));
 }
 
 /**
@@ -70,12 +73,15 @@ export async function seedLoopProject(owner: Account, project: string): Promise<
   await putPolicy(owner, project, { loop: { enabled: true } }, "the Loop works toward G-1");
 }
 
-/** The project's work items as the Loop would leave them; with `tripped` its breaker trips. */
-export async function seedLoop(project: string, { tripped = false }: { tripped?: boolean } = {}): Promise<LoopSeed> {
+/**
+ * The project's work items as the Loop would leave them; with `tripped` its breaker trips; with `problem` (a problem
+ * G-1 answers) each goes from it, and a discover of CL-1 runs.
+ */
+export async function seedLoop(project: string, { tripped = false, problem = null }: { tripped?: boolean; problem?: string | null } = {}): Promise<LoopSeed> {
   const response = await fetch(`${STACK_URL}/loop/seed`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ project, released: RELEASED_PLAN, held: HELD_PLAN, tripped }),
+    body: JSON.stringify({ project, released: RELEASED_PLAN, held: HELD_PLAN, tripped, problem }),
   });
   if (!response.ok) throw new Error(`hub_stack /loop/seed: ${response.status} ${await response.text()}`);
   return (await response.json()) as LoopSeed;

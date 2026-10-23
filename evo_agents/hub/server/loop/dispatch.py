@@ -9,7 +9,10 @@ transaction. The admission pass writes the rest: the work item running with its 
   (``texts.use_case_task``). ``srs__propose`` takes that run's version, written as the goal's owner (``runs_of``).
 - ``build``: an author run of the frame task, in Loop mode (``author.build_author_prompt``), its request the frame
   task, its child tasks as the plan's steps, the use case at its version, the claim and its test card
-  (``texts.author_request``).
+  (``texts.author_request``); for a build rules/2 made straight from a claim, the problem, the goal, the claim and its
+  test card (``texts.claim_request``).
+- ``discover``: a task run of agent type strategist, as a brainstorm's: the claim of the Problem cell, its test card
+  to run, the goal and the problem it answers (``texts.discover_task``).
 - a kind of a core plugin's Loop rule (``model.PLUGIN_KINDS``): a task run of the plugin's own agent type, or none for
   a work item the plugin's own job does (``plugin_rules.hand_out``).
 - ``deliver``: a plan run of the plan the build's author run wrote, over the repos of its steps not done.
@@ -40,7 +43,16 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
 from evo_agents.hub.server.loop import caps, plugin_rules, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker
-from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, PLUGIN_KINDS, USE_CASE, ItemView, View
+from evo_agents.hub.server.loop.model import (
+    BRAINSTORM,
+    BUILD,
+    DELIVER,
+    DISCOVER,
+    PLUGIN_KINDS,
+    USE_CASE,
+    ItemView,
+    View,
+)
 from evo_agents.hub.server.loop.runs_of import goal_owner
 from evo_agents.hub.server.repo_origins import repo_origins
 
@@ -162,8 +174,13 @@ async def _author_run(conn: AsyncConnection, project_id: int, item: ItemView, vi
     problem = problem or await _unfit(conn, project, worker, "author", [harness], runtime)
     if problem is not None:
         return _refused(problem)
-    request = await texts.author_request(conn, project_id, project, item)
-    title = f"{author.TITLE_PREFIX}the Loop's build of {item.use_case or item.key}"
+    if item.from_claim:
+        request = await texts.claim_request(conn, project_id, project, item)
+        subject = f"claim {item.detail.get('claim') or item.key}"
+    else:
+        request = await texts.author_request(conn, project_id, project, item)
+        subject = item.use_case or item.key
+    title = f"{author.TITLE_PREFIX}the Loop's build of {subject}"
     values = _values(project_id, "author", item, view, worker, runtime) | {
         "title": runs.step_title({"title": title}),
         "repos": repos,
@@ -226,10 +243,12 @@ async def _plan_run(conn: AsyncConnection, project_id: int, item: ItemView, view
 
 
 async def _task_run(conn: AsyncConnection, project_id: int, item: ItemView) -> Handed:
-    """The task run of brainstorm or use_case ``item`` for its agent type."""
+    """The task run of brainstorm, use_case or discover ``item`` for its agent type."""
     project = await _project(conn, project_id)
     if item.kind == BRAINSTORM:
         task, title = await texts.brainstorm_task(conn, project, item)
+    elif item.kind == DISCOVER:
+        task, title = await texts.discover_task(conn, project, item)
     else:
         task, title = await texts.use_case_task(conn, project, item)
     handed = await caps.hand_task(conn, project_id, item.kind, task, title, await goal_owner(conn, item.goal_id))
@@ -245,7 +264,7 @@ async def hand_out(
     conn: AsyncConnection, project_id: int, item: ItemView, view: View, worker: LoopWorker
 ) -> Handed | None:
     """The run of work item ``item``, which passed admission, as the module says; None for no kind of the Loop's."""
-    if item.kind in (BRAINSTORM, USE_CASE):
+    if item.kind in (BRAINSTORM, USE_CASE, DISCOVER):
         return await _task_run(conn, project_id, item)
     if item.kind == BUILD:
         return await _author_run(conn, project_id, item, view, worker)

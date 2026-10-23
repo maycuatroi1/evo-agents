@@ -107,8 +107,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
 | autonomy policy | `GET` and `PUT /v1/projects/{project}/policy`, `GET .../policy/revisions`, `.../policy/revisions/{revision}`, `.../policy/compare?from=N&to=M`: reading needs a grant on the project, writing the admin role (`docs/merge-queue.md`) |
+| problems | `GET /v1/projects/{project}/problems` (`?status=`), `GET .../problems/{ref}` (`?revision=`), `.../problems/{ref}/revisions`, `PUT .../problems/{ref}`, `POST .../problems/{ref}/close`: reading needs a grant on the project, writing the writer role (section Problems, `docs/problems.md`) |
 | goals | `GET /v1/projects/{project}/goals` (`?status=`), `GET .../goals/{ref}` (`?revision=`), `.../goals/{ref}/revisions`, `PUT .../goals/{ref}`, `POST .../goals/{ref}/close`: reading needs a grant on the project, writing the admin role (section Goals) |
-| loop | `GET /v1/projects/{project}/loop`, `GET .../loop/items` (`?state=`, `?kind=`, `?goal=`, `?open=`, `?limit=`), `GET .../loop/items/{id}`, `GET .../loop/goals`: reading needs a grant on the project; `POST .../loop/resume` the admin role (section Goals, `docs/loop.md`) |
+| loop | `GET /v1/projects/{project}/loop`, `GET .../loop/items` (`?state=`, `?kind=`, `?goal=`, `?problem=`, `?open=`, `?limit=`), `GET .../loop/items/{id}`, `GET .../loop/goals`: reading needs a grant on the project; `POST .../loop/resume` the admin role (section Goals, `docs/loop.md`) |
 | decision board | `GET /v1/projects/{project}/decision-board`: what waits for a person, the three gates first; reading needs a grant on the project (section Goals, The decision board) |
 | merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/{id}/pass`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
 | signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
@@ -131,9 +132,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 33 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 35 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
+`problem_list` and `problem_show` (the project's problems), `ask_member` (a question of a local session,
+`docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
 what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`, `decision_list`,
 `curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), `curator_probe_report` (the
 weekly report of the project's probes, `docs/curator.md`, Probes), and the project's whole history (The project's
@@ -867,6 +869,12 @@ that no step's `acceptance` names, unless it is `invariant: true`. A step's `acc
 such as `a1; a9`; only its words of the form `a<number>` are checked against the criteria, so the sentences older
 plans hold there pass. Each is a warning: the hub stores the plan anyway.
 
+A plan names the problems of its project it solves in `problems`, a list of codes such as `[P-1, P-3]`
+(`plan.schema.json`, section Problems). A write that names a code the plan did not hold before and the project lacks
+answers 422 naming the code, and nothing is written; a PUT that creates a plan, or writes a new revision of it, naming
+no problem is stored with a warning. `plan list --json` gives each plan's `problems`, and the copy writes them after
+`goal`.
+
 `plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
 it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
 with its title, the commit hashes its evidence names, its lines that start with `Decision:` verbatim and the rest of
@@ -1061,6 +1069,10 @@ Schema 0130 adds `curator_probes`, 0131 the run of kind `probe` and `curator_pro
 `curator_probe_report`, and 0133 `proposals.fix_of`, `findings.fix_of` and `curator_probes.replaces` (The Curator's
 probes, below); going back from 0131 deletes the probe runs, from 0132 the notices of the kind, and from each it drops
 what it added.
+Schemas 0134 to 0136 add the problems of a project (plan problem-oriented-hub, `docs/problems.md`): 0134 `problems`,
+`problem_revisions`, `goal_revisions.problem_id` and the @builder proposal kind `problem`; 0135
+`canvas_claims.problems`; 0136 `loop_items.problem_id` and the work item kind `discover`. Going back from each drops
+what it added, the proposals of kind problem and the work items of kind discover with it.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1965,12 +1977,38 @@ evo-agents hub merge pass lumen-api 11 --reason "..." --project demo  # an admin
 
 The web shows it on the project's Merge queue page (`/p/{project}/merge-queue`), with the tabs Figures and Policy.
 
+## Problems
+
+A problem says what hurts, before any solution (plan problem-oriented-hub): a statement, who is hurt, when it happens,
+how they cope today, an optional metric (a key of kind number of the project's registry of signals, summed up over a
+window as a goal's is, with no target), a rank, an owner with the writer role or above, and a status: `open`, `solved`
+or `dropped`, a closed one with its reason in words. Its code is `P-<number>`, given in order and never again: a
+problem is closed, never deleted. A writer of the project writes a problem whole as its next revision, and every
+revision is kept and audited (`problem.set`); the agent of a run only proposes one, through @builder (proposal kind
+`problem`), which a writer approves. A goal answers at most one problem, a claim of a canvas links up to 20 and a plan
+names those it solves in `problems`; `docs/problems.md` has the fields, the links, the knowledge graph and the web's
+pages.
+
+```sh
+evo-agents hub problem list --project demo                     # by rank; --status open, solved or dropped
+evo-agents hub problem show P-1 --project demo                 # with its goals, claims, plans and revisions
+evo-agents hub problem set --statement "Searches find nothing for misspelt names" --who "shoppers" \
+  --when "on every search with a typo" --workaround "they search again or leave" --project demo   # P-<next>
+evo-agents hub problem set P-1 --metric search.zero_rate --aggregate p50 --window-days 30 --project demo
+evo-agents hub problem close P-1 --status solved --reason "fuzzy search shipped" --project demo
+evo-agents hub problem set P-1 --reopen --project demo
+```
+
+The MCP tools `problem_list` and `problem_show` read the same. The web lists a project's problems at
+`/p/{p}/problems` and shows one at `/p/{p}/problems/P-1`, where a writer adds, edits, closes and reopens it.
+
 ## Goals
 
 A goal says what a project is for, and how to tell it is reached (plan loop-engine): a statement, a metric (a key of kind
 number of the project's registry of signals, summed up over a window as a test card of the plugin canvas does it, and
-compared with a target), a deadline, the canvas whose product it drives, a rank among the project's goals (1 first), an
-owner with the writer role or above, and a status: `active`, `paused`, or `closed` with a reason (`achieved`,
+compared with a target), a deadline, the canvas whose product it drives, the problem of the project it answers (at
+most one, not dropped: section Problems), a rank among the project's goals (1 first), an owner with the writer role or
+above, and a status: `active`, `paused`, or `closed` with a reason (`achieved`,
 `dropped`, `expired`). A goal has no budget. Its code is `G-<number>`, given in order and never again: a goal is closed,
 never deleted. An admin of the project writes a goal whole as its next revision, and every revision is kept and
 audited (`goal.set`); the agent of a run only proposes one, through @builder (proposal kind `goal`). The lens
@@ -1983,6 +2021,7 @@ evo-agents hub goal show G-1 --project demo                   # with its revisio
 evo-agents hub goal set --statement "Fewer searches find nothing" --metric search.zero_rate --aggregate p50 \
   --comparator "<=" --target 0.05 --window-days 30 --deadline 2026-12-31 --project demo   # a new goal: G-<next>
 evo-agents hub goal set G-1 --target 0.03 --note "tighter" --project demo                  # the options given change
+evo-agents hub goal set G-1 --problem P-2 --project demo       # the goal answers problem P-2; --no-problem clears it
 evo-agents hub goal close G-1 --reason achieved --project demo
 ```
 
@@ -1990,10 +2029,13 @@ evo-agents hub goal close G-1 --reason achieved --project demo
 kinds the hub has: a brainstorm to a task run of @strategist, a use case to a task run of @ba (whose version
 `srs__propose` writes as the goal's owner), the frame task of an approved use case to one author run in Loop mode, and
 the plan that run wrote to a plan run; author and plan runs go to worker `loop.worker`, in its owner's name, with the
-caps of `loop.caps`. A work item that fails twice gets its triage, and from the third failure the person its last run
-stands for answers a decision of category `loop` (run it again, drop it, leave it to a person), which the hub does.
-More work items in an hour than `loop.max_items_per_hour` trip its breaker: the Loop reads no event and hands out no
-run, each admin gets the notice `loop_paused`, and only an admin resets it.
+caps of `loop.caps`. Its engine `rules/2` goes from the problem a goal answers: each work item carries that problem, a
+claim of the cell Problem in testing makes a `discover` of @strategist, and a solution goes through use cases only
+when the project keeps them (`loop.use_cases`), else straight to an author run (`docs/loop.md`). A work item that
+fails twice gets its triage, and from the third failure the person its last run stands for answers a decision of
+category `loop` (run it again, drop it, leave it to a person), which the hub does. More work items in an hour than
+`loop.max_items_per_hour` trip its breaker: the Loop reads no event and hands out no run, each admin gets the notice
+`loop_paused`, and only an admin resets it.
 
 ```sh
 evo-agents hub loop status --project demo     # on or off, its breaker, cursor, last tick, work items by state
@@ -2892,8 +2934,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.loop_ticks`, every 5 minutes: a `hub.loop_tick` for each project whose Loop is on (`loop.enabled` of its
   autonomy policy), which each event of such a project also queues in its own transaction; one tick of a project runs
   at a time and at most one waits (lock `loop:<project id>`). A tick reads the events past the project's cursor, its
-  goals' revisions and weekly look, and its work items not finished, and writes work items by the engine `rules/1`;
-  it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
+  goals' revisions and weekly look, and its work items not finished, and writes work items by the engine `rules/2`
+  (`docs/loop.md`); it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
   (`HubContext.loop_tick`).
 - `hub.loop_notices`, every 5 minutes: for each project whose Loop is on, in the Loop's zone, the notice `goal_review`
   on the first day of a month and the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, each

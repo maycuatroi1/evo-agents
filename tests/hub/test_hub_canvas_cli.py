@@ -142,3 +142,30 @@ def test_hub_canvas_from_the_command_line(hub, monkeypatch, capsys, tmp_path):
     assert_json_keys("hub canvas import", done)
     assert done["edited"] == ["CL-1"]
     assert "CL-1 [assumption, medium, rev 4]" in ok(run("alice", "show", SLUG)).out
+
+    # the problems a claim answers (plan problem-oriented-hub, criterion a3)
+    said = (
+        "--statement",
+        "Shops run out of milk",
+        "--who",
+        "owners",
+        "--when",
+        "by Thursday",
+        "--workaround",
+        "a drive",
+    )
+    ok(run_cli(monkeypatch, capsys, hub.homes["alice"], "hub", "problem", "set", *said, "--project", PROJECT))
+    linked = ("edit", SLUG, "--claim", "CL-1", "--base-rev", "4", "--problems", "P-1, P-1")
+    assert "CL-1 [assumption, medium, rev 5]" in ok(run("bao", *linked)).out
+    assert "  problems: P-1\n" in ok(run("alice", "show", SLUG, "--claim", "CL-1")).out
+    shown_problem = run_cli(
+        monkeypatch, capsys, hub.homes["alice"], "hub", "problem", "show", "P-1", "--project", PROJECT
+    )
+    assert (
+        "Claims:\n  CL-1 (northwind-pantry, problem, assumption): Shops run out of milk by Thursday\n"
+        in ok(shown_problem).out
+    )
+    missing = run("bao", "edit", SLUG, "--claim", "CL-1", "--base-rev", "5", "--problems", "P-1,P-2")
+    assert missing.code == 1 and f"project {PROJECT} has no problem P-2" in missing.err
+    cleared = as_json(run("bao", "edit", SLUG, "--claim", "CL-1", "--base-rev", "5", "--problems", "", "--json"))
+    assert cleared["claims"][0]["problems"] == []

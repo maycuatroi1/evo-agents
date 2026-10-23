@@ -5,7 +5,8 @@ standard library only, so the api, the command line and the core plugin builder 
 A goal says what the project is for in one statement, and may name how to tell it is reached: a key of kind number of
 the project's registry of signals, summed up over a window as a test card of the plugin canvas does it (``aggregate``
 of AGGREGATES over ``window_days``, of one ``tenant`` when it names one), compared by ``comparator`` with ``target``.
-It may also have a deadline, the canvas whose product it drives, a rank among the project's goals (1 is the first),
+It may also have a deadline, the canvas whose product it drives, the problem of the project it answers (``P-<number>``,
+``evo_agents.hub.problems``; at most one, and not a dropped one), a rank among the project's goals (1 is the first),
 an owner (a member with the writer role or above) and a status: active, paused, or closed with a reason (achieved,
 dropped, expired). A goal has no budget. A goal without a metric is read by the Curator, and nothing else is done for
 it.
@@ -38,8 +39,18 @@ MAX_NUMBER = 999_999_999
 ALIAS = r"^[a-z0-9][a-z0-9-]{0,63}$"  # curator.GOAL_ID: the id of a goal of the charter
 CODE = re.compile(r"G-([1-9][0-9]{0,8})")
 REF = r"^(?:G-[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,63})$"  # a goal's code or its alias
-FIELDS = ("statement", "metric", "deadline", "canvas", "rank", "owner", "status", "close_reason")  # of a revision
-CLEARABLE = ("metric", "deadline", "canvas", "close_reason")  # the fields a revision may leave empty
+FIELDS = (
+    "statement",
+    "metric",
+    "deadline",
+    "canvas",
+    "problem",
+    "rank",
+    "owner",
+    "status",
+    "close_reason",
+)  # a revision's
+CLEARABLE = ("metric", "deadline", "canvas", "problem", "close_reason")  # the fields a revision may leave empty
 METRIC_FIELDS = ("key", "aggregate", "window_days", "comparator", "target", "tenant")
 
 
@@ -78,7 +89,7 @@ def metric_text(metric: Mapping | None) -> str:
 
 def curator_line(goal: Mapping) -> dict:
     """A goal as the prompt of the Curator's review run lists it (``review.build_review_prompt``): its code, its
-    alias, and the statement with the metric, the deadline and the canvas it names."""
+    alias, and the statement with the metric, the deadline, the canvas and the problem it names."""
     ref = goal["code"] + (f" ({goal['alias']})" if goal.get("alias") else "")
     what = " ".join(str(goal["statement"]).split())
     if goal.get("metric"):
@@ -87,4 +98,6 @@ def curator_line(goal: Mapping) -> dict:
         what += f"; by {goal['deadline']}"
     if goal.get("canvas"):
         what += f"; drives canvas {goal['canvas']}"
+    if goal.get("problem"):
+        what += f"; answers problem {goal['problem']}"
     return {"id": ref, "what": what}

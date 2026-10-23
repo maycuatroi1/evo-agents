@@ -197,6 +197,10 @@ POLICY_SET = "policy.set"
 # proposal of @builder, " copy-of=<n>" for a rollback, and " charter=<revision>" with no actor when the hub made the
 # goal from a goal of the Curator's charter; never a value.
 GOAL_SET = "goal.set"
+# A new revision of a problem of a project (evo_agents.hub.server.problems), in the project: "<project>/problem P-<n>
+# revision=<n> fields=<the fields whose value changed>", then " proposal=<id>" when a writer approved or rolled back a
+# proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
+PROBLEM_SET = "problem.set"
 # The org chart belongs to no project (evo_agents.hub.server.org_store). A target names the unit by slug and the seat
 # by id with its holder, then each field that changed as "<field>=<was>-><is>" and the unit's revision after it:
 # "unit:<slug> parent=<slug> kind=<kind> revision=1", "seat:<id> unit=<slug> login=<l> role=<role> primary=true->false

@@ -54,7 +54,7 @@ canvas; only an admin archives or unarchives one.
 | `status` | `assumption`, `testing`, `validated`, `invalidated` or `retired` |
 | `confidence` | `low`, `medium` or `high` |
 | `test_card` | the test of the claim (below), or none |
-| `use_cases`, `signal_keys` | the use cases of the plugin srs that realize it and the signal keys that measure it, at most 20 of each (section Links) |
+| `use_cases`, `signal_keys`, `problems` | the use cases of the plugin srs that realize it, the signal keys that measure it and the problems of the project it answers (`P-<number>`, `docs/problems.md`), at most 20 of each (section Links) |
 | `archived` | an archived claim leaves the grid and the graph, and keeps its code and revs |
 
 **A test card** follows Strategyzer's Test Card: `hypothesis` (we believe that), `test` (to verify it we will),
@@ -118,16 +118,18 @@ new rev, an open proposal goes stale and can no longer be accepted.
 
 ## Links
 
-A claim links the use cases of the plugin srs that realize it and the signal keys that measure it. Only what a write
-adds is checked:
+A claim links the use cases of the plugin srs that realize it, the signal keys that measure it and the problems of
+the project it answers (`docs/problems.md`). Only what a write adds is checked:
 
 - a use case is named by any code or alias an item of the project's SRS ever held, while the project enables srs. The
   item must be a use case, not dropped from its document, in a document the member can read. The claim keeps the code
   the SRS names it by now, so an alias reads as that code;
-- a signal key must be in the project's registry and not archived (`docs/signals.md`, The registry of keys).
+- a signal key must be in the project's registry and not archived (`docs/signals.md`, The registry of keys);
+- a problem is named by its code (`P-3`) and must be a problem of the project that is not dropped: open or solved.
 
-A link the claim already holds stays when its use case is dropped or its key archived later. An import keeps the
-links the project holds and drops the others with a warning.
+A link the claim already holds stays when its use case is dropped, its key archived or its problem dropped later, and
+an undo puts back the links the rev before held. An import keeps the links the project holds and drops the others
+with a warning. A problem's page on the web and `evo-agents hub problem show` list the claims that link it.
 
 ## Baselines
 
@@ -241,6 +243,11 @@ simulation always does. Synthetic evidence never validates a claim.
 (`docs/signals.md`, Value check). It starts with a fresh context and may call `canvas__judge` alone; every other tool of
 the plugin refuses it.
 
+**A discover** is the task run the Loop's engine `rules/2` hands @strategist when a baseline moves a claim of the cell
+Problem to testing (`docs/loop.md`, rules/2): it runs the claim's test card, adds what it finds as evidence
+(`canvas__evidence`) and proposes what the evidence argues for (`canvas__propose`); it changes no claim. Its task names
+the goal and the problem the goal answers (`docs/problems.md`).
+
 **What @strategist never does**: move a claim to `validated`, confirm evidence, accept or reject a proposal, decide an
 item of a baseline, approve a baseline, archive a canvas or change the plugin's config. The routes for those refuse the
 token of a run.
@@ -287,6 +294,7 @@ evo-agents hub canvas edit pantry --project northwind --claim CL-3 --base-rev 2 
   --test-card '{"hypothesis": "Shops reorder weekly", "test": "Track reorders", "metric": "pantry.reorders", "aggregate": "mean", "comparator": ">=", "threshold": 3, "deadline": "2026-12-01"}'
 evo-agents hub canvas edit pantry --project northwind --claim CL-3 --base-rev 3 --use-cases "UC ORD-1" \
   --signal-keys pantry.reorders
+evo-agents hub canvas edit pantry --project northwind --claim CL-3 --base-rev 4 --problems "P-1,P-2"  # "" for none
 evo-agents hub canvas edit pantry --project northwind --file changes.json   # {"changes": [...], "reason": "..."}
 evo-agents hub canvas undo pantry CL-3 --project northwind --rev 4
 evo-agents hub canvas evidence add pantry CL-3 --project northwind --kind interview --direction supports \
@@ -341,7 +349,9 @@ text, status, confidence, test card and signal keys, so search finds a claim by 
 - each use case the claim links `implements` it while the project enables srs, so kg_path goes from a claim to its use
   cases, their tasks and the plan steps of those (`docs/tasks-plugin.md`, The knowledge graph);
 - the claim is `measured_by` each signal key it links and the key its test card's metric names, a SignalKey node
-  `signalkey:<key>`.
+  `signalkey:<key>`;
+- the claim `addresses` each problem it links, a Problem node `problem:P-3` of the hub's source `plugin.hub_problems`
+  (`docs/problems.md`, The knowledge graph). The claim's fragment also holds the codes of its problems.
 
 A project ontology that declares the kinds Claim or SignalKey itself fails validation, since the hub declares them.
 
@@ -349,6 +359,7 @@ A project ontology that declares the kinds Claim or SignalKey itself fails valid
 
 The hub's migrations own the plugin's tables: `canvas_canvases`, `canvas_claims`, `canvas_claim_revs` and
 `canvas_evidence` (schema 0073), `canvas_proposals` (0075), `canvas_judgings` with the basis of hub evidence (0076),
-`canvas_baselines` and `canvas_baseline_items` (0077), and the links of a claim (0078). Schema 0074 adds the hub's
+`canvas_baselines` and `canvas_baseline_items` (0077), the links of a claim (0078) and its problems
+(`canvas_claims.problems`, 0135). Schema 0074 adds the hub's
 signal tables and 0077 the hub's `hub_events` (`docs/signals.md`). Import-linter keeps the plugin in its own package
 (contract canvas-plugin-own-package): it imports no other core plugin, and reads the SRS through the hub's tables.

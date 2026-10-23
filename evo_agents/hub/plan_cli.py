@@ -69,6 +69,7 @@ SUMMARY_KEYS = (
     "steps_done",
     "updated_at",
     "updated_by",
+    "problems",
 )
 HANDOFF_KEYS = ("project", "plan_id", "revision", "step", "budget_tokens", "tokens", "cut", "text")
 WRITTEN = returns_object(*WRITTEN_KEYS, schema="evo_agents__hub__server__plans__Written")

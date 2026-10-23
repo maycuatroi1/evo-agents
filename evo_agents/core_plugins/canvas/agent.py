@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.canvas import judging, proposals, rules, store, writes
 from evo_agents.core_plugins.canvas.acting import STRATEGIST, Acting, acting, canvas, proposing_run, strategist_run
 from evo_agents.core_plugins.canvas.commands import undo_command, undone_text
-from evo_agents.core_plugins.canvas.content import CanvasError, code, number_of
+from evo_agents.core_plugins.canvas.content import LINKS, CanvasError, code, number_of
 from evo_agents.core_plugins.canvas.tools import AGENT_EVIDENCE_KINDS
 from evo_agents.hub import signals, tables
 from evo_agents.hub.kg_build import queue_if_configured
@@ -51,7 +51,7 @@ DEFAULT_DAYS = 30
 DEFAULT_LIMIT = 50
 FEEDBACK_CHARS = 300  # of a piece of feedback a series shows
 RACE = "another write in the project took a claim's number at the same moment: nothing was written; try again"
-CLAIM_FIELDS = ("cell", "text", "status", "confidence", "position", "test_card", "archived", "use_cases", "signal_keys")
+CLAIM_FIELDS = ("cell", "text", "status", "confidence", "position", "test_card", "archived", *LINKS)
 
 
 def _text(text: str, *, error: bool = False) -> dict:
@@ -117,6 +117,7 @@ def _claim_lines(row: store.ClaimRow, evidence: list[store.EvidenceRow]) -> list
         f"  test card: {_card_text(row.test_card)}",
         *([f"  use cases: {', '.join(row.use_cases)}"] if row.use_cases else []),
         *([f"  signal keys: {', '.join(row.signal_keys)}"] if row.signal_keys else []),
+        *([f"  problems: {', '.join(row.problems)}"] if row.problems else []),
         f"  {_evidence_counts(evidence)}",
     ]
 

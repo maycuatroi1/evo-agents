@@ -3,9 +3,9 @@ proxy ``evo-agents hub mcp`` answers with it too while the hub cannot be reached
 either way.
 
 The seven kg_* tools are ``evo_agents.kg.serve.TOOLS`` unchanged, names and schemas, so a session reads the graph of
-its project the same way whether ``kg serve`` answers on the machine or the hub does. The twenty-five others read and
-write what the hub holds: memories, plans and their handoffs, skills, the caller's projects, the tool figures of
-runs, and what the Curator's review run reads: the night's figures, session digests, the events of a run, decisions,
+its project the same way whether ``kg serve`` answers on the machine or the hub does. The twenty-seven others read and
+write what the hub holds: memories, plans and their handoffs, the project's problems, skills, the caller's projects,
+the tool figures of runs, and what the Curator's review run reads: the night's figures, session digests, the events of a run, decisions,
 the replays of the Curator's changes, and the project's whole history (HISTORY_READ_TOOLS: its sessions and runs, the
 words of its transcripts, run logs and group chats, the lines of a transcript, the clusters of its facets, what
 earlier review nights found and the Curator's playbook). Those about a project take an optional ``project``; without
@@ -28,6 +28,8 @@ from evo_agents.hub.chats import READ_REF
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
 from evo_agents.hub.memory import MAX_AUDIENCE, TYPES
 from evo_agents.hub.plans import AREAS, STEP_STATUSES
+from evo_agents.hub.problems import REF as PROBLEM_REF
+from evo_agents.hub.problems import STATUSES as PROBLEM_STATUSES
 from evo_agents.hub.runs import DECISION_STATES, EVENT_KINDS, RUNTIMES
 from evo_agents.kg.protocol import PRINCIPAL
 from evo_agents.kg.serve import INSTRUCTIONS as KG_INSTRUCTIONS
@@ -248,6 +250,36 @@ HUB_TOOLS = [
                 "project": _PROJECT,
             },
             "required": ["plan_id", "step", "status"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "problem_list",
+        "description": (
+            "The problems of a project on the hub by rank, each with its code (P-<number>), status (open, solved, "
+            "dropped), owner and metric: what hurts, before any solution. problem_show reads one whole."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project": _PROJECT, "status": {"type": "string", "enum": list(PROBLEM_STATUSES)}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "problem_show",
+        "description": (
+            "One problem of a project on the hub by its code: what hurts, who is hurt, when it happens, how they cope "
+            "today, its metric, rank, owner, status and revision, the goals that answer it, the claims of the "
+            "project's canvases that link it and the plans that name it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "pattern": PROBLEM_REF, "description": "P-<number>"},
+                "revision": {"type": "integer", "minimum": 1, "maximum": MAX_REVISION, "description": "an older one"},
+                "project": _PROJECT,
+            },
+            "required": ["code"],
             "additionalProperties": False,
         },
     },
