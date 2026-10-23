@@ -196,7 +196,7 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
 
 
 async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str, body: dict) -> None:
-    await conn.execute(insert(tables.run_events).values(run_id=run_id, seq=seq, kind=kind, body=body))
+    await conn.execute(insert(tables.run_events).values(run_id=run_id, seq=seq, kind=kind, body=runs.without_nul(body)))
 
 
 async def notify_queued(conn: AsyncConnection, run_id: int) -> None:

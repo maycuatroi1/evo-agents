@@ -408,6 +408,7 @@ WORKER_EVENT_KINDS = ACP_EVENT_KINDS + ("system", "output")  # the hub alone wri
 
 EVENT_CUT_MARK = "\n[cut by the hub: the event was over {limit} bytes]"
 MAX_CUT_PASSES = 64  # strings of one body fit_event_body cuts before it keeps the start of the body's JSON instead
+NUL_STAND_IN = "�"  # what a NUL character of an event body is stored as: Postgres keeps NUL out of jsonb
 
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
@@ -554,6 +555,28 @@ def fit_event_body(body: dict, limit: int = MAX_EVENT_BODY_BYTES) -> tuple[dict,
     if not _cut_strings(fallback, limit):
         fallback = {"cut": EVENT_CUT_MARK.format(limit=limit).strip()}
     return fallback, True
+
+
+def without_nul(body: dict) -> dict:
+    """``body`` when none of its keys and strings holds a NUL character; else a copy with each NUL as NUL_STAND_IN.
+    Postgres refuses a jsonb value with a NUL in it, so one tool's binary output would fail its whole batch, again at
+    each resend. A walk with a stack of its own, as ``_longest_string``."""
+    if "\\u0000" not in json.dumps(body):
+        return body
+    copy = json.loads(json.dumps(body))
+    stack = [copy]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for key in [key for key in node if "\0" in key]:
+                node[key.replace("\0", NUL_STAND_IN)] = node.pop(key)
+        items = list(node.items() if isinstance(node, dict) else enumerate(node))
+        for key, child in items:
+            if isinstance(child, str):
+                node[key] = child.replace("\0", NUL_STAND_IN)
+            elif isinstance(child, (dict, list)):
+                stack.append(child)
+    return copy
 
 
 def step_title(step: dict) -> str | None:
