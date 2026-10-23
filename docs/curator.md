@@ -330,7 +330,7 @@ data, not no friction.
 **The Builder** is a plan run of `curator-<proposal>-<slug>`, a plan the hub made in the same transaction as the
 accepting answer: in the one repo the proposal names, every step pending. Its what, goal, context, verify and
 acceptance stay as the hub made them; a write may change only the progress of its steps. No member dispatches a run of
-it: the night shift alone does. Its agent holds no push credential: the daemon alone pushes, only the branch
+it: the night shift alone does, at any hour, not only inside its window. Its agent holds no push credential: the daemon alone pushes, only the branch
 `curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request. An
 accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
 the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project

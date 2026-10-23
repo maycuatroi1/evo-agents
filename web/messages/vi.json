@@ -4051,7 +4051,7 @@
         "loading": "Đang kiểm tra các run của plan…",
         "planRun": "Plan run #{id} đang ở trạng thái {state}.",
         "stepRun": "Run #{id} của bước {step} đang ở trạng thái {state}; plan run phải chờ run này kết thúc.",
-        "curator": "Plan của Curator: chỉ ca đêm chạy plan này.",
+        "curator": "Plan của Curator: ca đêm tự chạy plan này, vào bất kỳ giờ nào.",
         "noPending": "Không còn bước nào đang chờ làm."
       },
       "model": {
@@ -4087,7 +4087,7 @@
         "repoBranch": "{repo} ({branch})"
       },
       "blocker": {
-        "curator": "Đây là plan của Curator: chỉ ca đêm theo charter của project chạy nó, trên worker đang trực và nhánh riêng của nó.",
+        "curator": "Đây là plan của Curator: ca đêm theo charter của project tự chạy nó vào bất kỳ giờ nào, trong vòng một phút khi worker đang trực rảnh, trên nhánh riêng của nó.",
         "planRun": "<link>Plan run #{id}</link> đang ở trạng thái {state}, do {login} giao: mỗi lúc chỉ một plan run.",
         "stepRun": "<link>Run #{id}</link> của bước {step} đang ở trạng thái {state}: plan run phải chờ tới khi không còn run nào của các bước đang hoạt động.",
         "noPending": "Plan này không còn bước nào đang chờ làm: plan run không có gì để làm.",
