@@ -8,13 +8,15 @@ it, with a web session or a machine token; a worker token never reaches it. The 
 one of the writer's own workers, and the member who owns that worker is the owner of the project's schedules: the
 runs they queue are dispatched by that member, so the rule that a worker takes only its owner's runs holds as it is.
 
-The window is two local times and an IANA time zone. When the end is not after the start, the window runs past
-midnight. The night a moment belongs to is the local date the window last opened on (``night_of``), so the hours
-after midnight count toward the night that began the evening before. Each minute the hub's job ``hub.fire_schedules``
-looks at every schedule that is not paused: inside the window, with no run of the schedule queued or held, fewer runs
-this night than ``max_runs_per_night`` and the night's cost under ``night_budget_usd``, it queues a plan run of the
-first plan of ``night_plans`` that has a ready step and no active run, pinned to the worker on duty. Outside the window,
-or paused, it queues nothing and cancels a run of the schedule still queued.
+The window is two local times and an IANA time zone. When the end is not after the start, the window runs past midnight.
+The night a moment belongs to is the local date the window last opened on (``night_of``), so the hours after midnight
+count toward the night that began the evening before. Each minute the hub's job ``hub.fire_schedules`` looks at every
+schedule that is not paused: inside the window, with no run of the schedule queued or held, fewer runs this night than
+``max_runs_per_night`` and the night's cost under ``night_budget_usd``, it queues a plan run of the first plan of
+``night_plans`` that has a ready step and no active run, pinned to the worker on duty. Outside the window it queues only
+the runs of the Curator's changes (their Builder, judge and replay runs), within the same caps and counted toward the
+night that last opened, and cancels any other run of the schedule still queued; paused, it queues nothing and cancels
+every run of the schedule still queued.
 
 Each run the schedule queues carries a budget (RunBudget): ``max_usd``, what is left of the night's budget capped by
 ``run_budget_usd``; ``max_turns``; and ``max_seconds``, the agent time it may use. The run's timeout is ``max_seconds``

@@ -12,9 +12,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.worker import gitops
-from evo_agents.worker.runner import authorship, push
-from tests.worker.test_claude_home import Notes, agent
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
+from evo_agents.worker import gitops  # noqa: E402
+from evo_agents.worker.runner import authorship, push  # noqa: E402
+from tests.worker.test_claude_home import Notes, agent  # noqa: E402
 
 HUB = "https://agents.omelet.tech"
 SANDBOX = {"handle": "evo-sandbox", "version": 3, "name": "Evo Sandbox", "instructions": "", "permissions": {}}
@@ -97,7 +99,8 @@ def test_commit_author_of_any_other_default_profile_run_is_none():
         assert authorship.agent_author(other, HUB) is None
         assert authorship.co_author_trailer(other) is None
         assert authorship.author_env(other, HUB) == {}
-        assert authorship.commit_message(other, "run #7: x") == "run #7: x"
+        agent = "\n\nEvo-Agent: claude" if other.get("profile") else ""  # the run's agent, its trailer alone
+        assert authorship.commit_message(other, "run #7: x") == "run #7: x" + agent
     assert authorship.agent_author(spec(kind="chat", profile=DEFAULT), "") is None
 
 
@@ -107,7 +110,7 @@ def test_commit_coauthor_trailer_names_the_origin_with_the_github_noreply_email(
     assert authorship.co_author_trailer(no_id) == "Co-authored-by: old-user <old-user@users.noreply.github.com>"
     assert authorship.co_author_trailer(spec(profile=SANDBOX, own_home=True, origin=None)) is None
     message = authorship.commit_message(spec(kind="chat", profile=DEFAULT), "run #7: fix")
-    assert message == f"run #7: fix\n\n{TRAILER}"
+    assert message == f"run #7: fix\n\n{TRAILER}\nEvo-Agent: claude"
 
 
 # The daemon's commit
@@ -121,7 +124,7 @@ def test_commit_of_the_daemon_for_an_agent_run_has_the_agent_author_the_machine_
     made = head(path)
     assert made["author"] == ("Evo Sandbox", "evo-sandbox@agents.omelet.tech")
     assert made["committer"] == MACHINE
-    assert made["body"] == f"run #7: fix the docs\n\n{TRAILER}"
+    assert made["body"] == f"run #7: fix the docs\n\n{TRAILER}\nEvo-Agent: evo-sandbox"
     trailers = subprocess.run(
         ["git", "log", "-1", "--format=%(trailers:key=Co-authored-by,valueonly)"],
         cwd=path,
@@ -138,7 +141,7 @@ def test_commit_of_the_daemon_for_a_default_profile_run_is_as_before_no_author_n
     assert asyncio.run(push.commit(fake_run(spec(profile=DEFAULT)), path)) is True
     made = head(path)
     assert made["author"] == MACHINE and made["committer"] == MACHINE
-    assert made["body"] == "run #7: fix the docs"
+    assert made["body"] == "run #7: fix the docs\n\nEvo-Agent: claude"
 
 
 def test_commit_run_without_an_author_keeps_the_machine_identity(tmp_path):

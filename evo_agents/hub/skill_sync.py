@@ -3,7 +3,9 @@ of every agent runtime on this machine.
 
 ``publish`` packs a directory (``evo_agents.hub.skills``) and checks, before sending anything, what the hub would
 refuse: a bundle over 10 MiB, a global skill without being a hub admin, a project skill without the writer role or a
-hub sink. Then it asks for an upload URL, PUTs the bundle, commits it and creates the version.
+hub sink. Then it asks for an upload URL, PUTs the bundle, commits it and creates the version. A global skill takes an
+audience (AUDIENCES): ``everyone`` signed in, or hub ``admins`` alone; ``set_audience`` changes it alone. The hub lists
+and hands out a skill for admins to nobody else, so ``sync`` never writes one on another member's machine.
 
 ``sync`` writes the latest version of every skill one sees into:
 
@@ -81,6 +83,7 @@ PROJECT_RUNTIMES = ("claude", "agents")  # the runtimes reading skills from a re
 RUNTIME_VARIABLES = {"claude": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME"}
 KEPT = frozenset({"synced", "learned", ".learned", ".system"})  # other tools' directories among the skills
 SCOPES = ("global", "project")
+AUDIENCES = ("everyone", "admins")  # evo_agents.hub.server.skills.AUDIENCES
 PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")
 COMMIT = re.compile(r"[0-9a-f]{7,64}")
 SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -241,9 +244,12 @@ def publish(
     project: str | None = None,
     source_repo: str | None = None,
     source_commit: str | None = None,
+    audience: str | None = None,
 ) -> dict:
     """Publish skill directory ``directory`` as a global skill, or one of ``project``; the hub's answer, with what
-    was packed under ``bundle``."""
+    was packed under ``bundle``. ``audience`` sets a global skill's (AUDIENCES); without it a new skill is everyone's
+    and one that exists keeps its own."""
+    _check_audience(audience, project)
     if (source_repo is None) != (source_commit is None):
         raise HubError("--source-repo and --source-commit go together")
     if source_commit is not None and not COMMIT.fullmatch(source_commit):
@@ -267,11 +273,32 @@ def publish(
     body = {"sha256": bundle.sha256, "size": bundle.size}
     if source_repo is not None:
         body.update(source_repo=source_repo, source_commit=source_commit)
+    if audience is not None:
+        body["audience"] = audience
     published = hub.call("POST", f"{skill_path(project, bundle.name)}/versions", body)
     if not isinstance(published, dict):
         raise HubError(f"the hub at {hub.url} did not answer the publication")
     files = len(bundle.contents.files)
     return {**published, "bundle": {"sha256": bundle.sha256, "size": bundle.size, "files": files}}
+
+
+def _check_audience(audience: str | None, project: str | None) -> None:
+    if audience is not None and audience not in AUDIENCES:
+        raise HubError(f"--audience takes {' or '.join(AUDIENCES)}, not {audience!r}")
+    if project is not None and audience not in (None, AUDIENCES[0]):
+        raise HubError(f"--audience {audience} is a global skill's: a skill of a project is for its members")
+
+
+def set_audience(hub: Hub, name: str, audience: str) -> dict:
+    """Make global skill ``name`` everyone's or hub admins' alone (a hub admin only); the hub's answer."""
+    _check_audience(audience, None)
+    problem = name_problem(name)
+    if problem:
+        raise HubError(problem)
+    changed = hub.call("PUT", f"{skill_path(None, name)}/audience", {"audience": audience})
+    if not isinstance(changed, dict):
+        raise HubError(f"the hub at {hub.url} did not answer the change of audience")
+    return changed
 
 
 def list_skills(hub: Hub, scope: str | None = None, project: str | None = None) -> list[dict]:

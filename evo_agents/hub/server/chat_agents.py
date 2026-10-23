@@ -27,6 +27,10 @@ acts for the person who dispatched the run, the origin of the chain: it writes o
   list, 409 for one the worker has no checkout of, or past ``runs.MAX_RUN_REPOS``); one the run works in already is
   answered as it is (``added`` false).
 
+The text of an agent's message, and of a mention, goes through ``agent_account_mask.mask_values``: the values of the
+accounts of its profile, and every value the hub leased the run (``mask_run``), are replaced by ``***`` before it is
+stored.
+
 The agent's messages are audited as chat.message, and a chat it creates as chat.create, as the run's dispatcher with
 the worker's token; a repo opened as run.open_repo, as the worker, in the run's project.
 """
@@ -45,7 +49,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, outputs, profiles, runs, tables
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, pulls
+from evo_agents.hub.server import audit, pull_trailers, pulls
+from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_access import ChatAccess, label_reader, projects_by_id, uncleared
 from evo_agents.hub.server.chat_members import LOGIN_PATTERN, person, refuse_clash, refuse_uncleared
 from evo_agents.hub.server.chat_notices import notice_added
@@ -303,7 +308,9 @@ async def post_message(request: Request, run_id: RunId, body: AgentMessageIn, us
         run = await agent_run(conn, user, run_id)
         chat, root = await _chat_of(conn, run, body.chat_id)
         root = await _thread(conn, chat, root, body.reply_to)
-        message_id, _ = await post_agent(conn, chat, run.profile, run_id, body.body, root, output_ids=body.output_ids)
+        text = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
+        text = await mask_run(conn, request.app.state.sealer, run_id, text)
+        message_id, _ = await post_agent(conn, chat, run.profile, run_id, text, root, output_ids=body.output_ids)
         await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run_id}")
         view = await _view(conn, chat, message_id)
     log.info("chat message of an agent", extra={"run_id": run_id, "chat_id": chat.chat_id, "message_id": message_id})
@@ -339,8 +346,10 @@ async def mention(request: Request, run_id: RunId, body: AgentMentionIn, user: C
         run = await agent_run(conn, user, run_id)
         chat, root = await _chat_of(conn, run, body.chat_id)
         root = await _thread(conn, chat, root, body.reply_to)
-        text = body.body if body.handle in chats.mention_names(body.body) else f"@{body.handle} {body.body}"
-        text = text if len(text.encode()) <= chats.MAX_MESSAGE_BYTES else body.body
+        said = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
+        said = await mask_run(conn, request.app.state.sealer, run_id, said)
+        text = said if body.handle in chats.mention_names(said) else f"@{body.handle} {said}"
+        text = text if len(text.encode()) <= chats.MAX_MESSAGE_BYTES else said
         origin = run.principal
         author = f"@{run.profile.handle}"
         hand = Hand(chat, 0, 0, run.profile, origin.user_id, origin.login, run.via, run.hop + 1, author, text)
@@ -447,12 +456,16 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
         r = tables.runs  # the session's title: its first run's, which the branch names
         first = rules.session_of(body.branch) or run_id
         title = (await conn.execute(select(r.c.title).where(r.c.id == first))).scalar_one_or_none() or body.branch
+        signed = await pull_trailers.block(conn, run_id)
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
     url, number, opened, problem, draft = None, None, False, None, True
     if target is not None and app is not None:
         # The handle in code spans: a bare @handle on GitHub would mention the GitHub user of that login
-        text = f"Opened by the hub for `@{run.profile.handle}`, from chat {found.chat_id} (run #{run_id}). Not merged."
+        text = (
+            f"Opened by the hub for `@{run.profile.handle}`, from chat {found.chat_id} (run #{run_id}). Not merged."
+            + signed
+        )
         try:
             made, opened = await open_draft(app, target, body.branch, title[:240], text)
             url, number, draft = made.get("html_url"), made.get("number"), made.get("draft") is not False

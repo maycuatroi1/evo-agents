@@ -1,11 +1,14 @@
 import type { Page } from "@playwright/test";
 
 import { createAgentByApi } from "./support/agents";
+import { ceilingOver } from "./support/autonomy";
 import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount } from "./support/hub";
+import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
+import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
+import { decidePath } from "./support/loop";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { seatByApi, unitByApi } from "./support/org";
@@ -31,6 +34,7 @@ import {
 } from "./support/runs";
 import { pmPath, seedPm } from "./support/pm";
 import { putSecretByApi, secretValue } from "./support/secrets";
+import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
@@ -39,8 +43,9 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), the org chart three units deep, Insights with its charts and a wide table,
- * Home, the Monitor, chats and an SRS version's review with @ba's findings, seeded with long unbroken names, at 375, 768
+ * (admin, plans, memories, skills, knowledge graph, workers, secrets and their shares, accounts, runs), the org chart three units deep, Insights with its charts and a wide table,
+ * Home, the Inbox and a decision in it, the sign-in page, the product page, the Monitor, chats and an SRS version's review with @ba's
+ * findings, seeded with long unbroken names, at 375, 768
  * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
  * into its two scroll regions and the Monitor puts its list beside the grid.
  */
@@ -130,6 +135,22 @@ for (const width of WIDTHS) {
 }
 
 for (const width of WIDTHS) {
+  test(`Contacts, Marketing and the growth decisions never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "admin", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    await seedGrowth(me, project, { long: true, spent: 50 });
+    await noSidewaysScroll(page, [width], [
+      { path: contactsPath(project), ready: shown("crm-contacts") },
+      { path: contactPath(project, CONTACTS.longLead), ready: shown("crm-touchpoint") },
+      { path: marketingPath(project), ready: shown("marketing-channels") },
+      { path: marketingPath(project, "posts"), ready: shown("marketing-group-drafts") },
+      { path: marketingPath(project, "weekly"), ready: shown("weekly-report") },
+      { path: decidePath(project), ready: shown("decide-growth") },
+    ]);
+  });
+}
+
+for (const width of WIDTHS) {
   test(`knowledge graph pages never scroll sideways at ${width} px`, async ({ page, member }) => {
     const me = await member();
     const kg = await sharedKg();
@@ -145,12 +166,30 @@ for (const width of WIDTHS) {
   test(`admin pages never scroll sideways at ${width} px`, async ({ page, signInAs }) => {
     await signInAs(ADMIN_ACCOUNT);
     await machineToken(ADMIN_ACCOUNT); // a machine token row next to the web sessions
+    await new HubAdmin().invite({ kind: "register", for_login: newAccount(LONG).login, days: 1 }); // a long login in the list
     await noSidewaysScroll(page, [width], [
       { path: "/admin/audit", ready: shown("audit-table") },
+      { path: "/admin/invites", ready: shown("invites-table") },
       { path: "/admin/tokens", ready: shown("tokens-table") },
       { path: "/admin/members", ready: shown("members-table") },
       { path: `/admin/members/${ADMIN_ACCOUNT.login}`, ready: shown("member-tokens") },
     ]);
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`an invite link's page never scrolls sideways at ${width} px, signed out, signed in and accepted`, async ({ page, signInAs }) => {
+    const hub = new HubAdmin();
+    const project = uniqueName(LONG);
+    await hub.registerProject(project);
+    const created = await hub.invite({ kind: "join", project, role: "writer", max_level: "internal", days: 7 });
+    const path = `/invite/${created.token}`;
+    await noSidewaysScroll(page, [width], [{ path, ready: (p) => expect(p.getByTestId("invite-sign-in")).toBeVisible() }]);
+    await signInAs(newAccount(LONG));
+    await noSidewaysScroll(page, [width], [{ path, ready: (p) => expect(p.getByTestId("invite-accept")).toBeVisible() }]);
+    await page.getByTestId("invite-accept").click();
+    await expect(page.getByTestId("invite-get-started")).toBeVisible(); // accepted before the page loads again
+    await noSidewaysScroll(page, [width], [{ path, ready: shown("invite-get-started") }]);
   });
 }
 
@@ -183,7 +222,31 @@ test("the secrets page never scrolls sideways at 375, 768, 1024 and 1440 px", as
     value: secretValue("wide"),
   });
   await putSecretByApi(me, `${LONG}-env`, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
-  await noSidewaysScroll(page, WIDTHS, [{ path: "/secrets", ready: shown("secrets-table") }]);
+  // Shared with a member and a unit of long unbroken names, with every limit set: the list of shares under the table.
+  const other = await otherMember(LONG.slice(0, 24));
+  const unit = await unitByApi(LONG.slice(0, 40));
+  const limits = { level: "A3", budget_usd: 99_999.99, usage_ceiling_pct: 80, max_running: 12, expires_at: "2099-12-31T00:00:00Z" } as const;
+  await shareByApi(me, `${LONG}-env`, { grantee_kind: "user", login: other.login, projects: [project], ...limits });
+  await shareByApi(me, `${LONG}-env`, { grantee_kind: "unit", unit, projects: [project], ...limits });
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/secrets", ready: shown("share-row") }]);
+});
+
+test("the shares of an account and a worker's Sharing card never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(60_000);
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await putSecretByApi(me, `${LONG}-oa`, { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("wide") });
+  const other = await otherMember(LONG.slice(0, 24));
+  await shareByApi(me, `${LONG}-oa`, { grantee_kind: "user", login: other.login, projects: [project], budget_usd: 99_999.99, terms_ack: true });
+  const live = await liveWorker(me, project, `${LONG}-worker`);
+  const unit = await unitByApi(LONG.slice(0, 40));
+  await doctorReport(live, CLEAN_REPORT);
+  await narrowByApi(me, live, unit);
+  await doctorReport(live, HIGH_REPORT);
+  await noSidewaysScroll(page, WIDTHS, [
+    { path: "/accounts", ready: shown("share-row") },
+    { path: `/workers/${live.worker.id}`, ready: shown("worker-doctor-high") },
+  ]);
 });
 
 test("the org chart never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
@@ -195,6 +258,14 @@ test("the org chart never scrolls sideways at 375, 768, 1024 and 1440 px", async
   const deep = await unitByApi(LONG.slice(0, 40), middle);
   await seatByApi({ unit: deep, role: "member", login: me.login, ends_on: "2099-12-31" });
   await noSidewaysScroll(page, WIDTHS, [{ path: "/org", ready: shown("org-tree") }]);
+});
+
+test("the autonomy settings never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(60_000);
+  const me = await member([{ role: "reader", maxLevel: "internal" }]);
+  // A ceiling on a unit with a long unbroken slug, which every dimmed level and class names as its source.
+  await ceilingOver(me.login, "A1", LONG.slice(0, 40));
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/settings/autonomy", ready: shown("autonomy-classes") }]);
 });
 
 for (const width of WIDTHS) {
@@ -251,6 +322,40 @@ test("home never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page,
   await claimRun(step);
   await reportState(step, failing.id, { state: "failed", error: `${LONG}${LONG}${LONG}` });
   await noSidewaysScroll(page, WIDTHS, [{ path: "/", ready: shown("needs-you-item") }]);
+});
+
+for (const width of WIDTHS) {
+  test(`the Inbox and a decision in it never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    // Long unbroken names in the question, its context and an option.
+    await seedPlanRunPlan(me, project);
+    const { live, run } = await planRunUnderway(me, project, `${LONG}-plan`, { waiting: true });
+    const decision = await askDecision(live, run.id, `${LONG}${LONG}?`, "4", {
+      context: `Step 4 deploys \`${LONG}${LONG}\` to **staging** from ${LONG}/${LONG}.`,
+      options: [
+        { key: "deploy", label: `Deploy ${LONG}${LONG}`, description: `${LONG}${LONG}` },
+        { key: "wait", label: "Wait until tomorrow" },
+      ],
+    });
+    await noSidewaysScroll(page, [width], [
+      { path: "/inbox", ready: shown("notification") },
+      { path: `/inbox?decision=${decision}`, ready: (p) => expect(p.getByTestId("decision-sheet").getByTestId("decision-form")).toBeVisible() },
+    ]);
+  });
+}
+
+test("the sign-in page never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page }) => {
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/login", ready: (p) => expect(p.getByRole("heading", { level: 1 })).toBeVisible() }]);
+});
+
+test.describe("signed out", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("the product page never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page }) => {
+    test.setTimeout(60_000);
+    await noSidewaysScroll(page, WIDTHS, [{ path: "/", ready: (p) => expect(p.getByTestId("product-page")).toBeVisible() }]);
+  });
 });
 
 for (const width of WIDTHS) {

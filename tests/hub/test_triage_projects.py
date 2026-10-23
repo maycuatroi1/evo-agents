@@ -23,14 +23,14 @@ from tests.hub.test_runs import CHECKOUTS, PROJECT, client, hub  # noqa: F401
 from tests.hub.test_triage import failed_step
 from tests.hub.test_triage_actions import agent_of, audited, said
 
-OTHER_PROJECT = "evo-lms"
+OTHER_PROJECT = "fabrikam-lms"
 OTHER_AGENT = "lms-bot"
 ERROR = f"worker for {OTHER_PROJECT} refused the checkout: branch mismatch"
-BOTH = {**CHECKOUTS, f"{OTHER_PROJECT}/{OTHER_PROJECT}": {"path": "/src/evo-lms", "branch": "main"}}
+BOTH = {**CHECKOUTS, f"{OTHER_PROJECT}/{OTHER_PROJECT}": {"path": "/src/fabrikam-lms", "branch": "main"}}
 
 
 def other_project(client, hub, hub_db, role: str | None = "writer", level: str = "internal") -> None:
-    """Project evo-lms with the agent lms-bot; the owner holds ``role`` there (no grant for None)."""
+    """Project fabrikam-lms with the agent lms-bot; the owner holds ``role`` there (no grant for None)."""
     assert client.put(f"/v1/projects/{OTHER_PROJECT}", json=registration(), headers=hub["admin"]).status_code == 200
     admin = {"role": "admin", "max_level": "internal"}
     assert client.put(f"/v1/admin/projects/{OTHER_PROJECT}/grants/owner", json=admin, headers=hub["admin"]).status_code
@@ -143,7 +143,7 @@ def test_triage_label_of_the_chat_someone_does_not_clear_is_said_in_the_thread_a
     other_project(client, hub, hub_db)
     worker, run_id, agent_run = failing(client, hub, hub_db)
     chat_id = sql(hub_db, select(tables.run_triage.c.chat_id).where(tables.run_triage.c.run_id == run_id))[0][0]
-    # someone-else joins the chat with a grant on evo-agents only: the label of evo-lms is past them
+    # someone-else joins the chat with a grant on evo-agents only: the label of fabrikam-lms is past them
     assert client.put(f"/v1/chats/{chat_id}/people/someone-else", headers=hub["owner"]).status_code == 200
     refused = invite(client, worker, agent_run)
     assert refused.status_code == 409 and "someone-else" in refused.json()["message"], refused.text

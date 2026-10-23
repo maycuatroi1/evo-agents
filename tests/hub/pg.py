@@ -177,8 +177,35 @@ LOOP_TABLES = frozenset({"loop_states", "loop_items", "loop_item_events"})
 PLUGIN_NOTICE_TABLES = frozenset({"plugin_notice_keys"})
 # migration 0099: the org chart, its units, the seats in them and the revisions of their autonomy ceilings
 ORG_TABLES = frozenset({"org_units", "org_seats", "autonomy_ceilings"})
-# migration 0104: the files people attach to chat messages
-CHAT_FILE_TABLES = frozenset({"chat_files"})
+# migration 0105: the shares of secrets and accounts and the projects of each (plan credential-sharing)
+SHARE_TABLES = frozenset({"credential_shares", "credential_share_projects"})
+# migration 0107: the units of the org chart a shared worker is narrowed to (plan credential-sharing)
+WORKER_SHARE_TABLES = frozenset({"worker_shares"})
+# migration 0109: the files people attach to messages, and the run inbox rows that carry them
+ATTACHMENT_TABLES = frozenset({"attachments", "run_inbox_attachments"})
+# migration 0110: the invite links
+INVITE_TABLES = frozenset({"invites"})
+# migration 0112: the revisions of each person's own autonomy preference (plan autonomy-levels)
+AUTONOMY_LEVEL_TABLES = frozenset({"autonomy_prefs"})
+# migration 0116: the stops of autonomy S4 (plan autonomy-levels)
+AUTONOMY_STOP_TABLES = frozenset({"autonomy_stops"})
+# migration 0117: the browser identities of projects and members (plan agent-browser)
+BROWSER_TABLES = frozenset({"browser_identities"})
+# migration 0124: the contacts of the core plugin crm (plan autonomous-oss-growth)
+CRM_TABLES = frozenset({"crm_contacts", "crm_touchpoints", "crm_stage_history", "crm_cursors", "crm_deletions"})
+# migration 0125: the channel accounts and the posting gate of the core plugin marketing
+MARKETING_TABLES = frozenset(
+    {
+        "marketing_channels",
+        "marketing_posts",
+        "marketing_budget",
+        "marketing_denylist",
+        "marketing_state",
+        "marketing_metrics",
+    }
+)
+# migration 0127: the growth rules of marketing and crm on the Loop (plan autonomous-oss-growth, step 19)
+GROWTH_TABLES = frozenset({"marketing_replies", "crm_invites_sent"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

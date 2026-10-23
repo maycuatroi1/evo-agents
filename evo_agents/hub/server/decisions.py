@@ -56,14 +56,14 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import BigInteger, and_, false, func, insert, literal, or_, select, true, update
+from sqlalchemy import BigInteger, and_, case, false, func, insert, literal, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
 
 from evo_agents.hub import outputs, runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, principals
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -173,7 +173,12 @@ class Decision(BaseModel):
     options: list[DecisionOption]
     recommended: str | None = Field(description="the key of the option the agent recommends")
     state: Literal[runs.DECISION_STATES]
-    owner: str = Field(description="the login of the run's owner, the one member who may answer")
+    owner: str = Field(description="the login of the run's owner")
+    asked_of: str = Field(
+        description="the login of the person asked, who answers it: the principal of its run, or the person an intern "
+        "reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a "
+        "decision asked before schema 0115"
+    )
     answer_option: str | None
     answer_text: str | None
     answered_by: str | None
@@ -216,11 +221,20 @@ class AnswerIn(BaseModel):
 # Reading decisions
 
 
+def asked_person():
+    """Who answers a decision, of a query that joins its run: the person it was asked of, or before schema 0115 a
+    gate's decision of autonomy the run's principal and any other the run's owner."""
+    d, r = tables.decisions, tables.runs
+    gate = and_(d.c.category == runs.AUTONOMY_DECISION_CATEGORY, r.c.principal_id.is_not(None))
+    return func.coalesce(d.c.asked_of, case((gate, r.c.principal_id), else_=r.c.dispatched_by))
+
+
 def _decisions():
     """The columns of Decision but its options as stored, named as its fields: the decision with its project, its
-    run's state and owner, who answered, and the run whose inbox the answer went to (the first message naming it)."""
+    run's state and owner, who it is asked of, who answered, and the run whose inbox the answer went to (the first
+    message naming it)."""
     d, p, r, i = tables.decisions, tables.projects, tables.runs, tables.run_inbox
-    owner, answerer = tables.users.alias("o"), tables.users.alias("a")
+    owner, answerer, asked = tables.users.alias("o"), tables.users.alias("a"), tables.users.alias("q")
     answer_run = select(i.c.run_id).where(i.c.decision_id == d.c.id).order_by(i.c.id).limit(1).scalar_subquery()
     return select(
         d.c.id,
@@ -235,6 +249,7 @@ def _decisions():
         d.c.options,
         d.c.state,
         owner.c.login.label("owner"),
+        asked.c.login.label("asked_of"),
         d.c.answer_option,
         d.c.answer_text,
         answerer.c.login.label("answered_by"),
@@ -246,6 +261,7 @@ def _decisions():
         d.join(p, p.c.id == d.c.project_id)
         .join(r, r.c.id == d.c.run_id)
         .join(owner, owner.c.id == r.c.dispatched_by)
+        .join(asked, asked.c.id == asked_person())
         .outerjoin(answerer, answerer.c.id == d.c.answered_by)
     )
 
@@ -435,11 +451,14 @@ def about_run(run_id: int, kind: str, title: str | None) -> str:
     return shown + (f", {one_line(title)}" if title else "")
 
 
-async def _notify_asked(conn: AsyncConnection, row, run_id: int, decision_id: int, key: str | None, body) -> None:
-    """Tell the run's owner of the decision just asked: what it is about, its plan and step, or for an author run
-    without a plan, the run and its title."""
-    r = tables.runs
+async def _notify_asked(
+    conn: AsyncConnection, row, run_id: int, decision_id: int, key: str | None, body, asked: int
+) -> None:
+    """Tell ``asked``, the person the decision just asked goes to, of it: what it is about, its plan and step, or for
+    an author run without a plan, the run and its title, and who it is asked of."""
+    r, u = tables.runs, tables.users
     title = (await conn.execute(select(r.c.title).where(r.c.id == run_id))).scalar_one()
+    login = (await conn.execute(select(u.c.login).where(u.c.id == asked))).scalar_one()
     if row.plan_id is not None:
         about = f"plan {row.plan_id}" + (f", step {key}" if key else "")
     else:
@@ -447,13 +466,13 @@ async def _notify_asked(conn: AsyncConnection, row, run_id: int, decision_id: in
     who = "Run" if row.kind == "plan" else f"{row.kind.capitalize()} run"
     await notify(
         conn,
-        user_id=row.dispatched_by,
+        user_id=asked,
         kind="decision",
         project_id=row.project_id,
         run_id=run_id,
         decision_id=decision_id,
         title=f"{who} #{run_id} asks: {one_line(body.question)}",
-        body=f"{body.question.strip()}\n\n{body.category} decision for {about} in project {row.name}.",
+        body=f"{body.question.strip()}\n\n{body.category} decision for {about} in project {row.name}, asked of {login}.",
         link=decision_link(decision_id),
     )
 
@@ -471,6 +490,7 @@ async def store_decision(conn: AsyncConnection, run_id: int, row, body: Decision
             f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
         )
     key = await _step_of_run(conn, run_id, row, body.step_key)
+    asked = await principals.asked_of(conn, run_id)
     stored = (
         insert(d)
         .values(
@@ -482,12 +502,13 @@ async def store_decision(conn: AsyncConnection, run_id: int, row, body: Decision
             question=body.question,
             context=body.context,
             options=body.stored_options(),
+            asked_of=asked,
         )
         .returning(d.c.id)
     )
     decision_id = (await conn.execute(stored)).scalar_one()
     await link_decision(conn, run_id, decision_id, body.output_ids)
-    await _notify_asked(conn, row, run_id, decision_id, key, body)
+    await _notify_asked(conn, row, run_id, decision_id, key, body, asked)
     shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
     await write_event(
         conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}
@@ -574,8 +595,12 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.budget,
         r.c.request,
         r.c.session_per_step,
+        r.c.browser,
+        r.c.browser_identities,
         r.c.profile_id,
         r.c.profile_version,
+        r.c.principal_id,
+        r.c.autonomy,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
@@ -698,14 +723,15 @@ async def answer_decision(
     access = await readable_decision(conn, user, project, decision_id, None)
     d, r, u = tables.decisions, tables.runs, tables.users
     query = (
-        select(d.c.plan_id, d.c.step_key, r.c.dispatched_by, u.c.login)
-        .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == r.c.dispatched_by))
+        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by)
+        .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == asked_person()))
         .where(d.c.id == decision_id, d.c.project_id == access.project_id)
     )
     found = (await conn.execute(query)).one()
-    plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.dispatched_by, found.login
-    if owner_id != user.user_id:
-        raise HTTPException(403, f"only {owner}, who dispatched its run, may answer decision {decision_id}")
+    plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.id, found.login
+    if owner_id != user.user_id and user.user_id not in await principals.escalated_to(conn, decision_id):
+        who = "who dispatched its run" if owner_id == found.dispatched_by else "whom it is asked of"
+        raise HTTPException(403, f"only {owner}, {who}, may answer decision {decision_id}")
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
@@ -778,7 +804,9 @@ async def answer_decision(
 
 
 async def _hub_does(conn: AsyncConnection, user: Principal, decision_id: int, category: str, option: str) -> None:
-    """Do what the answer of a decision of the hub's own chose."""
+    """Do what the answer of a decision of the hub's own chose; a gate of autonomy reads the answer at its next pass."""
+    if category == runs.AUTONOMY_DECISION_CATEGORY:
+        return
     if category == runs.LOOP_DECISION_CATEGORY:
         from evo_agents.hub.server.loop.stall import (
             answer_loop,

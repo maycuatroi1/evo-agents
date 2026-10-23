@@ -7,8 +7,9 @@ your request with the create-exec-plan skill on a worker of yours (POST /v1/proj
 ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the project. ``list`` and ``show`` read runs
 of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
 .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
-until the hub sends ``end``. ``send`` leaves a message for the run's agent, and ``cancel``, ``approve``, ``takeover``,
-``handback`` and ``rerun`` are the owner's controls; ``outputs`` lists the files its agent made (``run_cli_outputs``).
+until the hub sends ``end``. ``send`` leaves a message for the run's agent, files too with ``--attach``
+(``run_cli_send``), and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the owner's controls;
+``outputs`` lists the files its agent made (``run_cli_outputs``).
 ``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub App, the owner only, never a value. Every command after
 ``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's
 message on stderr, such as why a worker whose owner set it to take runs dispatched from the web only refuses a run
@@ -43,6 +44,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from evo_agents import __version__
+from evo_agents.hub.attach_cli import describe
 from evo_agents.hub.author import MAX_REQUEST_BYTES
 from evo_agents.hub.chats import chat_link
 from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
@@ -50,9 +52,11 @@ from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
 from evo_agents.hub.run_cli_candidates import register_candidates
+from evo_agents.hub.run_cli_keys import RUN_KEYS
 from evo_agents.hub.run_cli_options import (
     account_option,
     author_options,
+    browser_body,
     dispatch_options,
     kind_text,
     list_options,
@@ -62,6 +66,7 @@ from evo_agents.hub.run_cli_options import (
     usage_error,
 )
 from evo_agents.hub.run_cli_outputs import register_outputs
+from evo_agents.hub.run_cli_send import register_send
 from evo_agents.hub.run_cli_workers import worker_id as _worker_id
 from evo_agents.hub.runs import (
     EVENT_KINDS,
@@ -84,68 +89,8 @@ RAW_CHARS = 300  # of an event body shown as JSON
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
-RUN_KEYS = (
-    "id",
-    "kind",
-    "project",
-    "plan_id",
-    "step_key",
-    "title",
-    "plan_revision",
-    "dispatched_by",
-    "dispatched_via",
-    "worker_id",
-    "worker",
-    "pinned_worker_id",
-    "requested_runtime",
-    "runtime",
-    "model",
-    "mode",
-    "approval",
-    "timeout_min",
-    "run_seconds",
-    "attempt",
-    "max_attempts",
-    "parent_run_id",
-    "resume_of_run_id",
-    "state",
-    "lease_expires_at",
-    "session_id",
-    "repo",
-    "branch",
-    "repos",
-    "commit_sha",
-    "diffstat",
-    "verify",
-    "evidence",
-    "usage",
-    "budget",
-    "error",
-    "log_sha256",
-    "diff_sha256",
-    "last_seq",
-    "cancel_requested_at",
-    "takeover_requested_at",
-    "handback_requested_at",
-    "queued_at",
-    "leased_at",
-    "started_at",
-    "waiting_since",
-    "parked_at",
-    "finished_at",
-    "request",
-    "finish_requested_at",
-    "steady_wait",
-    "failure_cause",
-    "session_per_step",
-)
-RUN_KEYS += ("profile", "profile_id", "profile_version", "environment")  # its agent profile, where its agent runs
-RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_at")  # a local run's; null otherwise
-RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
-RUN_KEYS += ("session_run_id", "session_turn", "session_turns", "session_title")  # a chat run's session; null otherwise
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
-MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")
 CHAT_KEYS = ("run_id", "state", "status", "owner", "plan_id", "plan_revision", "messages", "more")
 LEASE_KEYS = ("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at")
 LEASE_KEYS += ("profile", "profile_id", "profile_version")
@@ -402,7 +347,7 @@ def cmd_dispatch(args) -> int:
         return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), "steps": args.steps}
+    body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args)}
     chosen = {
         "runtime": args.runtime,
         "model": args.model,
@@ -435,7 +380,7 @@ def cmd_plan(args) -> int:
         return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan)}
+    body = {"plan_id": _plan_id(args.plan), **browser_body(args)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
@@ -708,27 +653,6 @@ def cmd_logs(args) -> int:
     return 0
 
 
-@_client_command
-def cmd_send(args) -> int:
-    text = sys.stdin.read() if args.text == "-" else args.text
-    hub, _ = _signed_in()
-    message = hub.call("POST", _runs_path(_project(args), args.run, "messages"), {"text": text})
-    if args.json:
-        _print_json(message)
-        return 0
-    if message["run_id"] != args.run:
-        print(
-            f"Run #{args.run} was parked: the reply queued run #{message['run_id']}, which resumes it in its session "
-            f"on the same worker, and its agent gets message #{message['id']} (event {message['seq']})."
-        )
-        return 0
-    print(
-        f"Sent message #{message['id']} to run #{message['run_id']} (event {message['seq']}); "
-        "its worker hands it to the agent."
-    )
-    return 0
-
-
 CHAT_STATUS_WORDS = {
     "working": "the agent works on its turn",
     "waiting": "it waits for your reply: `evo-agents hub run send {run} TEXT`, or end it with "
@@ -750,6 +674,8 @@ def cmd_chat(args) -> int:
         who = "agent" if message["author"] == "agent" else message["login"] or "owner"
         print(f"[{_when(message['at'])}] {who} (run #{message['run_id']}):")
         print(message["text"].rstrip())
+        if message.get("attachments"):
+            print(f"(files: {describe(message['attachments'])})")
         print()
     plan = f"; plan {chat['plan_id']} at revision {chat['plan_revision']}" if chat["plan_id"] else ""
     said = CHAT_STATUS_WORDS[chat["status"]].format(run=chat["run_id"])
@@ -869,6 +795,23 @@ def _control(action: str, said: Callable[[dict], str]):
     return command
 
 
+def _register_author(rsub, with_project) -> None:
+    authored = rsub.add_parser(
+        "author",
+        help="queue an author run: a plan written from your request with the create-exec-plan skill, on a worker of "
+        "yours (needs writer)",
+    )
+    authored.add_argument(
+        "request",
+        metavar="REQUEST",
+        help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
+    )
+    with_project(authored)
+    author_options(authored)
+    json_option(authored, RUN)
+    authored.set_defaults(func=cmd_author)
+
+
 def register_runs(hsub) -> None:
     run = hsub.add_parser(
         "run", help="dispatch plan steps, or a whole plan, to your workers, and follow, steer and end their runs"
@@ -914,20 +857,7 @@ def register_runs(hsub) -> None:
     json_option(plan, RUN)
     plan.set_defaults(func=cmd_plan)
 
-    authored = rsub.add_parser(
-        "author",
-        help="queue an author run: a plan written from your request with the create-exec-plan skill, on a worker of "
-        "yours (needs writer)",
-    )
-    authored.add_argument(
-        "request",
-        metavar="REQUEST",
-        help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
-    )
-    with_project(authored)
-    author_options(authored)
-    json_option(authored, RUN)
-    authored.set_defaults(func=cmd_author)
+    _register_author(rsub, with_project)
 
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
     with_project(listed)
@@ -962,15 +892,7 @@ def register_runs(hsub) -> None:
     )
     logs.set_defaults(func=cmd_logs)
 
-    send = rsub.add_parser(
-        "send",
-        help="leave a message for a run's agent, which its worker hands over; to an author run, your reply in its "
-        "chat (owner only)",
-    )
-    with_run(send)
-    send.add_argument("text", metavar="TEXT", help="at most 8 KiB; - reads it from stdin")
-    json_option(send, returns_object(*MESSAGE_KEYS, schema="Message"))
-    send.set_defaults(func=cmd_send)
+    register_send(rsub, with_run, _project)
 
     chat = rsub.add_parser(
         "chat", help="the chat of an author run: its agent's messages and its owner's, oldest first, and whose turn"

@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
 from evo_agents.worker.adapter import RunContext
 from evo_agents.worker.runner.agent import Agent
 from evo_agents.worker.runtimes import claude_code
@@ -40,6 +42,7 @@ def run(tmp_path: Path, runtime: str, env: dict[str, str]) -> SimpleNamespace:
         daemon=SimpleNamespace(env={"PATH": "/usr/bin", **env}, home=SimpleNamespace(root=tmp_path / "worker")),
         credentials=SimpleNamespace(agent_vars={}, withheld=frozenset()),
         venvs={},
+        worktree=None,  # no work tree: no hooks of the trailers (autonomy-levels)
     )
 
 

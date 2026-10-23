@@ -10,6 +10,8 @@ transaction. The admission pass writes the rest: the work item running with its 
 - ``build``: an author run of the frame task, in Loop mode (``author.build_author_prompt``), its request the frame
   task, its child tasks as the plan's steps, the use case at its version, the claim and its test card
   (``texts.author_request``).
+- a kind of a core plugin's Loop rule (``model.PLUGIN_KINDS``): a task run of the plugin's own agent type, or none for
+  a work item the plugin's own job does (``plugin_rules.hand_out``).
 - ``deliver``: a plan run of the plan the build's author run wrote, over the repos of its steps not done.
 
 An author run and a plan run go to worker ``loop.worker``, pinned, in the name of the worker's owner, who must hold
@@ -35,10 +37,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
-from evo_agents.hub.server.loop import caps, texts
+from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
+from evo_agents.hub.server.loop import caps, plugin_rules, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker
-from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, USE_CASE, ItemView, View
+from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, PLUGIN_KINDS, USE_CASE, ItemView, View
+from evo_agents.hub.server.loop.runs_of import goal_owner
 from evo_agents.hub.server.repo_origins import repo_origins
 
 log = logging.getLogger(__name__)
@@ -79,15 +82,19 @@ async def _unfit(conn: AsyncConnection, project: str, worker: LoopWorker, kind: 
     return f"worker {worker.name} cannot take the {kind} run: {'; '.join(problems)}" if problems else None
 
 
-async def _insert(conn: AsyncConnection, values: dict) -> tuple[int | None, str | None]:
-    """(the run made of ``values``, why the database refused it), in a savepoint; queued for its worker."""
+async def _insert(conn: AsyncConnection, values: dict, item: ItemView) -> tuple[int | None, str | None]:
+    """(the run made of ``values`` for work item ``item``, why the database refused it), in a savepoint; queued for its
+    worker. It acts for the owner of the item's goal (``run_autonomy``), for the sponsor of its agent without one."""
     from evo_agents.hub.server.run_state import notify_queued
     from evo_agents.hub.server.runs.service.dispatch import insert_run
 
+    who = run_autonomy.For(user_id=await goal_owner(conn, item.goal_id), hub=True)
     try:
-        run_id = await insert_run(conn, values)
+        run_id = await insert_run(conn, values, who)
     except IntegrityError as exc:
         return None, f"the hub refused the run: {type(exc.orig).__name__}"
+    except autonomy_hold.Stopped as exc:
+        return None, f"the hub refused the run: {exc.detail}"
     await notify_queued(conn, run_id)
     return run_id, None
 
@@ -162,7 +169,7 @@ async def _author_run(conn: AsyncConnection, project_id: int, item: ItemView, vi
         "repos": repos,
         "request": request,
     }
-    run_id, problem = await _insert(conn, values)
+    run_id, problem = await _insert(conn, values, item)
     if run_id is None:
         return _refused(problem)
     await _handed(conn, project, project_id, item, run_id, (login, worker.owner_id))
@@ -211,7 +218,7 @@ async def _plan_run(conn: AsyncConnection, project_id: int, item: ItemView, view
         "title": title,
         "repos": repos,
     }
-    run_id, problem = await _insert(conn, values)
+    run_id, problem = await _insert(conn, values, item)
     if run_id is None:
         return _refused(f"plan {item.plan_id} has an active run already, or {problem}")
     await _handed(conn, project, project_id, item, run_id, (login, worker.owner_id))
@@ -225,7 +232,7 @@ async def _task_run(conn: AsyncConnection, project_id: int, item: ItemView) -> H
         task, title = await texts.brainstorm_task(conn, project, item)
     else:
         task, title = await texts.use_case_task(conn, project, item)
-    handed = await caps.hand_task(conn, project_id, item.kind, task, title)
+    handed = await caps.hand_task(conn, project_id, item.kind, task, title, await goal_owner(conn, item.goal_id))
     if handed.run_id is not None:
         from evo_agents.hub.server.run_state import write_event
 
@@ -244,6 +251,8 @@ async def hand_out(
         return await _author_run(conn, project_id, item, view, worker)
     if item.kind == DELIVER:
         return await _plan_run(conn, project_id, item, view, worker)
+    if item.kind in PLUGIN_KINDS:
+        return await plugin_rules.hand_out(conn, project_id, item)  # a core plugin's rule (extension point loop_rules)
     return None
 
 

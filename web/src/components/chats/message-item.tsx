@@ -6,8 +6,10 @@ import { type ReactNode, type Ref, useContext } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
 import { OutputStrip } from "@/components/data/output-strip";
+import { linkedFiles } from "@/lib/attachments";
 import { Button } from "@/components/ui/button";
-import { type Chat, type ChatAuthor, chatFileOutput, type GroupMessage, isMine } from "@/lib/chats";
+import { type Chat, type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
+import { baseName } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { docKey, messageDocs, OpenDocContext } from "./doc-model";
@@ -65,9 +67,8 @@ const ACTIONS = {
 /**
  * One message of a chat as a chat app draws it (web/DESIGN.md, Chats): the visitor's own on the right in a `brand-soft`
  * bubble with no face; anyone else's on the left in a `muted` bubble after their face and name, shown once for messages
- * that run on. The text is Markdown that is never HTML, and a message of files only has no bubble; under it, the files
- * its person attached and those of its run it carries (an agent's), as chips that open the viewer (an image as its
- * thumbnail), the bytes served to who reads the message, then where it leads (the agent's run, the runs
+ * that run on. The text is Markdown that is never HTML; under the bubble, the files of its run it carries (an agent's,
+ * as chips that open the viewer, the bytes served to who reads the message), where it leads (the agent's run, the runs
  * its mentions handed work to, its pull requests), how far each run it handed work to is (`message-progress.tsx`), what
  * the page puts under it, its reactions, and for a message that starts a thread, how many replies it has and a way
  * into it. In a direct chat a reply that does not sit right under what it answers quotes it above its bubble. React and
@@ -77,6 +78,8 @@ export function MessageItem(props: Props) {
   const { message, chat, me, thread, runOn = false, quote = null, highlighted = false, domId, onReact, onThread, onReply, onQuote, reacting, under, ref } = props;
   const t = useTranslations("chats.message");
   const tFiles = useTranslations("outputs.strip");
+  const tAttach = useTranslations("attachments");
+  const attached = linkedFiles(message.attachments, message.created_at);
   const format = useFormatter();
   const mine = isMine(message.author, me);
   const side = mine ? "mine" : "theirs";
@@ -84,8 +87,6 @@ export function MessageItem(props: Props) {
   const toggle = (emoji: string, on: boolean) => onReact(message, emoji, on);
   const replies = thread?.count ?? 0;
   const id = domId ?? `message-${message.id}`;
-  const attached = (message.files ?? []).map(chatFileOutput);
-  const bubble = message.body.trim() !== "" || attached.length === 0;
   const reply = onReply
     ? { label: t("replyDirect"), icon: <Reply aria-hidden="true" />, act: () => onReply(message) }
     : onThread && thread !== undefined
@@ -113,7 +114,7 @@ export function MessageItem(props: Props) {
       <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side])}>
         <MessageHead id={`${id}-head`} message={message} me={me} mine={mine} runOn={runOn} />
         {quote && onQuote ? <ReplyQuote quote={quote} me={me} onShow={onQuote} /> : null}
-        {bubble ? (
+        {message.body || !attached.length ? (
           <div
             className={cn(
               "max-w-full min-w-0 rounded-lg px-3 py-2 transition-shadow",
@@ -132,7 +133,7 @@ export function MessageItem(props: Props) {
             </SafeMarkdown>
           </div>
         ) : null}
-        <OutputStrip outputs={attached} label={tFiles("attached")} className={cn(mine && "justify-end", !bubble && highlighted && "rounded-sm ring-2 ring-brand")} testId="message-attachments" />
+        <OutputStrip outputs={attached} label={tAttach("files")} className={cn(mine && "justify-end")} testId="message-attachments" />
         <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
         <DocButtons message={message} className={cn(mine && "justify-end")} />
         <MessageLinks message={message} chat={chat} />
@@ -172,14 +173,16 @@ export function MessageItem(props: Props) {
 function DocButtons({ message, className }: { message: GroupMessage; className?: string }) {
   const t = useTranslations("chats.doc");
   const openDoc = useContext(OpenDocContext);
-  const names = [...new Map(messageDocs(message).map((file) => [docKey(file.name), file.name])).values()];
+  const byKey = new Map<string, string>();
+  for (const file of messageDocs(message)) if (!byKey.has(docKey(file.name))) byKey.set(docKey(file.name), baseName(file.name));
+  const names = [...byKey.values()];
   if (!openDoc || names.length === 0) return null;
   return (
     <div className={cn("flex flex-wrap gap-1.5", className)} data-testid="message-docs">
       {names.map((name) => (
-        <Button key={name} type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => openDoc(name)} data-testid="doc-open">
+        <Button key={name} type="button" variant="outline" size="sm" className="h-7 max-w-full text-xs" onClick={() => openDoc(name)} data-testid="doc-open">
           <BookOpen aria-hidden="true" />
-          {t("open", { name })}
+          <span className="truncate">{t("open", { name })}</span>
         </Button>
       ))}
     </div>

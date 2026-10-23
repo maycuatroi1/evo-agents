@@ -20,8 +20,8 @@ export type RunState = Run["state"];
 export type StateCounts = Schemas["StateCounts"];
 export type ReadySteps = Schemas["ReadySteps"];
 export type StepReadiness = Schemas["StepReadiness"];
-export type DispatchRequest = Schemas["Dispatch"];
-export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step"> & { session_per_step?: true }; // sent only when on
+export type DispatchRequest = Omit<Schemas["Dispatch"], "browser" | "identities"> & Partial<Pick<Schemas["Dispatch"], "browser" | "identities">>; // a browser sent only when asked for
+export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step" | "browser" | "identities"> & { session_per_step?: true } & Partial<Pick<Schemas["PlanRunDispatch"], "browser" | "identities">>; // sent only when on
 export type { RequestedRuntime };
 export type RunMode = DispatchRequest["mode"];
 export type Approval = DispatchRequest["approval"];
@@ -191,7 +191,7 @@ export const readyStepsQuery = (api: ApiSource, project: string, plan: string) =
 /** Queue one run per step named, all of them or none (409 when a step is not ready), with the session's CSRF header. */
 export async function dispatchRuns(api: ApiClient, project: string, body: DispatchRequest): Promise<Run[]> {
   const headers = await csrfHeaders(api);
-  return call(api.POST("/v1/projects/{project}/runs", { params: { path: { project } }, body, headers }));
+  return call(api.POST("/v1/projects/{project}/runs", { params: { path: { project } }, body: body as Schemas["Dispatch"], headers }));
 }
 
 /**
@@ -354,11 +354,10 @@ export async function controlRun(api: ApiClient, project: string, id: number, ac
 }
 
 /** A message from the owner to the run's agent, which the worker hands over at the agent's next turn. */
-export async function sendRunMessage(api: ApiClient, project: string, id: number, text: string): Promise<RunMessage> {
+export async function sendRunMessage(api: ApiClient, project: string, id: number, text: string, files: number[] = []): Promise<RunMessage> {
   const headers = await csrfHeaders(api);
-  return call(
-    api.POST("/v1/projects/{project}/runs/{run_id}/messages", { params: { path: { project, run_id: id } }, body: { text }, headers }),
-  );
+  const body = files.length ? { text, attachment_ids: files } : { text };
+  return call(api.POST("/v1/projects/{project}/runs/{run_id}/messages", { params: { path: { project, run_id: id } }, body, headers }));
 }
 
 /** A presigned GET of the run's diff, working for 5 minutes; `download` asks for the attachment run-<id>.diff. */

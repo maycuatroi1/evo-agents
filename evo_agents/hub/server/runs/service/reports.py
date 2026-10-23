@@ -2,10 +2,11 @@
 runs, what the daemon found of updating itself and what it last did for the graphs it keeps fresh (kg_sync), extends
 the leases of the runs it holds and answers what to do with each, the worker's settings (its version lock among them),
 where the tag nightly pointed when the hub last read it, the owner's open Update now
-(``evo_agents.hub.server.update_now``, which the heartbeat may end), for a daemon that runs them the runtimes of the
-plugins its owner accepted (``plugin_runtimes.offered``), and for a daemon of feature kg_sync the projects whose graph
-it keeps fresh (``kg_duties``); and the move of a run it holds (POST
-/v1/worker/runs/{id}/state), checked against the transition table with the worker as actor."""
+(``evo_agents.hub.server.update_now``, which the heartbeat may end), the Chromium a daemon of feature browser starts for
+a run (``_browser``), for a daemon that runs them the runtimes of the plugins its owner accepted
+(``plugin_runtimes.offered``), and for a daemon of feature kg_sync the projects whose graph it keeps fresh
+(``kg_duties``); and the move of a run it holds (POST /v1/worker/runs/{id}/state), checked against the transition table
+with the worker as actor."""
 
 from __future__ import annotations
 
@@ -65,6 +66,14 @@ def _self_update(body: HeartbeatRequest) -> dict:
 def _kg_sync(body: HeartbeatRequest):
     """What a heartbeat sets workers.kg_sync to: the report it carries, or SQL NULL when it carries none."""
     return null() if body.kg_sync is None else body.kg_sync.model_dump(mode="json", exclude_none=True)
+
+
+def _browser(body: HeartbeatRequest):
+    """What a heartbeat sets workers.browser to: the report it carries with the feature browser, else SQL NULL, so a
+    worker whose daemon lost its Chromium takes no more browser runs."""
+    if body.browser is None or runs.BROWSER not in (body.features or ()):
+        return null()
+    return body.browser.model_dump(mode="json")
 
 
 def _extend(worker_id: int, run_ids: list[int], lease: timedelta):
@@ -128,6 +137,7 @@ async def record_heartbeat(
                 features=None if body.features is None else [k for k in body.features if k in runs.HUB_FEATURES],
                 **_self_update(body),
                 kg_sync=_kg_sync(body),
+                browser=_browser(body),
             )
             .where(w.c.id == worker_id)
             .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
@@ -366,7 +376,19 @@ def _move_reason(body: StateReport, name: str, error: str | None, cancel_request
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind in ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question"):
+    if kind in (
+        "plan",
+        "review",
+        "judge",
+        "author",
+        "chat",
+        "task",
+        "replay",
+        "history",
+        "release",
+        "question",
+        "browser",
+    ):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"
             raise HTTPException(409, f"run {run_id} is {article} {kind} run: report done or failed, not review")

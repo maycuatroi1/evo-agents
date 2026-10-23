@@ -32,7 +32,7 @@ from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import app_key  # noqa: F401 (a fixture)
-from tests.hub.test_curator import NIGHT, PROJECT, fire, put_charter, written
+from tests.hub.test_curator import NIGHT, PROJECT, THE_NIGHT, fire, put_charter, written
 from tests.hub.test_curator_changes import (  # noqa: F401 (world is a fixture)
     accepted,
     builder,
@@ -45,7 +45,7 @@ from tests.hub.test_curator_changes import (  # noqa: F401 (world is a fixture)
 )
 from tests.hub.test_facet_job import analyzed, later
 from tests.hub.test_migrate import move_to
-from tests.hub.test_review_runs import MCP_HEADERS, second_review
+from tests.hub.test_review_runs import DRAFT, MCP_HEADERS, answered, proposed, second_review
 from tests.hub.test_run_cli import as_json, cli, ok, write_credentials
 from tests.hub.test_run_stream import serving
 from tests.hub.test_runs import claim, moved
@@ -327,6 +327,28 @@ def test_replay_nothing_without_a_replay_budget_and_for_a_change_of_code(world):
     assert fire(world.client, NIGHT).get("replay") is None  # a change of code is not replayed
     sql(world.db, update(pr).values(kind="skill"))
     assert fire(world.client, NIGHT).get("replay") == 1  # a proposal of kind skill is, whatever its paths
+
+
+def test_replay_never_for_a_change_the_judge_failed(world):
+    replay_world(world)
+    c = tables.curator_changes
+    sql(world.db, update(c).values(state="open", passed=False, tier=3))  # the hub's detector found signs of hacking
+    assert fire(world.client, NIGHT).get("replay") is None  # no replay could give it its merge
+    sql(world.db, update(c).values(passed=None))
+    assert fire(world.client, NIGHT).get("replay") == 1
+
+
+def test_replay_waits_for_the_builder_of_a_planned_change(world):
+    replay_world(world)  # a change of AGENTS.md built, waiting for its replays
+    r = tables.runs
+    ((ended,),) = sql(world.db, select(r.c.id).where(r.c.kind == "review"))
+    run_id = second_review(world, ended, THE_NIGHT)
+    paths = [{"repo": "evo-agents", "path": "tests/test_other.py"}]
+    evidence = [{"kind": "run", "run_id": run_id, "seq": 1}]
+    made = proposed(world.client, world.worker, run_id, kind="test_add", paths=paths, evidence=evidence, plan=DRAFT)
+    moved(world.client, world.worker, run_id, "verifying", "done")
+    answered(world.client, owner(world), made["id"], "accept")
+    assert fire(world.client, NIGHT).get("builder") == 1  # the next change starts before the first one's replays
 
 
 def test_replay_charter_takes_the_replay_settings_and_checks_them(world):

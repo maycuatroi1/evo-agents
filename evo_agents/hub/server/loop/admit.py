@@ -115,12 +115,15 @@ class Capacity:
 @dataclass(frozen=True)
 class Handed:
     """What a hand-out did: the run it handed out, with the login the work item now stands for when that changes
-    (``owner``), or why it handed none (``reason``, one of HANDED_REASONS, and ``why``)."""
+    (``owner``), or why it handed none (``reason``, one of HANDED_REASONS, and ``why``). ``started`` is a work item of
+    a plugin whose work is its own job (run kind job of a Loop rule): it runs with no run of the hub, and the plugin
+    moves it."""
 
     run_id: int | None = None
     owner: str | None = None
     reason: str | None = None
     why: str | None = None
+    started: bool = False
 
 
 # A hand-out: (the tick's connection, the project, a work item that passed the checks, the tick's view, worker
@@ -325,7 +328,7 @@ async def admit(
         handed = None
         if refused is None and dispatch is not None:
             handed = await dispatch(conn, project_id, item, view, capacity.worker)
-        if handed is not None and handed.run_id is not None:
+        if handed is not None and (handed.run_id is not None or handed.started):
             await _running(conn, project_id, item, handed)
             capacity.take(item, held)
             report["dispatched"] += 1

@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.loop import state as loop_state
@@ -46,7 +46,9 @@ REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 WRITE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 RevisionNumber = Annotated[int, Path(ge=1, le=MAX_REVISION)]
 
-router = APIRouter(prefix="/v1/projects", tags=["policy"], responses={401: {"model": ErrorBody}})
+router = APIRouter(
+    prefix="/v1/projects", tags=["policy"], dependencies=[route_autonomy.K12], responses={401: {"model": ErrorBody}}
+)
 
 
 class AutonomyPolicy(BaseModel):

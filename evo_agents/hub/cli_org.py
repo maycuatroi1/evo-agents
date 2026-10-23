@@ -1,16 +1,16 @@
-"""``evo-agents hub org show|unit|seat`` and ``evo-agents hub autonomy ceiling set``: the org chart of the hub (plan
-org-chart, criterion a4), over the routes under /v1/org (``evo_agents.hub.server.org``).
+"""``evo-agents hub org show|unit|seat|worker``: the org chart of the hub (plan org-chart, criterion a4), over the
+routes under /v1/org (``evo_agents.hub.server.org``).
 
 ``org show`` prints the tree of units, indented below the root, each with its kind, its ceiling and the effective
 level with the unit that sets it, and below each unit its seats: the person (or the agent profile and its project),
 the role, whether the seat is primary, reports_to, sponsor, the end date and the effective level with its source.
 Archived units and ended seats are left out unless ``--all``. ``--json`` prints GET /v1/org as the hub answered it.
 
-``org unit create|edit|archive`` change a unit, ``org seat add|edit|end`` a seat, and ``autonomy ceiling set`` writes
-the next ceiling revision of a unit, of a person's primary seat or of one seat. A seat is named by its id
-(``--seat``), by a login, or by ``--agent HANDLE --project P``; with a login, ``--unit`` picks the live seat in that
-unit, else the person's live primary seat is meant. What a member may change is the hub's to decide: a refusal
-(403, 404, 409, 422) prints the hub's reason and exits 1. ``hub autonomy`` is a group the autonomy levels grow into.
+``org unit create|edit|archive`` change a unit and ``org seat add|edit|end`` a seat; ``hub autonomy ceiling set``
+(``evo_agents.hub.cli_autonomy``) writes the ceilings. A seat is named by its id (``--seat``), by a login, or by
+``--agent HANDLE --project P``; with a login, ``--unit`` picks the live seat in that unit, else the person's live
+primary seat is meant. What a member may change is the hub's to decide: a refusal
+(403, 404, 409, 422) prints the hub's reason and exits 1.
 
 Standard library only, like the rest of the client.
 """
@@ -22,6 +22,7 @@ from datetime import date
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
+from evo_agents.hub.cli_org_workers import register_workers
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 
@@ -49,7 +50,6 @@ SEAT_KEYS = (
     "effective",
     "source",
 )
-CEILING_KEYS = ("scope", "target", "revision", "level", "previous", "note")
 
 
 class Usage(Exception):
@@ -335,22 +335,6 @@ def cmd_seat_end(args) -> int:
 # Ceilings
 
 
-@client_command
-def cmd_ceiling_set(args) -> int:
-    body: dict = {"level": args.level, "note": args.note}
-    if args.unit is not None:
-        body["unit"] = args.unit
-    elif args.login is not None:
-        body["login"] = args.login
-    else:
-        body["seat"] = args.seat
-    hub, _ = signed_in()
-    written = hub.call("PUT", "/v1/org/ceilings", body)
-    before = written["previous"] or "none"
-    sentence = f"Ceiling of {written['target']} is {written['level']} (was {before}), revision {written['revision']}."
-    return _print(written, args, sentence)
-
-
 # Registering
 
 
@@ -441,20 +425,4 @@ def register_org(hsub) -> None:
 
     _register_units(osub)
     _register_seats(osub)
-
-
-def register_autonomy(hsub) -> None:
-    group = hsub.add_parser("autonomy", help="the autonomy levels A0 to A5 of people and agents")
-    asub = group.add_subparsers(dest="autonomy_command", required=True)
-    ceiling = asub.add_parser("ceiling", help="the ceilings the org chart sets on autonomy levels")
-    csub = ceiling.add_subparsers(dest="autonomy_ceiling_command", required=True)
-
-    written = csub.add_parser("set", help="the next ceiling revision of a unit, a person's primary seat or a seat")
-    scope = written.add_mutually_exclusive_group(required=True)
-    scope.add_argument("--unit", metavar="SLUG", help="the ceiling of a unit, which every unit below it keeps to")
-    scope.add_argument("--login", help="the ceiling of a person's primary seat")
-    scope.add_argument("--seat", type=int, metavar="ID", help="the ceiling of one seat, such as an agent's")
-    written.add_argument("--level", required=True, choices=LEVELS, help="the highest level allowed")
-    written.add_argument("--note", required=True, help="why, for the history (at most 1000 characters)")
-    json_option(written, returns_object(*CEILING_KEYS, schema="CeilingWritten"))
-    written.set_defaults(func=cmd_ceiling_set)
+    register_workers(osub)

@@ -60,9 +60,18 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
+from evo_agents.worker import backup_cli, chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
 from evo_agents.worker.agent_input import attest, decision_option, evidence_items, plan_file, promotion_file, read_text
-from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
+from evo_agents.worker.browser import register_browser
+from evo_agents.worker.home import (
+    NotJoined,
+    PidLock,
+    WorkerConfig,
+    WorkerHome,
+    WorkerStateError,
+    dir_bytes,
+    revoked_exit,
+)
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 
 EXIT_FAILED = 1
@@ -295,15 +304,6 @@ def cmd_run(args) -> int:
         lock.release()
 
 
-def _dir_bytes(path) -> int:
-    total = 0
-    if path.is_dir():
-        for item in path.iterdir():
-            if item.is_file():
-                total += item.stat().st_size
-    return total
-
-
 @worker_command
 def cmd_attach(args) -> int:
     from evo_agents.worker import interactive
@@ -373,7 +373,7 @@ def cmd_status(args) -> int:
         "tmux": {"path": tmux.binary, "version": tmux.version()},
         "allow_web_terminal": config.allow_web_terminal,
         "checkouts": found,
-        "spool_bytes": _dir_bytes(home.spool_dir),
+        "spool_bytes": dir_bytes(home.spool_dir),
         "runs": [{k: r.get(k) for k in ("id", "state", "worktree", "finished_at")} for r in records],
         "hub": hub_view,
         "hub_error": hub_error,
@@ -486,7 +486,7 @@ MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
 # The parsers of a run's agent in group chats, of `repo open` of a chat run's, of a triage thread's for a failed run, of
 # a review run's on the playbook, and of any run's outputs
 AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
-AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output)
+AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output, backup_cli.register_backup)
 
 
 @dataclass
@@ -500,7 +500,7 @@ class _AgentRun:
     record: dict
 
 
-def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
+def agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     """The run of EVO_RUN_ID on this worker, of one of ``kinds``; WorkerStateError outside one."""
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
@@ -524,7 +524,7 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     return _AgentRun(run_id, home, config, token, record)
 
 
-def _with_hub(agent: _AgentRun, work):
+def with_hub(agent: _AgentRun, work):
     """``await work(hub)`` with the worker's client of the hub; the hub's refusal, or no answer, is a HubError."""
     hubapi = _hubapi()
     from evo_agents.worker import gitops
@@ -633,7 +633,7 @@ async def _notify_push(hub, agent: _AgentRun, name: str, pushed) -> None:
 
 @worker_command
 def cmd_step(args) -> int:
-    agent = _agent_run("step")
+    agent = agent_run("step")
     verify = _step_verify_commands(args)
     output_cli.request_scan(agent.home, agent.run_id)  # the run's .evo-run/outputs/ goes to the hub with each report
     workspaces = _step_workspaces(agent, args.repo)
@@ -668,12 +668,12 @@ def cmd_step(args) -> int:
         print(f"Step {args.key} of plan {answer.get('plan_id')}: {answer.get('status')}{where}{kept}.")
         return 0
 
-    return _with_hub(agent, work)
+    return with_hub(agent, work)
 
 
 @worker_command
 def cmd_ask(args) -> int:
-    agent = _agent_run("ask", runs.RESUME_KINDS)
+    agent = agent_run("ask", runs.RESUME_KINDS)
     options = [decision_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
@@ -694,7 +694,7 @@ def cmd_ask(args) -> int:
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     decision_id = answer.get("id") if isinstance(answer, dict) else None
     if not isinstance(decision_id, int):
         raise HubError("the hub did not answer with the decision's id")
@@ -719,7 +719,7 @@ def cmd_ask(args) -> int:
 
 @worker_command
 def cmd_notify(args) -> int:
-    agent = _agent_run("notify")
+    agent = agent_run("notify")
     body: dict = {"kind": args.kind, "title": args.title}
     for name in ("body", "repo", "branch"):
         if getattr(args, name) is not None:
@@ -730,19 +730,19 @@ def cmd_notify(args) -> int:
     async def work(hub) -> dict:
         return await hub.notice(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     print(f"Notice #{answer.get('id')} sent to the owner of run #{agent.run_id}: {args.title}")
     return 0
 
 
 @worker_command
 def cmd_plan(args) -> int:
-    agent = _agent_run("plan", ("plan", "author"))
+    agent = agent_run("plan", ("plan", "author"))
 
     async def work(hub) -> dict:
         return await hub.plan(agent.run_id)
 
-    view = _with_hub(agent, work)
+    view = with_hub(agent, work)
     if args.json:
         print(json.dumps(view, ensure_ascii=False, indent=2))
         return 0
@@ -763,7 +763,7 @@ def cmd_plan(args) -> int:
 def cmd_finding(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
 
-    agent = _agent_run("finding", ("review",))
+    agent = agent_run("finding", ("review",))
     body: dict = {"lens": args.lens, "severity": args.severity, "title": " ".join(args.title.split())}
     if args.body_file:
         text = read_text(args.body_file, "body", MAX_BODY_BYTES)
@@ -776,7 +776,7 @@ def cmd_finding(args) -> int:
         await attest(body["evidence"], workspaces)
         return await hub.finding(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     print(f"Finding #{answer.get('id')} recorded ({args.lens}, {args.severity}): {body['title']}")
     return 0
 
@@ -786,7 +786,7 @@ def cmd_propose(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
     from evo_agents.hub.tiers import split_target
 
-    agent = _agent_run("propose", ("review",))
+    agent = agent_run("propose", ("review",))
     paths = []
     for text in args.path or []:
         found = split_target(text)
@@ -815,7 +815,7 @@ def cmd_propose(args) -> int:
         await attest(body["evidence"], workspaces)
         return await hub.proposal(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     if answer.get("state") == "dropped":
         print(
             f"Proposal #{answer.get('id')} was dropped: it repeats proposal #{answer.get('duplicate_of')}, which the "
@@ -837,7 +837,7 @@ def cmd_put(args) -> int:
 
     from evo_agents.hub.plans import MAX_PLAN_BYTES
 
-    agent = _agent_run("put", ("author",))
+    agent = agent_run("put", ("author",))
     text = read_text(args.file, "plan", 4 * MAX_PLAN_BYTES) or ""
     try:
         plan = yaml.safe_load(text)
@@ -852,7 +852,7 @@ def cmd_put(args) -> int:
     async def work(hub) -> dict:
         return await hub.put_plan(agent.run_id, request)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     if args.json:
         print(json.dumps(answer, ensure_ascii=False, indent=2))
         return 0
@@ -1083,5 +1083,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    for extra in (*AGENT_PARSERS, projects_cli.register_projects):
+    for extra in (*AGENT_PARSERS, projects_cli.register_projects, register_browser):
         extra(wsub)

@@ -299,7 +299,7 @@ export function NotificationItem({
           {proposal && notification.project && notification.proposal_id != null ? (
             <Link
               href={proposalHref(notification.project, notification.proposal_id)}
-              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline max-md:min-h-11"
               data-testid="notification-proposal-link"
             >
               {t("openProposal", { id: notification.proposal_id })}
@@ -312,30 +312,30 @@ export function NotificationItem({
               onClick={() => {
                 if (unread) onRead(notification.id);
               }}
-              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline max-md:min-h-11"
               data-testid="notification-run-link"
             >
               {triageThread(notification) ? t("openTriage") : t("openRun", { id: notification.run_id })}
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}
-          {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice") ? (
+          {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice" || notification.notice_kind === "browser_needs_login") ? (
             <Link
               href={target}
               onClick={() => {
                 if (unread) onRead(notification.id);
               }}
-              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline max-md:min-h-11"
               data-testid="notification-link"
             >
-              {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : t("openBaseline")}
+              {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : notification.notice_kind === "browser_needs_login" ? t("openLogin") : t("openBaseline")}
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}
           {decision && notification.run_id !== null && notification.project ? (
             <Link
               href={runHref(notification.project, notification.run_id)}
-              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline max-md:min-h-11"
               data-testid="notification-run-link"
             >
               {t("openRun", { id: notification.run_id })}

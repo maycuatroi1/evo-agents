@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ChevronRight, FolderPlus, SlidersHorizontal, Pencil, UserPlus } from "lucide-react";
+import { Archive, ChevronRight, FolderPlus, OctagonX, SlidersHorizontal, Pencil, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
@@ -11,10 +11,12 @@ import { cn } from "@/lib/utils";
 import { useOrgView } from "./context";
 import type { UnitNode } from "./model";
 import { ActionMenu, LevelLine, type MenuItem, SeatRow } from "./seat-row";
+import { StopFlag } from "./stop-parts";
+import { heldStop, unitTarget } from "./stops";
 
 function useUnitItems(node: UnitNode): MenuItem[] {
   const t = useTranslations("org.actions");
-  const { rights } = useOrgView();
+  const { rights, autonomy, mayStop } = useOrgView();
   const { unit } = node;
   if (unit.archived_at) return [];
   const items: MenuItem[] = [];
@@ -23,6 +25,10 @@ function useUnitItems(node: UnitNode): MenuItem[] {
   if (rights.editUnit(unit)) {
     items.push({ id: "edit-unit", label: t("editUnit"), icon: Pencil, action: { kind: "editUnit", unit } });
     items.push({ id: "unit-ceiling", label: t("setCeiling"), icon: SlidersHorizontal, action: { kind: "unitCeiling", unit } });
+  }
+  const target = unitTarget(unit);
+  if (autonomy && !heldStop(autonomy, target) && mayStop(target)) items.push({ id: "stop-unit", label: t("stopUnit"), icon: OctagonX, action: { kind: "stop", target }, destructive: true });
+  if (rights.editUnit(unit)) {
     items.push({ id: "archive-unit", label: t("archiveUnit"), icon: Archive, action: { kind: "archiveUnit", unit }, destructive: true });
   }
   return items;
@@ -39,6 +45,8 @@ export function UnitBranch({ node }: { node: UnitNode }) {
   const panel = useId();
   const items = useUnitItems(node);
   const { unit, seats, children } = node;
+  const { autonomy } = useOrgView();
+  const stop = unit.archived_at ? undefined : heldStop(autonomy, unitTarget(unit));
   const count = seats.length + children.length;
 
   return (
@@ -73,6 +81,7 @@ export function UnitBranch({ node }: { node: UnitNode }) {
             </span>
           </span>
         </button>
+        {stop ? <StopFlag stop={stop} testId="org-unit-stopped" /> : null}
         <ActionMenu label={t("actions.unitMenu", { name: unit.name })} items={items} testId="org-unit-menu" />
       </div>
       <div id={panel} hidden={!open} className="min-w-0 border-l border-border pl-2 ml-3 sm:ml-4 sm:pl-3">

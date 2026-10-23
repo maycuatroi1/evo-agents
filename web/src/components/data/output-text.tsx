@@ -7,7 +7,7 @@ import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { CSV_ROWS, parseCsv, prettyJson, TEXT_PREVIEW_BYTES } from "@/lib/output-text";
-import { extensionOf, type ShownFile, textKind } from "@/lib/outputs";
+import { extensionOf, type ViewedFile, textKind } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { SafeMarkdown } from "./markdown";
@@ -71,7 +71,7 @@ function CsvTable({ text, delimiter }: { text: string; delimiter: string }) {
   );
 }
 
-export function OutputText({ output }: { output: ShownFile }) {
+export function OutputText({ output }: { output: ViewedFile }) {
   const t = useTranslations("outputs.viewer");
   const size = useByteSize();
   const kind = textKind(output);

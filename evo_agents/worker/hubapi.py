@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import random
+from collections.abc import Callable
 from urllib.parse import quote
 
 import aiohttp
@@ -30,6 +31,8 @@ from evo_agents.hub.runs import CLAIM_WAIT_SECONDS, PROTOCOL_HEADER, PROTOCOL_VE
 TIMEOUT = 30.0  # seconds for one call
 CLAIM_SLACK = 20.0  # seconds a claim may take beyond its wait
 UPLOAD_TIMEOUT = 300.0
+DOWNLOAD_TIMEOUT = 600.0  # seconds for the bytes of one file, at most 50 MiB
+CHUNK_BYTES = 256 * 1024
 USER_AGENT = f"evo-agents-worker/{__version__}"
 FIRST_DELAY = 1.0
 MOST_DELAY = 60.0
@@ -125,7 +128,10 @@ class WorkerHub:
         return headers
 
     async def call(self, method: str, path: str, body=None, *, timeout: float = TIMEOUT, headers: dict | None = None):
-        data = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
+        if isinstance(body, bytes):  # sent as it is, with the caller's Content-Type
+            data = body
+        else:
+            data = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         try:
             async with self.session.request(
                 method,
@@ -148,6 +154,10 @@ class WorkerHub:
             payload = None
         if status < 300:
             return payload
+        raise self._problem(method, path, status, payload, retry_after)
+
+    def _problem(self, method: str, path: str, status: int, payload, retry_after: float | None) -> HubProblem:
+        """The HubProblem of the hub's answer ``status`` with the decoded ``payload`` to ``method path``."""
         message = payload.get("message") if isinstance(payload, dict) else None
         code = payload.get("error") if isinstance(payload, dict) else None
         text = str(message or f"the hub at {self.url} answered HTTP {status} to {method} {path}")
@@ -163,7 +173,33 @@ class WorkerHub:
         else:
             problem = Refused(text, status, code, payload)
         problem.retry_after = retry_after
-        raise problem
+        return problem
+
+    async def download(self, path: str, write: Callable[[bytes], None], *, timeout: float = DOWNLOAD_TIMEOUT) -> None:
+        """GET the bytes of ``path`` and hand them to ``write`` chunk by chunk as they come, in at most ``timeout``
+        seconds, no chunk later than TIMEOUT after the one before; the same problems as ``call``. What ``write`` raises
+        ends the download."""
+        try:
+            async with self.session.get(
+                self.url + path,
+                headers={**self._headers(False), "Accept": "*/*"},
+                allow_redirects=False,
+                timeout=aiohttp.ClientTimeout(total=timeout, sock_read=TIMEOUT),
+            ) as response:
+                status = response.status
+                if status >= 300:
+                    raw = await response.read()
+                    try:
+                        payload = json.loads(raw) if raw else None
+                    except ValueError:
+                        payload = None
+                    raise self._problem("GET", path, status, payload, _retry_after(response.headers.get("Retry-After")))
+                async for chunk in response.content.iter_chunked(CHUNK_BYTES):
+                    write(chunk)
+        except TimeoutError:
+            raise Unreachable(f"no answer from {self.url} within {timeout:g}s") from None
+        except aiohttp.ClientError as exc:
+            raise Unreachable(f"cannot reach {self.url}: {type(exc).__name__}: {exc}") from None
 
     # The protocol
 
@@ -177,6 +213,10 @@ class WorkerHub:
     async def heartbeat(self, body: dict) -> dict:
         return await self.call("POST", "/v1/worker/heartbeat", body)
 
+    async def doctor(self, body: dict) -> dict:
+        """Send the findings of the machine's doctor (``evo_agents.worker.doctor_report``)."""
+        return await self.call("POST", "/v1/worker/doctor", body)
+
     async def report(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/state", body)
 
@@ -187,6 +227,11 @@ class WorkerHub:
         body = {} if ack is None else {"ack": ack}
         answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/inbox", body)
         return list(answer.get("messages") or []) if isinstance(answer, dict) else []
+
+    async def attachment(self, run_id: int, attachment_id: int, write: Callable[[bytes], None]) -> None:
+        """The bytes of a file a person attached to a message the run's agent may read, handed to ``write``."""
+        path = f"/v1/worker/runs/{int(run_id)}/attachments/{int(attachment_id)}/content"
+        await self.download(path, write)
 
     # The leases of a run (docs/credentials.md): the answer holds their values, which no caller logs
 
@@ -199,6 +244,59 @@ class WorkerHub:
     async def release_credentials(self, run_id: int) -> dict:
         """Give back every lease this worker holds of the run, in whatever state it is; ``{revoked}``."""
         answer = await self.call("DELETE", f"/v1/worker/runs/{int(run_id)}/credentials")
+        return answer if isinstance(answer, dict) else {}
+
+    # The profiles of a run's browser identities (evo_agents.worker.browser.profiles): no caller logs one
+
+    async def browser_profile(self, run_id: int, identity_id: int) -> dict:
+        """One browser identity of a run this worker holds: its name, domains, version and profile (base64 or
+        null)."""
+        path = f"/v1/worker/runs/{int(run_id)}/browser-profile"
+        answer = await self.call("POST", path, {"identity_id": int(identity_id)}, timeout=UPLOAD_TIMEOUT)
+        return answer if isinstance(answer, dict) else {}
+
+    async def save_browser_profile(
+        self, run_id: int, identity_id: int, archive: bytes, *, base_version: int, chromium_version: str | None
+    ) -> dict:
+        """Send the profile ``archive`` of a browser identity of the run as the version after ``base_version``;
+        ``{identity_id, version}``."""
+        query = f"base_version={int(base_version)}"
+        if chromium_version:
+            query += f"&chromium_version={quote(chromium_version, safe='')}"
+        path = f"/v1/worker/runs/{int(run_id)}/browser-profile/{int(identity_id)}?{query}"
+        headers = {"Content-Type": "application/octet-stream"}
+        answer = await self.call("PUT", path, archive, timeout=UPLOAD_TIMEOUT, headers=headers)
+        return answer if isinstance(answer, dict) else {}
+
+    async def browser_needs_login(self, run_id: int, identity_id: int, cause: str) -> dict:
+        """Say that the run's Chromium could not use the identity's profile (``cause``); ``{identity_id, status}``."""
+        path = f"/v1/worker/runs/{int(run_id)}/browser-profile/{int(identity_id)}/needs-login"
+        answer = await self.call("POST", path, {"cause": cause})
+        return answer if isinstance(answer, dict) else {}
+
+    async def browser_login(self, run_id: int, body: dict) -> dict:
+        """Ask the run's dispatcher to sign in on one of its browser identities (or, for a run that cannot wait, fail
+        the run): ``{outcome, decision_id, message}``."""
+        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/browser-login", body)
+        return answer if isinstance(answer, dict) else {}
+
+    async def local_browser_login(self, body: dict) -> dict:
+        """Open a login of a browser identity on this worker's own machine, with no run (``browser_local``): the
+        identity (made when ``body`` says how) and its profile, as ``browser_profile`` answers, with ``project``."""
+        answer = await self.call("POST", "/v1/worker/browser-identities/login", body, timeout=UPLOAD_TIMEOUT)
+        return answer if isinstance(answer, dict) else {}
+
+    async def save_local_browser_profile(
+        self, identity_id: int, archive: bytes, *, base_version: int, chromium_version: str | None
+    ) -> dict:
+        """Send the profile ``archive`` a local login made as the version after ``base_version``; ``{identity_id,
+        version}``."""
+        query = f"base_version={int(base_version)}"
+        if chromium_version:
+            query += f"&chromium_version={quote(chromium_version, safe='')}"
+        path = f"/v1/worker/browser-identities/{int(identity_id)}/profile?{query}"
+        headers = {"Content-Type": "application/octet-stream"}
+        answer = await self.call("PUT", path, archive, timeout=UPLOAD_TIMEOUT, headers=headers)
         return answer if isinstance(answer, dict) else {}
 
     async def rate_limit(self, run_id: int, body: dict) -> dict:
@@ -240,6 +338,12 @@ class WorkerHub:
 
     async def notice(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
+
+    async def backup(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/backups", body)
+
+    async def autonomy_act(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/autonomy-acts", body, timeout=timeout)
 
     # A review run: its findings and proposals
 

@@ -88,11 +88,13 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
 | emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
+| invite links | `POST` and `GET /v1/admin/invites`, `POST /v1/admin/invites/{id}/revoke`, for hub admins; `POST /v1/invites/accept`, for any member signed in; `POST /v1/invites/preview`, public, for the link's page (section Signing in, Invite links) |
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
+| autonomy levels | `GET /v1/autonomy`, `PUT /v1/autonomy/prefs`: the effective autonomy of a person or an agent on a repo, and a person's own preference (`docs/autonomy.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`; `?agent=` for an agent's), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience`, `POST .../restore` |
-| skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
+| skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle`; `PUT /v1/skills/global/{name}/audience`, for hub admins |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
@@ -112,7 +114,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `POST .../files`, `GET .../files/{file}/content`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
@@ -160,7 +162,8 @@ shared worker another member than the worker's owner, `docs/workers.md`, Shared 
 
 - the session's project is the run's, and an `X-Evo-Project` naming another one gets 403;
 - every tool reaches the run's project alone: any other project answers as one that does not exist, `hub_projects`
-  lists that one, and `skill_list` the global skills and that project's;
+  lists that one, and `skill_list` the global skills its owner sees (Memories, skills and knowledge graphs, Skills) and
+  that project's;
 - the owner's role there counts as writer at most, and the level as the owner's grant allows, through the session's
   sink as for anyone;
 - the agent is never a hub admin, whoever owns the run, and it neither reads nor writes its owner's personal
@@ -282,7 +285,9 @@ relative path is refused, because hooks start in whatever directory the session 
 `~/.evo/hub/token` only.
 
 In the browser, the web sends you to GitHub (`/v1/auth/web/login`, with state and PKCE), and the callback sets the
-session cookie (HttpOnly, Secure, SameSite=Lax). Web sign-in needs four variables: the client id and secret, the
+session cookie (HttpOnly, Secure, SameSite=Lax), then sends you back to the page named by `?next=` on the login
+route. Only a relative path of the hub is taken there (one leading `/`, not `//` or `/\`, no scheme or host,
+printable ASCII, at most 2048 characters); anything else is ignored and the callback goes to `/`. Web sign-in needs four variables: the client id and secret, the
 session secret, and the public URL. Until all four are set, its routes answer 503 while the CLI's device flow keeps
 working with the client id alone. When the client secret is set, the hub also checks with GitHub that a CLI's token
 was issued to this App, so a personal token or another App's token signs nobody in.
@@ -305,13 +310,63 @@ bytes the blob store holds and the deletions still pending, graph builds that fa
 and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page. The trail keeps
 `EVO_HUB_AUDIT_DAYS` days of rows (365 by default, at least 30): the worker's daily `hub.prune_audit` deletes older ones.
 
+### Invite links
+
+A hub admin can hand someone a one-time link instead of granting a login by name. A link of kind `join` names a
+project, a role and a max level on that project's ladder; accepting it gives that grant, as `hub admin grant` would,
+with the admin who made the link as its granter. A link of kind `register` names nothing: accepting it gives the
+right to register one new project. `--for LOGIN` binds a link to one GitHub login (compared without case); without
+it, any member signed in may accept it. A link stays open 7 days unless `--days` asks otherwise, 30 at most.
+
+```sh
+evo-agents hub admin invite create --project demo --role writer --max-level internal --for alice
+evo-agents hub admin invite create --register --days 14
+evo-agents hub admin invite list            # --json: id, kind, project, role, for_login, created_by, expires_at, status, accepted_by, ...
+evo-agents hub admin invite revoke 3
+```
+
+The link is `EVO_HUB_PUBLIC_URL` followed by `/invite/` and a token of 256 random bits (`evn_...`). The hub prints it
+once, in the answer to `POST /v1/admin/invites` (sent `Cache-Control: no-store`), and keeps only the SHA-256 of the
+token; no list, audit row or log holds the token. The member opens the link, signs in (the web passes the page as
+`?next=`), and accepts it with `POST /v1/invites/accept`. The page reads the link with `POST /v1/invites/preview`, which
+needs no sign-in and writes nothing: it names the admin who made the link, its kind, status and expiry, and whether it
+is bound to a login, never which one; the project, role and max level go only to a visitor the link is for while it is
+open (anyone for an unbound link, the bound login signed in for a bound one) and to the member who accepted it. The
+page is not indexed, and its title names no project. Once accepted, it lists the commands to get started on this
+hub. A link works once: of two accepts at the same time, one
+gives the grant and the other gets 410. A link accepted, revoked or expired answers 410, a token the hub does not
+know 404, a link bound to another login 403; none of them grants anything, and the message says to ask a hub admin
+for a new link. Accepting never lowers a grant the member holds already: they keep the higher role and the higher
+level of the two. The agent of a run accepts no link.
+
+The right of a register link lasts until it is used or revoked. `PUT /v1/projects/{project}` (`evo-agents hub project
+register`) of a project the hub does not have takes it in place of a hub admin: in one transaction the hub creates the
+project, grants its holder the `admin` role at the project's highest level, and marks the right used with the
+project's name. Registering a project that exists already, or a second new one, takes the right no longer, and a
+member without one gets 403 as before. Holding a link or a right shows nothing of any other project.
+
+A newcomer without a harness starts one with `evo-agents harness init` in the directory of their repos (README, Quick
+start): it writes `harness.yaml` and `knowledge.yaml`, with the project named after the directory unless `--project`
+names it, and `evo-agents hub project register` run there then spends the right.
+
+```sh
+evo-agents harness init ~/code/acme-tools     # the repos in acme-tools/ (or acme-tools itself), project acme-tools
+evo-agents hub project register ~/code/acme-tools
+```
+
+`invite list` shows each link's status: `open`, `accepted`, `revoked` or `expired`. `invite revoke` closes an open
+link, or the unused right of an accepted register link; it takes back no grant (that is `hub admin revoke`). Making,
+accepting and revoking a link each write one audit row, `invite.create`, `invite.accept` and `invite.revoke`, naming
+the link's id and what it gives. Making, listing and revoking links take a hub admin; anyone else gets 403.
+
 ## Projects and who sees what
 
 A project on the hub is a harness. `evo-agents hub project register` (run in the harness, or with its path) sends
 what the hub needs from `knowledge.yaml` and `harness.yaml`: the label ladder (levels and locations), the sinks with
 their clearances, the default label of the project's memories and plans (that of its harness source), its repos, and
 where the harness and repos sit relative to a workspace. Registering a new project takes a hub admin; registering it
-again after the harness changed takes a hub admin or the project's admin role. `evo-agents hub registry pull` writes
+again after the harness changed takes a hub admin or the project's admin role. The holder of an unused right from a
+register invite link may register one new project and becomes its admin (Signing in, Invite links). `evo-agents hub registry pull` writes
 the projects you see into this machine's harness registry, placed under your workspace.
 
 A grant gives a login one role on a project, `reader`, `writer` or `admin` (each may do what the ones before it
@@ -381,7 +436,10 @@ under the handle of another project's agent (409), since `@<name>` would name bo
 
 Each axis is `{"mode": "all"}` (the default) or `{"mode": "allowlist", "allow": [...]}`. An allowlist never grows by
 itself when a secret, a skill or a worker is added, and an empty one allows nothing. A profile only narrows what the
-member who dispatches a run has (their workers, their secrets, the projects they write to); it never widens it.
+member who dispatches a run has (their workers, their secrets, the projects they write to), with one exception: the
+agent account, an `env` secret the profile owns itself, which its runs are leased on the workers it is bound to instead
+of the dispatcher's secret for the same variable, whatever the credential axis says (see "Accounts of an agent" in
+[credentials.md](credentials.md)).
 
 | Axis | An allowlist names | Enforced |
 | --- | --- | --- |
@@ -622,22 +680,6 @@ people the plugin's rules name are added (each gets `chat_added`, from "the hub"
 why in its first message, which is the hub's and mentions the agent; the run that mention starts acts for the type's
 run_as, as any run a message of the hub wakes. Opening one is audited as `chat.create` in the agent's project.
 
-**Files.** A member attaches files to a message (`evo_agents/hub/server/chat_files.py`): they upload each first,
-`POST .../files?name=NAME` with the file's bytes as the request's body and its media type as `Content-Type`
-(`application/octet-stream` without one), at most 25 MiB (413 over it, 422 for an empty file or a name that is no
-file's), audited as `chat.file` with its SHA-256, never its name, and answered as a ChatFile (`id`, `name`,
-`media_type`, `viewer`, `size`, `sha256`, `uploaded_by`, `created_at`, `url`). The message that names them in
-`file_ids` (at most 10, each uploaded to that chat by its sender and carried by no message yet, 422 otherwise) carries
-them, and a message with files may have no text; each message of a person lists its files as `files`. `GET
-.../files/{file}/content` serves the bytes, under the headers of a run's outputs (the content policy, nosniff, a range,
-an attachment with `download=true`), to a member who reads the message carrying it, or to its uploader before it is
-sent; anyone else gets a 404. The bytes are a blob of the blob store that `chat_files` refers to; a file no message
-carried a day after its upload is deleted when its uploader next uploads one, its blob recorded for deletion once
-nothing refers to it. The prompt of a chat run names each file of a message with the command that saves it, `evo-agents
-worker chat file ID` (`docs/workers.md`, Chat runs), which the agent's run may use for a file of a message it reads.
-Schema 0101 adds `chat_files` and lets a message's body be empty; going back gives an empty body the text `(files)` and
-drops the table.
-
 **Images and faces.** Any member of a group chat sets its image or takes it off (`PUT .../image` with `data`, a PNG,
 JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
 422 for another format; `DELETE .../image`), audited as `chat.image` and sent to the chat's stream as `image_changed`,
@@ -718,8 +760,7 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
 | `PUT .../image` (`data`, base64), `DELETE .../image`, `GET .../image`: a group chat's image | | a member |
 | `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
-| `POST .../files` (`name`, the body the file), `GET .../files/{file}/content`: a message's files | | a member |
-| `POST .../messages` (`body`, `reply_to`, `file_ids`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
+| `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
 | `POST .../read`, `GET .../events`, `GET .../stream` (`progress=true`: the progress under the messages too) | | a member |
 
@@ -1007,7 +1048,14 @@ an agent's, and gives `memory_revisions` the provenance of a run's write (`run_i
 `origin_id`, `hop`, `chat_id`, `chat_message_id`); going back to 0100 deletes the agents' memories and drops the
 columns. Schema 0102 adds `memories.read_at`, `archived_at` and `stale_at`; schema 0103 adds `proposals.promotion`,
 `memory_revisions.proposal_id`, `memories.promoted_at` and `promoted_into`, and the ledger action `promoted`; going
-back from each drops what it added (Memories, skills and knowledge graphs, Memories of agents).
+back from each drops what it added (Memories, skills and knowledge graphs, Memories of agents). Schema 0110 adds
+`invites`, the invite links (Signing in, Invite links); going back to 0109 drops it, and with it the open links and
+the rights to register a project not used yet, while the grants and projects they gave stay.
+Schema 0112 adds `autonomy_prefs`, each person's own autonomy preference in revisions, and the class overrides,
+environments and workers of a ceiling (`docs/autonomy.md`); going back to 0111 drops the table and the three
+columns. Schema 0113 adds `runs.principal_id` and the snapshot `runs.autonomy`; 0114 `secrets.environment`, the
+decision category and the notice kind `autonomy`; 0115 the decision categories `merge`, `credential` and `access` and
+`decisions.asked_of`; 0116 `autonomy_stops`, the stops S4. Going back from each drops what it added.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1223,6 +1271,52 @@ its own name through a presigned GET (`GET .../outputs/{oid}/link`), checked aga
 that name with other bytes rather than over it. hub-cli-v1 gained that command, `outputs` in `hub decision show|list`
 and in the `--json` of `hub chat send|react`.
 
+## Attachments of messages
+
+An attachment is a file a person attaches to a message (`evo_agents.hub.attachments`): to a run's agent (`POST
+/v1/projects/{p}/runs/{id}/messages`) or in a group chat (`POST /v1/chats/{id}/messages`). It has a name, a media
+type, a size, a SHA-256, its uploader and its target, one run or one chat. Its bytes are a blob of kind `attachment`.
+Schema 0109 holds them (`attachments`) and the run inbox rows that carry them (`run_inbox_attachments`), and lets a
+message of files alone have no text; going back gives each empty body the text `(files)` and drops both tables.
+
+- **Uploading.** The sender uploads each file first, its bytes as the request's body, streamed into the blob store
+  with their SHA-256: `POST /v1/projects/{p}/runs/{id}/attachments?name=NAME`, the run's owner while the run takes
+  messages (queued or held by its worker, or a parked author or chat run, which the reply resumes; 409 otherwise),
+  or `POST /v1/chats/{id}/attachments?name=NAME`, a member of the chat. The Content-Type is the media type; a missing
+  or generic one takes the type the name's extension says. The answer is the upload with its `id`.
+- **Sending.** A message names its uploads in `attachment_ids`; with one, its text may be empty. Each must be an
+  upload of the sender for that very run or chat that no message holds yet, else 422 names it; the hub ties them to
+  the message in the transaction that writes it, so an upload goes with one message once. The run's `user_message`
+  event, the message the API answers, the worker's inbox (`POST /v1/worker/runs/{id}/inbox`), the chat's messages
+  (`GroupMessage.attachments`, each with its `url`), the claim of the chat run a message starts and the chat read of a
+  run's agent name the files. A chat message that reaches a chat run's inbox carries its files there too.
+- **Limits.** 50 MiB a file (413 past it) and 10 files a message (422); a name is a file's own name, at most 255
+  characters, no slash or control character.
+- **Reading.** The bytes go out as an output's do ("Outputs of runs", Serving): `nosniff`, a safe Content-Disposition,
+  one byte range, and a sandbox for HTML and SVG. `GET .../runs/{id}/attachments/{aid}/content` serves a file of a
+  message to the run to its readers; `GET /v1/chats/{id}/attachments/{aid}/content` serves a file of a chat message to
+  a member who reads that message (its label). The agent of a run reads, with its worker's token, `GET
+  /v1/worker/runs/{id}/attachments/{aid}/content`: a file of a message its inbox took, or of a chat message it may
+  read. Until it is sent, an upload is its uploader's alone. Anyone else gets 404.
+- **Deleting.** The uploader deletes an upload not sent yet (`DELETE .../runs/{id}/attachments/{aid}` or `DELETE
+  /v1/chats/{id}/attachments/{aid}`, 204; 409 once a message holds it).
+- **Retention.** An upload no message took within 24 hours goes (hub.cleanup_uploads). The files of the messages to a
+  run go with its events, `EVO_HUB_RUN_LOG_DAYS` after the run ended (hub.prune_run_events). The files of chat
+  messages stay with the chat. A blob goes once nothing refers to it (the blob collection counts
+  `attachments.sha256`).
+
+`evo-agents hub run send RUN [TEXT] --attach FILE` and `evo-agents hub chat send CHAT [TEXT] --attach FILE` upload
+each file (`--attach` repeated, up to 10) before the message, after checking them all here, and TEXT may be left out
+with one; `hub run chat` and `hub chat show` print the names of a message's files. hub-cli-v1 gained `--attach` and
+`attachments` in the `--json` of `hub run send` and `hub chat send|react`.
+
+**On the worker.** The worker saves the files of each message under `.evo-run/inbox/` of the agent's directory, which
+is never committed, and adds a block after the message's text that lists their paths, media types and sizes as data
+of the sender, not instructions; the runtime gets text alone (docs/workers.md, Files attached to messages). The claim
+of a chat run names the chat message that opened it in `RunSpec.chat_message_id` (null for any other run), whose
+files go to `.evo-run/inbox/chat-<id>/`, and the hub's prompt of that run names them after the message to answer in a
+`[files attached: ...]` line. A message without files reaches the agent as before.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
@@ -1373,7 +1467,7 @@ or a repo without an origin, becomes no plan: its change stays `open` with the r
 names another repo or branch, or changes anything but the progress of its steps (`status`, `done_at`, `evidence`,
 `note`) and its `status`, is 409: its what, goal, context, verify and acceptance stay as the hub made them. A plan whose
 id starts with `curator-` is made this way alone (a member's put of one is 409). No member dispatches the steps of a
-Curator's plan or a plan run of it (409): the night shift alone runs it. `evo-agents hub curator proposal plan ID`
+Curator's plan or a plan run of it (409): the night shift alone runs it, at any hour. `evo-agents hub curator proposal plan ID`
 (`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
 accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
 the answer alone; one not accepted, of tier 3 or with a change already is 409 with the reason.
@@ -1903,7 +1997,9 @@ memories, changing one it wrote already counting as no new one.
 
 The prompt of a run under such a profile ends with the index of its agent's memories, newest first: each one's name,
 id, type, description and a stale mark, at most 4 KiB and within the room the prompt has left
-(`evo_agents/hub/server/memory_upkeep.py`). A profile with no memory its agent could open, and the default profile,
+(`evo_agents/hub/server/memory_upkeep.py`). A memory whose label names an audience, such as one written in a chat
+(`chat:N`), is listed when the run's agent could open it with `memory_get`: its audience holds the label's (the
+owner's, or for a chat run what both people it is cleared for hold), and the run counts as having seen that audience. A profile with no memory its agent could open, and the default profile,
 keep the prompt as it was. The agent opens a memory with `memory_get`, which records the read (`memories.read_at`);
 the index records none. The daily job `hub.memory_upkeep` archives an agent's memory nobody opened or wrote for 30
 days, out of the index and of the runs' searches, and marks stale one citing `code:REPO:PATH` that the project's graph,
@@ -1911,7 +2007,11 @@ read as the memory's owner, no longer has; a project without a readable graph ke
 archived memory with `POST /v1/memories/{id}/restore` or `evo-agents hub memory restore ID` (audit row
 `memory.restore`), and a new revision clears both marks. The Curator's review reads what agents wrote since its last
 night and may propose promoting it into a shared memory; an accepted promotion marks the agent's memory promoted, out of
-the index, the searches of runs and the upkeep (`docs/curator.md`, Memory).
+the index, the searches of runs and the upkeep (`docs/curator.md`, Memory). The review lists the agents' memories whose
+audience its owner holds, each with its audience, and its run counts as having seen them. A proposal citing such a
+memory as evidence carries its audience in its label, so only a member who holds it lists, opens, answers it or reads its
+ledger (else a 404, as for a label the member may not read); the shared memory a promotion writes keeps the sources'
+audience, so a body from a chat never reaches more people than the chat.
 
 **Session digests.** Stop also pushes the digest of the session once its transcript holds 6 messages, and again after
 each turn that changed it, to the project the session's directory belongs to, decided as for memories; a directory of
@@ -2169,6 +2269,21 @@ writes the latest version of every skill you see into the skills directories of 
 (`claude`, `agents`, `codex`, `cursor`, `gemini`), and project skills into the harness's `.claude/skills` and
 `.agents/skills`. It changes only directories it wrote itself (`--adopt` also takes over copies made by hand),
 saves a copy before replacing anything (under `~/.evo/hub/backups/`), and `--check` reports without writing.
+
+A global skill has an audience: `everyone` (every signed-in member reads it) or `admins` (hub admins alone, the logins
+of `EVO_HUB_ADMINS`). A project skill is always `everyone`; the project's grants decide who reads it. For a member who
+is not a hub admin an `admins` skill does not exist: `GET /v1/skills`, the `skill_list` tool, `hub skills list` and
+the `/skills` pages leave it out, its page, `GET /v1/skills/global/{name}` and its bundle answer 404 as for a skill the
+hub does not have, and `hub skills sync` (with the `SessionStart` check of the evo-hub plugin, which counts what it
+would change) never writes it. The agent of a run sees what the run's owner sees: the `admins` skills when the owner is
+a hub admin, although the agent itself is never one. A new global skill is `everyone`'s unless `hub skills publish
+--audience admins` says otherwise; publishing a version with `--audience` changes it, and without it the skill keeps
+its own. A hub admin changes it alone with `evo-agents hub skills audience house-style admins` (or `everyone`), with
+`PUT /v1/skills/global/{name}/audience`, or with the switch "Hub admins only" of the card "Who sees this skill" on
+the skill's page on the web, a card only hub admins see; the lists and the page tag such a skill "Hub admins only".
+Each change adds one audit row, action `skill.audience`, target `skill:global/<name> audience=<was>-><is>`. Upgrading
+to the hub version that adds it leaves every skill that exists `everyone`'s, so nobody loses one; a skill made `admins`
+later is removed, after a backup, by the next `hub skills sync` of a member who no longer sees it.
 
 **Knowledge graphs.** A project's graph is built on the hub from the run logs machines push. `evo-agents hub kg push
 --project demo` (or `evo-agents kg sync --push`) sends the connector runs the hub lacks; a run whose label the hub sink
@@ -2965,3 +3080,10 @@ local variable and goes through the same masking.
 
 **Upgrades.** Set `EVO_HUB_VERSION` to the new release, pull, and recreate the services; the api migrates on start.
 Take a backup first when the release notes mention a migration.
+
+## Hub browser identity
+
+`/v1/projects/{p}/browser-identities` lists, creates and deletes the identities of a project (owner `member`, `project` or
+`agent`), `POST .../{id}/default` sets the default identity of an agent profile, and `POST .../{id}/login` queues a login
+session. A worker's owner signs one in without a run through `POST /v1/worker/browser-identities/login` and
+`PUT /v1/worker/browser-identities/{id}/profile`. See [docs/browser.md](browser.md).

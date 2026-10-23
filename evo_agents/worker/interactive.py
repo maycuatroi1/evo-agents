@@ -61,10 +61,10 @@ from typing import ClassVar
 
 from evo_agents import __version__
 from evo_agents.hub import terminal as frames
-from evo_agents.hub.client import write_atomic
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.worker.adapter import AgentEvent, RunContext
-from evo_agents.worker.runtimes import claude_code, codex, common, opencode
+from evo_agents.worker.claude_trust import TrustError, trust_folder
+from evo_agents.worker.runtimes import claude_code, codex, common, hub_tools, opencode
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -153,53 +153,6 @@ def claude_state_path(env: Mapping[str, str]) -> Path:
     CLAUDE_CONFIG_DIR when that is set, else ``~/.claude.json``."""
     value = env.get("CLAUDE_CONFIG_DIR")
     return (Path(value).expanduser() if value else _home(env)) / ".claude.json"
-
-
-class TrustError(Exception):
-    """The state file cannot be read as a JSON object, so it is left as it is."""
-
-
-def trust_folder(path: Path, folders: Iterable[str]) -> bool:
-    """Set ``projects[<folder>].hasTrustDialogAccepted`` to true in Claude Code's state file ``path`` for each of
-    ``folders``, keeping every other key; whether the file changed. The file is replaced atomically, with its mode,
-    and through a symbolic link to where it points. A file that is not a JSON object raises TrustError untouched."""
-    target = Path(os.path.realpath(path))
-    try:
-        text = target.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        text = ""
-    except OSError as exc:
-        raise TrustError(f"cannot read {path}: {exc}") from None
-    try:
-        state = json.loads(text) if text.strip() else {}
-    except ValueError as exc:
-        raise TrustError(f"{path} is not JSON ({exc}); it is left as it is") from None
-    if not isinstance(state, dict):
-        raise TrustError(f"{path} is not a JSON object; it is left as it is")
-    projects = state.get("projects")
-    if projects is None:
-        projects = state["projects"] = {}
-    if not isinstance(projects, dict):
-        raise TrustError(f"projects in {path} is not a JSON object; it is left as it is")
-    changed = False
-    for folder in folders:
-        entry = projects.get(folder)
-        if entry is None:
-            entry = projects[folder] = {}
-        if not isinstance(entry, dict):
-            raise TrustError(f"projects[{folder!r}] in {path} is not a JSON object; it is left as it is")
-        if entry.get("hasTrustDialogAccepted") is not True:
-            entry["hasTrustDialogAccepted"] = True
-            changed = True
-    if changed:
-        try:
-            mode = target.stat().st_mode & 0o777
-        except FileNotFoundError:
-            mode = 0o600
-        target.parent.mkdir(parents=True, exist_ok=True)
-        data = json.dumps(state, indent=2, ensure_ascii=False).encode() + b"\n"
-        write_atomic(target, data, mode)
-    return changed
 
 
 # tmux
@@ -721,10 +674,9 @@ class Tui:
 
 
 class ClaudeCodeTui(Tui):
-    """``claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N``, so the session also shows in
-    the Claude apps; a new session gets ``--session-id`` and the run's prompt. The run's model and effort go with
-    it when the run names them. A run whose lease sets CLAUDE_CODE_OAUTH_TOKEN gets no ``--remote-control``, and
-    no ANTHROPIC_API_KEY of the daemon's (``claude_code.dropped_env``)."""
+    """``claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N``, shown in the Claude apps; a
+    new session gets ``--session-id`` and the prompt, each the run's model and effort. A lease's CLAUDE_CODE_OAUTH_TOKEN
+    drops ``--remote-control`` and the daemon's ANTHROPIC_API_KEY (``claude_code.dropped_env``); ``hub_tools.tui_args``."""
 
     runtime = "claude-code"
     program = "claude"
@@ -776,6 +728,7 @@ class ClaudeCodeTui(Tui):
             value = self.setting(key)
             if value:
                 argv += [flag, value]
+        argv += hub_tools.tui_args(self.context, self.runtime)  # the hub's MCP server alone, in a config dir of its own
         if not self.resumed:
             argv.append(self.prompt)
         return argv

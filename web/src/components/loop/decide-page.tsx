@@ -24,6 +24,7 @@ import {
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
 
 import { Tag } from "@/components/data/identifier";
 import { MetricStrip } from "@/components/data/metric-strip";
@@ -194,15 +195,17 @@ function Board({ project, board, login }: { project: string; board: DecisionBoar
  * A project's Decisions page (/p/{project}/decide), for any member with a grant on it, kept current while it is open:
  * everything that waits for a person, the three gates first (the goals, the canvases, the policy), then the Loop's
  * exceptions and the SRS its chain waits on; each with since when, who may decide it, and a link to the page where it
- * is decided, whose buttons call the object's own route. The page itself decides nothing.
+ * is decided, whose buttons call the object's own route. The page itself decides nothing. `extra` is what a core
+ * plugin adds above the board (the route passes the growth decisions of components/marketing).
  */
-export function DecidePage({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
+export function DecidePage({ project, initialError, extra }: { project: string; initialError: ApiErrorInfo | null; extra?: ReactNode }) {
   const t = useTranslations("loop.decide");
   const viewer = useLoopViewer(project);
   const state = useHubQuery({ ...decisionBoardQuery(browserApi, project), refetchInterval: LOOP_REFRESH_MS }, initialError, { live: true });
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="decide-page">
       <PageHeader title={t("title")} testId="decide-header" />
+      {extra}
       <QueryView state={state} loading={<ListSkeleton rows={6} metrics={5} />}>
         {(board) => <Board project={project} board={board} login={viewer?.login ?? null} />}
       </QueryView>

@@ -26,6 +26,10 @@ export type UnitEdit = Schemas["UnitEdit"];
 export type SeatAdd = Schemas["SeatAdd"];
 export type SeatEdit = Schemas["SeatEdit"];
 export type CeilingSet = Schemas["CeilingSet"];
+export type OrgAutonomy = Schemas["OrgAutonomy"];
+export type HeldStop = Schemas["HeldStop"];
+export type StopSet = Schemas["StopSet"];
+export type StopPreview = Schemas["StopPreview"];
 
 /** `org.LEVELS`, the lowest first. */
 export const LEVELS = ["A0", "A1", "A2", "A3", "A4", "A5"] as const satisfies readonly Level[];
@@ -45,6 +49,8 @@ export const orgKeys = {
   chart: ["org", "chart"] as const,
   runs: ["org", "runs"] as const,
   users: ["org", "users"] as const,
+  autonomy: ["org", "autonomy"] as const,
+  preview: (target: StopSet) => ["org", "stop-preview", target.scope, target.login ?? "", target.unit ?? ""] as const,
 };
 
 export const orgQuery = (api: ApiSource) =>
@@ -67,6 +73,22 @@ export const orgUsersQuery = (api: ApiSource) =>
     queryFn: ({ signal }) => call(api().GET("/v1/admin/users", { signal })),
   });
 
+/** Every seat's effective mode of each class and the stops that hold (plan autonomy-levels); anyone signed in. */
+export const orgAutonomyQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: orgKeys.autonomy,
+    queryFn: ({ signal }) => call(api().GET("/v1/autonomy/org", { signal })),
+  });
+
+/** How many runs a stop of `target` would cancel or ask to stop, and whether one holds already. */
+export const stopPreviewQuery = (api: ApiSource, target: StopSet) =>
+  queryOptions({
+    queryKey: orgKeys.preview(target),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/autonomy/stops/preview", { params: { query: { scope: target.scope, login: target.login ?? undefined, unit: target.unit ?? undefined } }, signal })),
+    staleTime: 0,
+  });
+
 // Writes, each with the session's X-Evo-CSRF header.
 
 export type OrgWrite =
@@ -76,7 +98,9 @@ export type OrgWrite =
   | { kind: "addSeat"; body: SeatAdd }
   | { kind: "editSeat"; id: number; body: SeatEdit }
   | { kind: "endSeat"; id: number }
-  | { kind: "setCeiling"; body: CeilingSet };
+  | { kind: "setCeiling"; body: CeilingSet }
+  | { kind: "stop"; body: StopSet }
+  | { kind: "lift"; body: StopSet };
 
 export async function writeOrg(api: ApiClient, write: OrgWrite): Promise<unknown> {
   const headers = await csrfHeaders(api);
@@ -95,5 +119,9 @@ export async function writeOrg(api: ApiClient, write: OrgWrite): Promise<unknown
       return call(api.POST("/v1/org/seats/{seat_id}/end", { params: { path: { seat_id: write.id } }, headers }));
     case "setCeiling":
       return call(api.PUT("/v1/org/ceilings", { body: write.body, headers }));
+    case "stop":
+      return call(api.POST("/v1/autonomy/stops", { body: write.body, headers }));
+    case "lift":
+      return call(api.POST("/v1/autonomy/stops/lift", { body: write.body, headers }));
   }
 }

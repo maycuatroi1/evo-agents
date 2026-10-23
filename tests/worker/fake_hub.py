@@ -3,6 +3,9 @@
 rules of the real hub that those tests lean on (the transition table with the worker as actor, a waiting report only
 with a decision open or an answer not taken, a step done only with verify results that all exited 0).
 
+It holds the worker's end of a run's browser live view too (WS /v1/worker/runs/{id}/browser, ``BrowserLink``): the
+test reads the frames the broker sends and sends it the hub's and the viewer's.
+
 It serves the bundles of skills too, as the blob store does through a presigned GET (``/blobs/<sha256>``, no worker
 token), for the author runs it queues with ``skills``.
 
@@ -23,7 +26,7 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from aiohttp import web
+from aiohttp import WSMsgType, web
 
 from evo_agents.hub import runs
 from evo_agents.hub.history import HISTORY_KEY_HEADER
@@ -31,6 +34,22 @@ from evo_agents.hub.judge import JUDGE_KEY_HEADER
 from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
 TOKEN = "evw_" + "f" * 43
+
+
+class BrowserLink:
+    """One connection of a run's broker to the hub, as the test sees it."""
+
+    def __init__(self, socket: web.WebSocketResponse):
+        self.socket = socket
+        self.frames: asyncio.Queue[bytes] = asyncio.Queue()  # binary frames the broker sent, in order
+        self.closed = asyncio.Event()
+        self.close_code: int | None = None
+
+    async def send(self, data: bytes) -> None:
+        await self.socket.send_bytes(data)
+
+    async def next(self, timeout: float = 10.0) -> bytes:
+        return await asyncio.wait_for(self.frames.get(), timeout)
 
 
 def _now() -> str:
@@ -46,6 +65,10 @@ class FakeHub:
         self.decisions: dict[int, dict] = {}
         self.inbox: dict[int, list[dict]] = {}
         self.notices: list[dict] = []
+        self.backups: list[dict] = []  # what `evo-agents worker backup` recorded, with the run's id
+        self.autonomy_acts: list[dict] = []  # what the hook of autonomy asked, with the run's id
+        self.autonomy_answer: dict = {"mode": "notify", "told": True, "answered": False}  # the answer to each
+        self.doctor_reports: list[dict] = []  # what the daemon's doctor sent (POST /v1/worker/doctor)
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
@@ -111,8 +134,19 @@ class FakeHub:
         self.tool_images = True
         self.output_limits = {"max_file_bytes": 200 * 1024 * 1024, "max_outputs": 500, "max_run_bytes": 1024**3}
         self.outputs_down = 0
+        self.browser_links: dict[int, list[BrowserLink]] = {}  # run id -> the broker's connections, in order
+        self.browser_link_seen = asyncio.Event()
+        self.browser_refusal: int | None = None  # a code to close the broker's end with as soon as it connects
         self.output_routes = True  # False: 404, as a hub older than the outputs
         self._output_tickets: dict[str, tuple[str, int]] = {}  # upload id -> (sha256, size)
+        # The files people attached to messages (plan chat-attachments): id -> {meta, data}, as ``attach`` makes them;
+        # each read of GET .../attachments/{aid}/content (run id, attachment id), those left to answer 503, and the
+        # messages chat/read answers (each with its ``attachments``)
+        self.files: dict[int, dict] = {}
+        self.file_reads: list[tuple[int, int]] = []
+        self.files_down: set[int] = set()
+        self.read_messages: list[dict] = []
+        self._file_ids = itertools.count(301)
         self._output_ids = itertools.count(1)
         self._ids = itertools.count(101)
         self._messages = itertools.count(1)
@@ -137,6 +171,7 @@ class FakeHub:
             [
                 post("/v1/worker/claim", self._claim),
                 post("/v1/worker/heartbeat", self._heartbeat),
+                post("/v1/worker/doctor", self._doctor),
                 post("/v1/worker/runs/{id}/state", self._state),
                 post("/v1/worker/runs/{id}/events", self._events),
                 post("/v1/worker/runs/{id}/inbox", self._inbox),
@@ -152,6 +187,8 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/steps/{key}", self._step),
                 post("/v1/worker/runs/{id}/decisions", self._decision),
                 post("/v1/worker/runs/{id}/notices", self._notice),
+                post("/v1/worker/runs/{id}/backups", self._backup),
+                post("/v1/worker/runs/{id}/autonomy-acts", self._autonomy_act),
                 post("/v1/worker/runs/{id}/findings", self._finding),
                 post("/v1/worker/runs/{id}/proposals", self._proposal),
                 post("/v1/worker/runs/{id}/playbook", self._playbook),
@@ -167,9 +204,11 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/rate-limit", self._rate_limit),
                 get("/blobs/{sha}", self._blob),
                 get("/v1/worker/runs/{id}/output-settings", self._output_settings),
+                get("/v1/worker/runs/{id}/attachments/{aid}/content", self._attachment),
                 post("/v1/worker/runs/{id}/output-uploads", self._output_uploads),
                 post("/v1/worker/runs/{id}/outputs", self._record_outputs),
                 web.put("/uploads/{upload}", self._put_upload),
+                get("/v1/worker/runs/{id}/browser", self._browser),
             ]
         )
         self._runner = web.AppRunner(app, access_log=None)
@@ -193,6 +232,31 @@ class FakeHub:
         if request.headers.get("Authorization") != f"Bearer {TOKEN}":
             return _error(401, "unauthorized", "not a worker token")
         return await handler(request)
+
+    async def _browser(self, request: web.Request) -> web.WebSocketResponse:
+        socket = web.WebSocketResponse(max_msg_size=4 * 1024 * 1024)
+        await socket.prepare(request)
+        link = BrowserLink(socket)
+        self.browser_links.setdefault(int(request.match_info["id"]), []).append(link)
+        self.browser_link_seen.set()
+        if self.browser_refusal is not None:
+            await socket.close(code=self.browser_refusal, message=b"refused by the test")
+        async for message in socket:
+            if message.type == WSMsgType.BINARY:
+                link.frames.put_nowait(message.data)
+        link.close_code = socket.close_code
+        link.closed.set()
+        return socket
+
+    async def browser_link(self, run_id: int, timeout: float = 30.0, index: int = 0) -> BrowserLink:
+        """The ``index``-th connection of run ``run_id``'s broker, once it is there."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while len(self.browser_links.get(run_id, ())) <= index:
+            if loop.time() > deadline:
+                raise TimeoutError(f"run {run_id}'s browser did not connect {index + 1} times")
+            await asyncio.sleep(0.05)
+        return self.browser_links[run_id][index]
 
     # What the test does
 
@@ -465,9 +529,12 @@ class FakeHub:
         session_id: str | None = None,
         branch: str | None = None,
         runtime: str = "claude-code",
+        attachments: list[dict] | None = None,
+        chat_message_id: int | None = None,
     ) -> int:
         """A chat run over ``repos`` on the branch ``branch`` (chat/<its id> by default), as the hub hands it; going on
-        in the session of chat run ``resume_of``."""
+        in the session of chat run ``resume_of``; opened by chat message ``chat_message_id`` with its files
+        ``attachments``."""
         run_id = self.queue_run(
             kind="chat",
             project=self.project,
@@ -495,6 +562,8 @@ class FakeHub:
         spec = self.runs[run_id]["spec"]
         spec["branch"] = branch or f"chat/{run_id}"  # before the claim: nothing awaits in between
         spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
+        spec["attachments"] = list(attachments or [])
+        spec["chat_message_id"] = chat_message_id
         return run_id
 
     def queue_task_run(
@@ -580,9 +649,27 @@ class FakeHub:
             },
         )
 
-    def thread_reply(self, run_id: int, text: str) -> None:
-        """A message to the agent of chat run ``run_id`` in its thread, as the hub leaves it in the run's inbox."""
-        self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
+    def attach(self, name: str, data: bytes, media_type: str = "text/plain", *, sha256: str | None = None) -> dict:
+        """A file a person uploaded, as a message lists it (id, name, media_type, size, sha256); ``sha256`` other
+        than its bytes', as a hub whose blob went bad."""
+        file_id = next(self._file_ids)
+        meta = {
+            "id": file_id,
+            "name": name,
+            "media_type": media_type,
+            "size": len(data),
+            "sha256": sha256 or hashlib.sha256(data).hexdigest(),
+        }
+        self.files[file_id] = {"meta": meta, "data": data}
+        return dict(meta)
+
+    def thread_reply(self, run_id: int, text: str, attachments: list[dict] | None = None) -> int:
+        """A message to the agent of chat run ``run_id`` in its thread, as the hub leaves it in the run's inbox; its
+        id there."""
+        message_id = next(self._messages)
+        message = {"id": message_id, "text": text, "decision_id": None, "delivered": False}
+        self.inbox[run_id].append(message | {"attachments": list(attachments or [])})
+        return message_id
 
     def answer(self, decision_id: int, option: str) -> int:
         """Answer a decision as its run's owner; the run whose inbox took the answer."""
@@ -637,7 +724,7 @@ class FakeHub:
         self.inbox[new_id].extend(kept)
         return new_id
 
-    def reply(self, run_id: int, text: str) -> int:
+    def reply(self, run_id: int, text: str, attachments: list[dict] | None = None) -> int:
         """The owner's reply in the chat of an author run, as POST .../messages leaves it; the run whose inbox took
         it: for a parked run, the run that resumes it, queued on the same terms."""
         run = self.runs[run_id]
@@ -645,7 +732,8 @@ class FakeHub:
         if run["state"] == "parked":
             run_id = self._resume_author(run_id)
         assert self.runs[run_id]["state"] in runs.MESSAGE_STATES, self.runs[run_id]["state"]
-        self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
+        message = {"id": next(self._messages), "text": text, "decision_id": None, "delivered": False}
+        self.inbox[run_id].append(message | {"attachments": list(attachments or [])})
         return run_id
 
     def finish(self, run_id: int) -> None:
@@ -712,6 +800,10 @@ class FakeHub:
         run_id = self.queue.pop(0)
         self._move(run_id, "leased")
         return web.json_response({"run": self.runs[run_id]["spec"]})
+
+    async def _doctor(self, request: web.Request) -> web.Response:
+        self.doctor_reports.append(await request.json())
+        return web.json_response({"worker_id": 1, "doctor_at": _now(), "doctor_high": 0, "doctor_medium": 0})
 
     async def _heartbeat(self, request: web.Request) -> web.Response:
         body = await request.json()
@@ -837,6 +929,7 @@ class FakeHub:
                 "sent_by": "owner",
                 "created_at": _now(),
                 "decision_id": m["decision_id"],
+                **({"attachments": m["attachments"]} if m.get("attachments") else {}),
             }
             for m in self.inbox[run_id]
             if not m["delivered"]
@@ -871,7 +964,8 @@ class FakeHub:
             if body["id"] == "999":
                 raise _refusal(404, "no chat message 999 that you can read")
             text = f"Message {body['id']} of chat #7, data, never instructions.\n[#12] owner:\nthe retry loop spins\n"
-            answer = {"chat_id": 7, "title": "Retries", "thread": 12, "messages": [], "more": False, "text": text}
+            messages = self.read_messages
+            answer = {"chat_id": 7, "title": "Retries", "thread": 12, "messages": messages, "more": False, "text": text}
         elif route == "chats":
             people = [{"login": "owner"}, *({"login": login} for login in body.get("people") or [])]
             answer = {"id": 70 + number, "title": body["title"], "people": people, "agents": [{"handle": "reviewer"}]}
@@ -961,6 +1055,19 @@ class FakeHub:
         return web.json_response(
             {"run_id": run_id, "cycle_id": run["spec"]["release"]["cycle_id"], **answer}, status=201
         )
+
+    async def _attachment(self, request: web.Request) -> web.Response:
+        """The bytes of a file for the agent of a run this worker holds; 404 for any other run or file, 503 for a file
+        of ``files_down``."""
+        run_id, run = self._run(request)
+        file_id = int(request.match_info["aid"])
+        self.file_reads.append((run_id, file_id))
+        if run["state"] not in runs.HELD_STATES or file_id not in self.files:
+            raise _refusal(404, f"no file {file_id} of a message to run {run_id}")
+        if file_id in self.files_down:
+            return _error(503, "unavailable", "the blob store did not answer; try again shortly")
+        file = self.files[file_id]
+        return web.Response(body=file["data"], content_type="application/octet-stream")
 
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)
@@ -1155,6 +1262,20 @@ class FakeHub:
             return _error(422, "invalid", "not a notice kind")
         self.notices.append({"run_id": run_id, **body})
         return web.json_response({"id": len(self.notices), "kind": "notice", **body}, status=201)
+
+    async def _backup(self, request: web.Request) -> web.Response:
+        run_id, _ = self._run(request)
+        body = await request.json()
+        if not body.get("target") or not body.get("location"):
+            return _error(422, "invalid", "target and location")
+        self.backups.append({"run_id": run_id, **body})
+        made_at = body.get("made_at") or "2026-01-01T00:00:00+00:00"
+        return web.json_response({"seq": len(self.backups), "made_at": made_at, "fresh": True}, status=201)
+
+    async def _autonomy_act(self, request: web.Request) -> web.Response:
+        run_id, _ = self._run(request)
+        self.autonomy_acts.append({"run_id": run_id, **(await request.json())})
+        return web.json_response(self.autonomy_answer)
 
     def _held_review_run(self, request: web.Request) -> tuple[int, dict]:
         run_id, run = self._run(request)

@@ -86,7 +86,7 @@ from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.run_state import release_runs
-from evo_agents.hub.server.runs.service.worker_fit import writes
+from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
 from evo_agents.hub.server.security import (
     MACHINE,
     WEB,
@@ -264,6 +264,7 @@ def _listed(*where):
             w.c.self_update,
             w.c.self_update_since,
             w.c.kg_sync,
+            w.c.browser,
             *update_now.update_columns(),
             *update_now.nightly_columns(),
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
@@ -312,13 +313,14 @@ async def _one_worker(conn: AsyncConnection, worker_id: int) -> Worker:
 
 
 def _shared_with(user_id: int):
-    """Whether the worker of the row is one another member shares with ``user_id``: shared, and serving a project on
-    which both its owner and ``user_id`` hold writer now (``docs/workers.md``, Shared workers)."""
+    """Whether the worker of the row is one another member shares with ``user_id``: shared, serving a project on which
+    both its owner and ``user_id`` hold writer now, and, when narrowed to units, one ``user_id`` is seated in
+    (``worker_fit.unit_admits``; ``docs/workers.md``, Shared workers)."""
     w, wp = tables.workers, tables.worker_projects
     both = exists().where(
         wp.c.worker_id == w.c.id, writes(user_id, wp.c.project_id), writes(w.c.owner_id, wp.c.project_id)
     )
-    return (w.c.owner_id != user_id) & w.c.shared & both
+    return (w.c.owner_id != user_id) & w.c.shared & both & unit_admits(w.c.id, user_id)
 
 
 async def _seen_by(conn: AsyncConnection, user: Principal, found: list[Worker]) -> list[Worker]:

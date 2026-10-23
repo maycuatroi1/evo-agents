@@ -76,7 +76,7 @@ export type TraceItem =
   | AgentItem
   | ToolItem
   | (Base & { type: "plan"; entries: PlanEntry[] })
-  | (Base & { type: "user"; text: string; from: string | null; decisionId: number | null })
+  | (Base & { type: "user"; text: string; from: string | null; decisionId: number | null; files: unknown })
   | (Base & { type: "move"; move: RunMove })
   | (Base & { type: "system"; text: string; tone: Tone; output: string | null })
   | (Base & { type: "ask"; decisionId: number; question: string; category: string | null; step: string | null })
@@ -468,9 +468,9 @@ export function buildTrace(events: readonly TraceEvent[]): TraceItem[] {
           ...base,
           key: `u${event.seq}`,
           type: "user",
-          text: messageText(body) ?? json(body),
+          text: messageText(body) ?? (Array.isArray(body.attachments) ? "" : json(body)),
           from: str(body.from),
-          decisionId: int(body.decision_id),
+          decisionId: int(body.decision_id), files: body.attachments,
         });
         break;
       case "state": {

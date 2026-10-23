@@ -279,17 +279,19 @@ describe("HomePage", () => {
     expect(workers[0]).toHaveTextContent("Claude Code, macOS 15 arm64, heartbeat gần nhất");
   });
 
-  it("tells a member without a grant who grants roles, with their login to send", () => {
+  it("tells a member without a grant who grants roles or sends invite links, with their login to send", () => {
     setup(overview({ projects: [], active_runs: [], recent_runs: [], open_decisions: [] }));
     const empty = screen.getByTestId("state-empty");
     expect(empty).toHaveTextContent("Bạn chưa được cấp dự án nào");
-    expect(empty).toHaveTextContent("Quản trị viên hub cấp vai trò trong từng dự án. Gửi họ tên đăng nhập của bạn, octo");
+    expect(empty).toHaveTextContent("Quản trị viên hub cấp vai trò trong từng dự án, hoặc gửi bạn một link mời. Gửi họ tên đăng nhập của bạn, octo");
     expect(within(empty).getByRole("button", { name: "Sao chép tên đăng nhập" })).toBeInTheDocument();
     expect(screen.queryByTestId("home-metrics")).toBeNull();
   });
 
-  it("sends a hub admin without a grant to Administration", () => {
+  it("sends a hub admin without a grant to Administration, and to invite links for others", () => {
     setup(overview({ projects: [], active_runs: [], recent_runs: [], open_decisions: [] }), { admin: true });
-    expect(within(screen.getByTestId("state-empty")).getByRole("link", { name: "Mở trang Quản trị" })).toHaveAttribute("href", "/admin/members");
+    const empty = screen.getByTestId("state-empty");
+    expect(within(empty).getByRole("link", { name: "Mở trang Quản trị" })).toHaveAttribute("href", "/admin/members");
+    expect(within(empty).getByRole("link", { name: "Tạo link mời" })).toHaveAttribute("href", "/admin/invites");
   });
 });

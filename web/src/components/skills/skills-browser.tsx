@@ -21,7 +21,7 @@ import { projectQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { type Skill, skillHref, type SkillPlace, skillsQuery } from "./queries";
-import { ByteSize, SourceLink } from "./skill-bits";
+import { AudienceBadge, ByteSize, SourceLink } from "./skill-bits";
 import type { RepoOrigin } from "./source";
 
 const NARROW_HIDDEN = { size: "hidden md:table-cell", source: "hidden lg:table-cell", published: "hidden sm:table-cell" };
@@ -56,6 +56,7 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
             >
               {info.getValue()}
             </Link>
+            <AudienceBadge audience={info.row.original.audience} />
           </CellMain>
         ),
       }),
@@ -113,6 +114,7 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
         titleText: skill.name,
         titleClassName: "font-mono text-[13px]",
         href: skillHref(place, skill.name),
+        tags: <AudienceBadge audience={skill.audience} />,
         status: <Identifier value={`v${skill.version}`} />,
         meta: skill.description,
         metaText: skill.description,

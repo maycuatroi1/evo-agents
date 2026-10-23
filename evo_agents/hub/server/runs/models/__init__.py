@@ -17,12 +17,17 @@ from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SE
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.runs.models import browser as browser_help
+from evo_agents.hub.server.runs.models.attachment_parts import Attachment
+from evo_agents.hub.server.runs.models.browser import BrowserReport
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     PlanCopy,
     PluginRuntime,
     ReleaseSpec,
+    RunAutonomy,
     RunBudget,
+    RunCard,
     RunEnvironment,
     RunOrigin,
     RunPack,
@@ -131,6 +136,8 @@ class Dispatch(BaseModel):
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
     plugin_config: dict[PluginKey, dict[str, Any]] | None = Field(None, max_length=50, description=PLUGIN_CONFIG_HELP)
+    browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
+    identities: list[browser_help.IdentityName] = browser_help.identities_field()
 
     @model_validator(mode="after")
     def _bounded_plugin_config(self) -> Dispatch:
@@ -190,6 +197,8 @@ class PlanRunDispatch(BaseModel):
     )
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
+    browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
+    identities: list[browser_help.IdentityName] = browser_help.identities_field()
 
 
 class Rerun(BaseModel):
@@ -205,6 +214,7 @@ class Rerun(BaseModel):
     account_by_rule: bool = Field(
         False, description="true: the rules of the caller's policy pick the account, not the one picked for the run"
     )
+    browser: bool | None = Field(None, description=browser_help.RERUN_HELP)
 
     @model_validator(mode="after")
     def _one_choice(self) -> Rerun:
@@ -316,6 +326,8 @@ class Run(BaseModel):
         description="a plan run whose worker starts a new agent session for each step; its usage lists the sessions "
         "(usage.sessions). False for any other run",
     )
+    browser: bool = Field(False, description=browser_help.RUN_HELP)
+    browser_identities: list[int] = Field([], description=browser_help.RUN_IDENTITIES_HELP)
     profile: str | None = Field(
         None, description="the handle of the agent profile the run went under; null for a run from before schema 0030"
     )
@@ -360,6 +372,12 @@ class Run(BaseModel):
     last_activity_at: datetime | None = Field(
         None, description="the last time a local run's session said anything; null for any other run"
     )
+    principal: str | None = Field(
+        None,
+        description="the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null "
+        "for a local run and one queued before the hub knew principals",
+    )
+    autonomy: RunAutonomy | None = Field(None, description="the autonomy it acts under; null where principal is")
 
 
 class ClaimRequest(BaseModel):
@@ -488,6 +506,10 @@ class RunSpec(BaseModel):
         description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
         "and the handoff of the plan; false: one session does every step, with the prompt above",
     )
+    browser: bool = Field(False, description=browser_help.SPEC_HELP, exclude_if=browser_help.no_browser)
+    browser_identities: list[int] = Field(
+        [], description=browser_help.SPEC_IDENTITIES_HELP, exclude_if=browser_help.no_identities
+    )
     profile: RunProfile | None = Field(
         None, description="the agent profile the run went under; null for a run from before schema 0030"
     )
@@ -518,6 +540,19 @@ class RunSpec(BaseModel):
     )
     release: ReleaseSpec | None = Field(
         None, description="a release run's cycle, mode and start commit; null for any other run"
+    )
+    autonomy: RunCard | None = Field(
+        None, description="the autonomy card its prompt opens with; null for a run without a snapshot of autonomy"
+    )
+    attachments: list[Attachment] = Field(
+        default_factory=list,
+        description="a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET "
+        "/v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run",
+    )
+    chat_message_id: int | None = Field(
+        None,
+        description="a chat run's: the chat message that opened it, whose files the worker saves under "
+        ".evo-run/inbox/chat-<id>/; null for any other run",
     )
 
 
@@ -699,6 +734,7 @@ class HeartbeatRequest(BaseModel):
         description="for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each "
         "heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off",
     )
+    browser: BrowserReport | None = Field(None, description=browser_help.REPORT_HELP)
 
     def stored(self) -> tuple[dict, dict]:
         """runtimes and checkouts as workers keeps them and GET /v1/workers/{id} shows them: every key present."""

@@ -1299,7 +1299,7 @@ def test_a_project_added_needs_the_writer_role_and_one_served_already_stays_on_a
     assert granted.status_code == 200, granted.text
     worker_id = joined(client, paired(client, hub["owner"], projects=["demo", "notes"])["code"])["worker"]["id"]
     path = f"/v1/workers/{worker_id}"
-    # the owner holds reader on notes now, as the owner of a worker that serves meridai does on the hub
+    # the owner holds reader on notes now, as the owner of a worker that serves another member's project does on the hub
     lowered = client.put(f"/v1/admin/projects/notes/grants/{OWNER}", json=READER, headers=admin)
     assert lowered.status_code == 200, lowered.text
 

@@ -31,22 +31,28 @@ runtime names them (``skill_names``), and one of the tool axis ``mcp:<server>`` 
 (``evo_agents.hub.profiles``; ``evo_agents.worker.runtimes.profiles.with_packs``). Checked against Claude Code 2.1.296,
 opencode 1.18.34 and codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a pack built so.
 
+A run with a browser also gets the pack of the core plugin browser, built from this installation (``build(...,
+browser=True)``; ``BROWSER_PACK``), whose Playwright server names the run's Chromium through ``${EVO_BROWSER_CDP}``
+(``Pack.variables``); a runtime that loads no MCP server refuses it.
+
 Standard library only.
 """
 
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import shutil
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.hub import skill_sync
 from evo_agents.hub.client import HubError
-from evo_agents.plugins import agent_packs, bundle
+from evo_agents.plugins import agent_packs, bundle, core
+from evo_agents.plugins.manifest import ManifestError, read_manifest
 
 PACKS_DIR = "packs"  # under runs/<run>
 KINDS = agent_packs.KINDS  # what a runtime that loads every component of a pack names as its ``pack_kinds``
@@ -56,6 +62,13 @@ LEFT_OUT = (agent_packs.MCP_FILE,)  # handed to the runtime through its own conf
 DIR_MODE = 0o700
 CONFIG_CONTENT = "OPENCODE_CONFIG_CONTENT"
 CLAUDE_CODE = "claude-code"
+BROWSER_PLUGIN = (
+    "browser"  # the core plugin whose pack every run with a browser gets (``evo_agents.core_plugins.browser``)
+)
+BROWSER_MODULE = "evo_agents.core_plugins.browser"
+BROWSER_PACK = agent_packs.pack_name(BROWSER_PLUGIN, "browser")
+NO_BROWSER_HINT = "dispatch the run without browser"
+BROWSER_VARIABLE = "EVO_BROWSER_CDP"  # the DevTools endpoint of the run's browser, in the args of the pack's server
 KIND_WORDS = {
     "skills": "skills",
     "agents": "subagents",
@@ -80,6 +93,9 @@ class Pack:
     version: str
     root: Path
     components: agent_packs.Components
+    # ``${NAME}`` in the pack's MCP servers that the run gives a value to: the DevTools endpoint of its browser
+    # (``BROWSER_VARIABLE``). Set by the run before each agent starts; no part of the pack's identity.
+    variables: dict[str, str] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def label(self) -> str:
@@ -92,8 +108,8 @@ class Pack:
         return f"{self.plugin}.{self.name}"
 
     def servers(self) -> tuple[agent_packs.Server, ...]:
-        """The pack's MCP servers, ``${CLAUDE_PLUGIN_ROOT}`` replaced by its directory."""
-        return tuple(server.rooted(str(self.root)) for server in self.components.servers)
+        """The pack's MCP servers, ``${CLAUDE_PLUGIN_ROOT}`` replaced by its directory and the run's ``variables``."""
+        return tuple(server.rooted(str(self.root)).with_variables(self.variables) for server in self.components.servers)
 
     def skill_names(self, runtime: str) -> list[str]:
         """The pack's skills as ``runtime`` names them: ``<plugin>.<pack>:<skill>`` on Claude Code, the skill's own
@@ -111,10 +127,13 @@ def build(
     *,
     accepted: Iterable[str] | None = None,
     fetch: Callable[[str, int], bytes] | None = None,
+    browser: bool = False,
 ) -> tuple[Pack, ...]:
     """The packs of ``tickets`` (the claim's ``packs``), built in ``directory``, emptied first; ``accepted`` is the
     plugins the owner of this worker accepted, None to skip that check; ``fetch`` downloads a bundle
-    (``skill_sync.get_bundle`` when None). PackFailed saying what is wrong."""
+    (``skill_sync.get_bundle`` when None). With ``browser`` (the run has a browser), the pack of the core plugin browser
+    comes too, built from this installation's own package: the run's profile need not attach it, and one that does
+    gets it once. PackFailed saying what is wrong."""
     fetch = fetch or skill_sync.get_bundle
     tickets = list(tickets)
     if directory.exists():
@@ -134,8 +153,35 @@ def build(
         if (plugin, version) not in held:
             held[(plugin, version)] = _download(ticket, fetch)
         found.append(_place(ticket, held[(plugin, version)], directory / plugin / name))
+    if browser and BROWSER_PACK not in {pack.pack for pack in found}:
+        ticket, contents = _browser_bundle()
+        found.append(_place(ticket, contents, directory / ticket["plugin"] / ticket["name"]))
     _check_servers(found)
     return tuple(found)
+
+
+def _browser_bundle() -> tuple[dict, bundle.Contents]:
+    """The ticket and the contents of the pack of the core plugin browser, from the package this worker runs."""
+    # By name, as the entry point of the plugin names it: the worker holds no static import of a core plugin
+    source = importlib.import_module(BROWSER_MODULE)
+    where = "the agent pack of the core plugin browser, which every run with a browser gets,"
+    try:
+        manifest = read_manifest(source.MANIFEST)
+        built = core.image_bundle(core.CorePlugin(BROWSER_PLUGIN, f"{BROWSER_MODULE}:MANIFEST", manifest))
+        contents = bundle.read_bundle(built.data)
+    except (bundle.BundleError, ManifestError) as exc:
+        raise PackFailed(f"{where} cannot be built from this installation: {exc}") from None
+    plugin, name = agent_packs.split_pack(BROWSER_PACK)
+    ticket = {
+        "pack": BROWSER_PACK,
+        "plugin": plugin,
+        "name": name,
+        "version": manifest.version,
+        "sha256": built.sha256,
+        "size": len(built.data),
+        "url": "",
+    }
+    return ticket, contents
 
 
 def _ticket(item: object) -> dict:

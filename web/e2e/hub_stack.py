@@ -20,7 +20,8 @@ push their fixture through the same store, and POST /kg/seed and /kg/build run t
 (``kg_seed.py``). POST /merge-queue/seed writes a project's merge queue on GitLab as the hub's job would leave it
 (``merge_seed.py``), since no GitLab answers the stack. POST /loop/seed writes the work items a project's Loop would
 leave after a few weeks of a goal (``loop_seed.py``), since the stack runs no worker to tick it. POST /plugin-notice/seed writes the Inbox notice an isolated plugin sends
-(``plugin_notice_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
+(``plugin_notice_seed.py``). POST /growth/seed writes the contacts, channel accounts, posts and month's budget the core
+plugins crm and marketing would leave (``growth_seed.py``), since the stack runs neither their jobs nor a channel. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
 self_update_hours, features} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
 reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
 ``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
@@ -30,6 +31,12 @@ the daemon does (``FakeTerminal``: the worker's token and protocol header, retri
 over a real PTY, whose line discipline echoes what is typed and whose program answers each line with ``echo: <line>``
 and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says how it went. POST /sessions/age
 {login, hours} makes that member's web sessions that many hours older, for the 12-hour limit of the terminal.
+
+The browser view spec needs the worker's end of a run's live browser: POST /browser/worker {run_id, token} connects it
+the way the daemon's broker does (``fake_browser.FakeBrowser``: the worker's token and protocol header), with two tabs
+whose screens are stills of one colour and a mode that follows the run's state; GET /browser/worker/<run_id> says what
+it got (the views, the ACKs and every event the page sent), and POST /browser/worker/end {run_id, how} drops its end
+(``drop``), connects it again (``resume``) or closes the run's browser (``close``).
 
 The Insights specs need runs that ended on earlier days: POST /runs/backdate {run_id, days, seconds} moves an ended run
 ``days`` whole UTC days back, every time of it alike, and with ``seconds`` makes it start that long before it ended.
@@ -81,6 +88,10 @@ base64 with its SHA-256 and the signature, which a spec publishes and installs t
 through e2e/hub_serve.py, which puts the core plugin notes (tests/hub/core_notes.py) in its image: its table in the
 chain of migrations and its native page, which the web's end-to-end build carries.
 
+``pnpm screenshots`` seeds its demo through the API and three routes of ``demo/stack.py``: POST /demo/kg writes the
+demo's repos and harness and pushes and builds their graph, POST /demo/retime sets the times the hub stamped to the
+demo's fixed clock, and POST /demo/keepalive keeps its workers online and its runs leased.
+
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
 """
@@ -109,10 +120,13 @@ from urllib.parse import quote, unquote
 ROOT = Path(__file__).resolve().parents[2]  # the evo-agents checkout this web/ belongs to
 sys.path.insert(0, str(ROOT))
 
+from demo.stack import Demo  # noqa: E402
+from fake_browser import FakeBrowser  # noqa: E402
 from fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
 from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
 from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
 from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
+from growth_seed import seed as seed_growth  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
 from loop_seed import seed as seed_loop  # noqa: E402
 from merge_seed import seed as seed_merge_queue  # noqa: E402
@@ -701,7 +715,9 @@ def control_server(
     telegram: FakeTelegram,
 ) -> ThreadingHTTPServer:
     terminals: dict[int, FakeTerminal] = {}
+    browsers: dict[int, FakeBrowser] = {}
     updates = iter(range(1, 1_000_000))
+    demo = Demo(seeder, dsn, STATE_DIR / "demo")
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status: int, payload: dict) -> None:
@@ -720,6 +736,9 @@ def control_server(
             elif self.path.startswith("/terminal/worker/") and self.path.rsplit("/", 1)[1].isdigit():
                 terminal = terminals.get(int(self.path.rsplit("/", 1)[1]))
                 self._reply(200, terminal.state) if terminal else self._reply(404, {"error": "no fake terminal"})
+            elif self.path.startswith("/browser/worker/") and self.path.rsplit("/", 1)[1].isdigit():
+                browser = browsers.get(int(self.path.rsplit("/", 1)[1]))
+                self._reply(200, browser.state) if browser else self._reply(404, {"error": "no fake browser"})
             else:
                 self._reply(404, {"error": "not found"})
 
@@ -746,6 +765,19 @@ def control_server(
                 terminals[terminal.run_id] = terminal
                 terminal.start()
                 self._reply(200, {"started": True})
+            elif self.path == "/browser/worker":
+                browser = FakeBrowser(api_url, int(body["run_id"]), str(body["token"]), dsn)
+                browsers[browser.run_id] = browser
+                browser.start()
+                self._reply(200, {"started": True})
+            elif self.path == "/browser/worker/end":
+                browser = browsers.get(int(body["run_id"]))
+                how = {"drop": browser.drop, "resume": browser.resume, "close": browser.close} if browser else {}
+                if str(body.get("how")) in how:
+                    how[str(body["how"])]()
+                    self._reply(200, {"done": True})
+                else:
+                    self._reply(404, {"error": "no fake browser, or how is not drop, resume or close"})
             elif self.path == "/sessions/age":
                 self._reply(200, age_sessions(dsn, body))
             elif self.path == "/runs/backdate":
@@ -793,6 +825,11 @@ def control_server(
                     self._reply(200, seed_plugin_notice(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/growth/seed":
+                try:
+                    self._reply(200, seed_growth(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/loop/seed":
                 try:
                     self._reply(200, seed_loop(dsn, body))
@@ -824,6 +861,11 @@ def control_server(
                 try:
                     self._reply(200, seeder.handle(self.path, body))
                 except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path in ("/demo/kg", "/demo/retime", "/demo/keepalive"):
+                try:
+                    self._reply(200, demo.handle(self.path, body))
+                except Exception as exc:  # the spec shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             else:
                 self._reply(404, {"error": "not found"})

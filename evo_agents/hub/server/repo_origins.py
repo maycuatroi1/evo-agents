@@ -4,8 +4,8 @@ the leases of a run (``credentials``) and the worker that clones a repo it has n
 A repo's origin is the one the run's project registers for it (project_repos). A repo the project does not list, or
 lists without an origin, takes the origin another project registers for a repo of that name, among the projects the
 run's owner holds a grant on, when they all agree on it (compared as ``credentials.normalize_origin`` writes it): a plan
-of one project may work in the harness or a repo of another (a plan of hosteye that registers its hostnames in the
-harness of ialab). Two projects that name different origins for it give none, as does a repo no project registers.
+of one project may work in the harness or a repo of another (a plan of a web shop that registers its hostnames in the
+harness of the team that runs its servers). Two projects that name different origins for it give none, as does a repo no project registers.
 The path is the one the project that gave the origin registers, relative to its workspace, so the worker places a
 clone of it where ``evo-agents hub registry pull`` would."""
 

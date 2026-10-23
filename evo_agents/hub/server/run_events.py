@@ -10,8 +10,8 @@ and is skipped, and one after a gap is not stored, so the daemon sends again fro
 the run ended write its tool figures again (``tool_stats.record``). The hub numbers what it stores itself
 (``run_events.seq``, which ``runs.event_seq`` counts): the worker's events and its own (``state`` on each move,
 ``user_message`` for each message), under the run's row lock, so a reader never sees a number before the ones below
-it. A body whose JSON is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and
-the event marked truncated. A run keeps at most MAX_RUN_EVENTS events of the worker and the owner: a batch that would
+it. A NUL character in a body is stored as U+FFFD (``runs.without_nul``), since jsonb holds none. A body whose JSON
+is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and the event marked truncated. A run keeps at most MAX_RUN_EVENTS events of the worker and the owner: a batch that would
 pass it stores nothing and gets 413 with the ack in its detail; the hub's state events are written past it. A note
 that names a step of a chat run's setup (``chat_runs.SETUP_FIELD``) wakes its chat's streams, as the worker taking the
 run's inbox does, since the thread shows that step (``chat_progress``).
@@ -61,15 +61,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs, runs, tables
 from evo_agents.hub.blobs import GET_TTL
-from evo_agents.hub.server import audit, tool_stats
+from evo_agents.hub.server import attachment_store, audit, tool_stats
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.agent_account_mask import masked, run_values
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
 from evo_agents.hub.server.chat_store import wake_run_chat
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.run_state import EVENTS_CHANNEL, next_seq, notify_events
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, REFUSALS, RunId
+from evo_agents.hub.server.runs.models.attachment_parts import Attachment, AttachmentIds, as_event
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.controls import owned_run, web_only_steering
 from evo_agents.hub.server.runs.service.views import readable_run
@@ -184,11 +186,14 @@ class RunEvents(BaseModel):
 
 
 class MessageIn(BaseModel):
-    text: str = Field(min_length=1, max_length=runs.MAX_MESSAGE_BYTES, description="at most 8 KiB of UTF-8")
+    text: str = Field(
+        max_length=runs.MAX_MESSAGE_BYTES, description="at most 8 KiB of UTF-8; empty only with attachment_ids"
+    )
+    attachment_ids: AttachmentIds = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _bounded(self):
-        if not self.text.strip():
+        if not self.text.strip() and not self.attachment_ids:
             raise ValueError("a message needs some text")
         if len(self.text.encode()) > runs.MAX_MESSAGE_BYTES:
             raise ValueError(f"a message is at most {runs.MAX_MESSAGE_BYTES} bytes of UTF-8")
@@ -205,6 +210,7 @@ class Message(BaseModel):
     sent_by: str
     created_at: datetime
     delivered_at: datetime | None = Field(description="when the worker took it for the agent")
+    attachments: list[Attachment] = Field(default_factory=list, description="the files it carries")
 
 
 class InboxAck(BaseModel):
@@ -219,6 +225,10 @@ class InboxMessage(BaseModel):
     sent_by: str
     created_at: datetime
     decision_id: int | None = Field(None, description="the decision this message answers; null for any other message")
+    attachments: list[Attachment] = Field(
+        default_factory=list,
+        description="the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves",
+    )
 
 
 class Inbox(BaseModel):
@@ -361,8 +371,9 @@ async def store_events(
         detail = [{"limit": "events_per_run", "max": runs.MAX_RUN_EVENTS, "ack_seq": acked}]
         return error_response(request, 413, message, detail=detail)
     rows = []
+    leased = await run_values(conn, request.app.state.sealer, run_id)  # the floor S3, whatever the daemon did
     for number, event in enumerate(fresh, start=last_seq + 1):
-        stored, cut = runs.fit_event_body(event.body)
+        stored, cut = runs.fit_event_body(runs.without_nul(masked(event.body, leased)))
         rows.append(
             {
                 "run_id": run_id,
@@ -438,7 +449,8 @@ async def take_inbox(request: Request, run_id: RunId, user: CurrentUser, body: I
             await conn.execute(deliver(run_id, ack))
             await wake_run_chat(conn, run_id)  # a chat message the agent took leaves step inbox (chat_progress)
         rows = (await conn.execute(undelivered(run_id))).all()
-    return Inbox(messages=[InboxMessage(**row._mapping) for row in rows])
+        files = await attachment_store.of_inbox(conn, [row.id for row in rows])
+    return Inbox(messages=[InboxMessage(**row._mapping, attachments=files.get(row.id, [])) for row in rows])
 
 
 @worker_router.post(
@@ -607,7 +619,8 @@ async def write_user_message(conn: AsyncConnection, run_id: int, body: dict) -> 
     """Write the ``user_message`` event of a message of the owner into the log of run ``run_id``, whose row the
     caller holds locked, and wake its streams; its seq."""
     seq = await next_seq(conn, run_id)
-    await conn.execute(insert(tables.run_events).values(run_id=run_id, seq=seq, kind="user_message", body=body))
+    values = {"run_id": run_id, "seq": seq, "kind": "user_message", "body": runs.without_nul(body)}
+    await conn.execute(insert(tables.run_events).values(**values))
     await notify_events(conn, run_id)
     return seq
 
@@ -642,6 +655,7 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
         if last_seq >= runs.MAX_RUN_EVENTS:
             message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)
             return error_response(request, 413, message, detail=[{"limit": "events_per_run"}])
+        files = await attachment_store.take(conn, body.attachment_ids, user.user_id, run_id=run_id)
         inbox_run = run_id
         if resumes:
             from evo_agents.hub.server.decisions import resume_parked  # it reads runs through this module
@@ -655,8 +669,9 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
             .returning(inbox.c.id, inbox.c.created_at)
         )
         message_id, created_at = (await conn.execute(left)).one()
+        await attachment_store.hold_in_inbox(conn, message_id, files)
         event = {"text": body.text, "from": user.login, "message_id": message_id}
-        seq = await write_user_message(conn, inbox_run, event)
+        seq = await write_user_message(conn, inbox_run, event | ({"attachments": as_event(files)} if files else {}))
         target = f"{run_target(project, plan_id, key, run_id)} message:{message_id}"
         if inbox_run != run_id:
             target += f" resumed as run:{inbox_run}"
@@ -673,6 +688,7 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
         sent_by=user.login,
         created_at=created_at,
         delivered_at=None,
+        attachments=files,
     )
 
 

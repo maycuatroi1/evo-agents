@@ -6,9 +6,11 @@ again (``service.candidates``) list them all."""
 
 from __future__ import annotations
 
-from sqlalchemy import exists, func, or_, select
+from functools import cache
 
-from evo_agents.hub import profiles, runs, tables
+from sqlalchemy import and_, exists, func, or_, select
+
+from evo_agents.hub import org, profiles, runs, tables
 from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.server.runs.models import available
 
@@ -23,12 +25,50 @@ def writes(user_id, project_id):
     return exists().where(g.c.user_id == user_id, g.c.project_id == project_id, g.c.role.in_(WRITER_ROLES))
 
 
-def shared_in(project_id):
-    """Whether the worker of the row (``tables.workers``) is one its owner shares in project ``project_id``: shared,
-    serving the project, and its owner holding writer there now (``docs/workers.md``, Shared workers)."""
+@cache
+def _seat_chains():
+    """Each member's live primary seat (not ended, its end day not passed) with every unit from the seat's up to the
+    root, one row (user_id, unit_id) each: a recursive CTE, built once so every query of a statement shares it."""
+    s, u = tables.org_seats, tables.org_units
+    seats = (
+        select(s.c.user_id, s.c.unit_id)
+        .where(
+            s.c.is_primary,
+            s.c.user_id.is_not(None),
+            s.c.ended_at.is_(None),
+            or_(s.c.ends_on.is_(None), s.c.ends_on >= func.current_date()),
+        )
+        .cte("seat_chains", recursive=True)
+    )
+    up = select(seats.c.user_id, u.c.parent_id).join_from(seats, u, u.c.id == seats.c.unit_id)
+    return seats.union(up.where(u.c.parent_id.is_not(None)))
+
+
+def unit_admits(worker_id, principal_id):
+    """Whether the units worker ``worker_id`` is narrowed to (``tables.worker_shares``) let it take a run of member
+    ``principal_id`` (each a value or a column): it has none, or the member's live primary seat is in one of them or
+    below one, with no unit above the seat archived nor a cohort above it ended (``org.Chart.ended``), and the newest
+    doctor report of the worker has no high finding (``evo_agents.hub.server.worker_doctor``)."""
+    ws, u, chain = tables.worker_shares, tables.org_units, _seat_chains()
+    doctored = tables.workers.alias("doctored")
+    clear = exists().where(doctored.c.id == worker_id, doctored.c.doctor_high == 0)
+    narrowed = exists().where(ws.c.worker_id == worker_id)
+    seated = exists().where(
+        ws.c.worker_id == worker_id, chain.c.user_id == principal_id, chain.c.unit_id == ws.c.unit_id
+    )
+    ended_unit = or_(u.c.archived_at.is_not(None), and_(u.c.kind == org.COHORT, u.c.ends_on < func.current_date()))
+    ended = exists().where(chain.c.user_id == principal_id, chain.c.unit_id == u.c.id, ended_unit)
+    return or_(~narrowed, and_(seated, ~ended, clear))
+
+
+def shared_in(project_id, principal_id):
+    """Whether the worker of the row (``tables.workers``) is one its owner shares in project ``project_id`` with member
+    ``principal_id`` (each a value or a column): shared, serving the project, its owner holding writer there now, and,
+    when it is narrowed to units of the org chart, the member seated in one (``unit_admits``; ``docs/workers.md``,
+    Shared workers)."""
     w, wp = tables.workers, tables.worker_projects
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == project_id)
-    return w.c.shared & serves & writes(w.c.owner_id, project_id)
+    return w.c.shared & serves & writes(w.c.owner_id, project_id) & unit_admits(w.c.id, principal_id)
 
 
 def workers_of(user_id: int, project_id: int):
@@ -63,7 +103,7 @@ def workers_of(user_id: int, project_id: int):
             holding.label("holding"),
             others.label("others"),
         )
-        .where(or_(w.c.owner_id == user_id, shared_in(project_id)), w.c.revoked_at.is_(None), serves)
+        .where(or_(w.c.owner_id == user_id, shared_in(project_id, user_id)), w.c.revoked_at.is_(None), serves)
         .order_by(w.c.owner_id != user_id, w.c.id)
     )
 
@@ -85,9 +125,25 @@ def usable_runtimes(row, profile) -> list[str]:
     return [name for name in usable if allow is None or name in allow]
 
 
-def worker_problems(row, profile, via: str, kind: str = "chat") -> list[str]:
-    """Why worker ``row`` (``workers_of``) cannot take a run of ``kind`` of ``profile`` dispatched with ``via`` now,
-    each reason once, in the order they are checked; none when it can."""
+CLAUDE = "claude-code"
+
+
+def lacks_agent_home(row, profile, runtime: str = "any") -> bool:
+    """Whether the claim would refuse worker ``row`` a run of ``profile`` asking for ``runtime``, as
+    ``profiles.claim_clause`` does: a profile that is not its project's default whose run goes to Claude Code there
+    (asked for, or ``any`` and Claude Code the first runtime the worker has that the profile allows) needs a daemon
+    that gives the agent a config dir of its own (``runs.AGENT_HOME``)."""
+    if profile.is_default or runs.AGENT_HOME in (row.features or ()):
+        return False
+    if runtime != "any":
+        return runtime == CLAUDE
+    usable = usable_runtimes(row, profile)
+    return bool(usable) and usable[0] == CLAUDE
+
+
+def worker_problems(row, profile, via: str, kind: str = "chat", runtime: str = "any") -> list[str]:
+    """Why worker ``row`` (``workers_of``) cannot take a run of ``kind`` of ``profile`` dispatched with ``via`` and
+    asking for ``runtime`` now, each reason once, in the order they are checked; none when it can."""
     packs = profiles.packs_unfit(
         profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
     )
@@ -110,10 +166,15 @@ def worker_problems(row, profile, via: str, kind: str = "chat") -> list[str]:
             "has a daemon that does not apply agent profiles",
         ),
         (packs is not None, f"cannot build the agent packs of @{profile.handle}: {packs}"),
+        (
+            lacks_agent_home(row, profile, runtime),
+            f"runs evo-agents {row.agent_version or '?'}, which gives no Claude Code agent of @{profile.handle} a "
+            "config dir of its own (feature agent_home): update its daemon",
+        ),
     )
     return [why for failed, why in checks if failed]
 
 
-def unfit_worker(row, profile, via: str, kind: str = "chat") -> str | None:
+def unfit_worker(row, profile, via: str, kind: str = "chat", runtime: str = "any") -> str | None:
     """The first of ``worker_problems``, or None when worker ``row`` can take the run."""
-    return next(iter(worker_problems(row, profile, via, kind)), None)
+    return next(iter(worker_problems(row, profile, via, kind, runtime)), None)

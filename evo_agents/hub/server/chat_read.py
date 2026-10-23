@@ -35,11 +35,10 @@ its label, so that ``evo-agents hub mcp`` joins it into the label of the person'
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -47,19 +46,17 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, outputs, tables
-from evo_agents.hub.blobs import GET_TTL
-from evo_agents.hub.server.blobs import blob_store
+from evo_agents.hub import chats, tables
+from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.chat_agents import agent_run
-from evo_agents.hub.server.chat_file_views import by_message as files_by_message
-from evo_agents.hub.server.chat_file_views import file_select
 from evo_agents.hub.server.chat_runs import chat_run, run_clearers
 from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_audience import note
 from evo_agents.hub.server.runs.models import RunId
+from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.kg.policy import DEFAULT_LEVELS
 from evo_agents.kg.serve import Session
@@ -102,8 +99,10 @@ class ReadMessage(BaseModel):
     run_id: int | None = Field(description="the run of an agent's message")
     sent_at: datetime
     body: str
-    files: list[dict] = Field(
-        default_factory=list, description="the files its person attached: id, name, media_type and size of each"
+    attachments: list[Attachment] = Field(
+        default_factory=list,
+        description="the files its author attached to it; a run's agent fetches their bytes with GET "
+        "/v1/worker/runs/{id}/attachments/{aid}/content",
     )
 
 
@@ -218,6 +217,14 @@ def _author(row, profiles: dict) -> tuple[str, str]:
     return "hub", "hub"
 
 
+def _files(message: ReadMessage) -> str:
+    """The line that names the files of ``message``, after its body; nothing for a message without files."""
+    if not message.attachments:
+        return ""
+    named = "; ".join(f"{f.name} ({f.media_type}, {f.size} bytes, attachment {f.id})" for f in message.attachments)
+    return f"\n[files attached: {named}]"
+
+
 def _text(reading: ChatReading, anchor: int, whole: bool) -> str:
     title = f"chat #{reading.chat_id} {reading.title!r}"
     if whole:
@@ -230,8 +237,7 @@ def _text(reading: ChatReading, anchor: int, whole: bool) -> str:
     blocks = []
     for message in reading.messages:
         author = f"{message.author} (agent)" if message.author_kind == "agent" else message.author
-        shown = {"id": message.id, "author": author, "at": message.sent_at, "body": message.body}
-        shown["files"] = message.files
+        shown = {"id": message.id, "author": author, "at": message.sent_at, "body": message.body + _files(message)}
         blocks.append(rules.render_message(shown, max(chats.MAX_MESSAGE_BYTES, len(message.body.encode()))))  # whole
     lines = [head, DATA_LINE, "", "# The chat's messages", "\n\n".join(blocks), "", "# End of the chat's messages"]
     if reading.more:
@@ -276,9 +282,9 @@ async def read(
     if not any(row.id == anchor.id for row in shown) and not (is_thread and shown):
         raise HTTPException(404, NOT_THERE.format(id=anchor.id))
     profiles = await profiles_by_id(conn, [row.author_profile_id for row in shown if row.author_profile_id])
+    files = await attachment_store.of_messages(conn, [row.id for row in shown])
     c = tables.chats
     title = (await conn.execute(select(c.c.title).where(c.c.id == anchor.chat_id))).scalar_one()
-    files = await files_by_message(conn, [row.id for row in shown])
     reading = ChatReading(
         chat_id=anchor.chat_id,
         title=title,
@@ -303,7 +309,7 @@ def _message(row, profiles: dict, files: list) -> ReadMessage:
         run_id=row.run_id,
         sent_at=row.created_at,
         body=row.body,
-        files=[rules.file_fact(file.id, file.name, file.media_type, file.size) for file in files],
+        attachments=files,
     )
 
 
@@ -385,50 +391,3 @@ async def read_chat(request: Request, run_id: RunId, body: AgentReadIn, user: Cu
         "chat read by an agent", extra={"run_id": run_id, "chat_id": reading.chat_id, "read": len(reading.messages)}
     )
     return reading
-
-
-class AgentFileLink(BaseModel):
-    id: int
-    chat_id: int
-    message_id: int
-    name: str
-    media_type: str
-    size: int
-    sha256: str
-    url: str = Field(description="a presigned GET of the bytes, working until expires_at")
-    expires_at: datetime
-
-
-@worker_router.post("/runs/{run_id}/chat/files/{file_id}", response_model=AgentFileLink, responses=READ_REFUSALS)
-async def file_link(request: Request, run_id: RunId, file_id: RunId, user: CurrentUser) -> AgentFileLink:
-    """A presigned GET of a file a person attached to a chat message, for the agent of the run when it may read that
-    message (as ``read`` rules), behind ``evo-agents worker chat file``."""
-    gone = HTTPException(404, f"no chat file {file_id} that you can read: the prompt names the files of its messages")
-    f, cm = tables.chat_files, tables.chat_messages
-    store = blob_store(request)
-    async with request.app.state.engine.begin() as conn:
-        readers = await run_readers(conn, user, run_id)
-        found = (await conn.execute(file_select().where(f.c.id == file_id))).one_or_none()
-        if found is None or found.message_id is None:
-            raise gone
-        message = (await conn.execute(message_select().where(cm.c.id == found.message_id))).one()
-        for person in readers.people:
-            if not await _in_chat(conn, person, message.chat_id):
-                raise gone
-        if not await readable(conn, readers, [message], None):
-            raise gone
-        await note(conn, run_id, held(message.chat_id, [message.label]))
-    expires_at = datetime.now(UTC) + GET_TTL  # taken before signing, so never later than the URL
-    url = await asyncio.to_thread(store.presign_get, found.sha256, filename=outputs.download_name(found.name))
-    log.info("chat file read by an agent", extra={"run_id": run_id, "chat_id": message.chat_id, "file_id": file_id})
-    return AgentFileLink(
-        id=found.id,
-        chat_id=message.chat_id,
-        message_id=message.id,
-        name=found.name,
-        media_type=found.media_type,
-        size=found.size,
-        sha256=found.sha256,
-        url=url,
-        expires_at=expires_at,
-    )

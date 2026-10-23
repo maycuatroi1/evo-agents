@@ -7,7 +7,8 @@ on without it. Then, before anything is fetched or the agent starts, it checks w
 (``preflight``): the project lists an origin for each of its repos, git reads it (and pushes to it, for a repo the run
 pushes) with what the run holds, each program its verify commands call is on the run's PATH, and the environment its
 claim names can run its agent here (``environment_problems``: a container engine that answers and the image, for a
-plugin's environment). The origins of the run's repos are asked several at a time (``parallel``). A check that does
+plugin's environment), and for a run dispatched with browser, Chromium on this worker and node on the run's PATH
+(``browser_problems``). The origins of the run's repos are asked several at a time (``parallel``). A check that does
 not pass fails the run before the agent starts, with its cause (the report's ``failure_cause``: origin, credentials,
 missing_tool or environment). The origin of a repo whose worktree the run goes on in (``fetched``: a chat run that
 adopted the worktrees of the run before it in its session) is not asked: the fetch of that worktree's checkout is the
@@ -32,6 +33,7 @@ from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops, preflight
+from evo_agents.worker.browser import install as browser_install
 from evo_agents.worker.environments import Container
 from evo_agents.worker.runner import clones, parallel
 from evo_agents.worker.runner.common import RunFailed, cut
@@ -138,6 +140,7 @@ async def check(
     problems += preflight.verify_problems(verify, path)
     problems += preflight.hidden_problems(hidden or [], path)
     problems += await environment_problems(run, names)
+    problems += browser_problems(run, path)
     if problems:
         for problem in problems:
             run.note(f"Preflight: {problem.message}.", cause=problem.cause)
@@ -150,7 +153,17 @@ async def check(
         checked.append(f"the programs of {len(verify) + len(hidden or [])} command(s)")
     if run.agent.environment.container:
         checked.append(f"environment {run.agent.environment.name}, its engine and image")
+    if run.spec.get("browser") is True:
+        checked.append("Chromium and node for its browser")
     run.note(f"Preflight passed: {' and '.join(checked)}.")
+
+
+def browser_problems(run: Run, path: str | None) -> list[preflight.Problem]:
+    """For a run dispatched with browser, Chromium not installed on this worker or node not on ``path``, each with
+    cause missing_tool (``browser.install.problems``); none for any other run."""
+    if run.spec.get("browser") is not True:
+        return []
+    return browser_install.problems(run.daemon.home, path)
 
 
 async def environment_problems(run: Run, names: list[str]) -> list[preflight.Problem]:

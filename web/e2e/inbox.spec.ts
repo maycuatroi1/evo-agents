@@ -287,7 +287,7 @@ test("the owner answers from the run's page, and another member reads the decisi
     const panel = readerPage.getByTestId("decision-sheet");
     await expect(panel.getByRole("heading", { level: 2, name: SECOND })).toBeVisible();
     await expect(panel.getByTestId("decision-state")).toHaveText(`Waiting for ${me.login}`);
-    await expect(panel.getByTestId("decision-locked")).toHaveText(`Only ${me.login}, who dispatched run #${run.id}, can answer this decision.`);
+    await expect(panel.getByTestId("decision-locked")).toHaveText(`Only ${me.login}, whom this decision of run #${run.id} is asked of, can answer it.`);
     await expect(panel.getByTestId("decision-form")).toHaveCount(0);
     await expect(panel.getByTestId("decision-option")).toHaveCount(2);
     await expect(readerPage.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "0");

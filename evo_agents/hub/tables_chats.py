@@ -20,9 +20,7 @@ Revision 0050 gives chats ``kind`` (``chats.CHAT_KINDS``: group, or direct) and,
 (``direct_user_id``) and its agent (``direct_profile_id``), one direct chat per pair (chats_direct_key). Revision 0051
 gives a group chat its image: the SHA-256 and the size of a blob of the blob store (``image_sha256``, ``image_size``),
 which the chat's row refers to, as ``blob_gc`` counts it, so that the collection of unreferenced blobs leaves it.
-Revision 0104 adds chat_files: the files a person attached to a message, each a blob of the blob store
-(``sha256``, ``size``) under its name and media type, uploaded first (``message_id`` NULL) and then carried by the
-message that names it; ``blob_gc`` counts it as a reference. Revision 0072 drops ``budget_usd``, the cost a chat's runs could reach in 24 hours, which 0032 gave chats.
+Revision 0072 drops ``budget_usd``, the cost a chat's runs could reach in 24 hours, which 0032 gave chats.
 """
 
 from __future__ import annotations
@@ -195,30 +193,6 @@ def _chat_runs(runs: Table) -> None:
     # chat_messages.run_id points back at runs: this key is made apart from the tables, so that they sort
     runs.append_constraint(_fk("runs", "chat_message_id", "chat_messages.id", ondelete="RESTRICT", use_alter=True))
     Index("runs_chat_idx", runs.c.chat_id, runs.c.queued_at, postgresql_where=runs.c.chat_id.is_not(None))
-
-
-def file_table(metadata: MetaData) -> Table:
-    """chat_files (0104), added to ``metadata``: the files people attached to messages."""
-    files = Table(
-        "chat_files",
-        metadata,
-        _id(),
-        Column("chat_id", BigInteger, nullable=False),
-        Column("message_id", BigInteger),
-        Column("user_id", BigInteger),
-        Column("name", Text, nullable=False),
-        Column("media_type", Text, nullable=False),
-        Column("size", BigInteger, nullable=False),
-        Column("sha256", Text, nullable=False),
-        _stamp("created_at"),
-        _fk("chat_files", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("chat_files", "message_id", "chat_messages.id", ondelete="CASCADE"),
-        _fk("chat_files", "user_id", "users.id", ondelete="SET NULL"),
-        PrimaryKeyConstraint("id", name="chat_files_pkey"),
-    )
-    Index("chat_files_message_idx", files.c.message_id, postgresql_where=files.c.message_id.is_not(None))
-    Index("chat_files_sha256_idx", files.c.sha256)
-    return files
 
 
 def chat_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table, Table, Table]:

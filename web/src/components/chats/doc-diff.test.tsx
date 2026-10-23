@@ -1,32 +1,14 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
-import type { ReactElement } from "react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { diffLines } from "@/lib/line-diff";
+import { renderVi } from "@/test/render";
 
 import messages from "../../../messages/vi.json";
 import { DocDiff, DocDiffLegend } from "./doc-diff";
 
-// The keys of chats.doc, given here in case messages/vi.json does not have them yet.
-const DOC = {
-  hiddenLines: "{count, plural, other {# dòng không đổi}}",
-  diffLabel: "Thay đổi của tài liệu",
-  legendAdded: "dòng thêm",
-  legendRemoved: "dòng xóa hoặc thay thế",
-  legendSame: "giữ nguyên",
-};
-const doc: typeof DOC = { ...DOC, ...(messages.chats as { doc?: Partial<typeof DOC> }).doc };
-const withDoc = { ...messages, chats: { ...messages.chats, doc } };
-
-function renderVi(ui: ReactElement) {
-  return render(
-    <NextIntlClientProvider locale="vi" messages={withDoc} timeZone="Asia/Ho_Chi_Minh">
-      {ui}
-    </NextIntlClientProvider>,
-  );
-}
+const doc = messages.chats.doc;
 
 const BEFORE = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`);
 
@@ -35,11 +17,12 @@ describe("DocDiff", () => {
     renderVi(<DocDiff lines={diffLines("a\nb\nc", "a\nB\nc\nd")} />);
     const rows = screen.getByTestId("doc-diff").querySelectorAll("[data-kind]");
     expect(Array.from(rows, (row) => row.getAttribute("data-kind"))).toEqual(["same", "del", "add", "same", "add"]);
-    expect(rows[1]).toHaveTextContent("2−b");
-    expect(rows[2]).toHaveTextContent("2+B");
-    expect(rows[1].className).toContain("bg-red-500/15");
-    expect(rows[2].className).toContain("bg-green-500/15");
+    expect(rows[1]).toHaveTextContent(`2−${doc.removedLine} b`);
+    expect(rows[2]).toHaveTextContent(`2+${doc.addedLine} B`);
+    expect(rows[1].className).toContain("bg-danger-soft");
+    expect(rows[2].className).toContain("bg-success-soft");
     expect(rows[0].className).not.toContain("bg-");
+    expect(rows[0]).toHaveTextContent(/^11 a$/);
   });
 
   it("folds a long unchanged run into a button that shows it", () => {

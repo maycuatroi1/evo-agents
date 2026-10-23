@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { FolderGit2, Shield } from "lucide-react";
+import { FolderGit2, Link2, Shield } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -27,7 +27,10 @@ import { LazyDecisionSheet, NeedsYou } from "./needs-you";
 import { Projects } from "./projects-card";
 import { InFlight, Recent } from "./run-lists";
 
-/** A member without a grant: who grants roles, and the login to send them; a hub admin goes to Administration. */
+/**
+ * A member without a grant: who grants roles or sends invite links, and the login to send them; a hub admin goes to
+ * Administration, or makes invite links for others.
+ */
 function NoGrants() {
   const t = useTranslations("home.empty");
   const { data: me } = useQuery(whoamiQuery(browserApi));
@@ -39,12 +42,20 @@ function NoGrants() {
       description={me?.admin ? t("adminDescription") : t("description", { login })}
     >
       {me?.admin ? (
-        <Button asChild>
-          <Link href={"/admin/members" as Route}>
-            <Shield aria-hidden="true" />
-            {t("admin")}
-          </Link>
-        </Button>
+        <>
+          <Button asChild>
+            <Link href={"/admin/members" as Route}>
+              <Shield aria-hidden="true" />
+              {t("admin")}
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={"/admin/invites" as Route} data-testid="home-invites">
+              <Link2 aria-hidden="true" />
+              {t("invites")}
+            </Link>
+          </Button>
+        </>
       ) : login ? (
         <Identifier value={login} copy copyLabel={t("copyLogin")} testId="home-login" />
       ) : null}

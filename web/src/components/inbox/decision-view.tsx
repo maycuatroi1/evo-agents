@@ -92,7 +92,7 @@ export function AskedTiming({ decision, parksAt, className = "ml-auto" }: { deci
 export function DecisionStatePill({ decision, access, size }: { decision: Decision; access: AnswerAccess; size?: "lg" }) {
   const t = useTranslations("inbox.decision");
   const label =
-    decision.state === "open" ? (access === "answer" ? t("waitingYou") : access === "notOwner" ? t("waitingFor", { owner: decision.owner }) : undefined) : undefined;
+    decision.state === "open" ? (access === "answer" ? t("waitingYou") : access === "notOwner" ? t("waitingFor", { owner: decision.asked_of }) : undefined) : undefined;
   return <StatusBadge kind="decision" status={decision.state} label={label} size={size} />;
 }
 
@@ -207,7 +207,7 @@ export function FoldedContext({ text, screen = false }: { text: string; screen?:
         ref={box}
         role="group"
         aria-label={t("context")}
-        className={cn("w-full", screen ? "text-[15px] leading-[22px]" : "text-[13px] leading-relaxed", !open && "line-clamp-4")}
+        className={cn("w-full max-w-prose", screen ? "text-[15px] leading-[22px]" : "text-[13px] leading-relaxed", !open && "line-clamp-4")}
         onFocus={() => {
           if (!open && overflows) setOpen(true);
         }}
