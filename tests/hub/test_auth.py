@@ -114,7 +114,7 @@ HUB_TABLES |= pg.MARKETING_TABLES  # migration 0125
 HUB_TABLES |= pg.GROWTH_TABLES  # migration 0127
 HUB_TABLES |= pg.PROBE_TABLES  # migration 0130
 HUB_TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
-HUB_TABLES |= pg.PROBLEM_TABLES  # migration 0130
+HUB_TABLES |= pg.PROBLEM_TABLES  # migration 0134
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """The problems of its project a claim of the core plugin canvas points to.
 
-Revision ID: 0131
-Revises: 0130
+Revision ID: 0135
+Revises: 0134
 Create Date: 2026-10-24
 
 The names below are copies of ``evo_agents.hub.tables_canvas`` and ``evo_agents.core_plugins.canvas.content`` as of
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0131"
-down_revision = "0130"
+revision = "0135"
+down_revision = "0134"
 branch_labels = None
 depends_on = None
 

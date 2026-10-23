@@ -208,7 +208,7 @@ MARKETING_TABLES = frozenset(
 GROWTH_TABLES = frozenset({"marketing_replies", "crm_invites_sent"})
 PROBE_TABLES = frozenset({"curator_probes"})  # the probes of the Curator's proposals and changes (0130)
 PROBE_RUN_TABLES = frozenset({"curator_probe_runs"})  # each probe measured once a week on each model (0131)
-# migration 0130: the problems of a project and their revisions (plan problem-oriented-hub)
+# migration 0134: the problems of a project and their revisions (plan problem-oriented-hub)
 PROBLEM_TABLES = frozenset({"problems", "problem_revisions"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

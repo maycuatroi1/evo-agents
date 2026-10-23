@@ -1069,9 +1069,9 @@ Schema 0130 adds `curator_probes`, 0131 the run of kind `probe` and `curator_pro
 `curator_probe_report`, and 0133 `proposals.fix_of`, `findings.fix_of` and `curator_probes.replaces` (The Curator's
 probes, below); going back from 0131 deletes the probe runs, from 0132 the notices of the kind, and from each it drops
 what it added.
-Schemas 0130 to 0132 add the problems of a project (plan problem-oriented-hub, `docs/problems.md`): 0130 `problems`,
-`problem_revisions`, `goal_revisions.problem_id` and the @builder proposal kind `problem`; 0131
-`canvas_claims.problems`; 0132 `loop_items.problem_id` and the work item kind `discover`. Going back from each drops
+Schemas 0134 to 0136 add the problems of a project (plan problem-oriented-hub, `docs/problems.md`): 0134 `problems`,
+`problem_revisions`, `goal_revisions.problem_id` and the @builder proposal kind `problem`; 0135
+`canvas_claims.problems`; 0136 `loop_items.problem_id` and the work item kind `discover`. Going back from each drops
 what it added, the proposals of kind problem and the work items of kind discover with it.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
