@@ -1,15 +1,90 @@
 # evo-agents
 
-Shared tooling for agent harnesses: a cluster of repos plus the manifest, plans and documents that
-tell a coding agent how the cluster fits together.
+evo-agents is open-source tooling for teams that hand their plans to coding agents. A worker on your own laptop or
+desktop takes a plan from your team's hub and has Claude Code, Codex CLI or opencode do its steps in the order the plan
+allows. As the agent reports a step, the worker runs the step's verify commands again, then commits and pushes. The
+agent makes the other choices itself and stops for you only at decisions of a few kinds, such as deleting data,
+spending money or a choice of scope the plan leaves open. The agents of a project query one knowledge graph of all its
+repos. The product page is at [agents.omelet.tech](https://agents.omelet.tech).
 
-The first piece is a multi-source knowledge graph. Connectors read git repos, the harness itself,
-wikis and project CLIs, speak one JSON Lines protocol (`kg/1`), and feed an append-only log per
-project. A deterministic pipeline turns that log into a SQLite graph that agents query over MCP.
-Every node and edge carries provenance and a sensitivity label, and a session only sees what its
-clearance allows.
+![The Inbox of a demo hub: plan run #4 asks whether to reindex the 48,210 products on staging now.](docs/images/inbox-1440-light.png)
 
-Status: early prototype. Interfaces will change.
+You answer a decision in the Inbox on the web, or with a button on Telegram when the hub has a bot. The wait does not
+count toward the run's timeout, and after 24 hours without an answer the run parks and frees its slot on the worker.
+
+![The Monitor of a demo hub: four runs in flight on three workers, one of them waiting for a decision.](docs/images/monitor-1440-light.png)
+
+![A knowledge graph search for checkout that finds files and symbols in the web, API and harness sources.](docs/images/kg-search-1440-light.png)
+
+Agents query the same graph over MCP: `kg_search` finds ids by name, code, path or words, and `kg_impact` lists what
+depends on a file or a diff before you change it.
+
+The screens come from a demo hub whose projects, people and machines are made up; `pnpm screenshots` in `web/` makes
+them again ([web/README.md](web/README.md#screenshots)).
+
+Status: before 1.0. Releases go to PyPI as `evo-ak`, and commands, routes and file formats can still change from one
+release to the next. [docs/roadmap.md](docs/roadmap.md) says what works today and what is still being built.
+
+## Quick start
+
+You get access to a hub from an invite link or from a hub admin. To ask for an invite to the evo-agents hub, open the
+[invite form](https://github.com/maycuatroi1/evo-agents/issues/new?template=invite.yml): a public GitHub issue that
+asks for your GitHub login and what you want to do, and no email.
+
+1. Open the link, sign in with GitHub and accept it. The page then lists the commands below with your hub's URL in
+   place of `https://hub.example.org`.
+
+2. Install the CLI with [uv](https://docs.astral.sh/uv/). The `graphify` extra gives the knowledge graph code symbols
+   in about 40 languages, and `worker` adds the worker's daemon; [Install](#install) has the other ways.
+
+   ```sh
+   uv tool install 'evo-ak[graphify,worker]'
+   ```
+
+3. Sign the CLI in to the hub, once per machine. It prints a code to enter on github.com, and the token stays in
+   `~/.evo/hub`.
+
+   ```sh
+   evo-agents hub login --url https://hub.example.org
+   ```
+
+4. Add the plugins to Claude Code: evo-hub connects the agent to the hub's plans, and evo-kg to the project's knowledge
+   graph. Codex takes evo-hub with two commands of its own ([The team hub](#the-team-hub)).
+
+   ```sh
+   claude plugin marketplace add https://github.com/maycuatroi1/evo-agents
+   claude plugin install evo-hub@evo-agents
+   claude plugin install evo-kg@evo-agents
+   ```
+
+5. A join link gave you a role on a project the hub has already, so go on to step 6. A register link gives you the
+   right to register one project of your own. In a repo's directory, or in one whose direct subdirectories are repos,
+   make a harness and register it: `evo-agents harness init` gives each repo a git source and the harness a source of
+   its own, for one knowledge graph of the project, and registering makes you the project's admin
+   ([Building a knowledge graph](#building-a-knowledge-graph) has what it writes).
+
+   ```sh
+   cd ~/code/acme-tools                 # api/ and web/ are git checkouts
+   evo-agents harness init
+   evo-agents hub project register
+   ```
+
+6. Pair this machine as a worker, which serves the projects you can write to. Make a pairing code on the hub's Workers
+   page, run the join command it shows, then keep the daemon running in the background. The worker runs agents with the
+   Claude Code, Codex CLI or opencode login of this machine and pushes with its git credentials.
+
+   ```sh
+   evo-agents worker join --url https://hub.example.org --code K7QM-4XPD
+   evo-agents worker service install
+   ```
+
+7. On the project's plans page, New plan has an agent on your worker write a plan from your request, and Run plan hands
+   a plan to your worker. From the command line ([Workers](#workers)):
+
+   ```sh
+   evo-agents hub run author "a plan to add saved carts to checkout" --worker mac-mini --project demo   # your worker's name
+   evo-agents hub run plan rollout --project demo
+   ```
 
 ## Install
 
@@ -32,7 +107,7 @@ launchd or systemd: it runs on macOS and Linux, and on Windows inside WSL. On Wi
 command to give Task Scheduler instead of loading a LaunchAgent, and a skill published from there marks a file
 executable when it starts with `#!`, since Windows keeps no execute bit.
 
-## Quick start
+## Building a knowledge graph
 
 `evo-agents harness init` starts a harness. Run in a repo's directory, or in a directory whose direct subdirectories
 are repos, it writes a minimal `harness.yaml` and `knowledge.yaml` for those repos, with the origin (without the
@@ -40,7 +115,8 @@ password an https URL may carry) and the default branch git has for each. The pr
 unless `--project NAME` gives another. Each repo gets a git source and the harness a source of its own, all labelled
 `internal`, with a Claude Code sink and a hub sink that clear `internal`. It overwrites nothing: when either file is
 there already, it writes neither and says which is there. `evo-agents harness validate` accepts what it writes, and
-`evo-agents hub project register` sends it to a hub (docs/hub.md, Invite links, for a first project of your own).
+`evo-agents hub project register` sends it to a hub ([docs/hub.md](docs/hub.md#invite-links), Invite links, for a first
+project of your own).
 
 ```sh
 cd ~/code/acme-tools                 # api/ and web/ are git checkouts
@@ -523,7 +599,8 @@ docs/         hub.md: running and using the hub; workers.md: workers, runs, plan
               retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
               hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks;
               merge-queue.md: the autonomy policy and the hub's merge queue on GitLab; loop.md: goals and
-              the Loop of a project
+              the Loop of a project; roadmap.md: what works today and what is still being built; images/: the
+              screenshots of this README and the product page, from `pnpm screenshots` in web/
 ```
 
 ## License
