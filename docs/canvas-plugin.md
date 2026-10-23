@@ -174,7 +174,8 @@ baseline's review page, `/p/<project>/x/canvas/canvases/<slug>/baselines/<number
 evidence. A baseline is a notice, not a decision of the hub, since hub decisions belong to a run.
 
 **Opening one now.** A writer may open a baseline of one claim at once (`POST .../baselines {"claim": "CL-3"}`) for
-another writer to approve, or to approve it themselves with `self_approval` on; it is refused with 409 while a proposed baseline already holds the claim or when the claim
+another writer to approve, or to approve it themselves with `self_approval` on (on the claim's page, or
+`evo-agents hub canvas baseline open SLUG CL-3` and `baseline decide SLUG N CL-3 accepted`); it is refused with 409 while a proposed baseline already holds the claim or when the claim
 asks nothing.
 
 ## Events
@@ -295,6 +296,10 @@ evo-agents hub canvas evidence withdraw pantry CL-3 12 --project northwind --rea
 evo-agents hub canvas proposal list pantry --project northwind --status open
 evo-agents hub canvas proposal accept pantry 7 --project northwind
 evo-agents hub canvas proposal reject pantry 8 --project northwind --reason "Out of scope"
+evo-agents hub canvas baseline list pantry --project northwind
+evo-agents hub canvas baseline open pantry CL-3 --project northwind     # a member, never a run
+evo-agents hub canvas baseline show pantry 4 --project northwind        # its items, and what you may decide
+evo-agents hub canvas baseline decide pantry 4 CL-3 accepted --project northwind
 evo-agents hub canvas brainstorm pantry --project northwind --cell channels --focus "small shops"
 evo-agents hub canvas export pantry --project northwind --output pantry.json
 evo-agents hub canvas import pantry.json --project northwind --dry-run

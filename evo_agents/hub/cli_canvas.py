@@ -1,4 +1,4 @@
-"""``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|brainstorm|export|import``: the Lean Canvases
+"""``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|baseline|brainstorm|export|import``: the Lean Canvases
 of a project that enabled the core plugin canvas, through its routes under /v1/x/canvas/<project>/
 (``docs/plugins.md``, Core plugins). The plugin's code is ``evo_agents.core_plugins.canvas``, which this client never
 imports: it speaks HTTP only.
@@ -13,7 +13,10 @@ read at refuses the edit: the error lists, per claim, the rev it is at, who chan
 CL-3`` takes back the claim's current rev (``--rev`` names it; read from the hub when left out). ``evidence
 add|withdraw|confirm`` keeps a claim's evidence. ``proposal list SLUG`` prints what an agent or the hub proposed (the
 open ones unless ``--status`` names others), ``proposal accept SLUG ID`` writes one as the caller's rev and ``proposal
-reject SLUG ID`` closes it. ``brainstorm SLUG`` hands @strategist a brainstorm, a task run that only proposes.
+reject SLUG ID`` closes it. ``baseline list SLUG`` prints the baselines, ``baseline show SLUG N`` one with its items
+and what the caller may decide of each, ``baseline open SLUG CL-3`` opens one of a claim at once and ``baseline decide
+SLUG N CL-3 accepted|rejected|deferred|extended|retired`` decides an item (a member does; the hub refuses a run).
+``brainstorm SLUG`` hands @strategist a brainstorm, a task run that only proposes.
 ``export SLUG`` prints ``evo-canvas/1`` JSON (``--output`` writes a file) and ``import FILE`` reads it back (``-`` for
 stdin), keeping the claims' codes; ``--dry-run`` prints what it would do. ``--json`` prints what the hub answered.
 Standard library only, like the rest of the client.
@@ -122,6 +125,28 @@ PROPOSAL_KEYS = (
     "evidence_id",
 )
 BRAINSTORM_KEYS = ("run_id", "title")
+BASELINE_SUMMARY_KEYS = (
+    "number",
+    "kind",
+    "week",
+    "due_at",
+    "time_zone",
+    "status",
+    "created_by",
+    "created_at",
+    "approved_at",
+    "expired_at",
+    "item_count",
+    "waiting",
+)
+BASELINE_KEYS = (*BASELINE_SUMMARY_KEYS, "canvas", "items", "approved_by", "snapshot")
+BASELINE_DECISIONS = (
+    "accepted",
+    "deferred",
+    "extended",
+    "rejected",
+    "retired",
+)  # canvas baseline_models.MEMBER_DECISIONS
 IMPORT_KEYS = ("dry_run", "canvas", "canvas_created", "created", "edited", "unchanged", "evidence", "problems")
 
 
@@ -418,6 +443,51 @@ def cmd_proposal_reject(args) -> int:
     return _out(args, _call("POST", path, {"reason": args.reason or ""}), _print_proposal)
 
 
+def _print_baseline(found: dict) -> None:
+    week = f" {found['week']}" if found.get("week") else ""
+    print(f"Baseline {found['number']} of {found['canvas']} ({found['kind']}{week}): {found['status']}")
+    for item in found["items"]:
+        asked = f"{item['from_status']} -> {item['to_status']}" if item["to_status"] else f"overdue {item['deadline']}"
+        said = f"{item['decision']} by {item['decided_by']}" if item["decision"] else "waiting"
+        may = f"; you may: {', '.join(item['decisions'])}" if item["decisions"] else ""
+        print(f"  {item['claim']} [{item['kind']}] {asked}: {said}{may}")
+
+
+@client_command
+def cmd_baseline_list(args) -> int:
+    found = _call("GET", _path(args.project, "canvases", args.slug, "baselines"))
+    if args.json:
+        print_json(found)
+        return 0
+    rows = [
+        (b["number"], b["kind"], b["week"] or "", b["status"], b["item_count"], b["waiting"], b["created_at"][:16])
+        for b in found
+    ]
+    if rows:
+        table(("number", "kind", "week", "status", "items", "waiting", "created"), rows)
+    return 0
+
+
+@client_command
+def cmd_baseline_show(args) -> int:
+    return _out(
+        args, _call("GET", _path(args.project, "canvases", args.slug, "baselines", args.number)), _print_baseline
+    )
+
+
+@client_command
+def cmd_baseline_open(args) -> int:
+    found = _call("POST", _path(args.project, "canvases", args.slug, "baselines"), {"claim": args.claim})
+    return _out(args, found, _print_baseline)
+
+
+@client_command
+def cmd_baseline_decide(args) -> int:
+    path = _path(args.project, "canvases", args.slug, "baselines", args.number, "items", args.claim, "decide")
+    body = {"decision": args.decision, "deadline": args.deadline, "reason": args.reason or ""}
+    return _out(args, _call("POST", path, body), _print_baseline)
+
+
 def _print_brainstorm(done: dict) -> None:
     print(f"Run #{done['run_id']}: {done['title']}. It proposes; see `hub canvas proposal list` when it ends.")
 
@@ -550,6 +620,8 @@ def _register_proposals(csub) -> None:
         json_option(parser, returns_object(*PROPOSAL_KEYS, schema="CanvasProposal"))
         parser.set_defaults(func=func)
 
+    _register_baselines(csub)
+
     brainstorm = csub.add_parser("brainstorm", help="hand @strategist a brainstorm of a canvas; it only proposes")
     _slug(brainstorm)
     _project(brainstorm)
@@ -557,6 +629,39 @@ def _register_proposals(csub) -> None:
     brainstorm.add_argument("--cell", action="append", choices=CELLS, help="one cell to look at; repeatable")
     json_option(brainstorm, returns_object(*BRAINSTORM_KEYS, schema="CanvasBrainstorm"))
     brainstorm.set_defaults(func=cmd_brainstorm)
+
+
+def _register_baselines(csub) -> None:
+    """``baseline list|show|open|decide``: the reviews that put a claim's status in effect."""
+    baseline = csub.add_parser("baseline", help="the reviews that put claims' statuses in effect: list, open, decide")
+    bsub = baseline.add_subparsers(dest="baseline_command", required=True)
+    listed = bsub.add_parser("list", help="the baselines of a canvas, newest first")
+    _slug(listed)
+    _project(listed)
+    json_option(listed, returns_array(*BASELINE_SUMMARY_KEYS, schema="CanvasBaselineSummary"))
+    listed.set_defaults(func=cmd_baseline_list)
+    shown = bsub.add_parser("show", help="a baseline with its items and what you may decide of each")
+    _slug(shown)
+    shown.add_argument("number", type=int, metavar="N", help="the baseline's number")
+    _project(shown)
+    json_option(shown, returns_object(*BASELINE_KEYS, schema="CanvasBaseline"))
+    shown.set_defaults(func=cmd_baseline_show)
+    opened = bsub.add_parser("open", help="open a baseline of one claim at once (a member, never a run)")
+    _slug(opened)
+    opened.add_argument("claim", metavar="CODE", help="the claim, as CL-3")
+    _project(opened)
+    json_option(opened, returns_object(*BASELINE_KEYS, schema="CanvasBaseline"))
+    opened.set_defaults(func=cmd_baseline_open)
+    decided = bsub.add_parser("decide", help="decide the item of one claim (a member, never a run)")
+    _slug(decided)
+    decided.add_argument("number", type=int, metavar="N", help="the baseline's number")
+    decided.add_argument("claim", metavar="CODE", help="the claim, as CL-3")
+    decided.add_argument("decision", choices=BASELINE_DECISIONS)
+    _project(decided)
+    decided.add_argument("--deadline", metavar="YYYY-MM-DD", help="the new deadline of an extension")
+    decided.add_argument("--reason", metavar="TEXT", help="why, kept with the decision")
+    json_option(decided, returns_object(*BASELINE_KEYS, schema="CanvasBaseline"))
+    decided.set_defaults(func=cmd_baseline_decide)
 
 
 def register_canvas(hsub) -> None:
