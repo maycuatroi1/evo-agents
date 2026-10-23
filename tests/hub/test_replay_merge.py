@@ -199,12 +199,7 @@ def test_replay_a_judge_that_failed_is_never_judged_again_by_replays(world):
     judged(world, verdict="fail", reasons="It reads the wrong docs.")
     assert moved_on(world) == {"checked": 1, "open": 1}
     written(world.client, world.headers["owner"], curator_charter(replay=REPLAYS))
-    assert fire(world.client, NIGHT).get("replay") == 1
-    spec = claim(world.client, world.worker)
-    moved(world.client, world.worker, spec["id"], "running")
-    key = spec["curator"]["replay_key"]
-    report(world, spec["id"], key, arm="a", base_sha=BASE, result=arm(True))
-    report(world, spec["id"], key, arm="b", base_sha=BASE, result=won())
+    assert fire(world.client, NIGHT).get("replay") is None  # a change the Judge failed is replayed no more
     assert one_change(world)["state"] == "open" and world.github.merges == []
 
 
