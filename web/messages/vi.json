@@ -4054,7 +4054,10 @@
         },
         "save": "Lưu",
         "saving": "Đang lưu",
-        "saveFailed": "Không lưu được phiên đăng nhập của run #{id}"
+        "saveFailed": "Không lưu được phiên đăng nhập của run #{id}",
+        "done": "Xong, tôi đã đăng nhập",
+        "doneSending": "Đang gửi",
+        "doneFailed": "Không gửi được \"Xong\" cho run #{id}"
       },
       "composer": {
         "label": "Nhắn cho agent",
@@ -5308,7 +5311,8 @@
       "question": "Câu hỏi",
       "triage": "Run lỗi",
       "release": "Phát hành",
-      "loop": "Loop"
+      "loop": "Loop",
+      "login": "Đăng nhập"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",

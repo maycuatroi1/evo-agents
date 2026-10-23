@@ -376,6 +376,8 @@ class Profiles:
             self._not_saved([identity], str(exc))
             return
         self.sent.append(identity.id)
+        if isinstance(answer.get("version"), int):
+            identity.version = answer["version"]  # a later save (the run's end after a checkpoint) starts from it
         log.info(
             "browser profile saved",
             extra={

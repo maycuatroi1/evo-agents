@@ -56,6 +56,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   release: Tags,
   // What the Loop asks a person after a work item failed a third time: retry it, drop it, or take it over.
   loop: IterationCw,
+  // What the agent of a run with a browser asks when a page wants a sign-in: Done, or Skip.
+  login: LogIn,
 };
 
 export function DecisionCategoryBadge({ category, className }: { category: DecisionCategory; className?: string }) {

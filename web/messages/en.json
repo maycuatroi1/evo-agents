@@ -4054,7 +4054,10 @@
         },
         "save": "Save",
         "saving": "Saving",
-        "saveFailed": "Couldn't save the login of run #{id}"
+        "saveFailed": "Couldn't save the login of run #{id}",
+        "done": "Done, I signed in",
+        "doneSending": "Sending",
+        "doneFailed": "Couldn't send Done for run #{id}"
       },
       "composer": {
         "label": "Message the agent",
@@ -5308,7 +5311,8 @@
       "question": "Question",
       "triage": "Failed run",
       "release": "Release",
-      "loop": "Loop"
+      "loop": "Loop",
+      "login": "Login"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",

@@ -5946,6 +5946,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/browser-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Login
+         * @description Ask the dispatcher of a run with a browser to sign in on one of its identities, or, for a run that cannot wait,
+         *     set the identity needs_login and fail the run.
+         */
+        post: operations["ask_login_v1_worker_runs__run_id__browser_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/browser-profile": {
         parameters: {
             query?: never;
@@ -9466,6 +9487,48 @@ export interface components {
              */
             worker?: string | null;
         };
+        /** BrowserLoginAsked */
+        BrowserLoginAsked: {
+            /**
+             * Outcome
+             * @description asked: a decision is open; failed: the run ends
+             * @enum {string}
+             */
+            outcome: "asked" | "failed";
+            /**
+             * Decision Id
+             * @description the login decision, for outcome asked
+             */
+            decision_id: number | null;
+            /**
+             * Identity Id
+             * @description the browser identity the login is for
+             */
+            identity_id: number;
+            /**
+             * Message
+             * @description what the agent is told
+             */
+            message: string;
+        };
+        /** BrowserLoginBody */
+        BrowserLoginBody: {
+            /**
+             * Identity
+             * @description the id or the name of one of the run's browser identities
+             */
+            identity: string;
+            /**
+             * Url
+             * @description the page to sign in on
+             */
+            url: string;
+            /**
+             * Reason
+             * @description why the agent needs the login
+             */
+            reason: string;
+        };
         /** BrowserNeedsLogin */
         BrowserNeedsLogin: {
             /**
@@ -12376,7 +12439,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "login";
             /** Question */
             question: string;
             /**
@@ -16682,7 +16745,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "login";
             /** Question */
             question: string;
             /**
@@ -49326,6 +49389,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrowserIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_login_v1_worker_runs__run_id__browser_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserLoginBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserLoginAsked"];
                 };
             };
             /** @description Unauthorized */

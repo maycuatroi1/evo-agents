@@ -33,6 +33,7 @@ import { RunNotices } from "./run-notes";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
 import { LocalRunDetails } from "./local-run-details";
+import { loginDone } from "./login-done";
 import { RunDecisions } from "./run-decisions";
 import { DetailsToggle, RunHeader } from "./run-header";
 import { RunLogCard, type SessionTab } from "./run-log";
@@ -126,7 +127,7 @@ function RunPage({ run }: { run: Run }) {
   const local = run.kind === "local";
   const active = isActiveState(run.state);
   // The same query as the decisions' column (one request): "Asked you" links to the card of a decision still open.
-  const decisions = useQuery({ ...openDecisionsQuery(browserApi, run.project, run.id), enabled: (plan || authoring) && active, refetchInterval: LIVE_REFRESH_MS });
+  const decisions = useQuery({ ...openDecisionsQuery(browserApi, run.project, run.id), enabled: (plan || authoring || browser !== null) && active, refetchInterval: LIVE_REFRESH_MS });
   const openIds = useMemo(() => (decisions.data?.decisions ?? []).map((decision) => decision.id).join(","), [decisions.data]);
   // A step report's branch and commits link to the run's repo on that branch: its own repo, or the plan run's repo of it.
   const webOf = useRepoWeb(run.project);
@@ -279,7 +280,7 @@ function RunPage({ run }: { run: Run }) {
         }
         browser={
           browser
-            ? (shown) => <RunBrowserPanel run={run} open={browser.open} active={shown} sessionCreatedAt={browser.sessionCreatedAt} controls={controls} fill={fill} />
+            ? (shown) => <RunBrowserPanel run={run} done={loginDone(decisions.data?.decisions)} open={browser.open} active={shown} sessionCreatedAt={browser.sessionCreatedAt} controls={controls} fill={fill} />
             : null
         }
       />

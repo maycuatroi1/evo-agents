@@ -73,6 +73,7 @@ class BrowserSession:
         self.socket: str | None = None  # the path of the browser's DevTools websocket
         self.noted: dict = {}  # its process group, as orphans.describe said it at the start
         self.live: live.LiveView | None = None  # the broker of its live view, while Chromium runs
+        self.state_of: Callable[[], str] | None = None  # the run's state, for the live view a checkpoint starts again
 
     @property
     def profile(self) -> Path:
@@ -120,6 +121,7 @@ class BrowserSession:
 
     def watch(self, state_of: Callable[[], str]) -> None:
         """Start the broker of the run's live view, once Chromium listens; ``state_of()`` is the run's state."""
+        self.state_of = state_of
         hub = getattr(self.daemon, "hub", None)
         if self.cdp is None or self.live is not None or hub is None:
             return
@@ -138,7 +140,28 @@ class BrowserSession:
         await self._unwatch()  # the run ends: its live view with it
         await self.profiles.save()
 
-    async def _start(self, installed: install.Installed) -> None:
+    async def checkpoint(self) -> bool:
+        """Save the profiles of the run's identities to the hub now, as the owner's Done on a login says, and start
+        Chromium again on the same profile and DevTools port, so the agent's Playwright finds its endpoint where it was
+        and the live view comes back. Whether the profile was saved; the browser runs again in either case."""
+        installed = self.profiles.installed
+        if self.cdp is None or installed is None or not self.profiles.identities:
+            return False
+        port = int(self.cdp.rsplit(":", 1)[1])
+        before = len(self.profiles.sent)
+        await self._unwatch()
+        await self.profiles.save()
+        process = self.process
+        if process is not None:
+            await asyncio.to_thread(chromium.kill, process, 1.0)  # saved or not, the old Chromium ends before the new
+        self.profiles.saved = False
+        self.cdp = self.socket = None
+        await self._start(installed, port=port)
+        if self.state_of is not None:
+            self.watch(self.state_of)
+        return len(self.profiles.sent) > before
+
+    async def _start(self, installed: install.Installed, port: int = 0) -> None:
         self.directory.mkdir(mode=chromium.DIR_MODE, parents=True, exist_ok=True)
         os.chmod(self.directory, chromium.DIR_MODE)
         self.process = await asyncio.to_thread(
@@ -150,6 +173,7 @@ class BrowserSession:
             libraries=installed.libraries,
             base_env=self.daemon.env,
             log_path=self.directory / LOG,
+            port=port,
         )
         self.noted = await asyncio.to_thread(orphans.describe, self.process.pid)
         (self.directory / NOTED).write_text(json.dumps(self.noted), encoding="utf-8")

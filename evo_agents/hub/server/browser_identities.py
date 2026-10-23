@@ -106,7 +106,7 @@ class BrowserIdentity(BaseModel):
 # Reading
 
 
-def _listing(project_id: int):
+def identity_listing(project_id: int):
     """The live identities of the project, joined to the names they show, ordered by owner then name."""
     b, w, u = tables.browser_identities, tables.workers, tables.users
     owner, saver, worker_owner = aliased(u), aliased(u), aliased(u)
@@ -127,13 +127,13 @@ def _listing(project_id: int):
     )
 
 
-def _can_manage(row, user: Principal, access: ProjectAccess) -> bool:
+def identity_can_manage(row, user: Principal, access: ProjectAccess) -> bool:
     if row.owner_kind == "member":
         return row.owner_id == user.user_id
     return has_role(access.role, "admin")
 
 
-def _view(row, project: str, user: Principal, access: ProjectAccess) -> BrowserIdentity:
+def identity_view(row, project: str, user: Principal, access: ProjectAccess) -> BrowserIdentity:
     return BrowserIdentity(
         id=row.id,
         project=project,
@@ -153,7 +153,7 @@ def _view(row, project: str, user: Principal, access: ProjectAccess) -> BrowserI
         last_saved_by=row.saver_login,
         last_used_at=row.last_used_at,
         created_at=row.created_at,
-        can_manage=_can_manage(row, user, access),
+        can_manage=identity_can_manage(row, user, access),
     )
 
 
@@ -166,15 +166,15 @@ async def list_browser_identities(
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
         mine = or_(b.c.owner_kind == "project", b.c.owner_id == user.user_id)
-        rows = (await conn.execute(_listing(access.project_id).where(mine))).all()
+        rows = (await conn.execute(identity_listing(access.project_id).where(mine))).all()
     response.headers.update(NO_STORE)
-    return [_view(row, project, user, access) for row in rows]
+    return [identity_view(row, project, user, access) for row in rows]
 
 
 # Writing
 
 
-async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess, name: str) -> int:
+async def identity_worker(conn: AsyncConnection, user: Principal, access: ProjectAccess, name: str) -> int:
     """The id of worker ``name``: the caller's own, not revoked, or a shared one of another member, serving the
     project, whose last heartbeat listed the feature browser; the caller's own when two share the name. 422
     otherwise."""
@@ -232,7 +232,7 @@ def _target(project: str, identity_id: int) -> str:
     return f"{project} browser-identity:{identity_id}"
 
 
-async def _record(conn: AsyncConnection, user: Principal, access: ProjectAccess, action: str, identity_id: int):
+async def identity_record(conn: AsyncConnection, user: Principal, access: ProjectAccess, action: str, identity_id: int):
     await audit.record(
         conn,
         actor_id=user.user_id,
@@ -256,7 +256,7 @@ async def create_browser_identity(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _may_create(access, body.owner)
-        worker_id = await _worker(conn, user, access, body.worker)
+        worker_id = await identity_worker(conn, user, access, body.worker)
         await _taken(conn, user, access, body)
         row = {
             "project_id": access.project_id,
@@ -274,14 +274,14 @@ async def create_browser_identity(
             raise HTTPException(
                 409, f"a browser identity named {body.name} was just created in project {project}"
             ) from None
-        await _record(conn, user, access, audit.BROWSER_IDENTITY_CREATE, identity_id)
-        created = (await conn.execute(_listing(access.project_id).where(b.c.id == identity_id))).one()
+        await identity_record(conn, user, access, audit.BROWSER_IDENTITY_CREATE, identity_id)
+        created = (await conn.execute(identity_listing(access.project_id).where(b.c.id == identity_id))).one()
     log.info(
         "browser identity created",
         extra={"project": project, "login": user.login, "browser_identity": identity_id, "owner": body.owner},
     )
     response.headers.update(NO_STORE)
-    return _view(created, project, user, access)
+    return identity_view(created, project, user, access)
 
 
 @router.delete(
@@ -298,7 +298,7 @@ async def delete_browser_identity(
         visible = row is not None and row.project_id == access.project_id and row.deleted_at is None
         if not visible or (row.owner_kind == "member" and row.owner_id != user.user_id):
             raise HTTPException(404, f"project {project} has no browser identity {identity_id} of yours or its own")
-        if not _can_manage(row, user, access):
+        if not identity_can_manage(row, user, access):
             held = access.role or "no grant"
             raise HTTPException(
                 403, f"deleting a browser identity of project {project} needs the admin role on it; you hold {held}"
@@ -306,7 +306,7 @@ async def delete_browser_identity(
         if row.held_by_run is not None:
             raise HTTPException(409, f"run {row.held_by_run} holds the browser identity; delete it after the run ends")
         await retire_profiles(conn, row)
-        await _record(conn, user, access, audit.BROWSER_IDENTITY_DELETE, identity_id)
+        await identity_record(conn, user, access, audit.BROWSER_IDENTITY_DELETE, identity_id)
     log.info(
         "browser identity deleted", extra={"project": project, "login": user.login, "browser_identity": identity_id}
     )
