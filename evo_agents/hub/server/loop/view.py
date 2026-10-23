@@ -108,7 +108,17 @@ async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> dict[
     """Every goal of the project at its newest revision, the active ones with a metric measured."""
     g, r = tables.goals, tables.goal_revisions
     query = (
-        select(g.c.id, g.c.number, r.c.revision, r.c.status, r.c.metric, r.c.canvas_id, r.c.rank, r.c.owner_id)
+        select(
+            g.c.id,
+            g.c.number,
+            r.c.revision,
+            r.c.status,
+            r.c.metric,
+            r.c.canvas_id,
+            r.c.rank,
+            r.c.owner_id,
+            r.c.problem_id,
+        )
         .join_from(g, r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
         .where(g.c.project_id == project_id)
     )
@@ -125,6 +135,7 @@ async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> dict[
             row.canvas_id,
             row.rank,
             row.owner_id,
+            row.problem_id,
         )
     return found
 

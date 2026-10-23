@@ -14,7 +14,9 @@ Tables goals and goal_revisions, schema 0091.
   ``evo_agents.core_plugins.builder.proposals``), which an admin approves, and the hub writes it through ``write``.
 
 A metric names a key of kind number of the project's registry of signals; a canvas, one of the project's canvases;
-the owner, a member with the writer role or above. An archived key or canvas a revision names already may stay. Writes
+a problem (plan problem-oriented-hub, criterion a2), one of the project's problems that is not dropped
+(``evo_agents.hub.server.problems``); the owner, a member with the writer role or above. An archived key or canvas, or
+a dropped problem, a revision names already may stay. Writes
 of one project's goals wait for each other (a transaction-level advisory lock). Each revision adds an audit row
 ``goal.set`` naming the goal, the revision and the fields whose value it changed, never a value.
 
@@ -39,6 +41,7 @@ from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, tables
+from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
@@ -95,6 +98,9 @@ class ProjectGoal(BaseModel):
     metric: GoalMetric | None = Field(description="null: no metric, so the Curator reads it and nothing else is done")
     deadline: date | None
     canvas: str | None = Field(description="the slug of the canvas whose product it drives")
+    problem: str | None = Field(
+        description="the code (P-<number>) of the problem of the project it answers; null: none"
+    )
     rank: int = Field(description="its place among the project's goals, 1 first")
     owner: str
     status: Literal[goals.STATUSES]
@@ -117,6 +123,11 @@ class ProjectGoalWrite(BaseModel):
     metric: GoalMetric | None = None
     deadline: date | None = None
     canvas: str | None = Field(None, pattern=SLUG, description="the slug of a canvas of the project")
+    problem: str | None = Field(
+        None,
+        pattern=problem_model.REF,
+        description="the code (P-<number>) of a problem of the project that is not dropped; null: none",
+    )
     rank: int | None = Field(
         None, ge=1, le=goals.MAX_RANK, description="null: kept, or after the project's other goals for a new one"
     )
@@ -166,8 +177,8 @@ class GoalRevision(BaseModel):
 
 
 def _select():
-    """A goal at a revision, with its owner's and writer's logins and its canvas's slug."""
-    g, r, c = tables.goals, tables.goal_revisions, tables.canvas.canvases
+    """A goal at a revision, with its owner's and writer's logins, its canvas's slug and its problem's number."""
+    g, r, c, pr = tables.goals, tables.goal_revisions, tables.canvas.canvases, tables.problems
     owner, writer = tables.users.alias("owner"), tables.users.alias("writer")
     return (
         select(
@@ -180,6 +191,8 @@ def _select():
             r.c.deadline,
             r.c.canvas_id,
             c.c.slug.label("canvas"),
+            r.c.problem_id,
+            pr.c.number.label("problem_number"),
             r.c.rank,
             r.c.owner_id,
             owner.c.login.label("owner"),
@@ -193,6 +206,7 @@ def _select():
         .join(owner, owner.c.id == r.c.owner_id)
         .join(writer, writer.c.id == r.c.created_by)
         .outerjoin(c, c.c.id == r.c.canvas_id)
+        .outerjoin(pr, pr.c.id == r.c.problem_id)
     )
 
 
@@ -221,6 +235,7 @@ def view(project: str, row) -> ProjectGoal:
         metric=row.metric,
         deadline=row.deadline,
         canvas=row.canvas,
+        problem=_problem_code(row),
         rank=row.rank,
         owner=row.owner,
         status=row.status,
@@ -231,6 +246,10 @@ def view(project: str, row) -> ProjectGoal:
     )
 
 
+def _problem_code(row) -> str | None:
+    return problem_model.code(row.problem_number) if row.problem_number is not None else None
+
+
 def fields_of(row) -> dict:
     """The fields of goal ``row`` as a write names them (``ProjectGoalWrite``), the deadline as text."""
     return {
@@ -238,6 +257,7 @@ def fields_of(row) -> dict:
         "metric": dict(row.metric) if row.metric is not None else None,
         "deadline": row.deadline.isoformat() if row.deadline is not None else None,
         "canvas": row.canvas,
+        "problem": _problem_code(row),
         "rank": row.rank,
         "owner": row.owner,
         "status": row.status,
@@ -252,6 +272,7 @@ def _stored(row) -> dict:
         "metric": row.metric,
         "deadline": row.deadline,
         "canvas_id": row.canvas_id,
+        "problem_id": row.problem_id,
         "rank": row.rank,
         "owner_id": row.owner_id,
         "status": row.status,
@@ -321,6 +342,7 @@ async def adopt_charter_goals(conn: AsyncConnection, project_id: int, project: s
             "metric": None,
             "deadline": None,
             "canvas_id": None,
+            "problem_id": None,
             "rank": min(rank + offset, goals.MAX_RANK),
             "owner_id": charter.created_by,
             "status": goals.ACTIVE,
@@ -376,7 +398,10 @@ async def _lock(conn: AsyncConnection, project_id: int) -> None:
     await conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"goals:{project_id}", 0))))
 
 
-async def _owner(conn: AsyncConnection, access: ProjectAccess, login: str) -> tuple[int | None, list[str]]:
+async def owner_of(
+    conn: AsyncConnection, access: ProjectAccess, login: str, of: str = "a goal's"
+) -> tuple[int | None, list[str]]:
+    """The id of member ``login`` as the owner of a goal (or of what ``of`` names), and why they cannot be one."""
     u, gr = tables.users, tables.grants
     query = (
         select(u.c.id, gr.c.role)
@@ -387,9 +412,7 @@ async def _owner(conn: AsyncConnection, access: ProjectAccess, login: str) -> tu
     if row is not None and has_role(row.role, "writer"):
         return row.id, []
     held = row.role if row is not None and row.role else "no grant"
-    return None, [
-        f"owner: {login} holds {held} on project {access.name}; a goal's owner holds the writer role or above"
-    ]
+    return None, [f"owner: {login} holds {held} on project {access.name}; {of} owner holds the writer role or above"]
 
 
 async def _canvas(conn: AsyncConnection, access: ProjectAccess, slug: str, held: int | None) -> tuple[int | None, list]:
@@ -403,20 +426,39 @@ async def _canvas(conn: AsyncConnection, access: ProjectAccess, slug: str, held:
     return row.id, []
 
 
-async def _metric_problems(conn: AsyncConnection, access: ProjectAccess, metric: GoalMetric, held: dict | None):
+async def metric_problems(
+    conn: AsyncConnection, access: ProjectAccess, key: str, held: dict | None, of: str = "a goal's"
+) -> list[str]:
+    """Why ``key`` cannot be the key of the metric of a goal (or of what ``of`` names) whose metric is ``held`` now."""
     k = tables.signal_keys
-    query = select(k.c.kind, k.c.archived_at).where(k.c.project_id == access.project_id, k.c.name == metric.key)
+    query = select(k.c.kind, k.c.archived_at).where(k.c.project_id == access.project_id, k.c.name == key)
     row = (await conn.execute(query)).first()
     if row is None:
         return [
-            f"metric.key: the registry of project {access.name} has no key {metric.key}: an admin adds it with "
+            f"metric.key: the registry of project {access.name} has no key {key}: an admin adds it with "
             "`evo-agents hub signal keys add`"
         ]
     if row.kind != NUMBER_KIND:
-        return [f"metric.key: {metric.key} is a key of kind {row.kind}; a goal's metric is a key of kind number"]
-    if row.archived_at is not None and (held or {}).get("key") != metric.key:
-        return [f"metric.key: {metric.key} is archived"]
+        return [f"metric.key: {key} is a key of kind {row.kind}; {of} metric is a key of kind number"]
+    if row.archived_at is not None and (held or {}).get("key") != key:
+        return [f"metric.key: {key} is archived"]
     return []
+
+
+async def _problem(conn: AsyncConnection, access: ProjectAccess, ref: str, held: int | None) -> tuple[int | None, list]:
+    """The id of problem ``ref`` of the project, for a goal whose problem is ``held`` now, and why it cannot be."""
+    p, r = tables.problems, tables.problem_revisions
+    query = (
+        select(p.c.id, r.c.status)
+        .join_from(p, r, and_(r.c.problem_id == p.c.id, r.c.revision == p.c.revision))
+        .where(p.c.project_id == access.project_id, p.c.number == problem_model.number_of(ref))
+    )
+    row = (await conn.execute(query)).first()
+    if row is None:
+        return None, [f"problem: project {access.name} has no problem {ref}: see `evo-agents hub problem list`"]
+    if row.status == problem_model.DROPPED and row.id != held:
+        return None, [f"problem: problem {ref} is dropped; a goal answers a problem that is open or solved"]
+    return row.id, []
 
 
 async def _values(
@@ -427,21 +469,26 @@ async def _values(
     problems: list[str] = []
     owner_id = held.owner_id if held is not None else writer_id
     if body.owner is not None and (held is None or body.owner.lower() != held.owner.lower()):
-        owner_id, said = await _owner(conn, access, body.owner)
+        owner_id, said = await owner_of(conn, access, body.owner)
         problems += said
     canvas_id = None
     if body.canvas is not None:
         canvas_id, said = await _canvas(conn, access, body.canvas, held.canvas_id if held is not None else None)
         problems += said
+    problem_id = None
+    if body.problem is not None:
+        problem_id, said = await _problem(conn, access, body.problem, held.problem_id if held is not None else None)
+        problems += said
     metric = body.metric.model_dump(exclude_none=True) if body.metric is not None else None
     if body.metric is not None:
-        problems += await _metric_problems(conn, access, body.metric, held.metric if held is not None else None)
+        problems += await metric_problems(conn, access, body.metric.key, held.metric if held is not None else None)
     rank = body.rank or (held.rank if held is not None else await _next_rank(conn, access.project_id))
     values = {
         "statement": body.statement,
         "metric": metric,
         "deadline": body.deadline,
         "canvas_id": canvas_id,
+        "problem_id": problem_id,
         "rank": rank,
         "owner_id": owner_id,
         "status": body.status,

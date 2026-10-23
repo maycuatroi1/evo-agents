@@ -15,11 +15,16 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
 - ``policy``: the project's autonomy policy (``evo_agents.hub.autonomy``), its keys named by their dotted path
   (``merge.hold_until``, ``repos.<repo>.mode``); its version is the policy's revision. An admin of the project
   decides it, and the hub writes the next revision as the policy's route does (``autonomy_policies.write``).
+- ``problem``: a problem of the project (``evo_agents.hub.problems``), new or one that exists (``target.problem``,
+  its code), its fields named as the problem's route names them (statement, who, when, workaround, metric, rank,
+  owner, status, close_reason); its version is the problem's revision, 0 for a new one, whose code the hub picks when
+  it is proposed and keeps in the target. A writer of the project decides it, and the hub writes the next revision as
+  the problem's route does (``problems.write``); rolling back a new problem drops it.
 - ``goal``: a goal of the project (``evo_agents.hub.goals``), new or one that exists (``target.goal``, its code or
-  alias), its fields named as the goal's route names them (statement, metric, deadline, canvas, rank, owner, status,
-  close_reason); its version is the goal's revision, 0 for a new one, whose code the hub picks when it is proposed and
-  keeps in the target. An admin of the project decides it, and the hub writes the next revision as the goal's route
-  does (``goals.write``); rolling back a new goal closes it (dropped).
+  alias), its fields named as the goal's route names them (statement, metric, deadline, canvas, problem, rank, owner,
+  status, close_reason); its version is the goal's revision, 0 for a new one, whose code the hub picks when it is
+  proposed and keeps in the target. An admin of the project decides it, and the hub writes the next revision as the
+  goal's route does (``goals.write``); rolling back a new goal closes it (dropped).
 
 Proposing checks the change against the setting as it is now, as its route would, and keeps the setting's version
 (``base_version``): nothing is written to the setting. Approving applies the change as the setting's next version
@@ -46,10 +51,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.builder import MAX_FIELDS, MAX_SUMMARY_CHARS
 from evo_agents.hub import autonomy, branding, chats, features, goals, tables
+from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs
 from evo_agents.hub.server import goals as project_goals
+from evo_agents.hub.server import problems as project_problems
 from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
 from evo_agents.hub.server.agent_profiles import AgentEdit, new_version, profile_changes
 from evo_agents.hub.server.plugin_grants import installed_row
@@ -61,9 +68,10 @@ from evo_agents.plugins import config as plugin_config
 
 log = logging.getLogger(__name__)
 
-BRANDING, FEATURES, PLUGIN_CONFIG, AGENT, POLICY, GOAL = PROPOSAL_KINDS
+BRANDING, FEATURES, PLUGIN_CONFIG, AGENT, POLICY, PROBLEM, GOAL = PROPOSAL_KINDS
 PENDING, APPLIED, REJECTED, FAILED, ROLLED_BACK = PROPOSAL_STATES
 HUB_WIDE = (BRANDING, FEATURES)  # a hub admin decides them; an admin of the project the others
+BY_WRITERS = (PROBLEM,)  # but these, which a writer of the project decides
 APPROVE, REJECT, ROLLBACK = "approve", "reject", "rollback"
 BRANDING_FIELDS = tuple(name for name in branding.FIELDS if name not in branding.ASSETS)
 AGENT_FIELDS = ("name", "description", "instructions", "packs")
@@ -74,6 +82,7 @@ TARGET_KEYS = {  # kind -> (the keys its target needs, those it may have)
     PLUGIN_CONFIG: (("plugin",), ("agent",)),
     AGENT: (("agent",), ()),
     POLICY: ((), ()),
+    PROBLEM: ((), ("problem",)),
     GOAL: ((), ("goal",)),
 }
 MAX_ERROR_CHARS = 2000
@@ -120,7 +129,8 @@ class Target:
     profile: Profile | None = None
     policy: dict | None = None  # the body of the policy's revision now, for a policy
     goal: dict | None = None  # the fields of the goal now as its route names them, {} for a new one, for a goal
-    names: dict = field(default_factory=dict)  # what the hub adds to the target it keeps: a goal's code
+    problem: dict | None = None  # the same of the problem now, for a problem
+    names: dict = field(default_factory=dict)  # what the hub adds to the target it keeps: a goal's or problem's code
 
 
 class BuilderProposal(BaseModel):
@@ -130,8 +140,9 @@ class BuilderProposal(BaseModel):
     project: str
     kind: Literal[PROPOSAL_KINDS]
     target: dict[str, str] = Field(
-        description="layer (features), plugin and agent (plugin_config), agent (agent), goal (goal: its code, which "
-        "the hub picks for a new one); nothing for policy"
+        description="layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, "
+        "which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for "
+        "policy"
     )
     change: dict[str, Any] = Field(
         description="set: field -> value; unset: the fields it clears; a key of the policy by its dotted path"
@@ -139,7 +150,7 @@ class BuilderProposal(BaseModel):
     summary: str
     base_version: int = Field(description="the setting's version it was proposed on, which approving needs still")
     state: Literal[PROPOSAL_STATES]
-    approver: Literal["hub_admin", "project_admin"] = Field(description="who may decide it")
+    approver: Literal["hub_admin", "project_writer", "project_admin"] = Field(description="who may decide it")
     proposed_by: str = Field(
         description="the member the run proposed for: the admin who asked @builder, or the owner of the Curator's night "
         "shift for a proposal of its review run"
@@ -168,6 +179,11 @@ def _select():
     )
 
 
+def approver_of(kind: str) -> str:
+    """Who may decide a proposal of ``kind``: a hub admin, a writer of the project or an admin of it."""
+    return "hub_admin" if kind in HUB_WIDE else "project_writer" if kind in BY_WRITERS else "project_admin"
+
+
 def view(row) -> BuilderProposal:
     link = chats.chat_link(row.chat_id, row.message_id) if row.chat_id is not None else None
     return BuilderProposal(
@@ -179,7 +195,7 @@ def view(row) -> BuilderProposal:
         summary=row.summary,
         base_version=row.base_version,
         state=row.state,
-        approver="hub_admin" if row.kind in HUB_WIDE else "project_admin",
+        approver=approver_of(row.kind),
         proposed_by=row.proposer,
         proposed_at=row.proposed_at,
         decided_by=row.decider,
@@ -273,6 +289,8 @@ def change_of(arguments: Mapping) -> Change:
         problems.append(f"target.layer is one of {', '.join(LAYERS)}")
     if kind == GOAL and not re.fullmatch(goals.REF, str(target.get("goal", "G-1"))):
         problems.append("target.goal is a goal's code (G-<number>) or its alias")
+    if kind == PROBLEM and not re.fullmatch(problem_model.REF, str(target.get("problem", "P-1"))):
+        problems.append("target.problem is a problem's code (P-<number>)")
     problems.extend(_field_problems(sets, unset))
     if problems:
         raise ProposalError(422, f"{'; '.join(problems)}; nothing proposed")
@@ -355,6 +373,23 @@ async def _goal_target(conn: AsyncConnection, access: ProjectAccess, change: Cha
     return Target(f"goal {code} of project {access.name}", row.revision, held, goal=fields, names={"goal": code})
 
 
+async def _problem_target(conn: AsyncConnection, access: ProjectAccess, change: Change) -> Target:
+    """Problem ``target.problem`` as it is now, or a new problem under the next code when the target names none or
+    that one."""
+    ref = change.target.get("problem")
+    row = await project_problems.found(conn, access.project_id, ref) if ref is not None else None
+    if row is None:
+        code = await project_problems.next_code(conn, access.project_id)
+        if ref is not None and ref != code:
+            raise ProposalError(404, f"project {access.name} has no problem {ref}; a new problem takes the code {code}")
+        return Target(f"a new problem {code} of project {access.name}", 0, {}, problem={}, names={"problem": code})
+    code, fields = problem_model.code(row.number), project_problems.fields_of(row)
+    held = {name: value for name, value in fields.items() if value is not None}
+    return Target(
+        f"problem {code} of project {access.name}", row.revision, held, problem=fields, names={"problem": code}
+    )
+
+
 async def locate(conn: AsyncConnection, access: ProjectAccess, change: Change, *, lock: bool = False) -> Target:
     """Where ``change`` applies, as it is now; ProposalError when the project has no such place."""
     if change.kind in HUB_WIDE:
@@ -365,6 +400,8 @@ async def locate(conn: AsyncConnection, access: ProjectAccess, change: Change, *
         return await _policy_target(conn, access)
     if change.kind == GOAL:
         return await _goal_target(conn, access, change)
+    if change.kind == PROBLEM:
+        return await _problem_target(conn, access, change)
     return await _agent_target(conn, access, change, lock=lock)
 
 
@@ -450,8 +487,8 @@ async def _policy_body(conn: AsyncConnection, access: ProjectAccess, change: Cha
     return body
 
 
-def _said_by_pydantic(exc: ValidationError) -> str:
-    return "; ".join(f"{'.'.join(map(str, error['loc'])) or 'goal'}: {error['msg']}" for error in exc.errors())
+def _said_by_pydantic(exc: ValidationError, what: str = "goal") -> str:
+    return "; ".join(f"{'.'.join(map(str, error['loc'])) or what}: {error['msg']}" for error in exc.errors())
 
 
 def _goal_body(change: Change, target: Target) -> project_goals.ProjectGoalWrite:
@@ -479,6 +516,31 @@ async def _goal_problems(conn: AsyncConnection, access: ProjectAccess, change: C
         raise ProposalError(exc.status_code, str(exc.detail)) from None
 
 
+def _problem_body(change: Change, target: Target) -> project_problems.ProjectProblemWrite:
+    """The problem ``change`` makes of the one ``target`` holds, as a write of its route; ProposalError (422) naming
+    what is wrong with its shape."""
+    wrong = [f"{name}: a problem has no such field" for name in sorted(set(change.sets) - set(problem_model.FIELDS))]
+    wrong += [f"{name}: a problem always has one" for name in change.unset if name not in problem_model.CLEARABLE]
+    if wrong:
+        raise ProposalError(422, f"{'; '.join(wrong)}; {NOTHING}")
+    fields = {**target.problem, **change.sets, **dict.fromkeys(change.unset)}
+    if change.sets.get("status") == problem_model.OPEN and "close_reason" not in change.sets:
+        fields["close_reason"] = None  # opened again
+    try:
+        return project_problems.ProjectProblemWrite.model_validate(fields)
+    except ValidationError as exc:
+        raise ProposalError(422, f"{_said_by_pydantic(exc, 'problem')}; {NOTHING}") from None
+
+
+async def _problem_wrong(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> list[str]:
+    body = _problem_body(change, target)
+    wrong = _layer_problems(change, target) if target.version else []
+    try:
+        return wrong + await project_problems.check(conn, access, target.names["problem"], body)
+    except HTTPException as exc:
+        raise ProposalError(exc.status_code, str(exc.detail)) from None
+
+
 CHECKS: dict[str, Callable[[Change, Target], list[str]]] = {
     BRANDING: _branding_problems,
     FEATURES: _features_problems,
@@ -496,6 +558,8 @@ async def check(conn: AsyncConnection, access: ProjectAccess, change: Change, ta
         return
     if change.kind == GOAL:
         problems = await _goal_problems(conn, access, change, target)
+    elif change.kind == PROBLEM:
+        problems = await _problem_wrong(conn, access, change, target)
     else:
         problems = CHECKS[change.kind](change, target) or _layer_problems(change, target)
     if problems:
@@ -568,6 +632,28 @@ async def _write_goal(
     return shown.revision
 
 
+async def _write_problem(
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    target: Target,
+    body: project_problems.ProjectProblemWrite,
+    base: int,
+    note: str,
+    via: str,
+) -> int:
+    """Write ``body`` as the next revision of the problem of ``target`` while it is at revision ``base``; that one."""
+    ref = target.names["problem"]
+    body = body.model_copy(update={"note": note[: problem_model.MAX_NOTE_CHARS], "if_revision": base})
+    try:
+        shown, written = await project_problems.write(conn, user, access, ref, body, via=via)
+    except HTTPException as exc:
+        raise ProposalError(exc.status_code, str(exc.detail)) from None
+    if not written:
+        raise ProposalError(409, f"problem {ref} of project {access.name} is this already; {NOTHING}")
+    return shown.revision
+
+
 def _still_at(target: Target, version: int, doing: str) -> None:
     if target.version != version:
         raise ProposalError(
@@ -601,6 +687,10 @@ async def apply(
         note = f"proposal {proposal_id} of @builder: {change.summary}"
         body = _goal_body(change, target)
         return await _write_goal(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
+    if change.kind == PROBLEM:
+        note = f"proposal {proposal_id} of @builder: {change.summary}"
+        body = _problem_body(change, target)
+        return await _write_problem(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
     await check(conn, access, change, target, hub_version)
     if change.kind == PLUGIN_CONFIG:
         return await _apply_config(conn, user, change, target, base)
@@ -674,6 +764,25 @@ async def _roll_back_goal(
     return await _write_goal(conn, user, access, target, body, applied, note, via)
 
 
+async def _roll_back_problem(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, target: Target, applied: int, proposal_id: int
+) -> int:
+    """The problem's next revision, a copy of revision ``applied - 1``; a problem the proposal made is dropped."""
+    ref, before = target.names["problem"], applied - 1
+    row = await project_problems.found(conn, access.project_id, ref, before or None)
+    if row is None:
+        raise ProposalError(409, f"problem {ref} of project {access.name} has no revision {before}; {NOTHING}")
+    if before == 0:
+        reason = f"rollback of proposal {proposal_id} of @builder"
+        body = project_problems.closing(row, problem_model.DROPPED, reason, None, applied)
+        note = f"rollback of proposal {proposal_id} of @builder: the problem it made, dropped"
+    else:
+        body = project_problems.ProjectProblemWrite.model_validate(project_problems.fields_of(row))
+        note = f"rollback of proposal {proposal_id} of @builder: a copy of revision {before}"
+    via = f" proposal={proposal_id} copy-of={before}"
+    return await _write_problem(conn, user, access, target, body, applied, note, via)
+
+
 async def roll_back(
     conn: AsyncConnection,
     user: Principal,
@@ -695,6 +804,8 @@ async def roll_back(
         return await _roll_back_policy(conn, user, access, applied, proposal_id)
     if change.kind == GOAL:
         return await _roll_back_goal(conn, user, access, target, applied, proposal_id)
+    if change.kind == PROBLEM:
+        return await _roll_back_problem(conn, user, access, target, applied, proposal_id)
     return await _roll_back_layer(conn, user, target, applied)
 
 
@@ -707,9 +818,10 @@ def refusal(user: Principal, access: ProjectAccess, kind: str, doing: str) -> st
         return f"{doing} is for an admin, never for the agent of a run"
     if kind in HUB_WIDE:
         return None if user.admin else f"{doing} needs a hub admin, and {user.login} is none"
-    if has_role(access.role, "admin"):
+    role = "writer" if kind in BY_WRITERS else "admin"
+    if has_role(access.role, role):
         return None
-    return f"{doing} needs the admin role on project {access.name}, and {user.login} holds {access.role or 'no grant'}"
+    return f"{doing} needs the {role} role on project {access.name}, and {user.login} holds {access.role or 'no grant'}"
 
 
 def _said(exc: Exception) -> str:
@@ -808,18 +920,21 @@ def thread_text(proposal_id: int, change: Change, target: Target, approver: str)
 
 
 def approver_words(kind: str, project: str) -> str:
-    return "a hub admin" if kind in HUB_WIDE else f"an admin of project {project}"
+    if kind in HUB_WIDE:
+        return "a hub admin"
+    return f"a writer of project {project}" if kind in BY_WRITERS else f"an admin of project {project}"
 
 
 async def approvers(conn: AsyncConnection, access: ProjectAccess, kind: str, admins: frozenset[str]) -> list[int]:
-    """The members who may decide a proposal of ``kind`` in the project: the hub admins who signed in, or the
-    project's admins."""
+    """The members who may decide a proposal of ``kind`` in the project: the hub admins who signed in, the project's
+    writers and admins for a kind of BY_WRITERS, or the project's admins."""
     u, g = tables.users, tables.grants
     if kind in HUB_WIDE:
         logins = literal(sorted(admins), ARRAY(Text))
         query = select(u.c.id).where(func.lower(u.c.login) == any_(logins))
     else:
-        query = select(g.c.user_id).where(g.c.project_id == access.project_id, g.c.role == "admin")
+        roles = ("writer", "admin") if kind in BY_WRITERS else ("admin",)
+        query = select(g.c.user_id).where(g.c.project_id == access.project_id, g.c.role.in_(roles))
     return sorted(set((await conn.execute(query)).scalars()))
 
 

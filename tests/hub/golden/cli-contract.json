@@ -6783,6 +6783,7 @@
           "metric",
           "deadline",
           "canvas",
+          "problem",
           "rank",
           "owner",
           "status",
@@ -6840,6 +6841,7 @@
           "metric",
           "deadline",
           "canvas",
+          "problem",
           "rank",
           "owner",
           "status",
@@ -6974,6 +6976,22 @@
         },
         {
           "flags": [
+            "--problem"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-problem"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--rank"
           ],
           "value": "integer",
@@ -7045,6 +7063,7 @@
           "metric",
           "deadline",
           "canvas",
+          "problem",
           "rank",
           "owner",
           "status",
@@ -7105,6 +7124,7 @@
           "metric",
           "deadline",
           "canvas",
+          "problem",
           "rank",
           "owner",
           "status",
@@ -11100,6 +11120,382 @@
           "created_at"
         ],
         "schema": "AutonomyPolicy"
+      }
+    },
+    "hub problem close": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "solved",
+            "dropped"
+          ]
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "who",
+          "when",
+          "workaround",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "ProjectProblemWritten"
+      }
+    },
+    "hub problem list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "solved",
+            "dropped"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "who",
+          "when",
+          "workaround",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "ProjectProblem"
+      }
+    },
+    "hub problem set": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--statement"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--who"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--when"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--workaround"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--metric"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--aggregate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "last",
+            "mean",
+            "sum",
+            "count",
+            "p50",
+            "p90"
+          ]
+        },
+        {
+          "flags": [
+            "--window-days"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--tenant"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-metric"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rank"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reopen"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "who",
+          "when",
+          "workaround",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "ProjectProblemWritten"
+      }
+    },
+    "hub problem show": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "who",
+          "when",
+          "workaround",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "goals"
+        ],
+        "schema": "ProjectProblemShown"
       }
     },
     "hub project list": {
@@ -43246,7 +43642,7 @@
             "plugins"
           ],
           "summary": "Answer Proposal",
-          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why\nit could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the\nothers.",
+          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why\nit could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one\nof a problem, an admin of the project the others.",
           "operationId": "answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post",
           "parameters": [
             {
@@ -66893,6 +67289,513 @@
           }
         }
       },
+      "/v1/projects/{project}/problems": {
+        "get": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "List Problems",
+          "description": "The project's problems as they are now, by rank, then by code.",
+          "operationId": "list_problems_v1_projects__project__problems_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "solved",
+                      "dropped"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "those of this status alone",
+                "title": "Status"
+              },
+              "description": "those of this status alone"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectProblem"
+                    },
+                    "title": "Response List Problems V1 Projects  Project  Problems Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/problems/{ref}": {
+        "get": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "Show Problem",
+          "description": "One problem of the project, at its newest revision or at ``revision``, with the goals that answer it now.",
+          "operationId": "show_problem_v1_projects__project__problems__ref__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^P-[1-9][0-9]{0,8}$",
+                "description": "P-<number>",
+                "title": "Ref"
+              },
+              "description": "P-<number>"
+            },
+            {
+              "name": "revision",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an older revision",
+                "title": "Revision"
+              },
+              "description": "an older revision"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectProblemShown"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "Write Problem",
+          "description": "Write a problem whole as its next revision, made when the project has none of code ``ref``; a writer of the\nproject may.",
+          "operationId": "write_problem_v1_projects__project__problems__ref__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^P-[1-9][0-9]{0,8}$",
+                "description": "P-<number>",
+                "title": "Ref"
+              },
+              "description": "P-<number>"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectProblemWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectProblemWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/problems/{ref}/revisions": {
+        "get": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "Problem Revisions",
+          "description": "Every revision of a problem, the newest first, each with the fields whose value it changed.",
+          "operationId": "problem_revisions_v1_projects__project__problems__ref__revisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^P-[1-9][0-9]{0,8}$",
+                "description": "P-<number>",
+                "title": "Ref"
+              },
+              "description": "P-<number>"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProblemRevision"
+                    },
+                    "title": "Response Problem Revisions V1 Projects  Project  Problems  Ref  Revisions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/problems/{ref}/close": {
+        "post": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "Close Problem",
+          "description": "Close a problem as solved or dropped, for a reason, as its next revision; a writer of the project may.",
+          "operationId": "close_problem_v1_projects__project__problems__ref__close_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^P-[1-9][0-9]{0,8}$",
+                "description": "P-<number>",
+                "title": "Ref"
+              },
+              "description": "P-<number>"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectProblemClose"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectProblemWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/loop": {
         "get": {
           "tags": [
@@ -73123,6 +74026,7 @@
                 "plugin_config",
                 "agent",
                 "policy",
+                "problem",
                 "goal"
               ],
               "title": "Kind"
@@ -73133,7 +74037,7 @@
               },
               "type": "object",
               "title": "Target",
-              "description": "layer (features), plugin and agent (plugin_config), agent (agent), goal (goal: its code, which the hub picks for a new one); nothing for policy"
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy"
             },
             "change": {
               "additionalProperties": true,
@@ -73165,6 +74069,7 @@
               "type": "string",
               "enum": [
                 "hub_admin",
+                "project_writer",
                 "project_admin"
               ],
               "title": "Approver",
@@ -97829,6 +98734,156 @@
           ],
           "title": "Problem"
         },
+        "ProblemGoal": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "G-<number>"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ],
+              "title": "Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "revision",
+            "statement",
+            "status"
+          ],
+          "title": "ProblemGoal",
+          "description": "A goal of the project whose newest revision answers the problem."
+        },
+        "ProblemMetric": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){1,5}$",
+              "title": "Key",
+              "description": "a key of kind number of the project's registry of signals"
+            },
+            "aggregate": {
+              "type": "string",
+              "enum": [
+                "last",
+                "mean",
+                "sum",
+                "count",
+                "p50",
+                "p90"
+              ],
+              "title": "Aggregate"
+            },
+            "window_days": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 90.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Days",
+              "description": "null: 90"
+            },
+            "tenant": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant",
+              "description": "one tenant's alone"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "key",
+            "aggregate"
+          ],
+          "title": "ProblemMetric",
+          "description": "How much a problem hurts: a key of the project's signals summed up over a window, as a goal's metric is, with\nno target."
+        },
+        "ProblemRevision": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "solved",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Changed",
+              "description": "the fields whose value differs from the revision before"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "status",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "ProblemRevision"
+        },
         "ProgramCount": {
           "properties": {
             "program": {
@@ -98136,6 +99191,18 @@
               "title": "Canvas",
               "description": "the slug of the canvas whose product it drives"
             },
+            "problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problem",
+              "description": "the code (P-<number>) of the problem of the project it answers; null: none"
+            },
             "rank": {
               "type": "integer",
               "title": "Rank",
@@ -98205,6 +99272,7 @@
             "metric",
             "deadline",
             "canvas",
+            "problem",
             "rank",
             "owner",
             "status",
@@ -98303,6 +99371,19 @@
               ],
               "title": "Canvas",
               "description": "the slug of a canvas of the project"
+            },
+            "problem": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^P-[1-9][0-9]{0,8}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problem",
+              "description": "the code (P-<number>) of a problem of the project that is not dropped; null: none"
             },
             "rank": {
               "anyOf": [
@@ -98463,6 +99544,18 @@
               "title": "Canvas",
               "description": "the slug of the canvas whose product it drives"
             },
+            "problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problem",
+              "description": "the code (P-<number>) of the problem of the project it answers; null: none"
+            },
             "rank": {
               "type": "integer",
               "title": "Rank",
@@ -98537,6 +99630,7 @@
             "metric",
             "deadline",
             "canvas",
+            "problem",
             "rank",
             "owner",
             "status",
@@ -98867,6 +99961,576 @@
           ],
           "title": "ProjectPlugin",
           "description": "An installed plugin as one project sees it: what it asks for, and whether the project enabled it."
+        },
+        "ProjectProblem": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "P-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement",
+              "description": "what hurts, before any solution"
+            },
+            "who": {
+              "type": "string",
+              "title": "Who",
+              "description": "who is hurt"
+            },
+            "when": {
+              "type": "string",
+              "title": "When",
+              "description": "when it happens"
+            },
+            "workaround": {
+              "type": "string",
+              "title": "Workaround",
+              "description": "how they cope today"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's problems, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "solved",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was solved or dropped; null while it is open"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "revision",
+            "statement",
+            "who",
+            "when",
+            "workaround",
+            "metric",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at"
+          ],
+          "title": "ProjectProblem",
+          "description": "A problem of a project at one revision."
+        },
+        "ProjectProblemClose": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "solved",
+                "dropped"
+              ],
+              "title": "Status",
+              "description": "solved or dropped"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the problem is at this revision now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "status",
+            "reason"
+          ],
+          "title": "ProjectProblemClose"
+        },
+        "ProjectProblemShown": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "P-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement",
+              "description": "what hurts, before any solution"
+            },
+            "who": {
+              "type": "string",
+              "title": "Who",
+              "description": "who is hurt"
+            },
+            "when": {
+              "type": "string",
+              "title": "When",
+              "description": "when it happens"
+            },
+            "workaround": {
+              "type": "string",
+              "title": "Workaround",
+              "description": "how they cope today"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's problems, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "solved",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was solved or dropped; null while it is open"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "goals": {
+              "items": {
+                "$ref": "#/components/schemas/ProblemGoal"
+              },
+              "type": "array",
+              "title": "Goals",
+              "description": "the goals whose newest revision answers it, by code"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "revision",
+            "statement",
+            "who",
+            "when",
+            "workaround",
+            "metric",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at",
+            "goals"
+          ],
+          "title": "ProjectProblemShown"
+        },
+        "ProjectProblemWrite": {
+          "properties": {
+            "statement": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Statement",
+              "description": "what hurts"
+            },
+            "who": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Who",
+              "description": "who is hurt"
+            },
+            "when": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "When",
+              "description": "when it happens"
+            },
+            "workaround": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Workaround",
+              "description": "how they cope today"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rank": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rank",
+              "description": "null: kept, or after the project's open problems for a new one"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "a member with the writer role or above; null: kept, or the writer for a new problem"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "solved",
+                "dropped"
+              ],
+              "title": "Status",
+              "default": "open"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was solved or dropped, for a closed problem and only for one"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why, for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the problem is at this revision now; 0: new only"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "statement",
+            "who",
+            "when",
+            "workaround"
+          ],
+          "title": "ProjectProblemWrite",
+          "description": "The next revision of a problem: the whole of it, as its writer wants it."
+        },
+        "ProjectProblemWritten": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "P-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement",
+              "description": "what hurts, before any solution"
+            },
+            "who": {
+              "type": "string",
+              "title": "Who",
+              "description": "who is hurt"
+            },
+            "when": {
+              "type": "string",
+              "title": "When",
+              "description": "when it happens"
+            },
+            "workaround": {
+              "type": "string",
+              "title": "Workaround",
+              "description": "how they cope today"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's problems, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "solved",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was solved or dropped; null while it is open"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the newest revision is this problem already: nothing was written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "revision",
+            "statement",
+            "who",
+            "when",
+            "workaround",
+            "metric",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "ProjectProblemWritten"
         },
         "ProjectPruned": {
           "properties": {

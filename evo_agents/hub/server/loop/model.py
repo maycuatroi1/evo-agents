@@ -119,7 +119,8 @@ class Event:
 @dataclass(frozen=True)
 class GoalView:
     """A goal at its newest revision: ``reached`` is whether its metric meets its target now (None: no metric, or no
-    signal in its window)."""
+    signal in its window); ``problem_id`` the problem of the project it answers (plan problem-oriented-hub), None for
+    none."""
 
     id: int
     code: str
@@ -130,6 +131,7 @@ class GoalView:
     canvas_id: int | None
     rank: int
     owner_id: int
+    problem_id: int | None = None
 
 
 @dataclass(frozen=True)
