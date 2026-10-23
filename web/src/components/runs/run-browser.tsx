@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Hand, LogIn, RotateCw, TextCursorInput, TriangleAlert, Undo2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ArrowRight, Hand, LogIn, RotateCw, Save, TextCursorInput, TriangleAlert, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
@@ -19,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { BrowserScreen, type ScreenHandle } from "./browser-screen";
 import { type BrowserEvent, type BrowserTab, openUrl, tabName } from "./browser-view-model";
 import { useRunControl, useRunFailure } from "./hooks";
-import type { Run } from "./queries";
+import { finishChat, type Run, runKeys } from "./queries";
 import type { RunControls } from "./run-model";
 import { type CloseKind, sessionHours, sessionTooOld } from "./terminal-model";
 import { useRunBrowser } from "./use-run-browser";
@@ -110,7 +111,7 @@ export function RunBrowserPanel({
   done = null,
   fill = false,
 }: {
-  run: Pick<Run, "id" | "project" | "plan_id" | "state" | "worker">;
+  run: Pick<Run, "id" | "project" | "plan_id" | "state" | "worker" | "kind" | "finish_requested_at">;
   /** A worker holds the run, so its browser is up. */
   open: boolean;
   /** The Browser tab is the one shown. */
@@ -128,6 +129,7 @@ export function RunBrowserPanel({
   const t = useTranslations("runs.detail.browser");
   const tActions = useTranslations("runs.detail.actions");
   const tState = useStatusText("run");
+  const queryClient = useQueryClient();
   const ids = useId();
   const worker = run.worker ?? "";
   const now = useNow(active);
@@ -154,6 +156,14 @@ export function RunBrowserPanel({
 
   const control = useRunControl(run);
   const failure = useRunFailure();
+  // A login session (kind browser) is human from the start: no Take control, and Save is the run's finish.
+  const login = run.kind === "browser";
+  const saving = useMutation({
+    mutationFn: () => finishChat(browserApi(), run.project, run.id),
+    onError: (error) => notifyFailure(t("saveFailed", { id: run.id }), failure(error)),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: runKeys.all(run.project) }),
+  });
+  const saveBusy = saving.isPending || Boolean(run.finish_requested_at);
   const act = (action: "takeover" | "handback") =>
     control.mutate(action, { onError: (error) => notifyFailure(tActions(`toast.failed.${action}`, { id: run.id }), failure(error)) });
   const pending = control.isPending ? control.variables : null;
@@ -214,7 +224,8 @@ export function RunBrowserPanel({
   else if (!sawFrame && !tooOld && status !== "closed") placeholder = status === "live" ? t("waiting", { worker }) : t("connecting");
 
   let take: ReactNode = null;
-  if (controls.handback !== "none") {
+  if (login) take = null;
+  else if (controls.handback !== "none") {
     const busy = controls.handback === "asked" || pending === "handback";
     take = (
       <Button type="button" size="sm" onClick={() => act("handback")} busy={busy} data-testid="browser-handback">
@@ -231,9 +242,17 @@ export function RunBrowserPanel({
       </Button>
     );
   }
-  const asked = controls.takeover === "asked";
+  const asked = !login && controls.takeover === "asked";
+  const saveButton =
+    save ??
+    (login && open ? (
+      <Button type="button" size="sm" onClick={() => saving.mutate()} busy={saveBusy} disabled={!drives && !saveBusy} data-testid="browser-save">
+        <Save aria-hidden="true" />
+        {saveBusy ? t("saving") : t("save")}
+      </Button>
+    ) : null);
 
-  const hint = !open ? null : human ? t("hint.human") : controls.takeover !== "none" ? t("hint.agent") : t("hint.watch");
+  const hint = !open ? null : login ? t("hint.login") : human ? t("hint.human") : controls.takeover !== "none" ? t("hint.agent") : t("hint.watch");
   const boxFill = fill === "always" ? "h-auto min-h-0 flex-1" : fill ? "xl:h-auto xl:min-h-0 xl:flex-1" : undefined;
 
   return (
@@ -283,10 +302,10 @@ export function RunBrowserPanel({
             data-testid="browser-url"
           />
         </form>
-        {take || save || done ? (
+        {take || saveButton || done ? (
           <div className="flex items-center gap-2 max-sm:w-full max-sm:justify-end">
             {take}
-            {save}
+            {saveButton}
             {done}
           </div>
         ) : null}

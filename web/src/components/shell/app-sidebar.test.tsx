@@ -120,6 +120,7 @@ describe("AppSidebar", () => {
       "nav-loop",
       "nav-curator",
       "nav-releases",
+      "nav-browser",
       "nav-agents",
       "nav-memories",
       "nav-skills",
