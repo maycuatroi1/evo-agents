@@ -1,6 +1,7 @@
 """The job ``advance`` of the plugin marketing: for each project that enables it, take the posts the gate has not
 decided one step further, read the numbers of the posts that reached +24h or +7d, push the numbers to Signal and read
-the replies under the project accounts' recent posts (``replies``; ``docs/marketing-plugin.md``).
+the replies under the project accounts' recent posts (``replies``; ``docs/marketing-plugin.md``). From Monday 08:00
+UTC it tells the project's admins the Growth section of the weekly bulletin, once a week (``weekly``).
 
 A browser post no script reported on in 30 minutes is failed, one nobody claimed in a day a draft (``browser``). A post
 waits as ``judging`` until the Judge's run ended; the job reads the answer and goes on from there, so a post a
@@ -17,7 +18,7 @@ from datetime import UTC
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.core_plugins.marketing import browser, flow, metrics, push, replies, settings, store
+from evo_agents.core_plugins.marketing import browser, flow, metrics, push, replies, settings, store, weekly
 from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.plugin_calls import CoreContext
@@ -59,6 +60,8 @@ async def run_project(
         done["signals"] = await push.push_project(conn, project_id, days)
     async with engine.begin() as conn:
         done["replies"] = await replies.collect(conn, cfg, project_id, runtime.transport, runtime.now().astimezone(UTC))
+    async with engine.begin() as conn:
+        done["weekly"] = await weekly.send(conn, cfg, project, project_id, runtime.now())
     return done
 
 

@@ -47,6 +47,9 @@ POST_KEYS = (
     "dry_run",
     "created_at",
     "posted_at",
+    "claim_id",
+    "signal_key",
+    "scheduled_at",
 )
 DONE_KEYS = ("ok",)
 STATES = ("proposed", "judging", "queued", "posting", "posted", "draft", "failed", "withdrawn")

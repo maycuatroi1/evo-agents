@@ -18,7 +18,17 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Path, Query, Request, Response
 from sqlalchemy import select
 
-from evo_agents.core_plugins.marketing import breaker, browser, budget, campaign, flow, registry, settings, store
+from evo_agents.core_plugins.marketing import (
+    breaker,
+    browser,
+    budget,
+    campaign,
+    flow,
+    registry,
+    settings,
+    store,
+    weekly,
+)
 from evo_agents.core_plugins.marketing.models import (
     MarketingBrowserClaim,
     MarketingBrowserJob,
@@ -36,6 +46,7 @@ from evo_agents.core_plugins.marketing.models import (
     MarketingReasonIn,
     MarketingSessionIn,
     MarketingStatus,
+    MarketingWeekly,
 )
 from evo_agents.hub import tables
 from evo_agents.hub.server import audit
@@ -333,6 +344,19 @@ async def status(request: Request, project: ProjectName, user: CurrentUser):
                 month=month, budget_usd=cfg.budget_usd, reserved_usd=float(reserved), spent_usd=float(spent)
             ),
         )
+
+    return await _answer(request, work)
+
+
+@router.get("/{project}/weekly", response_model=MarketingWeekly)
+async def show_weekly(request: Request, project: ProjectName, user: CurrentUser):
+    """The Growth section of the weekly bulletin: the 7 days up to now."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        store.reader(access)
+        cfg = await settings.config(conn, request.app.state.config, project)
+        return await weekly.read(conn, cfg, project, access.project_id, datetime.now(UTC))
 
     return await _answer(request, work)
 

@@ -7,7 +7,8 @@ marketing_channels holds one row for each account of a channel: its kind (projec
 or draft_only), its adapter (api or browser), the member who owns a personal account, the target a post goes to (a
 subreddit, a page id, a repo, an author URN) and when it was paused. No credential is in it: those are sealed in the
 plugin's config. The constraints of the registry are checked here as well as in code: a personal account is never
-autonomous but on facebook_profile and tiktok, facebook_profile is personal only, hackernews is always draft_only.
+autonomous but on facebook_profile and tiktok, facebook_profile is personal only, hackernews is always draft_only, facebook_group is personal and draft_only
+always (0122).
 
 marketing_posts holds what an agent proposed: the text, its links and sources, the result of each layer of the gate,
 the Judge's scores, where it ended (posted, draft with the reason, failed, withdrawn), its cost and the run that
@@ -50,6 +51,7 @@ CHANNELS = (
     "facebook_page",
     "facebook_profile",
     "tiktok",
+    "facebook_group",  # a member's draft for a Facebook group, which the member shares by hand (0122)
 )
 ACCOUNT_KINDS = ("project", "personal")
 MODES = ("autonomous", "draft_only")

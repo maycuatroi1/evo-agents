@@ -99,6 +99,10 @@ TABLES = (
     ("crm_invites_sent", "The join links @community made for invite requests, once per request"),
 )
 
+PAGES = {
+    "contacts": {"title": "Contacts", "icon": "kanban", "description": "The pipeline of the people who came by"},
+}
+
 MANIFEST = {
     "id": "crm",
     "version": "1.0.0",
@@ -112,6 +116,7 @@ MANIFEST = {
     "config": CONFIG,
     "contributes": {
         "routes": [{"name": "crm", "title": "The contacts of a project", "python": f"{SERVER}:router"}],
+        "pages": [{"name": name, **page} for name, page in PAGES.items()],
         "jobs": [
             {
                 "name": INTAKE_JOB,

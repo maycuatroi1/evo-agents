@@ -6715,7 +6715,10 @@
           "cost_usd",
           "dry_run",
           "created_at",
-          "posted_at"
+          "posted_at",
+          "claim_id",
+          "signal_key",
+          "scheduled_at"
         ],
         "schema": "MarketingPost"
       }
@@ -45347,6 +45350,90 @@
           }
         }
       },
+      "/v1/x/marketing/{project}/weekly": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Weekly",
+          "description": "The Growth section of the weekly bulletin: the 7 days up to now.",
+          "operationId": "show_weekly_v1_x_marketing__project__weekly_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingWeekly"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/marketing/{project}/posts": {
         "get": {
           "tags": [
@@ -83380,7 +83467,8 @@
                 "viblo",
                 "facebook_page",
                 "facebook_profile",
-                "tiktok"
+                "tiktok",
+                "facebook_group"
               ],
               "title": "Channel"
             },
@@ -83505,6 +83593,69 @@
             "ok"
           ],
           "title": "MarketingDone"
+        },
+        "MarketingGoalSignal": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "G-<n>"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement"
+            },
+            "metric": {
+              "type": "string",
+              "title": "Metric",
+              "description": "how the goal's metric reads"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "the metric's value now; none when no signal is in its window"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            },
+            "reached": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reached",
+              "description": "whether the value meets the target; none without a value"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "statement",
+            "metric",
+            "value",
+            "target",
+            "reached"
+          ],
+          "title": "MarketingGoalSignal"
         },
         "MarketingModeIn": {
           "properties": {
@@ -83639,6 +83790,43 @@
                 }
               ],
               "title": "Posted At"
+            },
+            "claim_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claim Id",
+              "description": "the canvas claim the post tests"
+            },
+            "signal_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signal Key",
+              "description": "the Signal key its numbers count toward"
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At",
+              "description": "when the gate decides it"
             }
           },
           "type": "object",
@@ -83724,6 +83912,46 @@
               ],
               "title": "Run Id",
               "description": "the run that proposed it, kept in the audit"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^CL-[0-9]{1,9}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claim",
+              "description": "the canvas claim the post tests, as CL-<n>"
+            },
+            "signal_key": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signal Key",
+              "description": "the Signal key the post's numbers count toward"
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At",
+              "description": "when the gate decides it; a time to come keeps it waiting until the Loop releases it"
             }
           },
           "type": "object",
@@ -83833,6 +84061,253 @@
             "budget"
           ],
           "title": "MarketingStatus"
+        },
+        "MarketingWeekBreaker": {
+          "properties": {
+            "channel_id": {
+              "type": "integer",
+              "title": "Channel Id"
+            },
+            "channel": {
+              "type": "string",
+              "title": "Channel"
+            },
+            "account": {
+              "type": "string",
+              "title": "Account"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "channel_id",
+            "channel",
+            "account",
+            "reason",
+            "paused_at"
+          ],
+          "title": "MarketingWeekBreaker"
+        },
+        "MarketingWeekPost": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "channel": {
+              "type": "string",
+              "title": "Channel"
+            },
+            "account": {
+              "type": "string",
+              "title": "Account"
+            },
+            "posted_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Posted Url"
+            },
+            "posted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Posted At"
+            },
+            "cost_usd": {
+              "type": "number",
+              "title": "Cost Usd"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "channel",
+            "account",
+            "posted_url",
+            "posted_at",
+            "cost_usd"
+          ],
+          "title": "MarketingWeekPost"
+        },
+        "MarketingWeekProposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the post that holds the content for a member's personal channel"
+            },
+            "channel": {
+              "type": "string",
+              "title": "Channel"
+            },
+            "account": {
+              "type": "string",
+              "title": "Account"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "channel",
+            "account",
+            "state",
+            "created_at"
+          ],
+          "title": "MarketingWeekProposal"
+        },
+        "MarketingWeekly": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "until": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Until"
+            },
+            "goals": {
+              "items": {
+                "$ref": "#/components/schemas/MarketingGoalSignal"
+              },
+              "type": "array",
+              "title": "Goals",
+              "description": "the active goals with a metric, against their target"
+            },
+            "posted": {
+              "items": {
+                "$ref": "#/components/schemas/MarketingWeekPost"
+              },
+              "type": "array",
+              "title": "Posted",
+              "description": "the posts that went out in the week, dry runs excluded"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "the posts proposed in the week, by where the gate left them"
+            },
+            "breakers": {
+              "items": {
+                "$ref": "#/components/schemas/MarketingWeekBreaker"
+              },
+              "type": "array",
+              "title": "Breakers",
+              "description": "the channels whose breaker is open now"
+            },
+            "killed": {
+              "type": "boolean",
+              "title": "Killed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/MarketingBudget"
+            },
+            "week_cost_usd": {
+              "type": "number",
+              "title": "Week Cost Usd",
+              "description": "what the posts of the week cost"
+            },
+            "proposals": {
+              "items": {
+                "$ref": "#/components/schemas/MarketingWeekProposal"
+              },
+              "type": "array",
+              "title": "Proposals",
+              "description": "content for members' personal channels in the week: the proposals for the blog project"
+            },
+            "proposals_project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposals Project",
+              "description": "the hub project the proposals go to; none when not set"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "since",
+            "until",
+            "goals",
+            "posted",
+            "counts",
+            "breakers",
+            "killed",
+            "reason",
+            "budget",
+            "week_cost_usd",
+            "proposals",
+            "proposals_project"
+          ],
+          "title": "MarketingWeekly",
+          "description": "The Growth section of the project's weekly bulletin: the 7 days up to ``until``."
         },
         "MemberCounts": {
           "properties": {
