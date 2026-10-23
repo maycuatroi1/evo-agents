@@ -158,7 +158,7 @@ def _sealer(request: Request) -> Sealer:
     return sealer
 
 
-async def _usable(conn: AsyncConnection, user: Principal, run_id: int, identity_id: int) -> _Found:
+async def usable_identity(conn: AsyncConnection, user: Principal, run_id: int, identity_id: int) -> _Found:
     """Identity ``identity_id`` of run ``run_id``, which the worker of ``user`` holds and the run holds the identity
     on it, its row locked; HTTPException otherwise (see the module's docstring)."""
     worker_id = (await worker_of(conn, user))[0]
@@ -213,7 +213,7 @@ async def _record(conn: AsyncConnection, user: Principal, found: _Found, action:
     )
 
 
-async def _set_needs_login(conn: AsyncConnection, user: Principal, found: _Found, cause: str) -> str:
+async def set_needs_login(conn: AsyncConnection, user: Principal, found: _Found, cause: str) -> str:
     """Set the identity needs_login, unless it is disabled; the status it has now."""
     b = tables.browser_identities
     if found.identity.status == "disabled":
@@ -235,7 +235,7 @@ async def lease_browser_profile(
     """One of the run's browser identities, with its profile: what its Chromium opens with."""
     engine = request.app.state.engine
     async with engine.begin() as conn:
-        found = await _usable(conn, user, run_id, body.identity_id)
+        found = await usable_identity(conn, user, run_id, body.identity_id)
         identity = found.identity
         keys = None if identity.sha256 is None or found.moves else (blob_store(request), _sealer(request))
         await _record(conn, user, found, audit.BROWSER_IDENTITY_LEASE, f" version={identity.version}")
@@ -246,8 +246,8 @@ async def lease_browser_profile(
         except (Unsealable, ProfileConflict) as exc:
             log.warning("browser profile not opened", extra={"browser_identity": identity.id, "error": str(exc)})
             async with engine.begin() as conn:
-                found = await _usable(conn, user, run_id, body.identity_id)
-                status = await _set_needs_login(conn, user, found, "unsealable")
+                found = await usable_identity(conn, user, run_id, body.identity_id)
+                status = await set_needs_login(conn, user, found, "unsealable")
         else:
             if opened is not None:
                 version, archive = opened
@@ -290,7 +290,7 @@ async def save_browser_profile(
     state = request.app.state
     archive = await request.body()
     async with state.engine.begin() as conn:
-        found = await _usable(conn, user, run_id, identity_id)
+        found = await usable_identity(conn, user, run_id, identity_id)
         store, sealer = blob_store(request), _sealer(request)
     try:
         await asyncio.to_thread(browser_archive.check, archive)
@@ -327,6 +327,6 @@ async def browser_needs_login(
 ) -> BrowserIdentityState:
     """The run's Chromium could not use the identity's profile: it waits for a new login."""
     async with request.app.state.engine.begin() as conn:
-        found = await _usable(conn, user, run_id, identity_id)
-        status = await _set_needs_login(conn, user, found, body.cause)
+        found = await usable_identity(conn, user, run_id, identity_id)
+        status = await set_needs_login(conn, user, found, body.cause)
     return BrowserIdentityState(identity_id=identity_id, status=status)

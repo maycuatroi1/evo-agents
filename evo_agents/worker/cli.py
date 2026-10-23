@@ -500,7 +500,7 @@ class _AgentRun:
     record: dict
 
 
-def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
+def agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     """The run of EVO_RUN_ID on this worker, of one of ``kinds``; WorkerStateError outside one."""
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
@@ -524,7 +524,7 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     return _AgentRun(run_id, home, config, token, record)
 
 
-def _with_hub(agent: _AgentRun, work):
+def with_hub(agent: _AgentRun, work):
     """``await work(hub)`` with the worker's client of the hub; the hub's refusal, or no answer, is a HubError."""
     hubapi = _hubapi()
     from evo_agents.worker import gitops
@@ -633,7 +633,7 @@ async def _notify_push(hub, agent: _AgentRun, name: str, pushed) -> None:
 
 @worker_command
 def cmd_step(args) -> int:
-    agent = _agent_run("step")
+    agent = agent_run("step")
     verify = _step_verify_commands(args)
     output_cli.request_scan(agent.home, agent.run_id)  # the run's .evo-run/outputs/ goes to the hub with each report
     workspaces = _step_workspaces(agent, args.repo)
@@ -668,12 +668,12 @@ def cmd_step(args) -> int:
         print(f"Step {args.key} of plan {answer.get('plan_id')}: {answer.get('status')}{where}{kept}.")
         return 0
 
-    return _with_hub(agent, work)
+    return with_hub(agent, work)
 
 
 @worker_command
 def cmd_ask(args) -> int:
-    agent = _agent_run("ask", runs.RESUME_KINDS)
+    agent = agent_run("ask", runs.RESUME_KINDS)
     options = [decision_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
@@ -694,7 +694,7 @@ def cmd_ask(args) -> int:
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     decision_id = answer.get("id") if isinstance(answer, dict) else None
     if not isinstance(decision_id, int):
         raise HubError("the hub did not answer with the decision's id")
@@ -719,7 +719,7 @@ def cmd_ask(args) -> int:
 
 @worker_command
 def cmd_notify(args) -> int:
-    agent = _agent_run("notify")
+    agent = agent_run("notify")
     body: dict = {"kind": args.kind, "title": args.title}
     for name in ("body", "repo", "branch"):
         if getattr(args, name) is not None:
@@ -730,19 +730,19 @@ def cmd_notify(args) -> int:
     async def work(hub) -> dict:
         return await hub.notice(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     print(f"Notice #{answer.get('id')} sent to the owner of run #{agent.run_id}: {args.title}")
     return 0
 
 
 @worker_command
 def cmd_plan(args) -> int:
-    agent = _agent_run("plan", ("plan", "author"))
+    agent = agent_run("plan", ("plan", "author"))
 
     async def work(hub) -> dict:
         return await hub.plan(agent.run_id)
 
-    view = _with_hub(agent, work)
+    view = with_hub(agent, work)
     if args.json:
         print(json.dumps(view, ensure_ascii=False, indent=2))
         return 0
@@ -763,7 +763,7 @@ def cmd_plan(args) -> int:
 def cmd_finding(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
 
-    agent = _agent_run("finding", ("review",))
+    agent = agent_run("finding", ("review",))
     body: dict = {"lens": args.lens, "severity": args.severity, "title": " ".join(args.title.split())}
     if args.body_file:
         text = read_text(args.body_file, "body", MAX_BODY_BYTES)
@@ -776,7 +776,7 @@ def cmd_finding(args) -> int:
         await attest(body["evidence"], workspaces)
         return await hub.finding(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     print(f"Finding #{answer.get('id')} recorded ({args.lens}, {args.severity}): {body['title']}")
     return 0
 
@@ -786,7 +786,7 @@ def cmd_propose(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
     from evo_agents.hub.tiers import split_target
 
-    agent = _agent_run("propose", ("review",))
+    agent = agent_run("propose", ("review",))
     paths = []
     for text in args.path or []:
         found = split_target(text)
@@ -815,7 +815,7 @@ def cmd_propose(args) -> int:
         await attest(body["evidence"], workspaces)
         return await hub.proposal(agent.run_id, body)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     if answer.get("state") == "dropped":
         print(
             f"Proposal #{answer.get('id')} was dropped: it repeats proposal #{answer.get('duplicate_of')}, which the "
@@ -837,7 +837,7 @@ def cmd_put(args) -> int:
 
     from evo_agents.hub.plans import MAX_PLAN_BYTES
 
-    agent = _agent_run("put", ("author",))
+    agent = agent_run("put", ("author",))
     text = read_text(args.file, "plan", 4 * MAX_PLAN_BYTES) or ""
     try:
         plan = yaml.safe_load(text)
@@ -852,7 +852,7 @@ def cmd_put(args) -> int:
     async def work(hub) -> dict:
         return await hub.put_plan(agent.run_id, request)
 
-    answer = _with_hub(agent, work)
+    answer = with_hub(agent, work)
     if args.json:
         print(json.dumps(answer, ensure_ascii=False, indent=2))
         return 0

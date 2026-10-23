@@ -313,7 +313,7 @@ RELEASE_DECISION_CATEGORY = "release"
 # (``server.loop.stall``)
 LOOP_DECISION_CATEGORY = "loop"
 HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY)  # the hub does what the answer chooses
-SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES)
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES, "login")
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it

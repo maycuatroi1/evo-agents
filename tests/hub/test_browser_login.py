@@ -25,7 +25,7 @@ from tests.hub.test_browser_profile import (
     send,
     set_identity,
 )
-from tests.hub.test_runs import OTHER, OWNER, PROJECT, claim, control, dispatched, moved, of_run
+from tests.hub.test_runs import OTHER, OWNER, PLAN, PROJECT, claim, control, dispatched, moved, of_run
 
 KINDS = ("step", "browser")
 
@@ -219,3 +219,60 @@ def test_needs_login_identity_is_switched_off_and_on_by_its_manager(stored, tmp_
     assert client.post(f"{PATH}/{identity['id']}/enable", headers=headers["owner"]).json()["status"] == "active"
     actions = [row[0] for row in audit_rows(db)]
     assert actions.count("browser_identity.disable") == 2 and actions.count("browser_identity.enable") == 2
+
+
+def browser_login_ask(stored, box: dict, run_id: int, identity: str, **extra):
+    body = {"identity": identity, "url": "https://northwind.example/login", "reason": "the session expired", **extra}
+    return stored.client.post(f"/v1/worker/runs/{run_id}/browser-login", json=body, headers=box["headers"])
+
+
+def test_login_decision_of_a_plan_run_is_open_once_with_done_and_skip_and_the_live_view(stored):
+    client, headers, db, box = stored.client, stored.headers, stored.db, stored.box
+    identity = created(client, headers["owner"], "northwind-admin", domains=("northwind.example",))
+    run = client.post(
+        f"/v1/projects/{PROJECT}/plan-runs",
+        json={"plan_id": PLAN, "identities": ["northwind-admin"]},
+        headers=headers["owner"],
+    )
+    assert run.status_code == 201, run.text
+    run_id = run.json()["id"]
+    assert claim(client, box)["id"] == run_id
+    moved(client, box, run_id, "running")
+
+    asked = browser_login_ask(stored, box, run_id, "northwind-admin")
+    assert asked.status_code == 201, asked.text
+    first = asked.json()
+    assert first["outcome"] == "asked" and first["identity_id"] == identity["id"] and first["decision_id"]
+    again = browser_login_ask(stored, box, run_id, str(identity["id"]))
+    assert again.json()["decision_id"] == first["decision_id"]  # one open login decision at a time
+
+    d = tables.decisions
+    row = sql(db, select(d.c.category, d.c.state, d.c.options, d.c.context).where(d.c.run_id == run_id))
+    assert len(row) == 1
+    category, state, options, context = row[0]
+    assert (category, state) == (browser_login.CATEGORY, "open")
+    assert [o["key"] for o in options] == [browser_login.LOGIN_DONE, browser_login.LOGIN_SKIP]
+    assert "northwind.example/login" in context and "the session expired" in context and f"/runs/{run_id}" in context
+
+    unknown = browser_login_ask(stored, box, run_id, "nowhere")
+    assert unknown.status_code == 422 and "no browser identity" in unknown.json()["message"]
+    bad_url = browser_login_ask(stored, box, run_id, "northwind-admin", url="file:///etc/passwd")
+    assert bad_url.status_code == 422
+
+
+def test_browser_login_by_a_step_run_marks_the_identity_needs_login_and_fails_the_run(stored, tmp_path):
+    client, headers, db, box = stored.client, stored.headers, stored.db, stored.box
+    identity = created(client, headers["owner"], "northwind-admin", domains=("northwind.example",))
+    assert save(stored, identity["id"], 0, profile_archive(tmp_path, "northwind")) == 1
+    (run,) = dispatched(client, headers["owner"], [4], identities=["northwind-admin"])
+    assert claim(client, box)["id"] == run["id"]
+    moved(client, box, run["id"], "running")
+
+    failed = browser_login_ask(stored, box, run["id"], "northwind-admin")
+    assert failed.status_code == 201, failed.text
+    assert failed.json()["outcome"] == "failed" and failed.json()["decision_id"] is None
+    assert "log" in failed.json()["message"].lower()
+    r, b = tables.runs, tables.browser_identities
+    assert sql(db, select(r.c.state).where(r.c.id == run["id"])) == [("failed",)]
+    assert sql(db, select(b.c.status).where(b.c.id == identity["id"])) == [("needs_login",)]
+    assert sql(db, select(tables.decisions.c.id).where(tables.decisions.c.run_id == run["id"])) == []

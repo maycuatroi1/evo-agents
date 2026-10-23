@@ -2786,3 +2786,26 @@ def test_0105_keeps_browser_identities_and_going_back_records_their_blobs_for_de
         conn.execute(delete(deletions))
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0105") :]
+
+
+def test_0109_lets_a_run_ask_a_login_decision_and_going_back_deletes_those_with_their_inbox_rows(hub_db):
+    move_to(hub_db, "0108")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        with pytest.raises(errors.CheckViolation):  # no login category before 0109
+            conn.execute(_decision_row(ids, run_id, "wait-helper").values(category="login"))
+    move_to(hub_db, "0109")
+    with live.connect(hub_db) as conn:
+        login = one(conn, _decision_row(ids, run_id, "wait-helper").values(category="login"))
+        scope = one(conn, _decision_row(ids, run_id, "wait-helper"))
+        for decision_id in (login, scope):
+            conn.execute(
+                insert(t.run_inbox).values(run_id=run_id, sent_by=ids["user"], body="A.", decision_id=decision_id)
+            )
+
+    move_to(hub_db, "0108", down=True)
+    assert query(hub_db, select(t.decisions.c.id, t.decisions.c.category)) == [(scope, "scope")]
+    assert query(hub_db, select(t.run_inbox.c.decision_id)) == [(scope,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0109") :]

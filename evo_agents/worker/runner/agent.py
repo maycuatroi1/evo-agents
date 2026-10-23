@@ -47,10 +47,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import curator, runs
+from evo_agents.hub import browser_login, curator, runs
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
 from evo_agents.worker import environments, interactive, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
+from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
 from evo_agents.worker.runner import authorship
 from evo_agents.worker.runner.common import RunFailed, log
@@ -95,6 +96,7 @@ class Agent:
         self._environment = None  # where the agent runs (``environment``), read from the claim once
         self._packs: tuple | None = None  # the agent packs of the run's profile, built before its first agent
         self.browser: browser_session.BrowserSession | None = None  # the run's Chromium, for a run with browser
+        self.logins_seen: set[int] = set()  # the login decisions whose answer was handled
 
     # The runtime
 
@@ -330,19 +332,22 @@ class Agent:
             return self._packs
         run = self.run
         tickets = run.spec.get("packs") or []
-        if not tickets:
+        browser = run.spec.get("browser") is True  # its Chromium has an agent pack of its own, whatever the profile
+        if not tickets and not browser:
             self._packs = ()
             return self._packs
         accepted = getattr(run.daemon.config, "plugins", None)
         directory = run.daemon.home.run_dir(run.id) / packs.PACKS_DIR
         try:
-            built = await asyncio.to_thread(packs.build, tickets, directory, accepted=accepted)
+            built = await asyncio.to_thread(packs.build, tickets, directory, accepted=accepted, browser=browser)
         except packs.PackFailed as exc:
             why = str(exc)
         except OSError as exc:
             why = f"they were not written to {directory}: {exc}"
         else:
             why = cls.pack_refusal(built)
+            if why and any(pack.pack == packs.BROWSER_PACK for pack in built):
+                why += f"; a run with a browser needs a runtime that loads MCP servers, or {packs.NO_BROWSER_HINT}"
         if why:
             run.note(f"Agent packs: {why}; the agent did not start.", cause="runtime")
             raise RunFailed(f"agent packs: {why}", cause="runtime")
@@ -363,8 +368,19 @@ class Agent:
             spent_usd=run.watchdog.spent_usd,
             spent_seconds=run.watchdog.spent_before + run.agent_seconds(),
             environment=self.environment,
-            packs=self._packs or (),
+            packs=self.with_browser(self._packs or ()),
         )
+
+    def with_browser(self, built: tuple) -> tuple:
+        """``built``, the run's agent packs, with the DevTools endpoint of the run's Chromium as it is now in the
+        variables of their MCP servers (``packs.BROWSER_VARIABLE``)."""
+        cdp = self.browser.cdp if self.browser is not None else None
+        for pack in built:
+            if cdp:
+                pack.variables[packs.BROWSER_VARIABLE] = cdp
+            else:
+                pack.variables.pop(packs.BROWSER_VARIABLE, None)
+        return built
 
     def note_environment(self, cls, context: RunContext) -> None:
         """What the runtime leaves out of the agent's environment because of the run's leases
@@ -445,6 +461,36 @@ class Agent:
             log.exception("the run's browser profiles were not saved", extra={"run_id": self.run.id})
         for line in browser.profiles.take_notes():
             self.run.note(line)
+
+    async def login_answered(self, messages: list[dict]) -> None:
+        """The owner's messages are about to reach the agent: for each that answers a login decision the agent asked
+        (``evo-agents worker browser login``), Done saves the run's browser profile to its identity at once and
+        restarts Chromium on the same endpoint (``BrowserSession.checkpoint``), and Skip saves nothing. A save that
+        fails is noted; the agent goes on either way."""
+        run, browser = self.run, self.browser
+        if browser is None or browser.cdp is None:
+            return
+        asked = browser_logins.read(run.daemon.home, run.id)
+        for decision_id, option in browser_logins.chosen(messages, asked):
+            if decision_id in self.logins_seen:
+                continue
+            self.logins_seen.add(decision_id)
+            if option != browser_login.LOGIN_DONE:
+                run.note(f"Login decision #{decision_id} was answered without Done: no profile is saved.")
+                continue
+            try:
+                saved = await browser.checkpoint()
+            except Exception as exc:
+                log.exception("the browser profile was not saved at the login", extra={"run_id": run.id})
+                run.note(f"Login decision #{decision_id}: Done, but the browser did not restart cleanly ({exc}).")
+                continue
+            finally:
+                for line in browser.profiles.take_notes():
+                    run.note(line)
+            if saved:
+                run.note(f"Login decision #{decision_id}: Done. The profile is saved to the identity.")
+            else:
+                run.note(f"Login decision #{decision_id}: Done, but the profile was not saved (see above).")
 
     async def close_browser(self) -> None:
         """Close the run's Chromium and remove its directory (``BrowserSession.close``): the run is over here."""

@@ -49296,6 +49296,101 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/browser-login": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask Login",
+          "description": "Ask the dispatcher of a run with a browser to sign in on one of its identities, or, for a run that cannot wait,\nset the identity needs_login and fail the run.",
+          "operationId": "ask_login_v1_worker_runs__run_id__browser_login_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserLoginBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserLoginAsked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/browser-profile": {
         "post": {
           "tags": [
@@ -63004,6 +63099,81 @@
           "type": "object",
           "title": "BrowserLogin"
         },
+        "BrowserLoginAsked": {
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "asked",
+                "failed"
+              ],
+              "title": "Outcome",
+              "description": "asked: a decision is open; failed: the run ends"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the login decision, for outcome asked"
+            },
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id",
+              "description": "the browser identity the login is for"
+            },
+            "message": {
+              "type": "string",
+              "title": "Message",
+              "description": "what the agent is told"
+            }
+          },
+          "type": "object",
+          "required": [
+            "outcome",
+            "decision_id",
+            "identity_id",
+            "message"
+          ],
+          "title": "BrowserLoginAsked"
+        },
+        "BrowserLoginBody": {
+          "properties": {
+            "identity": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Identity",
+              "description": "the id or the name of one of the run's browser identities"
+            },
+            "url": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Url",
+              "description": "the page to sign in on"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why the agent needs the login"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity",
+            "url",
+            "reason"
+          ],
+          "title": "BrowserLoginBody"
+        },
         "BrowserNeedsLogin": {
           "properties": {
             "cause": {
@@ -69849,7 +70019,8 @@
                 "question",
                 "triage",
                 "release",
-                "loop"
+                "loop",
+                "login"
               ],
               "title": "Category"
             },
@@ -80017,7 +80188,8 @@
                 "question",
                 "triage",
                 "release",
-                "loop"
+                "loop",
+                "login"
               ],
               "title": "Category"
             },

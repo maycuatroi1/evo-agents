@@ -125,3 +125,28 @@ def test_agent_pack_contribution_takes_only_its_name_title_description_and_api()
             read_manifest(data)
     with pytest.raises(ManifestError, match=r"contributes.agent_packs\[0\].name"):
         read_manifest(manifest(contributes={"agent_packs": [{"name": "Reviewer"}]}))
+
+
+def test_browser_pack_of_the_core_plugin_pins_playwright_on_the_cdp_endpoint_and_is_declared_once():
+    import tomllib
+    from pathlib import Path
+
+    from evo_agents.core_plugins import browser
+
+    declared = read_manifest(browser.MANIFEST)
+    assert (declared.id, declared.tier, [item["name"] for item in declared.contributes["agent_packs"]]) == (
+        "browser",
+        "core",
+        [browser.PACK],
+    )
+    root = Path(browser.__file__).parent / "packs" / browser.PACK
+    found = components({str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()})
+    (server,) = found.servers
+    assert server.transport == "stdio" and server.command == "npx"
+    assert server.args == ("-y", browser.PLAYWRIGHT_MCP, "--cdp-endpoint", "${EVO_BROWSER_CDP}")
+    assert browser.PLAYWRIGHT_MCP == "@playwright/mcp@0.0.83"
+    assert "evo-agents worker browser login" in found.instructions
+    project = tomllib.loads((Path(browser.__file__).parents[3] / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["project"]["entry-points"]["evo_agents.plugins"]["browser"] == (
+        "evo_agents.core_plugins.browser:MANIFEST"
+    )

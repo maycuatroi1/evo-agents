@@ -16,6 +16,7 @@ time, end the run without a save: the identity stays at the version it had.
 
 from __future__ import annotations
 
+import re
 from urllib.parse import urlsplit
 
 KIND = "browser"
@@ -24,6 +25,24 @@ MAX_ATTEMPTS = 1  # a login session the hub lost is not tried again: the person 
 MAX_URL_CHARS = 2000
 NEEDS_LOGIN_NOTICE = "browser_needs_login"  # runs.NOTICE_KINDS
 SCHEMES = ("https", "http")
+
+
+CATEGORY = "login"  # the category of the decision a run asks (``runs.SHOWN_DECISION_CATEGORIES``)
+LOGIN_DONE = "done"  # the option of a login decision that says the person signed in: the worker saves the profile
+LOGIN_SKIP = "skip"  # the one that says they will not: nothing is saved
+LOGIN_OPTIONS = (
+    (LOGIN_DONE, "Done: I signed in", "The browser holds the session now. The profile is saved to the identity."),
+    (LOGIN_SKIP, "Skip", "Do not sign in. The agent goes on without it and nothing is saved."),
+)
+CHOSEN = re.compile(r"Chosen option: ([A-Za-z0-9][A-Za-z0-9_-]{0,31}),")
+
+
+def chosen_option(message: str) -> str | None:
+    """The key of the option chosen in the inbox message that hands a decision's answer to the agent
+    (``server.decisions.answer_message``: its second line); None when the owner answered in words alone."""
+    lines = message.split("\n", 2)
+    found = CHOSEN.match(lines[1]) if len(lines) > 1 else None
+    return found.group(1) if found else None
 
 
 def title_of(identity: str, *, move: bool = False, worker: str | None = None) -> str:
@@ -51,3 +70,23 @@ def valid_url(url: str) -> bool:
 
 def needs_login_title(identity: str) -> str:
     return f"Browser identity {identity} needs a new login"[:200]
+
+
+LOGIN_QUESTION = "Sign in to {name} for run #{run}?"
+STEP_REFUSAL = (
+    "run {run} is a {kind} run and cannot wait for a person: browser identity {name} is set to needs_login and the "
+    "run fails. Log the identity in on the Browser page of project {project}, then dispatch the run again."
+)
+
+
+def login_context(name: str, url: str, reason: str, project: str, run_id: int) -> str:
+    """The markdown a login decision carries: who asks, why, where the page is and where the live view of the run's
+    browser is (the run page of the web, its Browser tab)."""
+    return (
+        f"The agent of run #{run_id} needs browser identity **{name}** signed in.\n\n"
+        f"- Why: {reason.strip()}\n"
+        f"- Page: {url}\n"
+        f"- Live view: [open the browser of run #{run_id}](/p/{project}/runs/{run_id}), take over, sign in there, "
+        "then answer Done.\n\n"
+        "Done saves the signed-in profile to the identity and the agent goes on. Skip saves nothing."
+    )

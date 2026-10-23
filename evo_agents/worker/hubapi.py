@@ -232,6 +232,12 @@ class WorkerHub:
         answer = await self.call("POST", path, {"cause": cause})
         return answer if isinstance(answer, dict) else {}
 
+    async def browser_login(self, run_id: int, body: dict) -> dict:
+        """Ask the run's dispatcher to sign in on one of its browser identities (or, for a run that cannot wait, fail
+        the run): ``{outcome, decision_id, message}``."""
+        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/browser-login", body)
+        return answer if isinstance(answer, dict) else {}
+
     async def rate_limit(self, run_id: int, body: dict) -> dict:
         """Say what the agent's CLI said of the account behind a lease of the run (``evo_agents.worker.runner.limits``):
         ``{action, secret_id, failovers, ...}``; an older hub without the route answers 404 (Refused)."""

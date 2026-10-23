@@ -26,11 +26,11 @@ from evo_agents.hub.server.browser_identities import (
     REFUSALS,
     BrowserIdentity,
     IdentityId,
-    _can_manage,
-    _listing,
-    _record,
-    _view,
-    _worker,
+    identity_can_manage,
+    identity_listing,
+    identity_record,
+    identity_view,
+    identity_worker,
 )
 from evo_agents.hub.server.browser_profiles import locked
 from evo_agents.hub.server.errors import ErrorBody
@@ -66,7 +66,7 @@ async def _visible(conn: AsyncConnection, user: Principal, access: ProjectAccess
 
 
 def _manager(row, user: Principal, access: ProjectAccess, what: str) -> None:
-    if not _can_manage(row, user, access):
+    if not identity_can_manage(row, user, access):
         held = access.role or "no grant"
         raise HTTPException(
             403, f"{what} a browser identity of project {access.name} needs the admin role on it; you hold {held}"
@@ -109,7 +109,7 @@ async def login_browser_identity(
         waiting = await _open_session(conn, identity_id)
         if waiting is not None:
             raise HTTPException(409, f"login session {waiting} of this browser identity has not ended")
-        worker_id = await _worker(conn, user, access, body.worker) if move else row.worker_id
+        worker_id = await identity_worker(conn, user, access, body.worker) if move else row.worker_id
         pinned = await dispatch.pinnable(conn, user, access, worker_id)
         title = browser_login.title_of(row.name, move=move and worker_id != row.worker_id, worker=pinned.name)
         problems = dispatch.unfit(pinned, project, browser_login.KIND, [], "any", browser=True)
@@ -169,15 +169,15 @@ async def _set_status(
                 raise HTTPException(409, f"browser identity {row.name} is not disabled")
             status = "active" if row.sha256 is not None else "needs_login"
         await conn.execute(update(b).values(status=status, updated_at=func.now()).where(b.c.id == identity_id))
-        await _record(
+        await identity_record(
             conn,
             user,
             access,
             audit.BROWSER_IDENTITY_DISABLE if disable else audit.BROWSER_IDENTITY_ENABLE,
             identity_id,
         )
-        found = (await conn.execute(_listing(access.project_id).where(b.c.id == identity_id))).one()
-    return _view(found, project, user, access)
+        found = (await conn.execute(identity_listing(access.project_id).where(b.c.id == identity_id))).one()
+    return identity_view(found, project, user, access)
 
 
 @router.post("/{project}/browser-identities/{identity_id}/disable", response_model=BrowserIdentity, responses=REFUSALS)
