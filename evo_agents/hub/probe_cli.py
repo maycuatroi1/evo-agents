@@ -7,8 +7,11 @@
 ``(hidden)`` for the others. ``probe add`` (admins) adds one to ``--change`` or ``--proposal``: the ``--repo``, the base
 ``--commit`` (none: the tip of the default branch), the task (``--task``, or ``--task-file``, ``-`` for stdin) and the
 one-line ``--verify``. ``probe retire`` (admins) retires one, with ``--note``. ``probe report`` prints the weekly report
-of ``--weeks`` ISO weeks, the newest first (the week of ``--week``, default the one in progress): each probe on each runtime and model, arm on and arm off
-(sessions and failed), their 1 - pass^k and its status, then the changes born of a correction that have no probe.
+of ``--weeks`` ISO weeks, the newest first (the week of ``--week``, default the one in progress): each week's cost
+against ``probes.budget_usd``, each probe on each runtime and model, arm on and arm off (failed of sessions), its
+status and the week before's (``--json`` adds each arm's 1 - pass^k, ``recurrence``); then the changes born of a
+correction that have no probe, with why, the fix proposals of recurring probes with their state, and the probes
+written in place of probes not reproduced.
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.

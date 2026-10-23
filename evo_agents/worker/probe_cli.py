@@ -1,11 +1,11 @@
-"""``evo-agents worker probe add``: the probe of a merged change of the Curator that has none
-(``evo_agents.hub.probes``), which the agent of a review run writes.
+"""``evo-agents worker probe add``: the probe of a merged change of the Curator that has none, or the one in place of
+its probe the weekly report found not reproduced (``evo_agents.hub.probes``), which the agent of a review run writes.
 
 ``probe add --change N --repo REPO [--commit SHA] (--task TEXT | --task-file PATH) --verify LINE [--replaces PROBE]``:
 the task an agent is given in REPO, from the base commit (none: the tip of the default branch), and the one-line verify
 that exits 0 when the agent does not repeat the mistake; with --replaces, in place of the change's probe that the
-weekly report found not reproduced two weeks in a row, which the hub retires. The task and the verify are masked as a digest is (``evo_agents.hub.redact``)
-before they leave this machine.
+weekly report found not reproduced two weeks in a row, which the hub retires. The task and the verify are masked as
+a digest is (``evo_agents.hub.redact``) before they leave this machine.
 
 It reads the run from EVO_RUN_ID and EVO_WORKER_HOME, as ``worker playbook`` does, refuses outside a review run of
 this worker, calls the hub with the worker's token (POST /v1/worker/runs/{id}/probes,
