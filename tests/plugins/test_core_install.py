@@ -6,6 +6,7 @@ one name. tests/plugins/test_core_install_image.py builds the image with them.""
 
 from __future__ import annotations
 
+import importlib
 import io
 import os
 import re
@@ -234,6 +235,9 @@ def installed(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(site))
 
     def entry_points(*, group: str):
+        # importlib.metadata caches a directory's listing by its mtime, which ext4 keeps to a clock tick: a
+        # distribution written within the tick of an earlier read would not be seen.
+        importlib.invalidate_caches()
         return [
             point for dist in distributions(path=[str(site)]) for point in dist.entry_points if point.group == group
         ]
