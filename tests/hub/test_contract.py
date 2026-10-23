@@ -201,6 +201,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker playbook harmful",
         "worker playbook helpful",
         "worker playbook retire",
+        "worker probe add",
         "worker propose",
         "worker put",
         "worker repo open",

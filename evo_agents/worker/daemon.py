@@ -111,7 +111,19 @@ CHECKOUTS_EVERY = 60.0  # and at the checkouts
 CLEANUP_EVERY = 3600.0
 KEEP_WORKTREES = timedelta(days=7)
 # the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
-DIRECTORY_KINDS = ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question")
+DIRECTORY_KINDS = (
+    "plan",
+    "review",
+    "judge",
+    "author",
+    "chat",
+    "task",
+    "replay",
+    "history",
+    "release",
+    "question",
+    "probe",
+)
 LEFTOVER_GRACE = 30.0  # seconds the daemon waits at its end for leftover events to go
 MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
 

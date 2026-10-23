@@ -288,11 +288,11 @@ async def visible_plans(conn: AsyncConnection, access: ProjectAccess, sink: str 
 def agent_reads(user: Principal, kind: str | None) -> bool:
     """Whether the agent of a run (``user.scope``) may read a run of ``kind`` its owner may read. What the agent reads
     lands in its run's events and in what it writes, which others read: so never a replay run, whose task is of the
-    holdout split that changes are measured on, and a local run, its member's alone, only for the Reviewer (a review
+    holdout split that changes are measured on, nor a probe run, whose task and verify measure a change, and a local run, its member's alone, only for the Reviewer (a review
     run), which reads the local sessions of the charter's owner. Anyone else reads as the owner does."""
     if user.scope is None:
         return True
-    return kind != "replay" and (kind != "local" or user.scope.kind == "review")
+    return kind not in ("replay", "probe") and (kind != "local" or user.scope.kind == "review")
 
 
 def agent_reads_chats(user: Principal) -> bool:

@@ -30,6 +30,7 @@ import { EvidenceList } from "./evidence";
 import { useCuratorViewer } from "./hooks";
 import { LedgerCard } from "./ledger";
 import { ReplayCard } from "./replay-card";
+import { FixOfNote, ProbeCard } from "./probe-card";
 import type { RepoInfo } from "./model";
 import { Promotion } from "./promotion";
 import { promotionView } from "./promotion-model";
@@ -254,6 +255,7 @@ export function ProposalBody({ project, proposal, admin, compact = false }: { pr
         <AnswerCard project={project} proposal={proposal} admin={admin} />
         {proposal.change ? <ChangeCard project={project} change={proposal.change} repos={repos} /> : null}
         {proposal.change ? <ReplayCard project={project} change={proposal.change} proposalTier={proposal.tier} /> : null}
+        {proposal.probe ? <ProbeCard project={project} probe={proposal.probe} /> : null}
         <TierCard proposal={proposal} />
       </div>
     </div>
@@ -342,6 +344,7 @@ export function ProposalPage({ project, id, initialError }: { project: string; i
             </div>
           ) : null}
           {proposal.revert_of ? <RevertNote project={project} of={proposal.revert_of} /> : null}
+          {proposal.fix_of ? <FixOfNote project={project} change={proposal.fix_of} /> : null}
           <ProposalBody project={project} proposal={proposal} admin={admin} />
           <LedgerCard project={project} id={proposal.id} />
           {admin ? <AnswerDialog project={project} proposal={proposal} action={action} onClose={() => setAction(null)} /> : null}

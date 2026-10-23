@@ -385,6 +385,7 @@ def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> 
         "task",
         "replay",
         "history",
+        "probe",
         "release",
         "question",
         "browser",

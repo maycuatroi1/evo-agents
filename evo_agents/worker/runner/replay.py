@@ -202,14 +202,17 @@ class ReplayRun:
             "skills": skills,
         }
 
-    async def lay_out(self, arm: str, plan: dict) -> tuple[Path, Path, str | None]:
-        """The arm's directory, its repository of the task's repo at the base commit, and the folder of the change's
-        files when the change is in another repo."""
+    async def lay_out(
+        self, arm: str, plan: dict, *, ref: str | None = None, name: str | None = None
+    ) -> tuple[Path, Path, str | None]:
+        """The arm's directory (``name`` under the run's, else ``arm``), its repository of the task's repo at the base
+        commit, and the folder of the change's files, as commit ``ref`` has them (else the arm's), when the change is in
+        another repo. A probe run (``probe``) lays out each of its sessions so."""
         run, task = self.run, self.task
-        root = self.directory.path / arm
+        root = self.directory.path / (name or arm)
         folder = gitops.folder_name(task["repo"])
         repository = root / folder
-        ref = plan["refs"][arm]
+        ref = ref or plan["refs"][arm]
         try:
             await files.standalone(plan["source"], plan["base"], repository, self.env)
             pairs = [(path, path) for path in plan["whole"]]
@@ -234,17 +237,18 @@ class ReplayRun:
         )
         return root, repository, harness_folder
 
-    def arm_budget(self) -> dict | None:
-        """The caps of the next arm's agent: half the run's cost and half its agent time, from now; its turns."""
+    def arm_budget(self, parts: int = 2) -> dict | None:
+        """The caps of the next arm's agent: a share (1/``parts``) of the run's cost and of its agent time, from now;
+        its turns."""
         total = self.total
         if not total:
             return None
         run = self.run
         found = {key: total.get(key) for key in curator.BUDGET_KEYS}
         if found.get("max_usd") is not None:
-            found["max_usd"] = round(found["max_usd"] / 2, 4)
+            found["max_usd"] = round(found["max_usd"] / parts, 4)
         if found.get("max_seconds") is not None:
-            found["max_seconds"] = int(run.watchdog.spent_before + run.agent_seconds() + found["max_seconds"] / 2)
+            found["max_seconds"] = int(run.watchdog.spent_before + run.agent_seconds() + found["max_seconds"] / parts)
         return {**found, "spent_usd": 0.0, "spent_seconds": 0.0}
 
     async def arm(self, cls, arm: str, plan: dict) -> dict:

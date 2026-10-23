@@ -643,10 +643,26 @@ async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, len
     return await earlier.for_prompt(conn, access, lenses), await playbook.for_prompt(conn, access, lenses)
 
 
+async def _assigned(conn: AsyncConnection, owner_id: int, project_id: int, night: date | None) -> list[dict]:
+    """What the weekly probe report asks of the review run of ``night`` (``probe_fixes.assignments``), as its owner
+    reads the probes."""
+    from evo_agents.hub.server import history, probe_fixes  # they read the proposals and runs of these routes
+    from evo_agents.hub.server.security import MACHINE, Principal
+
+    access = await history.owner_access(conn, owner_id, project_id)
+    if access is None:
+        return []
+    login = (await conn.execute(select(tables.users.c.login).where(tables.users.c.id == owner_id))).scalar_one()
+    owner = Principal(user_id=owner_id, login=login, admin=False, token_id=0, kind=MACHINE, token_hash="")
+    night = night or await conn.scalar(select(func.current_date()))
+    return [item.prompt() for item in await probe_fixes.assignments(conn, access, owner, night)]
+
+
 async def review_prompt(conn: AsyncConnection, view) -> str:
     """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the project's active goals
     (``goals.curator_goals``, those of the charter made goals first), what earlier nights found through the lenses,
-    the playbook of the Curator, and the agents' memories it may promote (``memory_promotion.for_prompt``)."""
+    the playbook of the Curator, the agents' memories it may promote (``memory_promotion.for_prompt``) and what the
+    weekly probe report assigns it (``probe_fixes.assignments``)."""
 
     r, c = tables.runs, tables.charters
     row = (
@@ -667,6 +683,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     goals = await project_goals.curator_goals(conn, row.project_id, view.project)
     plugins = [name for name in PRODUCT_PLUGINS if await enabled_in(conn, name, row.project_id) is not None]
     memories = await memory_promotion.for_prompt(conn, view.id, row.project_id, row.dispatched_by)
+    assignments = await _assigned(conn, row.dispatched_by, row.project_id, row.schedule_night)
     return review.build_review_prompt(
         view.project,
         row.schedule_night,
@@ -678,6 +695,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         playbook=playbook,
         plugins=plugins,
         memories=memories,
+        assignments=assignments,
     )
 
 

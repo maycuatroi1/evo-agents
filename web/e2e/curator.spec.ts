@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { answerAs, BLOCKED, fireNight, MERGED, promotionNight, seedCurator, TITLES } from "./support/curator";
+import { signOut } from "./support/auth";
+import { addProbe, answerAs, BLOCKED, fireNight, MERGED, promotionNight, seedCurator, seedProbeWeeks, TITLES, writeCharter } from "./support/curator";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -16,7 +17,7 @@ import { toast } from "./support/toast";
  * line of code), its findings, its draft plan and its ledger, and takes Accept, Defer and Reject; accepting a tier 2
  * proposal makes the Curator's plan at once, which the proposal's Change card links with its branch and the reason the
  * night shift passed it over; the Inbox lists the tier 2 proposal beside the decisions and answers it in a sheet; Home says where each project's Curator stands; a
- * reader reads everything and changes nothing. axe checks every page and the dialogs in light and dark.
+ * reader reads everything and changes nothing; the weekly probe report flags only what is wrong, and a probe card shows its verify to admins alone. axe checks every page and the dialogs in light and dark.
  */
 test.skip(isDeployed, "writes charters and plays the night's worker through the local stack");
 
@@ -375,6 +376,65 @@ test("the Inbox lists the tier 2 proposal beside the decisions, and an admin ans
   // A link that names only the proposal finds its project.
   await open(page, `/inbox?proposal=${wide.id}`);
   await expect(page.getByTestId("proposal-sheet").getByTestId("proposal-panel")).toHaveAttribute("data-state", "rejected");
+});
+
+test("the Curator page shows the weekly probe report, flagging only what is wrong, and a proposal's probe card shows the verify to admins alone", async ({ page, admin, signInAs }) => {
+  test.slow(); // a night, a charter, a probe and its weeks, then two members' pages
+  const owner = newAccount("owner");
+  const reader = newAccount("reader");
+  const project = uniqueName("probes");
+  await admin.registerProject(project);
+  await admin.grant(project, owner.login, "admin", "internal");
+  await admin.grant(project, reader.login, "reader", "internal");
+  const night = await seedCurator(owner, project, uniqueName("night"));
+  await writeCharter(owner, project, night.live.worker.name, { probes: { k: 2, budget_usd: 5 } });
+  const proposal = night.proposals[0];
+  const task = "Wait for the deploy to finish, then say what changed.";
+  const probe = await addProbe(owner, project, proposal.id, task, "python3 -m pytest -q tests/test_wait.py");
+  await answerAs(owner, project, proposal.id, "accept");
+  // This week the mistake came back with the rule in place; last week the rule held while its absence let it through.
+  await seedProbeWeeks(probe.id, [
+    { ago: 0, on: [true, false], off: [false, false] },
+    { ago: 1, on: [true, true], off: [false, false] },
+  ]);
+  await signInAs(owner);
+
+  await open(page, `/p/${project}/curator`);
+  const report = main(page).getByTestId("probe-report");
+  await expect(report.getByRole("heading", { name: "Probes" })).toBeVisible();
+  await expect(report).toContainText("2 sessions an arm on each model, up to $5.00 a week");
+  const weeks = report.getByTestId("probe-week");
+  await expect(weeks.first()).toHaveAttribute("aria-pressed", "true");
+  await expect(weeks.first()).toContainText("This week");
+  const row = report.locator(`[data-testid="probe-result"][data-probe="${probe.id}"]`);
+  await expect(row).toHaveAttribute("data-status", "recurring");
+  await expect(row.getByTestId("probe-flag")).toHaveText("Recurring");
+  await expect(row.getByTestId("probe-previous")).toHaveText("Last week: held");
+  await expect(row).toContainText("1 of 2 failed");
+  await expect(row.getByTestId("probe-proposal-link")).toHaveAttribute("href", `/p/${project}/curator/proposals/${proposal.id}`);
+  await expectNoSeriousViolations(page, "the Curator's page with its probe report");
+
+  await weeks.nth(1).click();
+  await expect(weeks.nth(1)).toHaveAttribute("aria-pressed", "true");
+  const held = report.locator(`[data-testid="probe-result"][data-probe="${probe.id}"]`);
+  await expect(held).toHaveAttribute("data-status", "holds");
+  await expect(held.getByTestId("probe-flag")).toHaveCount(0);
+
+  await open(page, `/p/${project}/curator/proposals/${proposal.id}`);
+  const card = main(page).getByTestId("proposal-probe");
+  await expect(card.getByTestId("probe-card-task")).toHaveText(task);
+  await expect(card.getByTestId("probe-card-verify")).toHaveText("python3 -m pytest -q tests/test_wait.py");
+  const cardWeeks = card.getByTestId("probe-card-week");
+  await expect(cardWeeks.first().getByTestId("probe-flag")).toHaveText("Recurring");
+  await expect(cardWeeks.nth(1).getByTestId("probe-flag")).toHaveCount(0);
+  await expectNoSeriousViolations(page, "a proposal with its probe");
+
+  await signOut(page); // of the hub and the fake GitHub
+  await signInAs(reader);
+  await open(page, `/p/${project}/curator/proposals/${proposal.id}`);
+  await expect(card.getByTestId("probe-card-task")).toHaveText(task);
+  await expect(card.getByTestId("probe-card-verify")).toHaveCount(0);
+  await expect(card.getByTestId("probe-card-verify-hidden")).toContainText("Only the project's admins read the verify");
 });
 
 test.describe("dark theme", () => {

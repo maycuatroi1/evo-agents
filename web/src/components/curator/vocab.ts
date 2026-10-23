@@ -52,6 +52,9 @@ export const LIMITS = {
   hiddenChecks: 50,
   checkChars: 2000,
   budgetUsd: 1000,
+  /** `probes.MAX_K` and `probes.MAX_WEEK_BUDGET_USD`: a probe's sessions an arm, and a week's probe budget. */
+  probeK: { min: 1, max: 10 },
+  probeBudgetUsd: 7000,
   turns: { min: 1, max: 10_000 },
   runMinutes: { min: 10, max: 720 },
   runsPerNight: { min: 1, max: 100 },
