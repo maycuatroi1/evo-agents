@@ -42,11 +42,12 @@ PROBE_KEYS = (
     "retired_note",
     "created_at",
     "updated_at",
+    "replaces",
 )
 PROBE = returns_object(*PROBE_KEYS, schema="Probe")
 
 
-REPORT_KEYS = ("project", "k", "budget_usd", "weeks", "unprobed", "fixes")
+REPORT_KEYS = ("project", "k", "budget_usd", "weeks", "unprobed", "fixes", "replacements")
 DEFAULT_WEEKS = 2
 MAX_WEEKS = 52
 
@@ -77,6 +78,8 @@ def _print(probe: dict) -> None:
     print(f"verify: {probe['verify'] if probe['verify'] is not None else '(hidden: the admins of the project see it)'}")
     if probe["retired_note"]:
         print(f"retired: {probe['retired_note']}")
+    if probe.get("replaces"):
+        print(f"replaces: probe #{probe['replaces']}")
     print()
     print(probe["task"])
 
@@ -192,6 +195,8 @@ def cmd_probe_report(args) -> int:
             print(f"  #{item['change_id']} {item['title']}: {item['reason']}")
     for fix in found["fixes"]:
         print(f"fix proposal #{fix['proposal_id']} of change #{fix['change_id']} ({fix['state']}): {fix['title']}")
+    for item in found.get("replacements") or []:
+        print(f"probe #{item['probe_id']} of change #{item['change_id']} in place of probe #{item['replaces']}")
     return 0
 
 

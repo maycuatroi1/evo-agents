@@ -116,6 +116,7 @@ PROPOSAL_SUMMARY_KEYS = (
     "inbox_at",
     "created_at",
     "revert_of",
+    "fix_of",
 )
 PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "summary",
@@ -130,7 +131,7 @@ PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "change",
     "probe",
 )
-FINDING_KEYS = ("id", "project", "run_id", "lens", "severity", "title", "body", "evidence", "created_at")
+FINDING_KEYS = ("id", "project", "run_id", "lens", "severity", "title", "body", "evidence", "created_at", "fix_of")
 CHANGE_KEYS = (
     "id",
     "project",
@@ -416,6 +417,7 @@ def _print_proposal(proposal: dict) -> None:
         ("tier", str(proposal["tier"])),
         ("state", proposal["state"] + (f" (repeats #{proposal['duplicate_of']})" if proposal["duplicate_of"] else "")),
         ("kind", proposal["kind"] + (f" of #{proposal['revert_of']}" if proposal.get("revert_of") else "")),
+        *([("fixes", f"change #{proposal['fix_of']}, whose probe recurred")] if proposal.get("fix_of") else []),
         ("lens", proposal["lens"]),
         ("run", f"#{proposal['run_id']}, {_when(proposal['created_at'])} UTC"),
         ("paths", ", ".join(f"{p['repo']}:{p['path']}" for p in proposal["paths"]) or "none"),

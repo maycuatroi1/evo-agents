@@ -350,8 +350,12 @@ def probe_tables(metadata: MetaData) -> Table:
         Column("retired_note", Text),
         _stamp("created_at"),
         _stamp("updated_at"),
+        Column("replaces", BigInteger),  # the probe, not reproduced two weeks in a row, this one replaced (0133)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_probes_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["replaces"], ["curator_probes.id"], ondelete="SET NULL", name="curator_probes_replaces_fkey"
         ),
         ForeignKeyConstraint(
             ["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_probes_proposal_id_fkey"
