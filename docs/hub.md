@@ -131,12 +131,13 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 32 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 33 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
 `ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
 what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`, `decision_list`,
-`curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), and the project's whole history
-(The project's history, below): `history_sessions`, `history_search`, `transcript_lines`, `history_clusters`,
+`curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), `curator_probe_report` (the
+weekly report of the project's probes, `docs/curator.md`, Probes), and the project's whole history (The project's
+history, below): `history_sessions`, `history_search`, `transcript_lines`, `history_clusters`,
 `curator_findings` and `curator_playbook`, and `chat_message` and `chat_thread`, which read messages of a group chat
 whole (Group chats, In the knowledge graph); they follow the same rules as the REST routes. `tools/list` shows the
 agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run and a history
