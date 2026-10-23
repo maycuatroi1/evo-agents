@@ -181,6 +181,8 @@ function RunPage({ run }: { run: Run }) {
                     chunks
                   ),
               })
+            : run.kind === "browser"
+            ? t("browserSub", { title })
             : run.kind === "task"
             ? t("taskSub", { agent: run.profile ?? run.project, branch: taskBranch(run) })
             : authoring

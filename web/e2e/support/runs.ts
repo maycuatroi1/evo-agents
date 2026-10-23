@@ -136,7 +136,7 @@ export async function workerHeartbeat(live: LiveWorker, runs: number[] = [], rep
     checkouts: Object.fromEntries(repos.map((repo) => [`${live.project}/${repo}`, { path: `~/github/${repo}`, branch: "main" }])),
     free_slots: Math.max(live.worker.slots - runs.length, 0),
     runs,
-    ...(report.browser ? { features: ["browser"], browser: BROWSER_REPORT } : {}),
+    ...(report.browser ? { features: ["browser"], browser: BROWSER_REPORT, run_kinds: ["step", "plan", "browser"] } : {}),
   });
 }
 

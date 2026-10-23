@@ -5882,6 +5882,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/browser-identities/{identity_id}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login Browser Identity
+         * @description Queue a login session of an identity: Chromium on its profile, on its worker, for at most 30 minutes, which you
+         *     open in the live view in human mode and end with Save (the profile is sealed, its version raised) or by cancelling
+         *     it (nothing is saved). With ``worker`` it is a Move: the session runs there and the identity moves after Save.
+         *     409 while another run holds the identity or a session of it waits, and for a disabled one.
+         */
+        post: operations["login_browser_identity_v1_projects__project__browser_identities__identity_id__login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable Browser Identity
+         * @description Disable an identity: no run attaches it and its login session is refused until it is enabled; its profile is
+         *     kept. Its member, or an admin for the project's; 409 while a run holds it.
+         */
+        post: operations["disable_browser_identity_v1_projects__project__browser_identities__identity_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable Browser Identity
+         * @description Enable a disabled identity: active when it has a saved profile, else needs_login.
+         */
+        post: operations["enable_browser_identity_v1_projects__project__browser_identities__identity_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/browser-profile": {
         parameters: {
             query?: never;
@@ -9300,6 +9364,11 @@ export interface components {
             owner_login: string | null;
             /** Domains */
             domains: string[];
+            /**
+             * Login Url
+             * @description the page its login session opens; null: its first domain's home page
+             */
+            login_url: string | null;
             /** Worker */
             worker: string;
             /**
@@ -9373,6 +9442,11 @@ export interface components {
              * @enum {string}
              */
             owner: "member" | "project";
+            /**
+             * Login Url
+             * @description the page a login session opens, an http or https URL; null: the home page of the first domain
+             */
+            login_url?: string | null;
         };
         /** BrowserIdentityState */
         BrowserIdentityState: {
@@ -9383,6 +9457,14 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "needs_login" | "disabled";
+        };
+        /** BrowserLogin */
+        BrowserLogin: {
+            /**
+             * Worker
+             * @description a Move: the name of the worker the identity should live on after the session saves (your own, or a shared one that serves the project and has the feature browser); null: the worker that holds it
+             */
+            worker?: string | null;
         };
         /** BrowserNeedsLogin */
         BrowserNeedsLogin: {
@@ -9429,9 +9511,14 @@ export interface components {
             chromium_version: string | null;
             /**
              * Profile
-             * @description the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login
+             * @description the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null too for a login session on another worker than the identity's (a Move)
              */
             profile: string | null;
+            /**
+             * Login Url
+             * @description the page a login session opens: the identity's, else its first domain's
+             */
+            login_url: string;
         };
         /** BrowserProfileSaved */
         BrowserProfileSaved: {
@@ -15977,7 +16064,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "browser_needs_login") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -16659,7 +16746,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -20544,7 +20631,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /**
@@ -21739,7 +21826,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser";
             /** Project */
             project: string;
             /**
@@ -32438,7 +32525,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -49029,6 +49116,217 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_browser_identity_v1_projects__project__browser_identities__identity_id__login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disable_browser_identity_v1_projects__project__browser_identities__identity_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    enable_browser_identity_v1_projects__project__browser_identities__identity_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"];
+                };
             };
             /** @description Unauthorized */
             401: {

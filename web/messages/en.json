@@ -67,7 +67,8 @@
     "mergeQueue": "Merge queue",
     "mergeQueueFigures": "Figures",
     "mergeQueuePolicy": "Policy",
-    "org": "Org chart"
+    "org": "Org chart",
+    "browser": "Browser"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -4024,7 +4025,8 @@
         "hint": {
           "agent": "The agent drives this browser. Take control to use it.",
           "human": "You drive this browser. Press Esc, then Tab, to leave it.",
-          "watch": "The agent drives this browser."
+          "watch": "The agent drives this browser.",
+          "login": "Sign in, then press Save to keep the profile. Cancel the run to keep nothing."
         },
         "waiting": "Waiting for the browser on {worker}.",
         "connecting": "Connecting to the browser.",
@@ -4049,7 +4051,10 @@
           "timeout": "The browser view closed: it was idle for 15 minutes, or open for 4 hours.",
           "busy": "This browser is now open in another window or tab. View it here to bring it back.",
           "upgrade": "{worker} speaks another version of the worker protocol: upgrade evo-agents on it."
-        }
+        },
+        "save": "Save",
+        "saving": "Saving",
+        "saveFailed": "Couldn't save the login of run #{id}"
       },
       "composer": {
         "label": "Message the agent",
@@ -4361,6 +4366,7 @@
       },
       "chatSub": "A turn of @{agent} in a group chat, hop {hop}. <chatLink>Open the message it answers</chatLink>.",
       "taskSub": "A task a plugin handed to @{agent}: one turn on branch {branch}, which the hub opens as a draft pull request.",
+      "browserSub": "A browser login session: {title}. A person logs the identity in; Save keeps its profile.",
       "header": {
         "back": "Plan {plan}",
         "step": "Step {key}: {title}",
@@ -5325,7 +5331,8 @@
       "loop_paused": "The Loop stopped itself",
       "goal_review": "The month's review of the goals",
       "loop_brief": "The Loop's morning brief",
-      "plugin_notice": "A notice from a plugin"
+      "plugin_notice": "A notice from a plugin",
+      "browser_needs_login": "A browser identity needs a new login"
     },
     "item": {
       "unread": "Unread",
@@ -5351,7 +5358,8 @@
       "answerProposalLabel": "Answer proposal #{id}",
       "viewProposalLabel": "View proposal #{id}",
       "openProposal": "Open proposal #{id}",
-      "openTriage": "Open triage thread"
+      "openTriage": "Open triage thread",
+      "openLogin": "Log in"
     },
     "sheet": {
       "title": "Decision #{id}",
@@ -9121,6 +9129,101 @@
       "run_owner": "The run's owner",
       "srs_reviewer": "An SRS reviewer",
       "chat_member": "A member of the chat"
+    }
+  },
+  "browser": {
+    "metaTitle": "Browser identities of {project}",
+    "title": "Browser identities",
+    "new": "New",
+    "ownerProject": "Project identity",
+    "ownerMember": "Owned by {login}",
+    "neverSaved": "Not saved yet",
+    "none": "Never",
+    "heldBy": "Run #{id}",
+    "status": {
+      "needs_login": "Needs login",
+      "disabled": "Disabled"
+    },
+    "fact": {
+      "domains": "Domains",
+      "worker": "Worker",
+      "version": "Version",
+      "lastSaved": "Last saved",
+      "lastUsed": "Last used",
+      "heldBy": "Held by"
+    },
+    "action": {
+      "login": "Log in",
+      "move": "Move",
+      "disable": "Disable",
+      "enable": "Enable",
+      "delete": "Delete"
+    },
+    "empty": {
+      "title": "No browser identities yet",
+      "description": "An identity keeps a signed-in browser profile on one worker. Create one, then log in through a live browser."
+    },
+    "form": {
+      "newTitle": "New browser identity",
+      "newDescription": "A profile that keeps the cookies of some sites. You sign in once, in a browser you see; runs reuse it.",
+      "name": "Name",
+      "nameHint": "Lower case letters, digits, dots, dashes and underscores.",
+      "nameInvalid": "Use lower case letters, digits, dots, dashes and underscores, starting with a letter or digit.",
+      "domains": "Domains",
+      "domainsHint": "The sites whose cookies it keeps, separated by commas. Their subdomains count.",
+      "domainsRequired": "Name at least one domain.",
+      "loginUrl": "Login URL",
+      "loginUrlHint": "Optional. The page the login session opens. Default: the first domain's home page.",
+      "loginUrlInvalid": "Enter an http or https address.",
+      "worker": "Worker",
+      "workerPick": "Pick a worker",
+      "workersLoading": "Loading workers",
+      "ownWorkers": "Your workers",
+      "sharedWorkers": "Shared workers",
+      "sharedWorker": "{name} (shared by {owner})",
+      "workerHint": "The profile stays on this worker. Only workers with a browser installed are listed.",
+      "noWorkers": "No worker has a browser. Run `evo-agents worker browser install` on one and restart its daemon.",
+      "workerRequired": "Pick a worker.",
+      "owner": "Owner",
+      "ownerMember": "Me",
+      "ownerProject": "The project (admins)",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating"
+    },
+    "move": {
+      "title": "Move {name}",
+      "description": "Log in again on another worker. The identity moves there after you save; it stays on {worker} until then.",
+      "required": "Pick a worker.",
+      "cancel": "Cancel",
+      "start": "Start login session",
+      "starting": "Starting"
+    },
+    "confirm": {
+      "cancel": "Cancel",
+      "delete": {
+        "title": "Delete {name}?",
+        "description": "Its saved profile is removed from the hub. Runs that use it will no longer find it. This cannot be undone.",
+        "confirm": "Delete identity",
+        "pending": "Deleting"
+      },
+      "disable": {
+        "title": "Disable {name}?",
+        "description": "Runs cannot use it while it is disabled. Its profile is kept, and you can enable it again.",
+        "confirm": "Disable identity",
+        "pending": "Disabling"
+      }
+    },
+    "toast": {
+      "created": "Created {name}",
+      "createdNext": "Log in to save its first profile.",
+      "deleted": "Deleted {name}",
+      "disabled": "Disabled {name}",
+      "enabled": "Enabled {name}"
+    },
+    "error": {
+      "conflict": "A run holds this identity, it has a login session waiting, or it is disabled. Try again when that ends.",
+      "exists": "You already have an identity with that name in this project."
     }
   }
 }
