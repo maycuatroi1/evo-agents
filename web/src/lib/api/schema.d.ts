@@ -5836,6 +5836,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/browser-identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Browser Identities
+         * @description The project's identities and your own in it, never another member's; metadata only.
+         */
+        get: operations["list_browser_identities_v1_projects__project__browser_identities_get"];
+        put?: never;
+        /**
+         * Create Browser Identity
+         * @description Create an identity with no profile yet (version 0): your own with the writer role, or the project's as an
+         *     admin. It is logged in later, on its worker.
+         */
+        post: operations["create_browser_identity_v1_projects__project__browser_identities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Browser Identity
+         * @description Delete an identity: its member, or an admin for the project's. Its keys go from the hub and its profiles from
+         *     the blob store; 409 while a run holds it.
+         */
+        delete: operations["delete_browser_identity_v1_projects__project__browser_identities__identity_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/browser-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lease Browser Profile
+         * @description One of the run's browser identities, with its profile: what its Chromium opens with.
+         */
+        post: operations["lease_browser_profile_v1_worker_runs__run_id__browser_profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/browser-profile/{identity_id}/needs-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Browser Needs Login
+         * @description The run's Chromium could not use the identity's profile: it waits for a new login.
+         */
+        post: operations["browser_needs_login_v1_worker_runs__run_id__browser_profile__identity_id__needs_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/browser-profile/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Browser Profile
+         * @description Seal the profile the run's Chromium leaves as the identity's next version, while the run holds it.
+         */
+        put: operations["save_browser_profile_v1_worker_runs__run_id__browser_profile__identity_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/plugin-api/projects/{project}/agent-types/{name}/tasks": {
         parameters: {
             query?: never;
@@ -9174,6 +9280,196 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** BrowserIdentity */
+        BrowserIdentity: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /**
+             * Owner
+             * @enum {string}
+             */
+            owner: "member" | "project";
+            /**
+             * Owner Login
+             * @description the member who owns it; null for the project's
+             */
+            owner_login: string | null;
+            /** Domains */
+            domains: string[];
+            /** Worker */
+            worker: string;
+            /**
+             * Worker Owner
+             * @description the login of the worker's owner
+             */
+            worker_owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_login" | "disabled";
+            /**
+             * Version
+             * @description profiles saved so far; 0 until the first login is saved
+             */
+            version: number;
+            /**
+             * Size
+             * @description bytes of the current profile, sealed; null at version 0
+             */
+            size: number | null;
+            /**
+             * Chromium Version
+             * @description the Chromium that saved the current profile
+             */
+            chromium_version: string | null;
+            /**
+             * Held By Run
+             * @description the run that holds it now
+             */
+            held_by_run: number | null;
+            /** Last Saved At */
+            last_saved_at: string | null;
+            /** Last Saved By */
+            last_saved_by: string | null;
+            /** Last Used At */
+            last_used_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Can Manage
+             * @description whether you may delete it: its member, or an admin for the project's
+             */
+            can_manage: boolean;
+        };
+        /** BrowserIdentityCreate */
+        BrowserIdentityCreate: {
+            /**
+             * Name
+             * @description unique among its owner's live identities in the project
+             */
+            name: string;
+            /**
+             * Domains
+             * @description the sites whose cookies it keeps, each with its subdomains; the others are dropped at every save
+             */
+            domains: string[];
+            /**
+             * Worker
+             * @description the worker that holds it: your own, or a shared one, serving the project; its profile opens there alone
+             */
+            worker: string;
+            /**
+             * Owner
+             * @description member: yours alone (the writer role); project: the admins', usable by every writer
+             * @default member
+             * @enum {string}
+             */
+            owner: "member" | "project";
+        };
+        /** BrowserIdentityState */
+        BrowserIdentityState: {
+            /** Identity Id */
+            identity_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_login" | "disabled";
+        };
+        /** BrowserNeedsLogin */
+        BrowserNeedsLogin: {
+            /**
+             * Cause
+             * @description unopenable: the worker's Chromium could not open the profile; newer_chromium: a Chromium newer than the worker's saved it
+             * @enum {string}
+             */
+            cause: "unopenable" | "newer_chromium";
+        };
+        /** BrowserProfileAsk */
+        BrowserProfileAsk: {
+            /**
+             * Identity Id
+             * @description one of the run's browser_identities
+             */
+            identity_id: number;
+        };
+        /** BrowserProfileLease */
+        BrowserProfileLease: {
+            /** Identity Id */
+            identity_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Domains
+             * @description the sites whose cookies the profile keeps, each with its subdomains; the worker drops every other cookie before it saves the profile
+             */
+            domains: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_login" | "disabled";
+            /**
+             * Version
+             * @description the version of the profile handed out, the base_version of its save; 0: none
+             */
+            version: number;
+            /**
+             * Chromium Version
+             * @description the Chromium that saved it, as it said; null for none
+             */
+            chromium_version: string | null;
+            /**
+             * Profile
+             * @description the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login
+             */
+            profile: string | null;
+        };
+        /** BrowserProfileSaved */
+        BrowserProfileSaved: {
+            /** Identity Id */
+            identity_id: number;
+            /**
+             * Version
+             * @description the version the profile is at now, the one saved
+             */
+            version: number;
+        };
+        /**
+         * BrowserReport
+         * @description The Chromium a daemon starts for a browser run, as its heartbeat says.
+         */
+        BrowserReport: {
+            /**
+             * Chromium
+             * @description its version, as `chrome --version` prints it
+             */
+            chromium: string;
+            /**
+             * Display
+             * @description headless: it runs with --headless=new, no screen needed; screen: it draws on a display
+             * @enum {string}
+             */
+            display: "headless" | "screen";
+            /**
+             * Max
+             * @description how many browser runs the worker holds at once, each its own Chromium; the hub hands it no more
+             */
+            max: number;
+            /**
+             * Sandbox
+             * @description whether Chromium runs with its own sandbox; false where the machine does not let it (no unprivileged user namespaces), as the install found
+             */
+            sandbox: boolean;
+        };
         /** Build */
         Build: {
             /** Id */
@@ -12321,6 +12617,18 @@ export interface components {
                     [key: string]: unknown;
                 };
             } | null;
+            /**
+             * Browser
+             * @description true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Identities
+             * @description browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one
+             * @default []
+             */
+            identities: string[];
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -13277,6 +13585,8 @@ export interface components {
             self_update?: components["schemas"]["SelfUpdateReport"] | null;
             /** @description for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off */
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
+            /** @description the Chromium the daemon starts for a browser run, with the feature browser; null for a daemon without one */
+            browser?: components["schemas"]["BrowserReport"] | null;
         };
         /** HeldAnswer */
         HeldAnswer: {
@@ -16983,6 +17293,18 @@ export interface components {
              * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
              */
             profile?: string | null;
+            /**
+             * Browser
+             * @description true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Identities
+             * @description browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one
+             * @default []
+             */
+            identities: string[];
         };
         /** PlanSummary */
         PlanSummary: {
@@ -19993,6 +20315,11 @@ export interface components {
              * @default false
              */
             account_by_rule: boolean;
+            /**
+             * Browser
+             * @description true: the rerun gets a Chromium of its own; false: it gets none, nor the run's browser identities; null keeps what the run rerun had
+             */
+            browser?: boolean | null;
         };
         /** RerunCandidates */
         RerunCandidates: {
@@ -20419,6 +20746,18 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /**
+             * Browser
+             * @description a run whose agent got a Chromium of its own on its worker (dispatched with browser); false for any other
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Browser Identities
+             * @description the ids of the browser identities the run's Chromium opened with, in the order dispatched
+             * @default []
+             */
+            browser_identities: number[];
             /**
              * Profile
              * @description the handle of the agent profile the run went under; null for a run from before schema 0030
@@ -21499,6 +21838,18 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /**
+             * Browser
+             * @description true: start a Chromium for the run's agent before its first turn and hand its DevTools endpoint to the agent (EVO_BROWSER_CDP); absent for a run without one
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Browser Identities
+             * @description the ids of the browser identities to open the run's Chromium with (POST /v1/worker/runs/{id}/browser-profile hands each one's profile), in order; absent for a run without them
+             * @default []
+             */
+            browser_identities: number[];
             /** @description the agent profile the run went under; null for a run from before schema 0030 */
             profile?: components["schemas"]["RunProfile"] | null;
             /**
@@ -26095,6 +26446,8 @@ export interface components {
             self_update: components["schemas"]["WorkerSelfUpdate"] | null;
             /** @description what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it */
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
+            /** @description what the worker's last heartbeat said of its Chromium; null when it said nothing of one */
+            browser?: components["schemas"]["BrowserReport"] | null;
             /** @description the last Update now its owner or a hub admin asked for, open or ended; null when none was */
             update_now: components["schemas"]["WorkerUpdateNow"] | null;
             /** @description where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once */
@@ -48501,6 +48854,443 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_browser_identities_v1_projects__project__browser_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_browser_identity_v1_projects__project__browser_identities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserIdentityCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_browser_identity_v1_projects__project__browser_identities__identity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lease_browser_profile_v1_worker_runs__run_id__browser_profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserProfileAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfileLease"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    browser_needs_login_v1_worker_runs__run_id__browser_profile__identity_id__needs_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                /** @description one of the run's browser identities */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserNeedsLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentityState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_browser_profile_v1_worker_runs__run_id__browser_profile__identity_id__put: {
+        parameters: {
+            query: {
+                /** @description the version the run's profile started from */
+                base_version: number;
+                /** @description the worker's Chromium, as it says its version */
+                chromium_version?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: number;
+                /** @description one of the run's browser identities */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the archive of the profile, as `evo_agents.hub.browser_archive.pack` makes it */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfileSaved"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

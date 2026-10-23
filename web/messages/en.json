@@ -3959,7 +3959,8 @@
           "log": "Raw log",
           "terminal": "Terminal",
           "chat": "Chat",
-          "outputs": "Outputs"
+          "outputs": "Outputs",
+          "browser": "Browser"
         },
         "where": "The agent's TUI on {worker}, relayed through the hub.",
         "connect": "Connect terminal",
@@ -4004,6 +4005,51 @@
         "hint": "Keys go to the agent's TUI on {worker}. Press Esc, then Tab, to leave the terminal.",
         "size": "{cols} × {rows}",
         "sizeLabel": "Terminal size: {cols} columns, {rows} rows"
+      },
+      "browser": {
+        "label": "Browser of run #{id}",
+        "labelTab": "Browser of run #{id}: {title}",
+        "keys": "Keys and text for the browser",
+        "address": "Address",
+        "back": "Back",
+        "forward": "Forward",
+        "reload": "Reload",
+        "tabs": "Tabs of the browser",
+        "takeControl": "Take control",
+        "takingControl": "Taking control",
+        "handBack": "Hand back",
+        "handingBack": "Handing back",
+        "asked": "The agent stops at the end of its turn, then the browser is yours.",
+        "keyboard": "Keyboard",
+        "hint": {
+          "agent": "The agent drives this browser. Take control to use it.",
+          "human": "You drive this browser. Press Esc, then Tab, to leave it.",
+          "watch": "The agent drives this browser."
+        },
+        "waiting": "Waiting for the browser on {worker}.",
+        "connecting": "Connecting to the browser.",
+        "notOpen": "Run #{id} is {state}. Its browser runs only while a worker holds the run.",
+        "retrying": "The connection to the hub dropped. Trying again.",
+        "workerGone": "{worker} dropped its end of the browser. The view comes back when it reconnects.",
+        "notice": "The browser says: {notice}",
+        "reconnect": "Connect again",
+        "viewHere": "View here",
+        "signIn": "Sign in again",
+        "tooOld": "You signed in {hours} hours ago. The browser opens only for a sign-in less than 12 hours old: sign in again, then come back to this run.",
+        "hubSays": "The hub says: {reason}",
+        "end": {
+          "closed": "You closed the browser view.",
+          "ended": "The browser view ended: {worker} closed its end.",
+          "shutdown": "The hub restarted and closed the browser view. Connect again.",
+          "protocol": "The hub closed the browser view over a message it does not accept.",
+          "lost": "The connection to the hub was lost. Connect again.",
+          "unavailable": "The hub could not check the request: its database did not answer. Try again shortly.",
+          "signIn": "The hub asks you to sign in again before it shows the browser.",
+          "forbidden": "The hub refused to show this browser.",
+          "timeout": "The browser view closed: it was idle for 15 minutes, or open for 4 hours.",
+          "busy": "This browser is now open in another window or tab. View it here to bring it back.",
+          "upgrade": "{worker} speaks another version of the worker protocol: upgrade evo-agents on it."
+        }
       },
       "composer": {
         "label": "Message the agent",
@@ -4349,7 +4395,8 @@
         "open": "Open the full trace",
         "openEmpty": "Open the trace",
         "back": "Back to run #{id}",
-        "openChat": "Open the chat"
+        "openChat": "Open the chat",
+        "openBrowser": "Open the browser"
       },
       "detailsToggle": "Details",
       "local": {

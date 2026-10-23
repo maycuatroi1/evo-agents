@@ -10,7 +10,6 @@
     "src/components/palette/command-palette.tsx": 698,
     "src/components/runs/queries.ts": 428,
     "src/components/runs/run-chat.tsx": 456,
-    "src/components/runs/run-log.tsx": 501,
     "src/components/runs/trace-model.ts": 548,
     "src/components/secrets/secret-dialog.tsx": 474,
     "src/components/shell/shortcuts.tsx": 487,
