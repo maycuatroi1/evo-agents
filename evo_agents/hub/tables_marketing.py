@@ -8,7 +8,8 @@ or draft_only), its adapter (api or browser), the member who owns a personal acc
 subreddit, a page id, a repo, an author URN) and when it was paused. No credential is in it: those are sealed in the
 plugin's config. The constraints of the registry are checked here as well as in code: a personal account is never
 autonomous but on facebook_profile and tiktok, facebook_profile is personal only, hackernews is always draft_only, facebook_group is personal and draft_only
-always (0128).
+always (0128). Each account keeps the result of its last health check, a read that posts nothing: ok, failing with the
+reason, n/a for a channel no code posts on, or unknown before the first check (0129).
 
 marketing_posts holds what an agent proposed: the text, its links and sources, the result of each layer of the gate,
 the Judge's scores, where it ended (posted, draft with the reason, failed, withdrawn), its cost and the run that
@@ -60,6 +61,7 @@ PERSONAL_AUTONOMOUS = ("facebook_profile", "tiktok")  # the only channels a pers
 POST_KINDS = ("post", "reply")
 POST_STATES = ("proposed", "judging", "queued", "posting", "posted", "draft", "failed", "withdrawn")
 SESSION_STATES = ("none", "ok", "stale")  # the sealed login session of a browser channel
+HEALTH_STATES = ("unknown", "ok", "failing", "n/a")  # the last health check of an account (0129)
 MAX_SHOT_BYTES = 2 * 1024 * 1024
 DENY_KINDS = ("term", "domain", "person")
 SPANS = ("24h", "7d")
@@ -94,6 +96,9 @@ def channels_table(metadata: MetaData) -> Table:
         Column("session_state", Text, nullable=False, server_default="none"),
         Column("created_by", BigInteger),
         _stamp("created_at"),
+        Column("health", Text, nullable=False, server_default="unknown"),  # 0129
+        Column("health_reason", Text),  # 0129
+        Column("health_checked_at", DateTime(timezone=True)),  # 0129
         _key("marketing_channels", "project_id", "projects", ondelete="CASCADE"),
         _key("marketing_channels", "owner_id", "users", ondelete="SET NULL"),
         _key("marketing_channels", "created_by", "users", ondelete="SET NULL"),

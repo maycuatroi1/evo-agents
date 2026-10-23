@@ -8929,8 +8929,13 @@
       "stale": "Đã hết hạn",
       "sessionOk": "Còn hiệu lực",
       "sessionNone": "Chưa có",
+      "health": "Sức khoẻ",
+      "healthOk": "Ổn",
+      "healthFailing": "Lỗi",
+      "healthNa": "Không áp dụng",
+      "healthUnknown": "Chưa kiểm",
       "emptyTitle": "Chưa có tài khoản kênh nào",
-      "emptyText": "Quản trị viên thêm tài khoản của dự án, mỗi thành viên thêm tài khoản riêng bằng evo-agents hub marketing channel add."
+      "emptyText": "Quản trị viên thêm tài khoản của dự án, mỗi thành viên thêm tài khoản riêng bằng evo-agents hub marketing add."
     },
     "posts": {
       "sub": "Các bài đăng của dự án theo kết quả của cổng. Sao chép một bản nháp để tự chia sẻ.",

@@ -228,12 +228,101 @@ def test_marketing_adapters_no_browser_adapter_yet_answers_none():
     assert adapters.for_channel("hackernews", Fake()) is None and adapters.for_channel("viblo", Fake()) is None
 
 
+# The health check: a read that posts nothing
+
+
+SECRET = "tok-secret-value"
+
+
+def health(channel: str, target: str | None, *answers: HttpResponse) -> tuple[str, Fake]:
+    fake = Fake(*answers)
+    return asyncio.run(adapters.for_channel(channel, fake).health(target, SECRET)), fake
+
+
+def refused(channel: str, target: str | None, *answers: HttpResponse) -> AdapterError:
+    with pytest.raises(AdapterError) as failed:
+        health(channel, target, *answers)
+    assert SECRET not in failed.value.message
+    return failed.value
+
+
+def test_marketing_health_github_reads_the_target_repo_and_needs_push():
+    said, fake = health("github", "a/b#R1:C1", HttpResponse(200, {"full_name": "a/b", "permissions": {"push": True}}))
+    assert said == "push on a/b" and [(r.method, r.url) for r in fake.sent] == [
+        ("GET", "https://api.github.com/repos/a/b")
+    ]
+    assert fake.sent[0].headers["Authorization"] == f"Bearer {SECRET}" and SECRET not in repr(fake.sent[0])
+    assert "may not push" in refused("github", "a/b", HttpResponse(200, {"permissions": {"pull": True}})).message
+    assert refused("github", None).kind == "missing"
+    assert refused("github", "a/b", HttpResponse(404, {})).kind == "rejected"
+
+
+def test_marketing_health_x_reddit_and_linkedin_read_whose_credential_it_is():
+    said, fake = health("x", None, HttpResponse(200, {"data": {"id": "1", "username": "evo"}}))
+    assert said == "signed in as @evo" and fake.sent[0].url == "https://api.x.com/2/users/me"
+    assert refused("x", None, HttpResponse(401, {})).kind == "locked"
+    said, fake = health("reddit", "r/python", HttpResponse(200, {"name": "evo"}))
+    assert said == "signed in as u/evo" and fake.sent[0].url == "https://oauth.reddit.com/api/v1/me"
+    assert refused("reddit", None, HttpResponse(200, {})).kind == "rejected"
+    said, fake = health("linkedin", "urn:li:person:1", HttpResponse(200, {"sub": "1", "name": "Evo"}))
+    assert "Evo" in said and fake.sent[0].url == "https://api.linkedin.com/v2/userinfo"
+    assert refused("linkedin", None).kind == "missing"
+    assert refused("linkedin", "urn:li:person:1", HttpResponse(403, {})).kind == "locked"
+    assert all(r.method == "GET" for r in fake.sent)
+
+
+def test_marketing_health_facebook_page_needs_create_content_and_tiktok_reads_the_creator():
+    page = HttpResponse(200, {"name": "Evo", "tasks": ["ANALYZE", "CREATE_CONTENT"]})
+    said, fake = health("facebook_page", "42", page)
+    assert said == "may post on Evo" and fake.sent[0].url.endswith("/42?fields=name,tasks")
+    assert fake.sent[0].method == "GET"
+    assert "may not post" in refused("facebook_page", "42", HttpResponse(200, {"tasks": ["ANALYZE"]})).message
+    assert refused("facebook_page", None).kind == "missing"
+    creator = HttpResponse(200, {"data": {"creator_username": "evo"}, "error": {"code": "ok"}})
+    said, fake = health("tiktok", None, creator)
+    assert said == "posting as @evo" and fake.sent[0].url.endswith("/creator_info/query/")
+    assert "publish/content" not in fake.sent[0].url  # the query, never the post
+    bad = HttpResponse(200, {"data": {}, "error": {"code": "access_token_invalid"}})
+    assert "access_token_invalid" in refused("tiktok", None, bad).message
+
+
+def test_marketing_health_of_an_account_browser_draft_only_and_no_credential():
+    from evo_agents.core_plugins.marketing import health as checks
+    from evo_agents.core_plugins.marketing.settings import Config
+
+    def row(channel, adapter="api", session="none", target=None):
+        return SimpleNamespace(channel=channel, adapter=adapter, session_state=session, target=target)
+
+    def check(cfg, chan, fake=None):
+        return asyncio.run(checks.check(cfg, chan, fake or Fake()))
+
+    bare, keyed = Config(), Config(tokens={"x": SECRET})
+    assert check(bare, row("x")) == checks.Health("failing", "no credential")
+    assert check(bare, row("hackernews", "browser")).state == "n/a"
+    assert check(bare, row("facebook_group", "browser", "ok")).state == "n/a"
+    assert check(bare, row("viblo", "browser", "ok")).state == "ok"
+    assert check(bare, row("viblo", "browser", "stale")).state == "failing"
+    assert check(Config(sessions={"reddit": "{}"}), row("reddit", session="ok")).state == "ok"  # posts by the browser
+    assert check(bare, row("viblo")).state == "failing"  # no api adapter
+    fine = check(keyed, row("x"), Fake(HttpResponse(200, {"data": {"id": "1", "username": "evo"}})))
+    assert fine == checks.Health("ok", "signed in as @evo")
+    locked = check(keyed, row("x"), Fake(HttpResponse(403, {})))
+    assert locked.state == "failing" and SECRET not in locked.reason
+
+    class Down:
+        async def send(self, request):
+            raise OSError(f"no route for {request.headers}")
+
+    down = check(keyed, row("x"), Down())
+    assert down == checks.Health("failing", "x: the platform did not answer (OSError)")
+
+
 # The CLI contract
 
 
 def test_marketing_cli_commands_are_in_the_contract():
     printed = commands()
-    verbs = ("channels", "posts", "pause", "resume", "kill")
+    verbs = ("channels", "add", "check", "posts", "pause", "resume", "kill")
     assert {f"hub marketing {verb}" for verb in verbs} <= set(printed)
     assert printed["hub marketing channels"]["json"]["schema"] == "MarketingChannel"
     assert printed["hub marketing posts"]["json"]["kind"] == "array"
