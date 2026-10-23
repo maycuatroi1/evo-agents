@@ -135,6 +135,7 @@ TABLES |= pg.BROWSER_TABLES  # migration 0117
 TABLES |= pg.CRM_TABLES  # migration 0124
 TABLES |= pg.MARKETING_TABLES  # migration 0125
 TABLES |= pg.GROWTH_TABLES  # migration 0127
+TABLES |= pg.PROBE_TABLES  # migration 0130
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -216,8 +217,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_sixty_six_tables(hub_db):
-    assert len(TABLES) == 166  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_sixty_seven_tables(hub_db):
+    assert len(TABLES) == 167  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2975,3 +2976,54 @@ def test_0126_marketing_browser_adds_the_queue_states_and_the_session_and_going_
         assert [row.state for row in found] == ["draft", "draft"]
         assert all("browser adapter" in row.reason for row in found)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0126") :]
+
+
+def test_0130_curator_probes_keep_a_task_and_a_verify_and_going_back_drops_the_table(hub_db):
+    move_to(hub_db, "0129")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0130")
+    t = hub_tables
+    label = {"level": "internal"}
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, _author_run(ids))
+        proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "harness", "kind": "docs"}
+        proposal |= {
+            "title": "Say where the tests live",
+            "summary": "s",
+            "paths": [],
+            "tier": 1,
+            "tier_reasons": ["a docs change"],
+        }
+        proposal |= {
+            "evidence": [{"text": "e"}],
+            "evidence_count": 1,
+            "draft": {},
+            "fingerprint": "f" * 64,
+            "label": label,
+        }
+        proposal_id = one(conn, insert(t.proposals).values(proposal).returning(t.proposals.c.id))
+        probe = {"project_id": ids["project"], "proposal_id": proposal_id, "repo": "demo", "task": "Add a test"}
+        probe |= {"verify": "pytest -q tests/test_x.py", "source": "proposal", "label": label}
+        probe_id = one(conn, insert(t.curator_probes).values(probe).returning(t.curator_probes.c.id))
+        assert one(conn, select(t.curator_probes.c.state).where(t.curator_probes.c.id == probe_id)) == "active"
+        assert one(conn, select(t.curator_probes.c.base_sha)) is None  # the tip of the default branch
+        for bad in (
+            {**probe, "state": "paused"},
+            {**probe, "source": "someone"},
+            {**probe, "verify": ""},
+            {**probe, "verify": "x" * 2001},
+            {**probe, "task": ""},
+            {**probe, "base_sha": "main"},
+            {**probe, "proposal_id": None},  # a probe belongs to a proposal or a change
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.curator_probes).values(bad))
+    with live.connect(hub_db) as conn:  # a proposal takes its probe with it
+        conn.execute(delete(t.proposals).where(t.proposals.c.id == proposal_id))
+        assert one(conn, select(func.count()).select_from(t.curator_probes)) == 0
+    move_to(hub_db, "0129", down=True)
+    assert "curator_probes" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0130") :]

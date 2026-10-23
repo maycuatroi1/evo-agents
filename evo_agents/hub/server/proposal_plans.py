@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import judge, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, probes
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -125,10 +125,12 @@ async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user:
     if isinstance(made, str):
         why = reason_line(f"it cannot become the Curator's plan: {made}")
         change_id = await _record(conn, access, user, proposal, {"state": "open", "reason": why})
+        await probes.attach(conn, proposal.id, change_id)
         await ledger_lines.change_recorded(conn, change_id)
         log.info("curator plan not made", extra={"project": access.name, "proposal_id": proposal.id, "why": made})
         return change_id
     change_id = await _record(conn, access, user, proposal, made)
+    await probes.attach(conn, proposal.id, change_id)
     await ledger_lines.change_recorded(conn, change_id)
     log.info("curator plan made", extra={"project": access.name, "plan_id": made["plan_id"], "change_id": change_id})
     return change_id

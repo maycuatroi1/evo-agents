@@ -26,7 +26,8 @@ figures`` prints the figures of the latest night, or of ``--night`` (GET .../cur
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes); ``curator replay tasks|show``
 (``evo_agents.hub.replay_cli``) the replays that measure them, ``curator history status|clusters|sessions|search|lines``
 (``evo_agents.hub.history_cli``) the night's history run, the clusters of its facets and the whole history, and
-``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember. ``curator
+``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember, and
+``curator probe list|show|add|retire`` (``evo_agents.hub.probe_cli``) the probes of proposals and changes. ``curator
 protection`` lists the project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check
 REPO`` checks one now with the Curator's App, which only an admin of the project may (POST
 .../curator/protection/{repo}/check): a Builder runs on a repo of GitHub only once its default branch keeps the
@@ -53,6 +54,7 @@ from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
 from evo_agents.hub.plan_cli import _project
 from evo_agents.hub.playbook_cli import register_playbook
+from evo_agents.hub.probe_cli import register_probe
 from evo_agents.hub.replay import DEFAULT_TASKS
 from evo_agents.hub.replay_cli import register_replay
 from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, evidence_text
@@ -77,6 +79,7 @@ CHARTER_BODY_KEYS = (
     "review",
     "replay",
     "history",
+    "probes",
     "reviewer",
     "builder",
     "judge",
@@ -125,6 +128,7 @@ PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "promotion",
     "note",
     "change",
+    "probe",
 )
 FINDING_KEYS = ("id", "project", "run_id", "lens", "severity", "title", "body", "evidence", "created_at")
 CHANGE_KEYS = (
@@ -751,5 +755,5 @@ def register_curator(hsub) -> None:
     json_option(changes, returns_object("project", "changes", schema="ChangeList"))
     changes.set_defaults(func=cmd_changes)
 
-    for register in (_register_protection, register_replay, register_history, register_playbook):
+    for register in (_register_protection, register_replay, register_history, register_playbook, register_probe):
         register(csub, with_project)

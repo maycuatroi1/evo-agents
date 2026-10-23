@@ -47,6 +47,12 @@ passed (the job curator.collect). A proposal of kind memory may promote agents' 
 (``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
+
+A proposal may carry a probe (``evo_agents.hub.server.probes``): a task in a repo it changes, from a base commit, and a
+one-line verify that exits 0 when an agent given the task does not repeat the mistake. One whose evidence cites an entry
+of ``corrections`` in the night's figures and whose paths include a file a probe arm can place
+(``evo_agents.hub.probes.probe_path``) is refused without one (422). Accepting it gives the probe its change, and a
+proposal's view shows its active probe, the verify to the project's admins alone.
 """
 
 from __future__ import annotations
@@ -57,6 +63,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
@@ -68,9 +75,11 @@ from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
+from evo_agents.hub.probes import probe_paths
 from evo_agents.hub.server import audit, change_tiers, earlier, facet_figures, history_search, memory_promotion
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
 from evo_agents.hub.server.changes import Change, change_view
@@ -203,6 +212,11 @@ class ProposalIn(BaseModel):
     evidence: list[EvidenceIn] = Field(default_factory=list, max_length=review.MAX_EVIDENCE)
     plan: dict | None = Field(None, description="the draft plan: plan.schema.json, in outcome steps; none to promote")
     promotion: memory_promotion.PromotionIn | None = Field(None, description="kind memory: in place of a plan")
+    probe: stored_probes.ProbeIn | None = Field(
+        None,
+        description="a task and a verify that say whether an agent repeats the mistake; required when the evidence "
+        "cites a correction and the paths include a file a probe arm can place",
+    )
 
     @model_validator(mode="after")
     def _supported(self):
@@ -258,6 +272,9 @@ class Proposal(ProposalSummary):
         None,
         description="what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it "
         "waits; null before, for tier 3, and when the caller may not read its plan",
+    )
+    probe: stored_probes.Probe | None = Field(
+        None, description="its active probe, if any; its verify is null unless the caller is an admin of the project"
     )
 
 
@@ -594,10 +611,32 @@ def _proposals():
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
-def _proposal(project: str, row, change: Change | None = None) -> Proposal:
+def _proposal(project: str, row, change: Change | None = None, probe: stored_probes.Probe | None = None) -> Proposal:
     data = {key: value for key, value in row._mapping.items() if key != "label"}
     data["finding_ids"] = list(data["finding_ids"] or [])
-    return Proposal(project=project, change=change, **data)
+    return Proposal(project=project, change=change, probe=probe, **data)
+
+
+async def _probe_needed(conn: AsyncConnection, run_id: int, body: ProposalIn, evidence: list, paths: list) -> None:
+    """422 when the proposal carries no probe, though its evidence cites a correction of the night's figures and its
+    paths include a file a probe arm can place (``probes.probe_path``); and when its probe names a repo it does not
+    change."""
+    if body.probe is not None:
+        named = {repo for repo, _ in paths}
+        if named and body.probe.repo not in named:
+            raise _refused("probe", f"its repo {body.probe.repo} is none of the repos the proposal changes")
+        return
+    placed = probe_paths(path for _, path in paths)
+    if not placed:
+        return
+    cited = SimpleNamespace(run_id=run_id, evidence=evidence, finding_ids=body.finding_ids)
+    if await ledger_lines.cites_corrections(conn, cited):
+        raise _refused(
+            "probe",
+            "the proposal's evidence cites a correction of the session figures and it changes "
+            f"{', '.join(placed)}, which a probe arm can place: give it a probe (repo, commit, task, verify) that "
+            "says whether an agent repeats the mistake",
+        )
 
 
 def _summary(project: str, row) -> ProposalSummary:
@@ -625,10 +664,13 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         unknown = sorted({item.repo for item in body.paths} - repos)
         if unknown:
             raise _refused("paths", f"project {run.project} has no repo {', '.join(unknown)}")
+        if body.probe is not None and body.probe.repo not in repos:
+            raise _refused("probe", f"project {run.project} has no repo {body.probe.repo}")
         evidence = await resolve(conn, request, run, access, body.evidence)
         promotion, label = await memory_promotion.checked(conn, run, access, body.promotion, evidence, label)
         count = len(evidence) + await _finding_evidence(conn, access, body.finding_ids)
         paths = list(dict.fromkeys((item.repo, item.path) for item in body.paths))
+        await _probe_needed(conn, run_id, body, evidence, paths)
         graph = await graph_view(request, run.owner, access, [f"{repo}:{path}" for repo, path in paths])
         impacted = sorted(graph.impacted) if graph is not None else None
         unknown = await change_tiers.unknown_paths(conn, run.project_id, paths, graph)
@@ -658,17 +700,29 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
             "label": label,
         }
         proposal_id = (await conn.execute(insert(p).values(**values).returning(p.c.id))).scalar_one()
+        if body.probe is not None:
+            await stored_probes.store(
+                conn,
+                project_id=run.project_id,
+                probe=body.probe,
+                source="proposal",
+                label=label,
+                proposal_id=proposal_id,
+                user_id=run.owner.user_id,
+                run_id=run_id,
+            )
         await ledger_lines.proposal_recorded(conn, run.project_id, proposal_id)
         await memory_promotion.recorded(conn, run, access, proposal_id, tier.tier, values["state"], promotion)
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}
         await write_event(conn, run_id, event)
         row = (await conn.execute(_proposals().where(p.c.id == proposal_id))).one()
+        probe = await stored_probes.of_proposal(conn, run.project, proposal_id, shown=False)
     log.info(
         "proposal recorded",
         extra={"run_id": run_id, "proposal_id": proposal_id, "tier": tier.tier, "dropped": dropped},
     )
-    return _proposal(run.project, row)
+    return _proposal(run.project, row, probe=probe)
 
 
 # Reading
@@ -812,7 +866,9 @@ async def show_proposal(
         _reader(access)
         row = await readable_proposal(conn, access, proposal_id, sink, user)
         change = await _change_of(conn, access, proposal_id, sink)
-    return _proposal(access.name, row, change)
+        shown = stored_probes.verify_shown(access, user)
+        probe = await stored_probes.of_proposal(conn, access.name, proposal_id, shown=shown)
+    return _proposal(access.name, row, change, probe)
 
 
 async def answer_proposal_as(
@@ -877,7 +933,9 @@ async def answer_proposal_as(
         project_id=access.project_id,
     )
     row = await readable_proposal(conn, access, proposal_id, None, user)
-    return _proposal(access.name, row, await _change_of(conn, access, proposal_id, None))
+    shown = stored_probes.verify_shown(access, user)
+    probe = await stored_probes.of_proposal(conn, access.name, proposal_id, shown=shown)
+    return _proposal(access.name, row, await _change_of(conn, access, proposal_id, None), probe)
 
 
 @router.post("/{project}/curator/proposals/{proposal_id}/answer", response_model=Proposal, responses=REFUSALS)

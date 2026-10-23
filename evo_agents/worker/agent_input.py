@@ -100,6 +100,20 @@ def plan_file(source: str) -> dict:
     return _mapping_file(source, "draft plan", MAX_DRAFT_BYTES, "a draft plan is a mapping with id, goal and steps")
 
 
+def probe_file(source: str) -> dict:
+    """The probe of a proposal (``worker propose --probe-file``): its repo, commit, task and verify, the task and the
+    verify masked as a digest is (``evo_agents.hub.redact``) before they leave this machine."""
+    from evo_agents.hub.probes import MAX_TASK_BYTES
+    from evo_agents.hub.redact import redact
+
+    holds = "a probe is a mapping with repo, task and verify, and commit when the base is not the default branch"
+    found = _mapping_file(source, "probe", 2 * MAX_TASK_BYTES, holds)
+    for key in ("task", "verify"):
+        if isinstance(found.get(key), str):
+            found[key] = redact(found[key])
+    return found
+
+
 def promotion_file(source: str) -> dict:
     """The promotion of a proposal of kind memory (``worker propose --promote-file``): its target and its body."""
     from evo_agents.hub.memory import MAX_BODY

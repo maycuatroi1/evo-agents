@@ -82,7 +82,13 @@ from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.charter_settings import HistorySettings, ReplaySettings, ReviewSettings
+from evo_agents.hub.server.charter_settings import (
+    HistorySettings,
+    ProbeModel,
+    ProbeSettings,
+    ReplaySettings,
+    ReviewSettings,
+)
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, next_run_budget, night_figures, usage_cost
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -218,6 +224,7 @@ class CharterBody(BaseModel):
     review: ReviewSettings = Field(default_factory=ReviewSettings)
     replay: ReplaySettings = Field(default_factory=ReplaySettings)
     history: HistorySettings = Field(default_factory=HistorySettings)
+    probes: ProbeSettings = Field(default_factory=ProbeSettings)
     reviewer: Role = Field(default_factory=Role)
     builder: Role = Field(default_factory=Role)
     judge: Judge = Field(default_factory=Judge)
@@ -261,6 +268,8 @@ class CharterBody(BaseModel):
                 raise ValueError(
                     f"{name}.budget_usd is over night_budget_usd: a run never gets more than the night has"
                 )
+        if not self.probes.models:  # the probes run on the builder's runtime and model unless the charter names others
+            self.probes.models = [ProbeModel(runtime=self.builder.runtime, model=self.builder.model)]
         return self
 
 

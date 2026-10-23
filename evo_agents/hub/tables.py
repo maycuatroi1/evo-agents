@@ -961,6 +961,7 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
+curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
