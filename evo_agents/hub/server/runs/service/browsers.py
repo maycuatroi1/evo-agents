@@ -61,9 +61,32 @@ def unfit(features, browser: bool) -> list[str]:
     return [NO_BROWSER] if browser and runs.BROWSER not in features else []
 
 
-def _mine_or_project(user: Principal):
+async def profile_default(conn: AsyncConnection, profile_id: int, pinned) -> tuple[list[int], int]:
+    """The browser identity the agent profile ``profile_id`` hands every run under it, as ``([id], worker id)``, or
+    ``([], 0)`` when it has none live and not disabled. 422 when the run is ``pinned`` to another worker than the one
+    that holds it."""
     b = tables.browser_identities
-    return or_(b.c.owner_kind == "project", and_(b.c.owner_kind == "member", b.c.owner_id == user.user_id))
+    query = select(b.c.id, b.c.name, b.c.worker_id).where(
+        b.c.profile_id == profile_id, b.c.profile_default, b.c.deleted_at.is_(None), b.c.status != "disabled"
+    )
+    found = (await conn.execute(query)).one_or_none()
+    if found is None:
+        return [], 0
+    if pinned is not None and pinned.id != found.worker_id:
+        raise HTTPException(
+            422,
+            f"the run is pinned to worker {pinned.name}, and the browser identity {found.name} of its agent opens only "
+            "on the worker that holds it: pin it there or not at all; nothing was dispatched",
+        )
+    return [found.id], found.worker_id
+
+
+def _mine_or_project(user: Principal, *, agents: bool = False):
+    """The identities ``user`` may name: their own and the project's; with ``agents`` the agents' too, which a dispatch
+    never names (a profile hands its own to its runs) but a rerun of such a run keeps."""
+    b = tables.browser_identities
+    kinds = ("project", "agent") if agents else ("project",)
+    return or_(b.c.owner_kind.in_(kinds), and_(b.c.owner_kind == "member", b.c.owner_id == user.user_id))
 
 
 async def resolve(
@@ -121,7 +144,10 @@ async def rerun_browser(conn: AsyncConnection, user: Principal, run_id: int, bod
     if ids:
         b = tables.browser_identities
         usable = select(b.c.worker_id).where(
-            b.c.id.in_(ids), b.c.deleted_at.is_(None), b.c.status != "disabled", _mine_or_project(user)
+            b.c.id.in_(ids),
+            b.c.deleted_at.is_(None),
+            b.c.status != "disabled",
+            _mine_or_project(user, agents=True),
         )
         workers = (await conn.execute(usable)).scalars().all()
         if len(workers) != len(set(ids)) or worker is None or {worker.id} != set(workers):

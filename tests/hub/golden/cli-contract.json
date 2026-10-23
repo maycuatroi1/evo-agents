@@ -2307,9 +2307,18 @@
           "repeatable": false,
           "choices": [
             "member",
-            "project"
+            "project",
+            "agent"
           ],
           "default": "member"
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         },
         {
           "flags": [
@@ -2344,6 +2353,8 @@
           "name",
           "owner",
           "owner_login",
+          "agent",
+          "agent_default",
           "domains",
           "login_url",
           "worker",
@@ -2382,7 +2393,8 @@
           "repeatable": false,
           "choices": [
             "member",
-            "project"
+            "project",
+            "agent"
           ]
         },
         {
@@ -2410,6 +2422,8 @@
           "name",
           "owner",
           "owner_login",
+          "agent",
+          "agent_default",
           "domains",
           "login_url",
           "worker",
@@ -2449,7 +2463,8 @@
           "repeatable": false,
           "choices": [
             "member",
-            "project"
+            "project",
+            "agent"
           ]
         },
         {
@@ -2477,6 +2492,8 @@
           "name",
           "owner",
           "owner_login",
+          "agent",
+          "agent_default",
           "domains",
           "login_url",
           "worker",
@@ -2515,7 +2532,8 @@
           "repeatable": false,
           "choices": [
             "member",
-            "project"
+            "project",
+            "agent"
           ]
         },
         {
@@ -2543,6 +2561,8 @@
           "name",
           "owner",
           "owner_login",
+          "agent",
+          "agent_default",
           "domains",
           "login_url",
           "worker",
@@ -2589,6 +2609,8 @@
           "name",
           "owner",
           "owner_login",
+          "agent",
+          "agent_default",
           "domains",
           "login_url",
           "worker",
@@ -2635,7 +2657,8 @@
           "repeatable": false,
           "choices": [
             "member",
-            "project"
+            "project",
+            "agent"
           ]
         },
         {
@@ -16857,7 +16880,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -17126,7 +17149,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -17607,7 +17630,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -18180,7 +18203,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -18245,7 +18268,7 @@
               }
             },
             "413": {
-              "description": "Request Entity Too Large",
+              "description": "Content Too Large",
               "content": {
                 "application/json": {
                   "schema": {
@@ -18255,7 +18278,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -18337,7 +18360,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -18444,7 +18467,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -18454,7 +18477,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -18811,7 +18834,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -18821,7 +18844,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -18923,7 +18946,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -18933,7 +18956,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19527,7 +19550,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19537,7 +19560,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19641,7 +19664,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19651,7 +19674,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19762,7 +19785,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19772,7 +19795,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -20039,7 +20062,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -20049,7 +20072,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -20223,7 +20246,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -20409,7 +20432,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -20419,7 +20442,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -20529,7 +20552,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -20539,7 +20562,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -21144,7 +21167,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21240,7 +21263,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21652,7 +21675,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21817,7 +21840,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21921,7 +21944,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -22027,7 +22050,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -22217,7 +22240,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -22397,7 +22420,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -22519,7 +22542,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -23193,7 +23216,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -23387,7 +23410,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -23540,7 +23563,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -23704,7 +23727,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -23963,7 +23986,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -24398,7 +24421,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -24538,7 +24561,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -25188,7 +25211,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25486,7 +25509,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25580,7 +25603,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -26476,7 +26499,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -26486,7 +26509,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -26594,7 +26617,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -26853,7 +26876,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "description": "Validation Error",
@@ -27221,7 +27244,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -27231,7 +27254,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -27418,7 +27441,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -27428,7 +27451,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27523,7 +27546,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27824,7 +27847,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -28171,7 +28194,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28273,7 +28296,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28379,7 +28402,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28485,7 +28508,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28589,7 +28612,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28693,7 +28716,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28706,7 +28729,7 @@
               "description": "Service Unavailable"
             },
             "413": {
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             }
           }
         }
@@ -28800,7 +28823,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -29185,7 +29208,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29280,7 +29303,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29398,7 +29421,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29503,7 +29526,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29608,7 +29631,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29728,7 +29751,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29844,7 +29867,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29956,7 +29979,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -30061,7 +30084,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "413": {
               "content": {
@@ -30071,7 +30094,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             }
           }
         }
@@ -30268,7 +30291,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -30370,7 +30393,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -30445,7 +30468,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -31756,7 +31779,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -31960,7 +31983,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -32055,7 +32078,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -32325,7 +32348,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -32672,7 +32695,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -33376,7 +33399,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -33386,7 +33409,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -33502,7 +33525,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -33512,7 +33535,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -33692,7 +33715,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -33702,7 +33725,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -33807,7 +33830,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -33817,7 +33840,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -34565,7 +34588,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -34575,7 +34598,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -34972,7 +34995,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -34982,7 +35005,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -35649,7 +35672,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "502": {
               "content": {
@@ -36179,7 +36202,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -36189,7 +36212,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -36525,7 +36548,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -36535,7 +36558,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -38335,7 +38358,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38559,7 +38582,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38710,7 +38733,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -39111,7 +39134,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39250,7 +39273,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39351,7 +39374,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39435,7 +39458,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39510,7 +39533,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39612,7 +39635,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39697,7 +39720,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39772,7 +39795,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39913,7 +39936,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39978,7 +40001,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -40060,7 +40083,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -40142,7 +40165,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -40271,7 +40294,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40486,7 +40509,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -40579,7 +40602,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40815,7 +40838,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40919,7 +40942,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41013,7 +41036,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41129,7 +41152,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41139,7 +41162,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -41247,7 +41270,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41257,7 +41280,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41381,7 +41404,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41391,7 +41414,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41516,7 +41539,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41526,7 +41549,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41655,7 +41678,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41665,7 +41688,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41828,7 +41851,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41838,7 +41861,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41950,7 +41973,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41960,7 +41983,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42072,7 +42095,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42082,7 +42105,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42194,7 +42217,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42204,7 +42227,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42326,7 +42349,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42336,7 +42359,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42458,7 +42481,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42468,7 +42491,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42603,7 +42626,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42613,7 +42636,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42758,7 +42781,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42768,7 +42791,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42903,7 +42926,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42913,7 +42936,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43056,7 +43079,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43066,7 +43089,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43188,7 +43211,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43198,7 +43221,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43330,7 +43353,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43340,7 +43363,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43462,7 +43485,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43472,7 +43495,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43582,7 +43605,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43592,7 +43615,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43708,7 +43731,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43718,7 +43741,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -43838,7 +43861,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43848,7 +43871,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43972,7 +43995,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43982,7 +44005,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44129,7 +44152,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44139,7 +44162,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44258,7 +44281,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44374,7 +44397,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44384,7 +44407,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44513,7 +44536,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44523,7 +44546,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44637,7 +44660,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44647,7 +44670,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -44765,7 +44788,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44775,7 +44798,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44895,7 +44918,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44905,7 +44928,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45047,7 +45070,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45057,7 +45080,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45187,7 +45210,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45197,7 +45220,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45338,7 +45361,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45348,7 +45371,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45458,7 +45481,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45468,7 +45491,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45588,7 +45611,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45598,7 +45621,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45718,7 +45741,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45728,7 +45751,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45858,7 +45881,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45868,7 +45891,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46011,7 +46034,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46021,7 +46044,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46158,7 +46181,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46168,7 +46191,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46278,7 +46301,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46288,7 +46311,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46398,7 +46421,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46408,7 +46431,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46522,7 +46545,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46532,7 +46555,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -46650,7 +46673,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46660,7 +46683,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46780,7 +46803,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46790,7 +46813,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46927,7 +46950,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46937,7 +46960,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47067,7 +47090,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47077,7 +47100,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47161,7 +47184,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47171,7 +47194,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47380,7 +47403,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47390,7 +47413,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -47498,7 +47521,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47508,7 +47531,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47621,7 +47644,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47631,7 +47654,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -47752,7 +47775,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47762,7 +47785,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47850,7 +47873,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47860,7 +47883,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -47952,7 +47975,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47962,7 +47985,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48050,7 +48073,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48060,7 +48083,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48183,7 +48206,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48193,7 +48216,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48316,7 +48339,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48326,7 +48349,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48459,7 +48482,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48469,7 +48492,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48574,7 +48597,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48584,7 +48607,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48694,7 +48717,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48704,7 +48727,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48873,7 +48896,7 @@
               }
             },
             "413": {
-              "description": "Request Entity Too Large",
+              "description": "Content Too Large",
               "content": {
                 "application/json": {
                   "schema": {
@@ -49200,7 +49223,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -49451,7 +49474,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -50805,7 +50828,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -50995,7 +51018,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -51089,7 +51112,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -51285,7 +51308,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -51295,7 +51318,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -51399,7 +51422,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -51609,7 +51632,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -51735,7 +51758,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -51844,7 +51867,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -52399,7 +52422,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -52505,7 +52528,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -52516,7 +52539,7 @@
             "browser"
           ],
           "summary": "List Browser Identities",
-          "description": "The project's identities and your own in it, never another member's; metadata only.",
+          "description": "The project's identities and your own in it, never another member's, and its agents' for an admin; metadata\nonly.",
           "operationId": "list_browser_identities_v1_projects__project__browser_identities_get",
           "parameters": [
             {
@@ -52593,7 +52616,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -52602,7 +52625,7 @@
             "browser"
           ],
           "summary": "Create Browser Identity",
-          "description": "Create an identity with no profile yet (version 0): your own with the writer role, or the project's as an\nadmin. It is logged in later, on its worker.",
+          "description": "Create an identity with no profile yet (version 0): your own with the writer role, or the project's or an\nagent's as an admin. It is logged in later, on its worker.",
           "operationId": "create_browser_identity_v1_projects__project__browser_identities_post",
           "parameters": [
             {
@@ -52685,7 +52708,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -52774,7 +52797,103 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}/default": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Default Browser Identity",
+          "description": "Make an agent's identity the one its profile hands to every run under it, in place of the one that was: an admin\nof the project. 409 for an identity no agent owns.",
+          "operationId": "default_browser_identity_v1_projects__project__browser_identities__identity_id__default_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -52880,7 +52999,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -52976,7 +53095,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -53072,7 +53191,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -53167,7 +53286,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -53262,7 +53381,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -53370,7 +53489,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -53500,7 +53619,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "413": {
               "content": {
@@ -53510,7 +53629,230 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the archive of the profile, as `evo_agents.hub.browser_archive.pack` makes it",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/browser-identities/login": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Open Local Login",
+          "description": "The identity, with its profile, for a login on this worker's own machine; created, held by this worker, when it\ndoes not exist yet.",
+          "operationId": "open_local_login_v1_worker_browser_identities_login_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLoginAsk"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LocalLogin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Content",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/browser-identities/{identity_id}/profile": {
+        "put": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Save Local Profile",
+          "description": "Seal the profile a login on the worker's machine leaves as the identity's next version.",
+          "operationId": "save_local_profile_v1_worker_browser_identities__identity_id__profile_put",
+          "parameters": [
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "a browser identity this worker logged in",
+                "title": "Identity Id"
+              },
+              "description": "a browser identity this worker logged in"
+            },
+            {
+              "name": "base_version",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "the version the login started from",
+                "title": "Base Version"
+              },
+              "description": "the version the login started from"
+            },
+            {
+              "name": "chromium_version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6}){0,3}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the worker's Chromium, as it says its version",
+                "title": "Chromium Version"
+              },
+              "description": "the worker's Chromium, as it says its version"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserProfileSaved"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
             }
           },
           "requestBody": {
@@ -53628,7 +53970,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -53735,7 +54077,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -53819,7 +54161,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -53914,7 +54256,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -55288,7 +55630,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -55298,7 +55640,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -55837,7 +56179,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -55922,7 +56264,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -56007,7 +56349,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -56092,7 +56434,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -56177,7 +56519,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -56262,7 +56604,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -56537,7 +56879,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -56547,7 +56889,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -56860,7 +57202,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -56966,7 +57308,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57072,7 +57414,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57168,7 +57510,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57424,7 +57766,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57610,7 +57952,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57936,7 +58278,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -58042,7 +58384,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -58290,7 +58632,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -58544,7 +58886,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -58971,7 +59313,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -59099,7 +59441,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -59193,7 +59535,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -59203,7 +59545,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -59360,7 +59702,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -59488,7 +59830,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -59661,7 +60003,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -59833,7 +60175,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -59917,7 +60259,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -59927,7 +60269,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -60217,7 +60559,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -60309,7 +60651,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -60406,7 +60748,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -60506,7 +60848,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -60598,7 +60940,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -60693,7 +61035,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -60859,7 +61201,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -61440,7 +61782,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -61636,7 +61978,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -67094,7 +67436,8 @@
               "type": "string",
               "enum": [
                 "member",
-                "project"
+                "project",
+                "agent"
               ],
               "title": "Owner"
             },
@@ -67108,7 +67451,24 @@
                 }
               ],
               "title": "Owner Login",
-              "description": "the member who owns it; null for the project's"
+              "description": "the member who owns it; null for the project's and an agent's"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile that owns it; null for a member's or the project's"
+            },
+            "agent_default": {
+              "type": "boolean",
+              "title": "Agent Default",
+              "description": "whether its agent profile hands it to every run under it"
             },
             "domains": {
               "items": {
@@ -67241,6 +67601,8 @@
             "name",
             "owner",
             "owner_login",
+            "agent",
+            "agent_default",
             "domains",
             "login_url",
             "worker",
@@ -67289,11 +67651,25 @@
               "type": "string",
               "enum": [
                 "member",
-                "project"
+                "project",
+                "agent"
               ],
               "title": "Owner",
-              "description": "member: yours alone (the writer role); project: the admins', usable by every writer",
+              "description": "member: yours alone (the writer role); project: the admins', usable by every writer; agent: an agent profile's (``agent``), the admins' to manage, which the profile hands to its runs",
               "default": "member"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile that owns it, @ left out; required for owner agent, refused otherwise. The first identity of a profile is the one it hands its runs"
             },
             "login_url": {
               "anyOf": [
@@ -81050,6 +81426,163 @@
             "options"
           ],
           "title": "LocalDecisionAsk"
+        },
+        "LocalLogin": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Domains",
+              "description": "the sites whose cookies the profile keeps, each with its subdomains; the worker drops every other cookie before it saves the profile"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "needs_login",
+                "disabled"
+              ],
+              "title": "Status"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version of the profile handed out, the base_version of its save; 0: none"
+            },
+            "chromium_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chromium Version",
+              "description": "the Chromium that saved it, as it said; null for none"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null too for a login session on another worker than the identity's (a Move)"
+            },
+            "login_url": {
+              "type": "string",
+              "title": "Login Url",
+              "description": "the page a login session opens: the identity's, else its first domain's"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "whether this login created the identity"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "name",
+            "domains",
+            "status",
+            "version",
+            "chromium_version",
+            "profile",
+            "login_url",
+            "project",
+            "created"
+          ],
+          "title": "LocalLogin"
+        },
+        "LocalLoginAsk": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project",
+              "description": "the project of the identity"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+              "title": "Name",
+              "description": "unique among its owner's live identities in the project"
+            },
+            "owner": {
+              "type": "string",
+              "enum": [
+                "member",
+                "project",
+                "agent"
+              ],
+              "title": "Owner",
+              "description": "whose identity: yours, the project's or an agent's",
+              "default": "member"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the agent's handle, for owner agent"
+            },
+            "domains": {
+              "items": {
+                "type": "string",
+                "maxLength": 253,
+                "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+                "description": "a host name in lower case, such as github.com"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Domains",
+              "description": "the sites a new identity keeps; needed to create one, else ignored",
+              "default": []
+            },
+            "login_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login Url",
+              "description": "of a new identity"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "name"
+          ],
+          "title": "LocalLoginAsk"
         },
         "LocalRegister": {
           "properties": {

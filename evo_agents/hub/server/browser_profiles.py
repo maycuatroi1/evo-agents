@@ -128,13 +128,15 @@ async def _forget(conn: AsyncConnection, *versions: tuple[str | None, int | None
         await blob_gc.forget(conn, blobs)
 
 
-def _refusal(row, base_version: int, run_id: int | None) -> str | None:
+def _refusal(row, base_version: int, run_id: int | None, unheld: bool = False) -> str | None:
     if row is None or row.deleted_at is not None:
         return "the browser identity is deleted"
     if row.version != base_version:
         return f"the browser identity is at version {row.version} now, not {base_version}"
     if run_id is not None and row.held_by_run != run_id:
         return f"run {run_id} does not hold the browser identity"
+    if unheld and row.held_by_run is not None:
+        return f"run {row.held_by_run} holds the browser identity"
     return None
 
 
@@ -151,18 +153,20 @@ async def save_profile(
     token_id: int | None,
     run_id: int | None = None,
     login_worker_id: int | None = None,
+    unheld: bool = False,
 ) -> int:
     """Seal ``archive`` as the version after ``base_version`` of identity ``identity_id`` and make it current; the
     new version. ``ProfileTooLarge``, or ``ProfileConflict`` when the identity is deleted, at another version, or not
     held by ``run_id`` when one is given; the version it has stays. A login session (``login_worker_id``, the worker it ran
-    on) also sets the identity active and on that worker."""
+    on) also sets the identity active and on that worker. ``unheld``: a save outside any run (a login on the worker's own
+    machine), refused while a run holds the identity."""
     version = base_version + 1
     profile = await asyncio.to_thread(seal_profile, sealer, identity_id, version, archive)
     await asyncio.to_thread(put_bytes, store, profile.sha256, profile.blob)
     b = tables.browser_identities
     async with engine.begin() as conn:
         row = await locked(conn, identity_id)
-        refusal = _refusal(row, base_version, run_id)
+        refusal = _refusal(row, base_version, run_id, unheld)
         if refusal is not None:
             await _forget(conn, (profile.sha256, profile.size))
         else:

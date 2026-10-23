@@ -135,6 +135,24 @@ async def pinned_with_identities(
     return ids, pinned
 
 
+async def with_profile_identity(
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    chosen: Chosen,
+    identities: list[int],
+    pinned: Pinned | None,
+) -> tuple[list[int], Pinned | None]:
+    """``identities`` and ``pinned`` as they are for a run under the agent profile ``chosen``: the identity the profile
+    hands its runs when the dispatch names none, with the run pinned to the worker that holds it."""
+    if identities:
+        return identities, pinned
+    ids, worker_id = await browsers.profile_default(conn, chosen.profile.id, pinned)
+    if ids and pinned is None:
+        pinned = await pinnable(conn, user, access, worker_id)
+    return ids, pinned
+
+
 async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | None:
     """Worker ``worker_id`` as its last heartbeat reported it, for a run the hub hands out itself in its owner's name
     (the Loop's, ``evo_agents.hub.server.loop.dispatch``): no check of who dispatches; None for no such worker."""
@@ -394,6 +412,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         picked = await _picked(conn, user, access, body.account, pinned)
         asked = Asked("step", body.runtime, body.model, pinned, _picks(picked))
         chosen = await choose(conn, user, access, body.profile, asked)
+        identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
         layer = await check_run_layer(conn, access.project_id, project, body.plugin_config)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
@@ -504,6 +523,11 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         chosen = await choose(
             conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
         )
+        if not identities:
+            identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
+            if identities:
+                browser = True
+                _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=True)
         values = {
             "kind": "plan",
             "project_id": access.project_id,

@@ -140,6 +140,7 @@ BROWSER_IDENTITY_LOGIN = (
 )
 BROWSER_IDENTITY_DISABLE = "browser_identity.disable"  # its member or an admin disabled it: no run attaches it
 BROWSER_IDENTITY_ENABLE = "browser_identity.enable"  # it was enabled again
+BROWSER_IDENTITY_DEFAULT = "browser_identity.default"  # an admin made it the identity its agent hands its runs
 BROWSER_IDENTITY_NEEDS_LOGIN = "browser_identity.needs_login"  # its profile did not open: it waits for a new login
 # The live view of a run's browser (evo_agents.hub.server.browser_view), in the run's project and the name of who
 # dispatched it; the target names the run as above, then "start", or "end=<how>" with the screen frames and events

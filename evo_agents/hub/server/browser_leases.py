@@ -195,7 +195,7 @@ async def usable_identity(conn: AsyncConnection, user: Principal, run_id: int, i
         raise HTTPException(
             409, f"run {run_id} does not hold browser identity {identity_id} on this worker: another run holds it"
         )
-    if not (identity.owner_kind == "project" or identity.owner_id == run.dispatched_by):
+    if not (identity.owner_kind in ("project", "agent") or identity.owner_id == run.dispatched_by):
         raise HTTPException(403, f"browser identity {identity_id} is another member's: run {run_id} may not open it")
     if identity.status == "disabled":
         raise HTTPException(403, f"browser identity {identity_id} is disabled: no run opens it")
