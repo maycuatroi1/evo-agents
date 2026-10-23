@@ -36,8 +36,18 @@ from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
-from tests.hub.test_ba_agent import agent_of, enable, granted, members, mention, running, tool  # noqa: F401
+from tests.hub.test_ba_agent import (  # noqa: F401
+    ADMIN_GRANT,
+    agent_of,
+    enable,
+    granted,
+    members,
+    mention,
+    running,
+    tool,
+)
 from tests.hub.test_chat_runs import chat_worker, created, ended, run_of
+from tests.hub.test_chats import OPEN_SINKS
 from tests.hub.test_plugin_points import tool_names
 from tests.hub.test_plugin_runtimes import set_plugins
 from tests.hub.test_runs import PROJECT
@@ -196,6 +206,48 @@ def test_strategist_type_makes_its_profile_with_the_pack_and_its_tools_show_only
     ):
         text, error = tool(client, members["other"], name, PROJECT, **arguments)
         assert error and f"calls {name}" in text and "only the agent of" in text, text
+
+
+def another_project(client, members, name: str) -> str:
+    """Project ``name``, owner its admin, with plugin canvas enabled; the path of its agent type strategist."""
+    body = {**credentials_api.registration(credentials_api.DISPATCHED), "sinks": OPEN_SINKS}
+    registered = client.put(f"/v1/projects/{name}", json=body, headers=members["admin"])
+    assert registered.status_code == 200, registered.text
+    grant = client.put(f"/v1/admin/projects/{name}/grants/{OWNER}", json=ADMIN_GRANT, headers=members["admin"])
+    assert grant.status_code == 200, grant.text
+    enabled = client.post(
+        f"/v1/projects/{name}/plugins/canvas/enable", json={"permissions": []}, headers=members["owner"]
+    )
+    assert enabled.status_code == 200, enabled.text
+    return f"/v1/projects/{name}/agent-types/canvas/strategist"
+
+
+def test_strategist_type_takes_a_handle_of_its_own_where_another_project_holds_the_templates(client, members):
+    owner = members["owner"]
+    enable(client, owner, "canvas")
+    assert enable_strategist(client, members)["handle"] == "strategist"
+    # the next project gets @strategist-<project>, since a handle is unique on the hub
+    lab = another_project(client, members, "northwind-lab")
+    taken = client.put(lab, json={"run_as": OWNER, "daily_usd": 5, "handle": "strategist"}, headers=owner)
+    assert taken.status_code == 409 and "@strategist, the handle" in taken.text, taken.text
+    typed = client.put(lab, json={"run_as": OWNER, "daily_usd": 5}, headers=owner)
+    assert typed.status_code == 200, typed.text
+    assert (typed.json()["handle"], typed.json()["enabled"]) == ("strategist-northwind-lab", True)
+    made = client.get("/v1/projects/northwind-lab/agents/strategist-northwind-lab", headers=owner).json()
+    assert (made["name"], made["instructions"]) == ("Strategist", STRATEGIST_INSTRUCTIONS)
+    # a handle never changes: a later enable names the profile's or none
+    renamed = client.put(lab, json={"run_as": OWNER, "daily_usd": 5, "handle": "planner"}, headers=owner)
+    assert renamed.status_code == 409 and "never changes" in renamed.text, renamed.text
+    again = client.put(lab, json={"run_as": OWNER, "daily_usd": 7, "handle": "strategist-northwind-lab"}, headers=owner)
+    assert again.status_code == 200 and again.json()["daily_usd"] == 7, again.text
+    # with both the template's and the project's taken, the admin names one
+    lumen = another_project(client, members, "lumen-lab")
+    held = {"handle": "strategist-lumen-lab", "name": "Someone else", "instructions": "x"}
+    assert client.post("/v1/projects/lumen-lab/agents", json=held, headers=owner).status_code == 201
+    refused = client.put(lumen, json={"run_as": OWNER, "daily_usd": 5}, headers=owner)
+    assert refused.status_code == 409 and "@strategist and @strategist-lumen-lab" in refused.text, refused.text
+    named = client.put(lumen, json={"run_as": OWNER, "daily_usd": 5, "handle": "lumen-strategist"}, headers=owner)
+    assert named.status_code == 200 and named.json()["handle"] == "lumen-strategist", named.text
 
 
 def test_strategist_tool_schemas_copy_the_plugins_names_and_leave_validated_out():
