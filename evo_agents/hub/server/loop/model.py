@@ -29,6 +29,13 @@ BRAINSTORM, USE_CASE, BUILD, DELIVER = KINDS
 CYCLES = ("business", "development")
 BUSINESS, DEVELOPMENT = CYCLES
 CYCLE_OF = {BRAINSTORM: BUSINESS, USE_CASE: BUSINESS, BUILD: DEVELOPMENT, DELIVER: DEVELOPMENT}
+# The kinds a core plugin's Loop rules make (extension point loop_rules): of cycle business, so they count against
+# ``loop.business.max_running`` with the core work items of that cycle. The routes and the web know the four of KINDS
+# alone: a work item of these kinds is read through its plugin until the Loop's pages show them.
+PLUGIN_KINDS = ("growth_idea", "growth_draft", "growth_publish", "growth_invite", "growth_review")
+CYCLE_OF.update(dict.fromkeys(PLUGIN_KINDS, BUSINESS))
+PLUGIN_OFF = "plugin_off"  # the cancelled reason of a plugin's work item whose plugin is off in the project
+PLUGIN_ENGINE = "plugin/{}"  # loop_items.engine of the work items a plugin's rules made
 
 STATES = ("queued", "running", "watching", "waiting_human", "done", "cancelled")
 QUEUED, RUNNING, WATCHING, WAITING_HUMAN, DONE, CANCELLED = STATES

@@ -254,12 +254,28 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `jobs` | `name`, `cron` | an async function of the `job` params | method `job` |
 | `events` | `name`, `on` | an async function of the `event` params | method `event` |
 | `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
+| `loop_rules` | `name`, `python`, `on`, `emits`, `schedule`, `kinds` (each `kind`, `run` `task` or `job`, `agent_type` for a task) | an async function of `{project, project_id, rule, event, now, items, goals}` that answers the work items and moves a rule of the Loop makes (section Loop rules) | (core only) |
 | `kg_sources` | `name` (at most one) | an async function of `{source, project}` that answers the kg/1 items and code patterns of the source `plugin.<id>` of each build of the project's knowledge graph, and optionally its cursor (`evo_agents.hub.kg_sources`). An item's label is its row's, as the hub stores labels: one naming another project in `projects` leaves the item out, and its `audience` is kept, so only a reader who is every principal of it sees the item | (core only) |
 | `pages` | `name`, `title`, `icon`, `menu`, `entry` (isolated) | a native page of the hub's web, at `/p/<project>/x/<id>/<name>` | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
 | `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
 | `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
 | `agent_packs` | `name`, `title`, `description` | a directory `packs/<name>/` of the bundle laid out as a Claude Code plugin, which an agent profile attaches at a version of the plugin; a plugin of the hub's image has no bundle to build it from | the same (section Agent packs) |
 | `agent_types` | `name`, `title`, `description`, `profile`, `packs`, `environment`, `jobs`, `events`, `pages` | a template of an agent profile with the plugin's own packs, environment, jobs, events and pages it uses, which a project enables and the plugin hands tasks to | the same (section Agent types) |
+
+**Loop rules** (`loop_rules`, version 1; core plugins only). A core plugin adds rules to the Loop beside the core table
+of `docs/loop.md`, never in its place. A rule names its handler (`python`), the events it reads (`on`: events of the hub,
+or `plugin.<id, - made _>.<name>` of its own, which the plugin records with `hub_events.own_kind` and `hub_events.record`
+and lists in `emits`), whether it also reads the clock (`schedule`), and the `kinds` of work items it makes (the growth
+kinds `growth_idea`, `growth_draft`, `growth_publish`, `growth_invite`, `growth_review`), each with `run`: `task` (a task
+run of the plugin's own agent type `agent_type`) or `job` (the plugin's own code does the work: the work item runs with
+no run of the hub, and the plugin moves it). The hub calls `handler(params, context)` for each event a project's Loop
+reads and on each tick, in a project that enabled the plugin, and takes `{"effects": [...]}` back: `work` (kind, key,
+detail, and the ancestors `goal_id`, `claim_id`, `parent_id`, `use_case`, `task_id`), `move` (one of the plugin's own work
+items to `queued`, `watching`, `waiting_human`, `done` or `cancelled`, with a reason of that state, or `failed` to count
+a failure) and `note`. Nothing else: the handler writes no row, and an effect that names a kind the rule did not declare,
+a work item of another plugin or an ancestor the project lacks is left out and logged. A plugin that makes signals
+writes them through the ingest key it holds, as any plugin does; the Loop's `via` values do not change. The manifest of
+a plugin without the point is read as before: the point is additive to seam plugin-v1.
 
 What a project does not enable is not there: every route, tool, job, event and channel of a plugin works in a project
 that enabled the plugin while the plugin is installed and turned on, and the hub checks it on each call, not once.

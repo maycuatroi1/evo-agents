@@ -46,9 +46,18 @@ def golden() -> dict:
     return json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
+PHRASES = {"Unprocessable Content": "Unprocessable Entity", "Content Too Large": "Request Entity Too Large"}
+
+
 def without_version(document: dict) -> dict:
-    """The OpenAPI document with the package version left out, so a release does not change the golden copy."""
-    return {**document, "info": {**document["info"], "version": "<version>"}}
+    """The OpenAPI document with the package version left out, so a release does not change the golden copy.
+
+    Python 3.13 renamed two HTTP status phrases that FastAPI copies into the document; they go back to the old
+    names so the golden copy holds on every supported Python."""
+    text = json.dumps({**document, "info": {**document["info"], "version": "<version>"}})
+    for new, old in PHRASES.items():
+        text = text.replace(new, old)
+    return json.loads(text)
 
 
 def run(*args: str):

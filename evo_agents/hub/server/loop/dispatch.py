@@ -10,6 +10,8 @@ transaction. The admission pass writes the rest: the work item running with its 
 - ``build``: an author run of the frame task, in Loop mode (``author.build_author_prompt``), its request the frame
   task, its child tasks as the plan's steps, the use case at its version, the claim and its test card
   (``texts.author_request``).
+- a kind of a core plugin's Loop rule (``model.PLUGIN_KINDS``): a task run of the plugin's own agent type, or none for
+  a work item the plugin's own job does (``plugin_rules.hand_out``).
 - ``deliver``: a plan run of the plan the build's author run wrote, over the repos of its steps not done.
 
 An author run and a plan run go to worker ``loop.worker``, pinned, in the name of the worker's owner, who must hold
@@ -36,9 +38,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
-from evo_agents.hub.server.loop import caps, texts
+from evo_agents.hub.server.loop import caps, plugin_rules, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker
-from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, USE_CASE, ItemView, View
+from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, PLUGIN_KINDS, USE_CASE, ItemView, View
 from evo_agents.hub.server.loop.runs_of import goal_owner
 from evo_agents.hub.server.repo_origins import repo_origins
 
@@ -249,6 +251,8 @@ async def hand_out(
         return await _author_run(conn, project_id, item, view, worker)
     if item.kind == DELIVER:
         return await _plan_run(conn, project_id, item, view, worker)
+    if item.kind in PLUGIN_KINDS:
+        return await plugin_rules.hand_out(conn, project_id, item)  # a core plugin's rule (extension point loop_rules)
     return None
 
 
