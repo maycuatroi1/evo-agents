@@ -43,11 +43,12 @@ def user_agent(version: str) -> str:
     return USER_AGENT.format(platform=PLATFORMS[system], major=version.split(".")[0])
 
 
-def flags(profile: Path, version: str, *, sandbox: bool, port: int = 0) -> list[str]:
+def flags(profile: Path, version: str, *, sandbox: bool, port: int = 0, headed: bool = False) -> list[str]:
     """The flags of every start of Chromium ``version`` on ``profile``, the same each time; ``port`` 0 lets Chromium
-    choose its DevTools port, and a restart that keeps the run's endpoint names the one it had."""
+    choose its DevTools port, and a restart that keeps the run's endpoint names the one it had. ``headed``: a window
+    on this machine's screen, for a person to sign in (``worker browser login``), never for a run."""
     found = [
-        "--headless=new",
+        *([] if headed else ["--headless=new"]),
         f"--user-data-dir={profile}",
         f"--remote-debugging-port={port}",
         "--password-store=basic",
@@ -95,6 +96,7 @@ def start(
     base_env: Mapping[str, str],
     log_path: Path,
     port: int = 0,
+    headed: bool = False,
 ) -> subprocess.Popen:
     """Start Chromium on ``profile`` (made 0700, its password manager off, the port file of a start before gone), in
     a session of its own, its output appended to ``log_path``."""
@@ -104,7 +106,7 @@ def start(
     (profile / PORT_FILE).unlink(missing_ok=True)
     with open(log_path, "ab") as log:
         return subprocess.Popen(
-            [str(executable), *flags(profile, version, sandbox=sandbox, port=port)],
+            [str(executable), *flags(profile, version, sandbox=sandbox, port=port, headed=headed)],
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=subprocess.STDOUT,
