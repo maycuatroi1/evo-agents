@@ -1,13 +1,15 @@
-"""``evo-agents hub marketing channels|add|check|posts|pause|resume|kill|login|browser-post``: the channels and posts of a project that enabled the
+"""``evo-agents hub marketing channels|add|check|posts|mode|pause|resume|kill|denylist|login|browser-post``: the channels and posts of a project that enabled the
 core plugin marketing, through its routes under ``/v1/x/marketing/<project>`` (``docs/marketing-plugin.md``). The
 plugin's code is ``evo_agents.core_plugins.marketing``, which this client never imports: it speaks HTTP only.
 
 ``channels --project X`` lists the accounts with their mode, breaker and health, ``add --project X --channel C
 --account A`` makes one (draft_only), ``check --project X [--channel-id ID]`` checks the health of one account or of
 every one (a read of the platform that posts nothing; an admin does), ``posts --project X`` the posts with the state
-and the reason of each (``--state`` narrows it). ``pause --project X CHANNEL_ID`` opens the breaker of one channel,
+and the reason of each (``--state`` narrows it). ``mode --project X CHANNEL_ID autonomous|draft_only`` switches an
+account (a member does, never an agent: the hub refuses a scoped token; a project account needs an admin). ``pause --project X CHANNEL_ID`` opens the breaker of one channel,
 ``resume --project X [CHANNEL_ID]`` closes it (an admin does; without an id it clears the kill switch of the project)
-and ``kill --project X`` stops every channel. ``--json`` prints what the hub answered. Standard library only.
+and ``kill --project X`` stops every channel. ``denylist --project X`` lists the terms, domains and people no post may
+name, ``--add KIND VALUE`` adds one and ``--remove ID`` removes one (an admin edits it). ``--json`` prints what the hub answered. Standard library only.
 """
 
 from __future__ import annotations
@@ -58,6 +60,8 @@ POST_KEYS = (
     "scheduled_at",
 )
 DONE_KEYS = ("ok",)
+DENY_KEYS = ("id", "kind", "value", "added_at")
+DENY_KINDS = ("term", "domain", "person")  # evo_agents.hub.tables_marketing.DENY_KINDS
 CHANNELS = (  # evo_agents.hub.tables_marketing.CHANNELS; the hub refuses any other
     "github",
     "hackernews",
@@ -172,6 +176,36 @@ def cmd_resume(args) -> int:
 
 
 @client_command
+def cmd_mode(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call("PUT", path(args.project, "channels", str(args.channel_id), "mode"), {"mode": args.mode})
+    if args.json:
+        print_json(found)
+    else:
+        print(f"Channel {found['id']} is {found['channel']} {found['account']} ({found['kind']}, {found['mode']})")
+    return 0
+
+
+@client_command
+def cmd_denylist(args) -> int:
+    hub, _ = signed_in()
+    if args.add:
+        found = hub.call("POST", path(args.project, "denylist"), {"kind": args.add[0], "value": args.add[1]})
+        return _done(args, found, f"Denied {args.add[0]} {args.add[1]}")
+    if args.remove is not None:
+        found = hub.call("DELETE", path(args.project, "denylist", str(args.remove)))
+        return _done(args, found, f"Entry {args.remove} is off the deny-list")
+    found = hub.call("GET", path(args.project, "denylist"))
+    if args.json:
+        print_json(found)
+        return 0
+    rows = [(d["id"], d["kind"], d["value"], d["added_at"][:16]) for d in found]
+    if rows:
+        table(("id", "kind", "value", "added"), rows)
+    return 0
+
+
+@client_command
 def cmd_kill(args) -> int:
     hub, _ = signed_in()
     found = hub.call("POST", path(args.project, "kill"), {"reason": args.reason})
@@ -207,6 +241,10 @@ def register_marketing(hsub) -> None:
     posts = command("posts", "the posts with their state and reason", cmd_posts)
     posts.add_argument("--state", choices=STATES, help="only posts in this state")
     json_option(posts, returns_array(*POST_KEYS, schema="MarketingPost"))
+    mode = command("mode", "switch an account to autonomous or draft_only (a member, never an agent)", cmd_mode)
+    mode.add_argument("channel_id", type=int, metavar="CHANNEL_ID")
+    mode.add_argument("mode", choices=("autonomous", "draft_only"), help="autonomous drafts only during the dry run")
+    json_option(mode, returns_object(*CHANNEL_KEYS, schema="MarketingChannel"))
     pause = command("pause", "open the breaker of one channel", cmd_pause, reason=True)
     pause.add_argument("channel_id", type=int, metavar="CHANNEL_ID")
     json_option(pause, returns_object(*DONE_KEYS, schema="MarketingDone"))
@@ -217,6 +255,13 @@ def register_marketing(hsub) -> None:
     json_option(resume, returns_object(*DONE_KEYS, schema="MarketingDone"))
     kill = command("kill", "stop every channel of the project", cmd_kill, reason=True)
     json_option(kill, returns_object(*DONE_KEYS, schema="MarketingDone"))
+    denylist = command("denylist", "the terms, domains and people no post may name (an admin edits it)", cmd_denylist)
+    edit = denylist.add_mutually_exclusive_group()
+    edit.add_argument(
+        "--add", nargs=2, metavar=("KIND", "VALUE"), help=f"deny a value; KIND is one of {', '.join(DENY_KINDS)}"
+    )
+    edit.add_argument("--remove", type=int, metavar="ID", help="remove the entry with this id")
+    json_option(denylist, returns_array(*DENY_KEYS, schema="MarketingDeny"))
     from evo_agents.hub.cli_marketing_browser import register_browser
 
     register_browser(msub, command)
