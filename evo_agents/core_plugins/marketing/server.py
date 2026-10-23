@@ -5,9 +5,10 @@ enabled it (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; 
 A member with a grant reads the channels and the status and sets the kill switch (``POST /kill``). A writer reads the
 posts and the deny-list, proposes a post through the gate (``POST /posts``), saves a draft (``POST /drafts``), reports a
 post (``POST /posts/{id}/report``, which opens the channel's breaker) and opens a breaker by hand. An admin makes a
-project account, switches its mode, edits the deny-list and closes a breaker or the kill switch (``resume``). A
-personal account is made by its owner, as draft_only, and only the owner switches it to autonomous, on facebook_profile
-and tiktok; no request made with the scope of an agent's run changes a mode.
+project account, switches its mode, checks the health of an account (``POST /channels/{id}/check``, a read that posts
+nothing), edits the deny-list and closes a breaker or the kill switch (``resume``). A personal account is made by its
+owner, as draft_only, and only the owner switches it to autonomous, on facebook_profile and tiktok; no request made
+with the scope of an agent's run changes a mode.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from evo_agents.core_plugins.marketing import (
     budget,
     campaign,
     flow,
+    health,
     registry,
     settings,
     store,
@@ -99,6 +101,10 @@ def _channel(row, logins: dict) -> MarketingChannel:
         paused_reason=row.paused_reason,
         autonomous_since=row.autonomous_since,
         session_state=row.session_state,
+        account_kind=row.account_kind,
+        health=row.health,
+        health_reason=row.health_reason,
+        health_checked_at=row.health_checked_at,
     )
 
 
@@ -287,6 +293,25 @@ async def set_session(
             raise store.MarketingError(403, "only the owner of the account or an admin says its session works")
         await store.update_channel(conn, row.id, session_state=body.state)
         await _audit(conn, user, access, f"marketing.session.{body.state}", f"channel:{row.id}")
+        fresh = await store.channel(conn, access.project_id, row.id)
+        return _channel(fresh, await _logins(conn, {fresh.owner_id} if fresh.owner_id else set()))
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/channels/{channel_id}/check", response_model=MarketingChannel)
+async def check_channel(request: Request, project: ProjectName, channel_id: ChannelId, user: CurrentUser):
+    """Check the health of an account: one read of the platform with its credential, or of its login session, that
+    posts nothing; the result stays on the channel. An admin does; the credential is in no answer and no audit."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        store.admin(access, "checking a channel")
+        row = await _found(conn, access, channel_id)
+        cfg = await settings.config(conn, request.app.state.config, project)
+        runtime = _runtime(request)
+        await health.run(conn, cfg, row, runtime.now(), runtime.transport)
+        await _audit(conn, user, access, "marketing.channel.check", f"channel:{row.id}")
         fresh = await store.channel(conn, access.project_id, row.id)
         return _channel(fresh, await _logins(conn, {fresh.owner_id} if fresh.owner_id else set()))
 

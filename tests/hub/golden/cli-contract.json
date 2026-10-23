@@ -6948,6 +6948,110 @@
         "schema": "ProjectLoop"
       }
     },
+    "hub marketing add": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--channel"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "github",
+            "hackernews",
+            "reddit",
+            "x",
+            "linkedin",
+            "viblo",
+            "facebook_page",
+            "facebook_profile",
+            "tiktok",
+            "facebook_group"
+          ]
+        },
+        {
+          "flags": [
+            "--account"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "project",
+            "personal"
+          ],
+          "default": "project"
+        },
+        {
+          "flags": [
+            "--adapter"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "api",
+            "browser"
+          ]
+        },
+        {
+          "flags": [
+            "--target"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "channel",
+          "account",
+          "kind",
+          "mode",
+          "adapter",
+          "owner",
+          "target",
+          "paused",
+          "paused_reason",
+          "autonomous_since",
+          "session_state",
+          "account_kind",
+          "health",
+          "health_reason",
+          "health_checked_at"
+        ],
+        "schema": "MarketingChannel"
+      }
+    },
     "hub marketing browser-post": {
       "positionals": [],
       "options": [
@@ -7011,7 +7115,62 @@
           "paused",
           "paused_reason",
           "autonomous_since",
-          "session_state"
+          "session_state",
+          "account_kind",
+          "health",
+          "health_reason",
+          "health_checked_at"
+        ],
+        "schema": "MarketingChannel"
+      }
+    },
+    "hub marketing check": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--channel-id"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "channel",
+          "account",
+          "kind",
+          "mode",
+          "adapter",
+          "owner",
+          "target",
+          "paused",
+          "paused_reason",
+          "autonomous_since",
+          "session_state",
+          "account_kind",
+          "health",
+          "health_reason",
+          "health_checked_at"
         ],
         "schema": "MarketingChannel"
       }
@@ -7095,7 +7254,11 @@
           "paused",
           "paused_reason",
           "autonomous_since",
-          "session_state"
+          "session_state",
+          "account_kind",
+          "health",
+          "health_reason",
+          "health_checked_at"
         ],
         "schema": "MarketingChannel"
       }
@@ -16592,7 +16755,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.38.3"
+      "version": "0.39.1"
     },
     "paths": {
       "/v1/health": {
@@ -45667,6 +45830,100 @@
               }
             }
           },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketingChannel"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/marketing/{project}/channels/{channel_id}/check": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Check Channel",
+          "description": "Check the health of an account: one read of the platform with its credential, or of its login session, that\nposts nothing; the result stays on the channel. An admin does; the credential is in no answer and no audit.",
+          "operationId": "check_channel_v1_x_marketing__project__channels__channel_id__check_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "channel_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Channel Id"
+              }
+            }
+          ],
           "responses": {
             "200": {
               "description": "Successful Response",
@@ -86162,6 +86419,41 @@
               "title": "Session State",
               "description": "none, ok or stale: whether the login session of a browser channel works",
               "default": "none"
+            },
+            "account_kind": {
+              "type": "string",
+              "title": "Account Kind",
+              "description": "project or personal: the same as kind"
+            },
+            "health": {
+              "type": "string",
+              "title": "Health",
+              "description": "unknown, ok, failing or n/a: the last health check, a read of the platform that posts nothing",
+              "default": "unknown"
+            },
+            "health_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Health Reason",
+              "description": "what the check read, or why it failed"
+            },
+            "health_checked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Health Checked At"
             }
           },
           "type": "object",
@@ -86176,7 +86468,10 @@
             "target",
             "paused",
             "paused_reason",
-            "autonomous_since"
+            "autonomous_since",
+            "account_kind",
+            "health_reason",
+            "health_checked_at"
           ],
           "title": "MarketingChannel"
         },

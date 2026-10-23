@@ -38,13 +38,17 @@ function channel(over: Partial<MarketingChannel>): MarketingChannel {
     paused_reason: null,
     autonomous_since: AT,
     session_state: "none",
+    account_kind: "project",
+    health: "unknown",
+    health_reason: null,
+    health_checked_at: null,
     ...over,
   };
 }
 
 const CHANNELS = [
   channel({}),
-  channel({ id: 2, channel: "x", account: "acme", paused: true, paused_reason: "Two failures in a row" }),
+  channel({ id: 2, channel: "x", account: "acme", paused: true, paused_reason: "Two failures in a row", health: "failing", health_reason: "no credential" }),
   channel({ id: 3, channel: "linkedin", account: "acme-page", adapter: "browser", session_state: "stale", mode: "draft_only" }),
 ];
 const STATUS: MarketingStatus = { project: PROJECT, killed: false, reason: null, channels: 3, open_breakers: 1, budget: MONTH };
@@ -121,6 +125,9 @@ describe("the marketing overview", () => {
     expect(rows).toHaveLength(3);
     expect(within(rows[1]).getByTestId("marketing-breaker-open")).toHaveTextContent("Two failures in a row");
     expect(within(rows[2]).getByTestId("marketing-session-stale")).toBeInTheDocument();
+    expect(within(rows[1]).getByTestId("marketing-health")).toHaveAttribute("data-health", "failing");
+    expect(within(rows[1]).getByTestId("marketing-health")).toHaveTextContent(/Lỗi.*no credential/);
+    expect(within(rows[0]).getByTestId("marketing-health")).toHaveTextContent("Chưa kiểm");
     expect(screen.queryByTestId("marketing-close-breaker")).toBeNull();
     fireEvent.click(screen.getByTestId("marketing-kill"));
     expect(screen.getByRole("alertdialog")).toHaveTextContent("Dừng mọi bài đăng trong dự án này?");
