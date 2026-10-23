@@ -7,10 +7,18 @@ import { CommandPaletteProvider } from "@/components/palette/palette-context";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 import { AppSidebar } from "./app-sidebar";
+import { parseNavGroups } from "./nav";
 import { ShortcutsProvider } from "./shortcuts";
 import { SiteHeader } from "./site-header";
 
-export function AppShell({ sidebarOpen, children }: { sidebarOpen: boolean; children: ReactNode }) {
+type Props = {
+  sidebarOpen: boolean;
+  /** The cookie of the sidebar's open folds, as the server read it; none before the visitor opens one. */
+  navGroups?: string;
+  children: ReactNode;
+};
+
+export function AppShell({ sidebarOpen, navGroups, children }: Props) {
   const t = useTranslations("app");
   return (
     <SidebarProvider defaultOpen={sidebarOpen}>
@@ -23,7 +31,7 @@ export function AppShell({ sidebarOpen, children }: { sidebarOpen: boolean; chil
           >
             {t("skipToContent")}
           </a>
-          <AppSidebar />
+          <AppSidebar openGroups={parseNavGroups(navGroups)} />
           {/* min-w-0: the inset is a flex item beside the sidebar, and without it a wide table's natural width would
               widen it, and <main> with it, past the screen. Tables scroll in their own region instead. */}
           <SidebarInset className="min-w-0">

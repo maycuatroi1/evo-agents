@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { HubAdmin, newAccount } from "./support/hub";
 import { apiOf } from "./support/memories";
+import { revealNavItem } from "./support/nav";
 import { enablePm, pmPath, seedPm } from "./support/pm";
 import { enableTasks } from "./support/srs";
 import { taskPath } from "./support/tasks";
@@ -33,6 +34,7 @@ test("PM daily shows only where a project enabled it: no menu item and a 404 els
   await enableTasks(me, project);
   await enablePm(me, project);
   await page.reload();
+  await revealNavItem(page, "nav-plugin-pm-daily");
   await page.getByTestId("nav-plugin-pm-daily").click();
   await expect(page).toHaveURL(pmPath(project));
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("PM daily");

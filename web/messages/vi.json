@@ -272,6 +272,14 @@
     "mergeQueuePolicy": "Policy",
     "org": "Sơ đồ tổ chức",
     "browser": "Trình duyệt"
+,
+    "groups": {
+      "delivery": "Bàn giao",
+      "improvement": "Cải tiến",
+      "knowledge": "Tri thức",
+      "apps": "Ứng dụng",
+      "settings": "Cài đặt"
+    }
   },
   "projectSwitcher": {
     "label": "Dự án",

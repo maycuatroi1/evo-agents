@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { cspSources } from "./support/csp";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
+import { revealNavItem } from "./support/nav";
 import { open } from "./support/plans";
 import { planRunUnderway, seedPlanRunPlan } from "./support/runs";
 
@@ -173,6 +174,7 @@ test.describe("shell", () => {
     await page.getByTestId("user-menu").click();
     await expect(page.getByTestId("user-role")).toHaveText("Quản trị viên hub");
     await page.keyboard.press("Escape");
+    await revealNavItem(page, "nav-admin");
     await page.getByTestId("nav-admin").click();
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.getByRole("heading", { level: 1, name: "Quản trị hub" })).toBeVisible();
@@ -223,34 +225,51 @@ test.describe("shell", () => {
       "nav-home",
       "nav-inbox",
       "nav-monitor",
+      "nav-chats",
       "nav-overview",
       "nav-decide",
       "nav-plans",
       "nav-runs",
       "nav-mergeQueue",
-      "nav-insights",
-      "nav-signals",
-      "nav-goals",
-      "nav-loop",
-      "nav-curator",
       "nav-releases",
-      "nav-browser",
+      "nav-goals",
+      "nav-signals",
+      "nav-loop",
+      "nav-insights",
+      "nav-curator",
       "nav-agents",
       "nav-memories",
       "nav-skills",
       "nav-kg",
+      "nav-browser",
       "nav-plugins",
-      "nav-chats",
-      "nav-org",
       "nav-workers",
-      "nav-secrets",
-      "nav-accounts",
+      "nav-org",
       "nav-myMemories",
       "nav-globalSkills",
+      "nav-secrets",
+      "nav-accounts",
     ];
-    await expect(sidebar.getByRole("link")).toHaveCount(expected.length);
-    const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
+    const links = sidebar.getByRole("link", { includeHidden: true });
+    await expect(links).toHaveCount(expected.length);
+    const order = await links.evaluateAll((items) => items.map((link) => link.getAttribute("data-testid")));
     expect(order).toEqual(expected);
+    // The areas opened less often sit in closed folds: the sidebar shows the daily ones and a row per fold.
+    await expect(sidebar.getByRole("link")).toHaveCount(13);
+    const folds = sidebar.locator('[data-testid^="nav-group-"]');
+    expect(await folds.evaluateAll((items) => items.map((fold) => fold.getAttribute("data-testid")))).toEqual([
+      "nav-group-delivery",
+      "nav-group-improvement",
+      "nav-group-knowledge",
+      "nav-group-settings",
+    ]);
+    await sidebar.getByTestId("nav-group-improvement").click();
+    await expect(sidebar.getByTestId("nav-curator")).toBeVisible();
+    // Kept open for the next page, rendered so by the server.
+    await page.reload();
+    await expect(sidebar.getByTestId("nav-group-improvement")).toHaveAttribute("aria-expanded", "true");
+    await sidebar.getByTestId("nav-group-improvement").click();
+    await expect(sidebar.getByTestId("nav-curator")).toBeHidden();
     await expect(page.getByTestId("brand")).toHaveText("Evo Agent Hub");
 
     // Inbox counts the open decision (attention), Runs the active run (running); both said in words.

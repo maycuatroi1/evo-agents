@@ -8,6 +8,7 @@ import { expect, isDeployed, test } from "./support/fixtures";
 import { HubAdmin, newAccount } from "./support/hub";
 import { seededKg } from "./support/kg";
 import { apiOf } from "./support/memories";
+import { revealNavItem } from "./support/nav";
 import {
   baEnds,
   baFinding,
@@ -63,6 +64,7 @@ test("SRS shows only where a project enabled it: no menu item, and its page and 
 
   await enableSrs(me, project);
   await page.reload();
+  await revealNavItem(page, "nav-plugin-srs-documents");
   await page.getByTestId("nav-plugin-srs-documents").click();
   await expect(page).toHaveURL(srsPath(project));
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("SRS");

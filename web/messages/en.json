@@ -272,6 +272,14 @@
     "mergeQueuePolicy": "Policy",
     "org": "Org chart",
     "browser": "Browser"
+,
+    "groups": {
+      "delivery": "Delivery",
+      "improvement": "Improvement",
+      "knowledge": "Knowledge",
+      "apps": "Apps",
+      "settings": "Settings"
+    }
   },
   "projectSwitcher": {
     "label": "Projects",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countText, HOME_NAV, HUB_NAV, isActive, PROJECT_NAV, projectHref } from "./nav";
+import { countText, HOME_NAV, HUB_NAV, isActive, NAV_GROUPS, navRows, parseNavGroups, PROJECT_NAV, projectHref } from "./nav";
 import { activeRunCount, fleetOf } from "./nav-counts";
 
 describe("nav", () => {
@@ -8,9 +8,9 @@ describe("nav", () => {
     const tagged = [...HOME_NAV, ...PROJECT_NAV, ...HUB_NAV].filter((item) => item.feature);
     expect(tagged.map((item) => [item.label, item.feature])).toEqual([
       ["monitor", "monitor"],
+      ["chats", "chats"],
       ["curator", "curator"],
       ["kg", "kg"],
-      ["chats", "chats"],
     ]);
   });
 
@@ -28,19 +28,79 @@ describe("nav", () => {
     expect(isActive("/p/demo", "/p/demo", true)).toBe(true);
   });
 
-  it("lists the groups in the kit's order, counting the inbox's decisions, the runs at work, the project's active runs and unread chats", () => {
+  it("lists the groups in the kit's order, counting the inbox's decisions, the runs at work, unread chats and the project's active runs", () => {
     expect(HOME_NAV.map((item) => [item.label, item.href, item.count ?? null])).toEqual([
       ["home", "/", null],
       ["inbox", "/inbox", "openDecisions"],
       ["monitor", "/monitor", "runningRuns"],
+      ["chats", "/chats", "unreadChats"],
     ]);
-    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "decide", "plans", "runs", "mergeQueue", "insights", "signals", "goals", "loop", "curator", "releases", "browser", "agents", "memories", "skills", "kg", "plugins"]);
+    expect(PROJECT_NAV.map((item) => [item.label, item.group ?? null])).toEqual([
+      ["overview", null],
+      ["decide", null],
+      ["plans", null],
+      ["runs", null],
+      ["mergeQueue", "delivery"],
+      ["releases", "delivery"],
+      ["goals", "improvement"],
+      ["signals", "improvement"],
+      ["loop", "improvement"],
+      ["insights", "improvement"],
+      ["curator", "improvement"],
+      ["agents", "knowledge"],
+      ["memories", "knowledge"],
+      ["skills", "knowledge"],
+      ["kg", "knowledge"],
+      ["browser", "knowledge"],
+      ["plugins", "apps"],
+    ]);
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
-    expect(HUB_NAV.map((item) => item.label)).toEqual(["chats", "org", "workers", "secrets", "accounts", "myMemories", "globalSkills", "admin"]);
-    expect(HUB_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([["chats", "unreadChats"]]);
+    expect(HUB_NAV.map((item) => [item.label, item.group ?? null])).toEqual([
+      ["workers", null],
+      ["org", null],
+      ["myMemories", null],
+      ["globalSkills", null],
+      ["secrets", "settings"],
+      ["accounts", "settings"],
+      ["admin", "settings"],
+    ]);
     expect(HUB_NAV.filter((item) => item.adminOnly).map((item) => item.label)).toEqual(["admin"]);
+  });
+
+  it("never folds an item with a count, and keeps the items of a fold next to each other", () => {
+    for (const list of [HOME_NAV, PROJECT_NAV, HUB_NAV]) {
+      expect(list.filter((item) => item.group && item.count)).toEqual([]);
+      const groups = list.map((item) => item.group ?? null);
+      for (const group of Object.keys(NAV_GROUPS)) {
+        const at = groups.flatMap((name, index) => (name === group ? [index] : []));
+        if (at.length) expect(at.at(-1)! - at[0] + 1).toBe(at.length);
+      }
+    }
+  });
+
+  it("rows a section: items on their own, a fold at its first item, and a fold of one as its item", () => {
+    const rows = navRows([
+      { id: 1 },
+      { id: 2, group: "delivery" as const },
+      { id: 3, group: "delivery" as const },
+      { id: 4 },
+      { id: 5, group: "apps" as const },
+    ]);
+    expect(rows).toEqual([
+      { kind: "item", item: { id: 1 } },
+      { kind: "group", group: "delivery", items: [{ id: 2, group: "delivery" }, { id: 3, group: "delivery" }] },
+      { kind: "item", item: { id: 4 } },
+      { kind: "item", item: { id: 5, group: "apps" } },
+    ]);
+  });
+
+  it("reads the open folds from the cookie, leaving out names it does not know", () => {
+    expect(parseNavGroups(undefined)).toEqual([]);
+    expect(parseNavGroups("")).toEqual([]);
+    expect(parseNavGroups(encodeURIComponent("apps,knowledge,apps,bogus"))).toEqual(["apps", "knowledge"]);
+    expect(parseNavGroups("%E0%A4%A")).toEqual([]);
   });
 
   it("writes a count up to 99, then 99+", () => {

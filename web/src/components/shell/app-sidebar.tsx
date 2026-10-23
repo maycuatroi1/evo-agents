@@ -1,14 +1,21 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { LucideIcon } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Fragment } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 import { HubMark } from "@/components/brand";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +29,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { browserApi } from "@/lib/api/browser";
 import { brandingQuery } from "@/lib/hub-settings";
 import { whoamiQuery } from "@/lib/queries";
@@ -33,16 +41,19 @@ import {
   HOME_NAV,
   HUB_NAV,
   isActive,
+  NAV_GROUPS,
   type NavCount,
-  type NavLabel,
+  type NavGroup,
+  navRows,
   PROJECT_NAV,
   projectHref,
   useNavShown,
+  writeNavGroups,
 } from "./nav";
 import { useNavCounts } from "./nav-counts";
-import { PluginNavItems } from "./plugin-nav";
+import { usePluginNavLinks } from "./plugin-nav";
 import { ProjectSwitcher, useSelectedProject } from "./project-switcher";
-import { NAV_SHORTCUTS, ShortcutKeys } from "./shortcuts";
+import { NAV_SHORTCUTS, ShortcutKeys, type ShortcutId } from "./shortcuts";
 import { UserMenu } from "./user-menu";
 
 /** The tone of each count: a person is needed (attention), an agent is working (running). */
@@ -60,14 +71,18 @@ const COUNT_DOT: Record<NavCount, string> = {
   unreadChats: "bg-attention-solid",
 };
 
-type ItemProps = {
-  label: NavLabel;
-  icon: LucideIcon;
+/** A link of the sidebar as it draws it: an area of nav.ts, or a page a plugin adds. */
+type NavLink = {
+  key: string;
+  testId: string;
+  name: string;
+  icon: ReactNode;
   href: Route;
   active: boolean;
+  shortcut?: ShortcutId;
   count?: NavCount;
   value: number | null;
-  onNavigate: () => void;
+  group?: NavGroup;
 };
 
 /**
@@ -76,27 +91,27 @@ type ItemProps = {
  * the link's name (browsers put a space between flex items, so the words are not left to the text content). An item
  * that G and a letter open shows those keys while the pointer is over it or it has keyboard focus (shell/shortcuts.tsx).
  */
-function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: ItemProps) {
+function NavItem({ link, onNavigate }: { link: NavLink; onNavigate: () => void }) {
   const t = useTranslations("nav");
-  const shortcut = NAV_SHORTCUTS[label];
+  const { count, value } = link;
   const shown = count !== undefined && value !== null && value > 0 ? value : null;
-  const name = count !== undefined && shown !== null ? `${t(label)}, ${t(`counts.${count}`, { count: shown })}` : undefined;
+  const name = count !== undefined && shown !== null ? `${link.name}, ${t(`counts.${count}`, { count: shown })}` : undefined;
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={active} tooltip={t(label)}>
+      <SidebarMenuButton asChild isActive={link.active} tooltip={link.name}>
         <Link
-          href={href}
-          aria-current={active ? "page" : undefined}
+          href={link.href}
+          aria-current={link.active ? "page" : undefined}
           aria-label={name}
           onClick={onNavigate}
-          data-testid={`nav-${label}`}
+          data-testid={link.testId}
           className="relative"
         >
-          <Icon aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">{t(label)}</span>
-          {shortcut ? (
+          {link.icon}
+          <span className="min-w-0 flex-1 truncate">{link.name}</span>
+          {link.shortcut ? (
             <ShortcutKeys
-              id={shortcut}
+              id={link.shortcut}
               className="hidden group-data-[collapsible=icon]:hidden! md:group-hover/menu-item:inline-flex md:group-has-[:focus-visible]/menu-item:inline-flex"
             />
           ) : null}
@@ -104,7 +119,7 @@ function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: 
             <>
               <span
                 aria-hidden="true"
-                data-testid={`nav-${label}-count`}
+                data-testid={`${link.testId}-count`}
                 className={cn(
                   "inline-flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1.25 text-[11px] leading-none font-medium tabular-nums group-data-[collapsible=icon]:hidden",
                   COUNT_TONE[count],
@@ -127,14 +142,111 @@ function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: 
   );
 }
 
+type FoldProps = {
+  group: NavGroup;
+  links: NavLink[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onNavigate: () => void;
+};
+
+/**
+ * A fold of the sidebar (nav.ts, NAV_GROUPS): a row with the fold's icon, label and a chevron that opens its items
+ * below, indented on a guide line. Closed while it holds the page shown, the row is marked as that page's. On the folded
+ * desktop sidebar the row is an icon that opens the items in a menu beside it, the page shown marked there. The items
+ * stay in the page while the fold is closed, hidden, so a page or a test can find each one.
+ */
+function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
+  const t = useTranslations("nav");
+  const { state, isMobile } = useSidebar();
+  const Icon = NAV_GROUPS[group];
+  const label = t(`groups.${group}`);
+  const holdsPage = links.some((link) => link.active);
+  const itemsId = useId();
+
+  if (state === "collapsed" && !isMobile) {
+    return (
+      <SidebarMenuItem data-nav-group={group}>
+        <DropdownMenu modal={false}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton isActive={holdsPage} data-testid={`nav-group-${group}`}>
+                  <Icon aria-hidden="true" />
+                  <span>{label}</span>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="right" align="center">
+              {label}
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent side="right" align="start" sideOffset={8} className="w-56">
+            <DropdownMenuLabel className="text-[11px] leading-4 font-semibold tracking-[0.06em] text-fg-subtle uppercase">
+              {label}
+            </DropdownMenuLabel>
+            {links.map((link) => (
+              <DropdownMenuItem key={link.key} asChild>
+                <Link
+                  href={link.href}
+                  aria-current={link.active ? "page" : undefined}
+                  onClick={onNavigate}
+                  data-testid={link.testId}
+                  className="cursor-pointer aria-[current=page]:bg-sidebar-accent aria-[current=page]:[&>svg:first-child]:text-brand"
+                >
+                  {link.icon}
+                  <span className="min-w-0 flex-1 truncate">{link.name}</span>
+                </Link>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    );
+  }
+
+  return (
+    <SidebarMenuItem data-nav-group={group}>
+      <SidebarMenuButton
+        type="button"
+        isActive={!open && holdsPage}
+        aria-expanded={open}
+        aria-controls={itemsId}
+        data-state={open ? "open" : "closed"}
+        onClick={() => onOpenChange(!open)}
+        data-testid={`nav-group-${group}`}
+      >
+        <Icon aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <ChevronRight
+          aria-hidden="true"
+          className="text-fg-subtle transition-transform duration-fast ease-standard group-data-[state=open]/menu-button:rotate-90 motion-reduce:transition-none"
+        />
+      </SidebarMenuButton>
+      {/* In the page while closed, hidden: the closed fold's links stay findable. */}
+      <div id={itemsId} hidden={!open}>
+        <SidebarMenu className="mt-px ml-4 w-auto gap-px border-l border-sidebar-border pl-2">
+          {links.map((link) => (
+            <NavItem key={link.key} link={link} onNavigate={onNavigate} />
+          ))}
+        </SidebarMenu>
+      </div>
+    </SidebarMenuItem>
+  );
+}
+
 /**
  * The sidebar of the kit's AppShell: the mark and name (the hub's branding's when it sets them), the project switcher,
- * Home and Inbox, the selected project's areas and the pages its plugins add, the hub's areas, then the fleet line and
- * the account at the foot.
- * An area whose feature a hub admin turned off, for the hub or the project shown, is left out. 240 px wide, folding
- * to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a sheet under 768 px.
+ * Home, Inbox, Monitor and Chats, the selected project's areas and the pages its plugins add, the hub's areas, then the
+ * fleet line and the account at the foot. An area whose feature a hub admin turned off, for the hub or the project
+ * shown, is left out. 240 px wide, folding to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a
+ * sheet under 768 px.
+ *
+ * The areas a visitor opens less often sit in folds (nav.ts, NAV_GROUPS). A fold is open while the visitor opened it
+ * (`openGroups`, from the cookie, kept as they change it) or while it holds the page shown, unless they closed it on
+ * that page; leaving the page closes a fold they did not open themselves, so the sidebar stays short.
  */
-export function AppSidebar() {
+export function AppSidebar({ openGroups = [] }: { openGroups?: readonly NavGroup[] }) {
   const t = useTranslations("nav");
   const tApp = useTranslations("app");
   const pathname = usePathname();
@@ -144,9 +256,79 @@ export function AppSidebar() {
   const { data: me } = useQuery(whoamiQuery(browserApi));
   const { data: branding } = useQuery(brandingQuery(browserApi));
   const shown = useNavShown();
+  const pluginLinks = usePluginNavLinks(project, pathname);
+  const [kept, setKept] = useState<ReadonlySet<NavGroup>>(() => new Set(openGroups));
+  const [shut, setShut] = useState<{ group: NavGroup; path: string } | null>(null);
   const closeOnMobile = () => {
     if (isMobile) setOpenMobile(false);
   };
+
+  const hubLink = (item: (typeof HUB_NAV)[number]): NavLink => ({
+    key: item.label,
+    testId: `nav-${item.label}`,
+    name: t(item.label),
+    icon: <item.icon aria-hidden="true" />,
+    href: item.href,
+    active: isActive(pathname, item.href, false),
+    shortcut: NAV_SHORTCUTS[item.label],
+    count: item.count,
+    value: item.count ? counts[item.count] : null,
+    group: item.group,
+  });
+  const homeLinks = HOME_NAV.filter((item) => shown(item)).map(hubLink);
+  const projectLinks: NavLink[] = project
+    ? PROJECT_NAV.filter((item) => shown(item, project)).flatMap((item) => {
+        const href = projectHref(project, item.segment);
+        const link: NavLink = {
+          key: item.label,
+          testId: `nav-${item.label}`,
+          name: t(item.label),
+          icon: <item.icon aria-hidden="true" />,
+          href,
+          active: isActive(pathname, href, item.segment === ""),
+          shortcut: NAV_SHORTCUTS[item.label],
+          count: item.count,
+          value: item.count ? counts[item.count] : null,
+          group: item.group,
+        };
+        // the pages the project's plugins add come after its own areas, before its Plugins, in its fold
+        if (item.label !== "plugins") return [link];
+        return [...pluginLinks.map((page) => ({ ...page, value: null, group: item.group })), link];
+      })
+    : [];
+  const hubLinks = HUB_NAV.filter((item) => (!item.adminOnly || me?.admin) && shown(item)).map(hubLink);
+
+  // The fold of the page shown; a plugin's page is known by its path before the plugins are read, so it renders open.
+  const pluginFold = PROJECT_NAV.find((item) => item.label === "plugins")?.group;
+  const pageFold =
+    [...projectLinks, ...hubLinks].find((link) => link.active && link.group)?.group ??
+    (project && pathname.startsWith(`${projectHref(project)}/x/`) ? pluginFold : undefined);
+  const isOpen = (group: NavGroup) =>
+    kept.has(group) || (group === pageFold && !(shut?.group === group && shut.path === pathname));
+  const setFold = (group: NavGroup, open: boolean) => {
+    const next = new Set(kept);
+    if (open) next.add(group);
+    else next.delete(group);
+    setKept(next);
+    writeNavGroups(next);
+    setShut(!open && group === pageFold ? { group, path: pathname } : null);
+  };
+
+  const rows = (links: NavLink[]) =>
+    navRows(links).map((row) =>
+      row.kind === "item" ? (
+        <NavItem key={row.item.key} link={row.item} onNavigate={closeOnMobile} />
+      ) : (
+        <NavFold
+          key={`group-${row.group}`}
+          group={row.group}
+          links={row.items}
+          open={isOpen(row.group)}
+          onOpenChange={(open) => setFold(row.group, open)}
+          onNavigate={closeOnMobile}
+        />
+      ),
+    );
 
   return (
     <Sidebar collapsible="icon" mobileTitle={t("label")} mobileDescription={tApp("description")}>
@@ -164,63 +346,16 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent className="px-3 py-1">
         <nav aria-label={t("label")} className="flex flex-col gap-3">
-          <SidebarMenu className="gap-px">
-            {HOME_NAV.filter((item) => shown(item)).map((item) => (
-              <NavItem
-                key={item.label}
-                label={item.label}
-                icon={item.icon}
-                href={item.href}
-                active={isActive(pathname, item.href, false)}
-                count={item.count}
-                value={item.count ? counts[item.count] : null}
-                onNavigate={closeOnMobile}
-              />
-            ))}
-          </SidebarMenu>
+          <SidebarMenu className="gap-px">{rows(homeLinks)}</SidebarMenu>
           {project ? (
             <SidebarGroup className="p-0">
               <SidebarGroupLabel>{t("project")}</SidebarGroupLabel>
-              <SidebarMenu className="gap-px">
-                {PROJECT_NAV.filter((item) => shown(item, project)).map((item) => {
-                  const href = projectHref(project, item.segment);
-                  return (
-                    <Fragment key={item.label}>
-                      {/* the pages the project's plugins add come after its own areas, before its Plugins */}
-                      {item.label === "plugins" ? (
-                        <PluginNavItems project={project} pathname={pathname} onNavigate={closeOnMobile} />
-                      ) : null}
-                      <NavItem
-                        label={item.label}
-                        icon={item.icon}
-                        href={href}
-                        active={isActive(pathname, href, item.segment === "")}
-                        count={item.count}
-                        value={item.count ? counts[item.count] : null}
-                        onNavigate={closeOnMobile}
-                      />
-                    </Fragment>
-                  );
-                })}
-              </SidebarMenu>
+              <SidebarMenu className="gap-px">{rows(projectLinks)}</SidebarMenu>
             </SidebarGroup>
           ) : null}
           <SidebarGroup className="p-0">
             <SidebarGroupLabel>{t("hub")}</SidebarGroupLabel>
-            <SidebarMenu className="gap-px">
-              {HUB_NAV.filter((item) => (!item.adminOnly || me?.admin) && shown(item)).map((item) => (
-                <NavItem
-                  key={item.label}
-                  label={item.label}
-                  icon={item.icon}
-                  href={item.href}
-                  active={isActive(pathname, item.href, false)}
-                  count={item.count}
-                  value={item.count ? counts[item.count] : null}
-                  onNavigate={closeOnMobile}
-                />
-              ))}
-            </SidebarMenu>
+            <SidebarMenu className="gap-px">{rows(hubLinks)}</SidebarMenu>
           </SidebarGroup>
         </nav>
       </SidebarContent>

@@ -291,6 +291,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | The viewer: previous, next; zoom out, in, fit; download; show in trace; delete; an HTML page's sandbox | `ChevronLeft`, `ChevronRight`; `ZoomOut`, `ZoomIn`, `Maximize2`; `Download`; `ListTree`; `Trash2`; `ShieldCheck` |
 | Notices, the kinds of notice a member turns off | `BellRing` |
 | Sidebar toggle | `PanelLeft` |
+| The sidebar's folds: Delivery, Improvement, Knowledge, Apps, Settings; a fold's chevron | `Ship`, `TrendingUp`, `BookMarked`, `LayoutGrid`, `Settings`; `ChevronRight` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
 ### Provider logos
@@ -495,10 +496,20 @@ Shared pieces built on them:
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
-  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
-  (Overview, Plans, Runs, Merge queue, Insights, Signals, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
-  and Plugins; section Plugins below), the hub (Workers, My memories, Shared
-  skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
+  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox, Monitor and Chats, the
+  current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases; Improvement: Goals,
+  Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Knowledge graph, Browser; Apps: the pages its
+  enabled plugins add and Plugins, section Plugins below), the hub (Workers, Org chart, My memories, Shared skills, then
+  the fold Settings: Secrets, Accounts, Administration for a hub admin), and at the foot the fleet line and the account.
+  A fold (`NAV_GROUPS`) keeps the areas opened less often under one row, so the sidebar fits a laptop screen: the
+  fold's icon, its label and a `ChevronRight` in `fg-subtle` that turns down while open (no turn under reduced motion),
+  its items below indented on a `sidebar-border` guide line. It opens on a click (a button with `aria-expanded`), by
+  itself while the page shown is one of its items, and stays as the visitor left it: the folds they opened are the
+  cookie `hub_nav_groups`, read by the server so the sidebar renders open as it was; one opened by the page shown closes
+  again once they leave it. Closed while it holds the page shown, its row is `surface-selected` with a `brand` icon. A
+  closed fold's links stay in the page, `hidden`. On the folded desktop sidebar a fold is its icon, and a click opens
+  its items in a menu to the right (the fold's name as an `overline` on top, the page shown `surface-selected`). A fold
+  left with one item shows it on its own row, and an item with a count never sits in a fold. Inbox counts the decisions
   and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
   of the grants (`counts.running` of `GET /v1/me/overview`, asked every 15 seconds while one runs) and Runs the project's
   active runs, both in `running` (`nav-counts.ts`, through the same queries as the bell, Home and the runs pages); a count is a round pill drawn for the eye, said in words to screen
@@ -784,7 +795,7 @@ Shared pieces built on them:
   and a wait of 12 hours or more for an idle moment (`attention`, `ClockAlert`). Each is a note above the cards and a
   pill beside the status in the list (`update-badge.tsx`; on a phone the icon alone after the name); a worker whose
   updates go as they should, an older daemon that says nothing of them, and a locked worker show neither.
-- `components/secrets`, the Secrets page (`/secrets`, in the sidebar's hub section after Workers): the head is the
+- `components/secrets`, the Secrets page (`/secrets`, first in the sidebar's Settings fold): the head is the
   title, the count as a tag and Add secret; its sub line says the secrets are the visitor's alone and no value comes
   back. The visitor's own secrets sit in a `DataCard` table sorted by name: the name in mono with the variable it sets
   or the https prefix and the user git sends as its second line, the kind as a tag (`Variable` or `GitBranch` and a
@@ -803,8 +814,8 @@ Shared pieces built on them:
   toast. A third kind, GitLab token for the hub (`forge`, `GitMerge`), is the token the merge queue drives merge
   requests with: its form asks for the URL prefix alone (never github.com), lists only the projects the visitor
   administers, names no worker (the row says "The hub alone"), needs an end day and takes one line.
-- `components/merge-queue`, a project's merge queue on GitLab (`/p/{project}/merge-queue`, in the sidebar's project
-  group after Runs, `GitMerge`; plan gitlab-merge-queue). Its head carries three tabs (`TabNav`): Queue, Figures and
+- `components/merge-queue`, a project's merge queue on GitLab (`/p/{project}/merge-queue`, first in the sidebar's
+  Delivery fold, `GitMerge`; plan gitlab-merge-queue). Its head carries three tabs (`TabNav`): Queue, Figures and
   Policy, the Queue tab counting what waits for an admin. Its queries live in `lib/merge-queue.ts` and its writes in
   `lib/use-merge-actions.ts`, since the Inbox answers the queue's notices too. The Queue (read every 15 seconds, the
   page's LiveIndicator query) puts an `attention` banner first for each repo whose breaker tripped (what tripped it,
@@ -835,7 +846,7 @@ Shared pieces built on them:
   `merge_paused`, `PowerOff`) carries its answer (`inbox/merge-notice.tsx`): OK or Faulty with a note, Approve release,
   Revert one of the suspects, Reset breaker, and the queue's link; once the queue says the question is answered, the
   notice says so instead.
-- `components/agents`, a project's Agents (`/p/{project}/agents`, in the sidebar's project group after Curator;
+- `components/agents`, a project's Agents (`/p/{project}/agents`, first in the sidebar's Knowledge fold;
   docs/hub.md, Agent profiles). An agent is drawn by `components/data/agent-avatar.tsx` (`AgentAvatar`): its uploaded
   image, or until there is one (and while it loads) the first letter of its name on its colour, in white or ink,
   whichever has the higher contrast on that colour (`inkOn` in `lib/agent-rules.ts`); round, as avatars are, and
@@ -873,7 +884,7 @@ Shared pieces built on them:
   under the list. The form repeats the hub's checks and shows them once Save was tried; an edit sends
   only what changed with `if_version`, and Save stays off until something did. The project's default agent shows only
   its name, description, colour and avatar, with a note that it keeps every permission and no instructions.
-- `components/chats`, group chats (`/chats` and `/chats/{id}`, first in the sidebar's hub group; docs/hub.md, Group
+- `components/chats`, group chats (`/chats` and `/chats/{id}`, in the sidebar's first group after Monitor; docs/hub.md, Group
   chats): people and the agents of projects in one conversation. One frame for the list and a chat
   (`app/(app)/chats/layout.tsx`, `chats-shell.tsx`), so the list keeps its place from chat to chat: from 1024 px one
   window tall, the list in a column of 19 rem (21 from 2xl) and the chat beside it, each scrolling on its own; below,
@@ -1440,7 +1451,7 @@ Shared pieces built on them:
     run in flight while following is the EmptyState; a failed first read is the error state; a tile whose run cannot
     be read says so with Try again. The hub serves HTTP/2, so a wall of streams shares one connection; the local web's
     HTTP/1.1 allows six per origin, which `e2e/monitor.spec.ts` keeps in mind.
-- `components/insights`, a project's Insights (`/p/{project}/insights`, in the sidebar's project group after Runs): the
+- `components/insights`, a project's Insights (`/p/{project}/insights`, in the sidebar's Improvement fold after Loop): the
   runs that ended on each UTC day of the last 7, 30 or 90 days, from `GET /v1/projects/{p}/runs/stats` (prefetched on the
   server for the range the URL names). The range is the kit's segmented control in one row under the page head, with
   the days it spans ("Oct 1 to Oct 7, UTC days"), kept in the URL (`?days=7`, `?days=90`, none for 30) through
@@ -1463,7 +1474,7 @@ Shared pieces built on them:
   inside its own focusable region of at most 352 px whose head stays in view. The charts are one chunk loaded with
   `next/dynamic` behind skeletons of the plot's height, so Recharts is in no page's first load. With no run ended in the
   range the cards give way to the EmptyState, with the runs page and, under 90 days, Show 90 days.
-- `components/curator`, a project's Curator (`/p/{project}/curator`, in the sidebar's project group after Insights;
+- `components/curator`, a project's Curator (`/p/{project}/curator`, in the sidebar's Improvement fold after Insights;
   G then C): one head on its three pages, "Curator" with the night shift's `StatusBadge` (`curator`), Pause (confirmed
   in `ConfirmAction`, since it cancels the runs queued) or Resume (the primary button while paused) for an admin or the
   schedule's owner, and one line naming the worker on duty, the member it runs as and the window, or who paused it;
@@ -1535,8 +1546,8 @@ Shared pieces built on them:
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
-- `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's project group after the
-  Curator; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused (`attention`), Run now
+- `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's Delivery fold after the
+  Merge queue; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused (`attention`), Run now
   (`Play`, busy while the hub reads GitHub; hidden while paused) and Pause (confirmed in `ConfirmAction`, since it
   cancels the release runs still queued and closes a cycle left idle) or Resume (the primary button while paused) for an
   admin of the project, and one line: the repo as an `Identifier` that opens on GitHub, the daily time and zone, the
@@ -1739,8 +1750,8 @@ Shared pieces built on them:
   Reject or Defer; for an overdue card a new deadline after today with Extend, or Retire); once approved, the snapshot
   lists each claim at its rev and status in effect with its hash. Readers see a note that they only read, and no
   control that writes.
-- `components/signals`, a project's Signals (`/p/{project}/signals?key=&tenant=&days=`, in the sidebar's project group
-  after Insights, `RadioTower`; docs/signals.md), the page the value check links from the evidence it writes. Its
+- `components/signals`, a project's Signals (`/p/{project}/signals?key=&tenant=&days=`, in the sidebar's Improvement fold
+  after Goals, `RadioTower`; docs/signals.md), the page the value check links from the evidence it writes. Its
   words are the `signals` namespace; the reads both it and the canvas pages make are `lib/signal-queries.ts`. The keys
   of the registry are one `DataCard` table: the key in mono opening its series, kind, source, what it measures and the
   latest value with its unit and time (one read of each key, its newest signal). A key's series heads with the key and
@@ -1812,7 +1823,8 @@ so the server renders a page the same way for everyone who has not picked a lang
    some of the page's queries before the page renders, and TanStack's would hold those back, so the server would
    send a skeleton; `e2e/server-render.spec.ts` checks Home, Workers and Runs); the client component reads with
    `useHubQuery` and renders through `QueryView`.
-3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts`, and its label under
+3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts` (with the `group` of the fold it
+   belongs in, next to that fold's other items, unless visitors open it every day), and its label under
    `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step). An area a hub
    admin may turn off (a feature `evo_agents.hub.features` declares, `FEATURE_IDS` in `lib/hub-settings.ts`) names its
    `feature` on the entry, which hides it from the sidebar and the palette, and its route segment gets a layout that
