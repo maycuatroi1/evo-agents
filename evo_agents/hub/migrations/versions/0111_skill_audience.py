@@ -1,7 +1,7 @@
 """Who a global skill is for: skills.audience.
 
-Revision ID: 0105
-Revises: 0104
+Revision ID: 0111
+Revises: 0110
 Create Date: 2026-10-22
 
 Plan autonomous-oss-growth, criterion a3 (``evo_agents.hub.server.skills`` describes the rule). A global skill is for
@@ -18,8 +18,8 @@ Going back drops the column: every member sees the skills that were for hub admi
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0105"
-down_revision = "0104"
+revision = "0111"
+down_revision = "0110"
 branch_labels = None
 depends_on = None
 

@@ -30,6 +30,7 @@ from evo_agents.hub import author, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -59,7 +60,7 @@ from evo_agents.hub.server.runs.service.profiles import (
     runtime_rule,
 )
 from evo_agents.hub.server.runs.service.views import current_plan, lost_here, run_view, steady, text_or_none
-from evo_agents.hub.server.runs.service.worker_fit import writes
+from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.run_environments import ContainerEnvironment
 from evo_agents.plugins.runtimes import AcpRuntime
@@ -269,15 +270,18 @@ def _claimable(
 
 def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
     """Whose queued runs worker ``worker_id`` of ``owner_id`` may take: its owner's alone; on a shared worker, also
-    those of another member who holds writer on the run's project now, none of the night shift's kinds
-    (``runs.CURATOR_KINDS``), and on any of them only while every run the worker holds is of the same member, so the
+    those of another member who holds writer on the run's project now and whom the units the worker is narrowed to
+    admit (``worker_fit.unit_admits``), none of the night shift's kinds (``runs.CURATOR_KINDS``), and on any of them only while every run the worker holds is of the same member, so the
     agents of two members never run side by side as the daemon's user (``docs/workers.md``, Shared workers)."""
     r = tables.runs
     if not shared:
         return r.c.dispatched_by == owner_id
     held = tables.runs.alias("held")
     member = and_(
-        r.c.dispatched_by != owner_id, writes(r.c.dispatched_by, r.c.project_id), r.c.kind.not_in(runs.CURATOR_KINDS)
+        r.c.dispatched_by != owner_id,
+        writes(r.c.dispatched_by, r.c.project_id),
+        unit_admits(worker_id, r.c.dispatched_by),
+        r.c.kind.not_in(runs.CURATOR_KINDS),
     )
     other = exists().where(
         held.c.worker_id == worker_id,
@@ -703,7 +707,16 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         own_home=await own_home(conn, run_id),
         origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
+        attachments=await _opening_files(conn, view),
+        chat_message_id=view.chat_message_id if view.kind == "chat" else None,
     )
+
+
+async def _opening_files(conn: AsyncConnection, view: Run) -> list:
+    """The files of the chat message that opened chat run ``view``; none for any other run."""
+    if view.kind != "chat" or view.chat_message_id is None:
+        return []
+    return (await attachment_store.of_messages(conn, [view.chat_message_id])).get(view.chat_message_id, [])
 
 
 async def _release_spec(conn: AsyncConnection, view: Run):

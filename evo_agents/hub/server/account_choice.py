@@ -1,18 +1,27 @@
 """Which of its owner's accounts a run gets for each variable (``docs/credentials.md``, section "Accounts"), chosen in
 the transaction of ``credentials.lease_credentials`` that leases them, while the run's row is locked.
 
-``choose_accounts`` takes the env secrets the run may be leased (``credentials._bound_secrets``: the owner's, bound to
-the run's project on any of their workers or on this one, live and not past their end; for a run of the Curator only
-those its charter lists) and gives back one for each variable:
+``choose_accounts`` takes the env secrets the run may be leased (``share_leases``: the owner's, bound to the run's
+project on any of their workers or on this one, live and not past their end, and those other members shared with the
+owner that their shares lend now; for a run of the Curator only those its charter lists) and gives back one for each
+variable:
 
 1. the account the run took already (run_accounts), the one its owner picked when dispatching it among them, or the
    one the run it resumes took, while it is still one of those secrets: a run keeps its account on every ask for its
    leases, whatever happened to the account since; else the secret of a lease the run holds for that variable;
 2. else among the accounts bound to this worker (for a run of the Curator: the accounts its charter lists), then
    among the others bound to the project, by the strategy of the owner's policy for the project
-   (``evo_agents.hub.accounts.pick``), skipping each account its owner paused or that cools down;
-3. else, when every account left cools down, the one whose cooldown ends first, and a ``system`` event of the run says
-   so; when every account is paused, none, and an event says that.
+   (``evo_agents.hub.accounts.pick``), skipping each account its owner paused or that cools down; then, the same way,
+   among the accounts shared with the owner (how ``shared``): the owner's own come first;
+3. else, when every account of the owner's left cools down, the one whose cooldown ends first, and a ``system`` event
+   of the run says so; when every account is paused, none, and an event says that.
+
+The accounts of an agent profile (``agent_accounts``) come in the same list, and ``credentials.survey_run`` leaves out
+of it every secret of the dispatcher for a variable the agent has an account for on this worker, so a variable's group
+is the agent's or the member's, never both. An agent's accounts are chosen by DEFAULT_POLICY (its strategy, cooldown,
+failover and ``max_failovers``), by the same tiers (all of them are bound to this worker), and fail over among the
+agent's accounts alone. Every account of the agent for a variable past its end (``ended``): the run gets none for it,
+and an event says so.
 
 Each event names an account by its secret's id, never its name: the run's log is read by every reader of the project.
 
@@ -53,6 +62,8 @@ class Secret(Protocol):
     kind: str
     env_var: str | None
     on_worker: bool
+    share_id: int | None  # the share another member lent it under; None for the owner's own
+    agent: str | None  # the handle of the agent profile that owns it; None for a member's
 
 
 class Run(Protocol):
@@ -145,11 +156,20 @@ def _candidate(secret: Secret, state: _State) -> Candidate:
 def _tiers(secrets: list[Secret], curator: bool) -> list[tuple[str, list[Secret]]]:
     if curator:
         return [("charter", secrets)]
-    return [("worker", [s for s in secrets if s.on_worker]), ("pool", [s for s in secrets if not s.on_worker])]
+    own = [s for s in secrets if s.share_id is None]
+    return [
+        ("worker", [s for s in own if s.on_worker]),
+        ("pool", [s for s in own if not s.on_worker]),
+        ("shared", [s for s in secrets if s.share_id is not None]),
+    ]
 
 
 def _fallback(env_var: str, secrets: list[Secret], states: dict[int, _State], strategy: str) -> _Choice:
-    """Nothing is ready: the account whose cooldown ends first, else none since every one is paused."""
+    """Nothing is ready: the owner's own account whose cooldown ends first, else none since every one is paused. An
+    account shared with the owner is never taken cooling: its owner's runs go first (``share_leases``)."""
+    secrets = [s for s in secrets if s.share_id is None]
+    if not secrets:
+        return _Choice(None, None, note=f"no account for {env_var} is ready: the run gets none")
     allowed = {c.id for c in usable([_candidate(s, states[s.id]) for s in secrets], strategy)}
     cooling = [s for s in secrets if s.id in allowed and not states[s.id].paused and states[s.id].cooling_until]
     if not cooling:
@@ -196,19 +216,36 @@ async def _record(
     await conn.execute(statement.on_conflict_do_update(index_elements=[ra.c.run_id, ra.c.env_var], set_=took))
 
 
-async def choose_accounts(conn: AsyncConnection, run: Run, secrets: list[Secret], held: set[int]) -> list[Secret]:
+async def _ended_event(conn: AsyncConnection, run: Run, env_var: str) -> None:
+    from evo_agents.hub.server.run_state import write_event  # it imports the routes that import this module
+
+    handle = getattr(run, "profile", None)
+    text = f"every account of agent @{handle} for {env_var} has ended: the run gets none, and not its dispatcher's"
+    await write_event(conn, run.id, {"text": text, "env_var": env_var, "secret_id": None})
+
+
+async def choose_accounts(
+    conn: AsyncConnection, run: Run, secrets: list[Secret], held: set[int], ended: tuple[str, ...] = ()
+) -> list[Secret]:
     """One env secret of ``secrets`` for each variable, by the variable's name, as the module says; ``held`` holds the
-    ids of the env secrets the run holds a lease of. Records each new choice and writes the run's events."""
+    ids of the env secrets the run holds a lease of, ``ended`` the variables whose accounts of the agent all ended.
+    Records each new choice and writes the run's events."""
     by_var: dict[str, list[Secret]] = {}
     for secret in sorted((s for s in secrets if s.kind == "env"), key=lambda s: s.name):
         by_var.setdefault(secret.env_var, []).append(secret)
-    if not by_var:
+    if not by_var and not ended:
         return []
-    states = await _lock_accounts(conn, [secret.id for group in by_var.values() for secret in group])
+    ids = [secret.id for group in by_var.values() for secret in group]
+    states = await _lock_accounts(conn, ids) if ids else {}
     kept = await _kept(conn, run.id)
-    context = ((await account_policy(conn, run.owner_id, run.project_id))["strategy"], run.curator is not None)
+    member = (await account_policy(conn, run.owner_id, run.project_id))["strategy"]
     chosen: list[Secret] = []
-    for env_var in sorted(by_var):
+    for env_var in sorted(set(by_var) | set(ended)):
+        if env_var not in by_var:  # every account of the agent for it has ended, and the dispatcher's is not leased
+            await _ended_event(conn, run, env_var)
+            continue
+        owned = by_var[env_var][0].agent is not None  # the agent's accounts follow DEFAULT_POLICY, never a member's
+        context = (DEFAULT_POLICY["strategy"] if owned else member, run.curator is not None and not owned)
         choice = _decide(env_var, by_var[env_var], states, kept.get(env_var), held, context)
         if choice.note is not None:
             from evo_agents.hub.server.run_state import write_event  # it imports the routes that import this module
@@ -273,13 +310,14 @@ async def _cool(conn: AsyncConnection, secret_id: int, until: datetime, reason: 
     return (await conn.execute(statement)).scalar_one()
 
 
-def _why_not(how: str | None, policy: dict, failovers: int) -> str | None:
+def _why_not(how: str | None, policy: dict, failovers: int, whose: str = "its owner's") -> str | None:
     if how == "manual":
         return "its account was picked by hand"
     if not policy["failover"]:
-        return "the owner's policy turns failover off"
+        policy_of = "the owner's" if whose == "its owner's" else whose  # the words a member's run always had
+        return f"{policy_of} policy turns failover off"
     if failovers >= policy["max_failovers"]:
-        return f"it failed over {failovers} times, the most its owner's policy allows"
+        return f"it failed over {failovers} times, the most {whose} policy allows"
     return None
 
 
@@ -290,8 +328,9 @@ async def fail_over(
     the run to another one of ``secrets`` when it may, as the module says. ``limit`` is (the reset the runtime gave or
     None, the cooldown's reason). A run that moved already answers the account it moved to, as a retry would."""
     resets_at, reason = limit
-    policy = await account_policy(conn, run.owner_id, run.project_id)
     own = [s for s in secrets if s.kind == "env" and s.env_var == env_var]
+    owned = any(s.id == current and s.agent is not None for s in own)  # an agent's accounts: DEFAULT_POLICY
+    policy = dict(DEFAULT_POLICY) if owned else await account_policy(conn, run.owner_id, run.project_id)
     states = await _lock_accounts(conn, [s.id for s in own] + [current])
     now = datetime.now(UTC)
     until = (
@@ -302,9 +341,9 @@ async def fail_over(
     others = [s for s in own if s.id != current]
     if failovers and taken != current and taken in {s.id for s in others}:
         return Failover(next(s for s in others if s.id == taken), failovers, until)
-    why = _why_not(how, policy, failovers)
+    why = _why_not(how, policy, failovers, "the default" if owned else "its owner's")
     if why is None:
-        for tier_how, tier in _tiers(others, run.curator is not None):
+        for tier_how, tier in _tiers(others, run.curator is not None and not owned):
             ready = [s for s in tier if not states[s.id].paused and states[s.id].cooling_until is None]
             found = pick([_candidate(s, states[s.id]) for s in ready], policy["strategy"])
             if found is not None:

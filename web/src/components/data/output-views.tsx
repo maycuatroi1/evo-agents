@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { type PointerEvent, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { baseName, type RunOutput } from "@/lib/outputs";
+import { baseName, type ViewedFile } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { Centered, NoPreview } from "./output-frame";
@@ -31,7 +31,7 @@ import { OutputText } from "./output-text";
 export const ZOOMS = [1, 1.5, 2, 3, 4];
 const SWIPE_PX = 48;
 
-type ViewProps = { output: RunOutput; zoom: number; onZoom: (zoom: number) => void; onSwipe: (step: number) => void };
+type ViewProps = { output: ViewedFile; zoom: number; onZoom: (zoom: number) => void; onSwipe: (step: number) => void };
 
 export function OutputView({ output, zoom, onZoom, onSwipe }: ViewProps) {
   const start = useRef<{ x: number; y: number } | null>(null);

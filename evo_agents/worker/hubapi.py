@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import random
+from collections.abc import Callable
 from urllib.parse import quote
 
 import aiohttp
@@ -30,6 +31,8 @@ from evo_agents.hub.runs import CLAIM_WAIT_SECONDS, PROTOCOL_HEADER, PROTOCOL_VE
 TIMEOUT = 30.0  # seconds for one call
 CLAIM_SLACK = 20.0  # seconds a claim may take beyond its wait
 UPLOAD_TIMEOUT = 300.0
+DOWNLOAD_TIMEOUT = 600.0  # seconds for the bytes of one file, at most 50 MiB
+CHUNK_BYTES = 256 * 1024
 USER_AGENT = f"evo-agents-worker/{__version__}"
 FIRST_DELAY = 1.0
 MOST_DELAY = 60.0
@@ -148,6 +151,10 @@ class WorkerHub:
             payload = None
         if status < 300:
             return payload
+        raise self._problem(method, path, status, payload, retry_after)
+
+    def _problem(self, method: str, path: str, status: int, payload, retry_after: float | None) -> HubProblem:
+        """The HubProblem of the hub's answer ``status`` with the decoded ``payload`` to ``method path``."""
         message = payload.get("message") if isinstance(payload, dict) else None
         code = payload.get("error") if isinstance(payload, dict) else None
         text = str(message or f"the hub at {self.url} answered HTTP {status} to {method} {path}")
@@ -163,7 +170,33 @@ class WorkerHub:
         else:
             problem = Refused(text, status, code, payload)
         problem.retry_after = retry_after
-        raise problem
+        return problem
+
+    async def download(self, path: str, write: Callable[[bytes], None], *, timeout: float = DOWNLOAD_TIMEOUT) -> None:
+        """GET the bytes of ``path`` and hand them to ``write`` chunk by chunk as they come, in at most ``timeout``
+        seconds, no chunk later than TIMEOUT after the one before; the same problems as ``call``. What ``write`` raises
+        ends the download."""
+        try:
+            async with self.session.get(
+                self.url + path,
+                headers={**self._headers(False), "Accept": "*/*"},
+                allow_redirects=False,
+                timeout=aiohttp.ClientTimeout(total=timeout, sock_read=TIMEOUT),
+            ) as response:
+                status = response.status
+                if status >= 300:
+                    raw = await response.read()
+                    try:
+                        payload = json.loads(raw) if raw else None
+                    except ValueError:
+                        payload = None
+                    raise self._problem("GET", path, status, payload, _retry_after(response.headers.get("Retry-After")))
+                async for chunk in response.content.iter_chunked(CHUNK_BYTES):
+                    write(chunk)
+        except TimeoutError:
+            raise Unreachable(f"no answer from {self.url} within {timeout:g}s") from None
+        except aiohttp.ClientError as exc:
+            raise Unreachable(f"cannot reach {self.url}: {type(exc).__name__}: {exc}") from None
 
     # The protocol
 
@@ -177,6 +210,10 @@ class WorkerHub:
     async def heartbeat(self, body: dict) -> dict:
         return await self.call("POST", "/v1/worker/heartbeat", body)
 
+    async def doctor(self, body: dict) -> dict:
+        """Send the findings of the machine's doctor (``evo_agents.worker.doctor_report``)."""
+        return await self.call("POST", "/v1/worker/doctor", body)
+
     async def report(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/state", body)
 
@@ -187,6 +224,11 @@ class WorkerHub:
         body = {} if ack is None else {"ack": ack}
         answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/inbox", body)
         return list(answer.get("messages") or []) if isinstance(answer, dict) else []
+
+    async def attachment(self, run_id: int, attachment_id: int, write: Callable[[bytes], None]) -> None:
+        """The bytes of a file a person attached to a message the run's agent may read, handed to ``write``."""
+        path = f"/v1/worker/runs/{int(run_id)}/attachments/{int(attachment_id)}/content"
+        await self.download(path, write)
 
     # The leases of a run (docs/credentials.md): the answer holds their values, which no caller logs
 

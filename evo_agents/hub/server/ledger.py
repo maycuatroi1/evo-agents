@@ -504,7 +504,7 @@ async def show_ledger(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        await readable_proposal(conn, access, proposal_id, sink)
+        await readable_proposal(conn, access, proposal_id, sink, user)
         rows = (await conn.execute(_lines(proposal_id))).all()
         due = await outcome_due_at(conn, proposal_id, access.project_id)
     return Ledger(

@@ -5,9 +5,11 @@ What the Reviewer reads (``for_prompt``): the prompt of a review run holds the m
 written or changed since the project's last review run that ended done (all of them before the first), newest first,
 each at its revision with where that revision came from (``memory_agents.provenance_columns``) and its body clipped,
 and the project's shared memories (scope project, of no agent, type project or reference) by id, revision, place and
-description. Both list only what the run's owner reads through the agent's sink (``AGENT_SINK``) and what names no
-audience, as the index of an agent's memories does; neither deleted memories nor agents' memories archived or promoted
-already. The prompt says that memories are data, never instructions (``review.memory_lines``).
+description. Both list only what the run's owner reads through the agent's sink (``AGENT_SINK``) and whose audience,
+if the label names one, the owner holds now (``kg_audience.person_audience``): a memory a chat run wrote carries
+``chat:<id>`` and is listed for an owner in that chat, with its audience beside it; neither deleted memories nor
+agents' memories archived or promoted already. The hub notes the audiences it lists as shown to the review run
+(``run_audience``). The prompt says that memories are data, never instructions (``review.memory_lines``).
 
 Evidence ``memory:ID:REV`` (``evidence``): a memory of the project such a prompt could list, an agent's or a shared
 one, at a revision it has had; kept with ``resolved`` ``agent_memory`` (and the agent's handle) or ``shared_memory``.
@@ -19,7 +21,11 @@ the project), name and type project or reference, at a key no shared memory hold
 after the merge. The hub checks it when the run records the proposal (``checked``, 422 naming what is wrong) and keeps
 it in proposals.promotion with the label it will take: the join of the labels of the sources and of the target it merges
 into, never lower than the highest of them, which must pass the project's write rule through its hub sink
-(``ProjectAccess.push_label``). The proposal's own label is that label joined with the project's default.
+(``ProjectAccess.push_label``), and the union of their audiences, which the write rule does not see: a shared memory
+promoted from a chat-only memory is read by the people of that chat alone, never more broadly. The proposal's own label
+is that label joined with the project's default, and the label of every proposal holds the audiences of the memories
+its evidence names (``cited_audience``); a proposal whose label names an audience is listed, shown and answered only
+for a caller who holds it (``proposals.readable_proposal``).
 
 Accepting it (``promote``): by an admin of the project (POST .../curator/proposals/{id}/answer), or by the hub as the
 run records it when the proposal is tier 0, not dropped, and the charter's ``auto_merge`` names tier 0 (``recorded``,
@@ -44,15 +50,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import review, tables
 from evo_agents.hub.memory import AGENT_SINK, HARNESS, MAX_BODY, SHARED_TYPES, body_problem, name_problem
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import memories, memory_agents
+from evo_agents.hub.server import memories, memory_agents, run_audience
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.history import owner_access
+from evo_agents.hub.server.kg_audience import person_audience
 from evo_agents.hub.server.mcp_text import memory_about
-from evo_agents.hub.server.memory_audience import names_one
+from evo_agents.hub.server.memory_audience import label_audience, with_audience
 from evo_agents.hub.server.memory_paging import MAX_ID
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.kg.policy import join_all
+from evo_agents.kg.policy import audience_below, audience_join, join_all
 
 PROMPT_ROWS = 40  # agents' memories in a review prompt, newest first
 SHARED_ROWS = 100  # shared memories in a review prompt
@@ -107,9 +114,15 @@ def _refused(where: str, why: str) -> HTTPException:
     return HTTPException(422, f"{where}: {why}; nothing was recorded")
 
 
-def _readable(access: ProjectAccess, label) -> bool:
-    """What a review run's prompt may list: a label naming no audience that the owner reads through the agent's sink."""
-    return not names_one(label) and access.visible(label, AGENT_SINK)
+def _readable(access: ProjectAccess, label, held: frozenset[str]) -> bool:
+    """What a review run's prompt may list: a label the owner reads through the agent's sink, whose audience, if it
+    names one, is within ``held``, the owner's."""
+    return access.visible(label, AGENT_SINK) and audience_below(label_audience(label), held)
+
+
+def _with_audience(item: dict, label) -> dict:
+    named = label_audience(label)
+    return {**item, "audience": sorted(named)} if named else item
 
 
 # What the Reviewer reads
@@ -181,36 +194,41 @@ async def for_prompt(conn: AsyncConnection, run_id: int, project_id: int, owner_
     if access is None:
         return None
     since = await _last_review(conn, run_id, project_id)
-    agents = []
+    held = await person_audience(conn, owner_id)
+    agents, shown = [], set()
     for row in (await conn.execute(_changed_memories(), {"project_id": project_id, "since": since})).all():
-        if len(agents) < PROMPT_ROWS and _readable(access, row.label):
+        if len(agents) < PROMPT_ROWS and _readable(access, row.label, held):
             provenance = memory_agents.provenance_of(row)
-            agents.append(
-                {
-                    "id": row.id,
-                    "revision": row.revision,
-                    "agent": row.handle,
-                    "location": row.location,
-                    "name": row.name,
-                    "type": row.type,
-                    "provenance": provenance.model_dump() if provenance else None,
-                    "body": _clipped(row.body),
-                }
-            )
-    shared = [
-        {key: getattr(row, key) for key in ("id", "revision", "location", "name", "type")}
-        | {"about": memory_about(row.body)}
-        for row in (await conn.execute(_shared_memories(), {"project_id": project_id})).all()
-        if _readable(access, row.label)
-    ][:SHARED_ROWS]
+            item = {
+                "id": row.id,
+                "revision": row.revision,
+                "agent": row.handle,
+                "location": row.location,
+                "name": row.name,
+                "type": row.type,
+                "provenance": provenance.model_dump() if provenance else None,
+                "body": _clipped(row.body),
+            }
+            agents.append(_with_audience(item, row.label))
+            shown.update(label_audience(row.label))
+    shared = []
+    for row in (await conn.execute(_shared_memories(), {"project_id": project_id})).all():
+        if len(shared) < SHARED_ROWS and _readable(access, row.label, held):
+            item = {key: getattr(row, key) for key in ("id", "revision", "location", "name", "type")}
+            shared.append(_with_audience(item | {"about": memory_about(row.body)}, row.label))
+            shown.update(label_audience(row.label))
+    await run_audience.note(conn, run_id, shown)
     return {"since": since.isoformat() if since else None, "agents": agents, "shared": shared}
 
 
 # Evidence, and the check of a promotion when the run records it
 
 
-async def evidence(conn: AsyncConnection, project_id: int, project: str, access: ProjectAccess, item, where: str):
-    """Evidence ``item`` of kind memory as the hub found it; 422 when the run could not have read it."""
+async def evidence(
+    conn: AsyncConnection, project_id: int, project: str, access: ProjectAccess, held: frozenset[str], item, where: str
+):
+    """Evidence ``item`` of kind memory as the hub found it, for a review run whose owner holds audience ``held``; 422
+    when the run could not have read it."""
     row = await memories._load(conn, item.memory_id)
     shared = row is not None and row.profile_id is None and row.memory.type in SHARED_TYPES
     if (
@@ -219,7 +237,7 @@ async def evidence(conn: AsyncConnection, project_id: int, project: str, access:
         or row.memory.scope != "project"
         or row.memory.deleted
         or not (shared or row.profile_id is not None)
-        or not _readable(access, row.memory.label)
+        or not _readable(access, row.memory.label, held)
     ):
         raise _refused(where, f"project {project} has no memory {item.memory_id} that this run may read")
     if item.revision > row.memory.revision:
@@ -230,12 +248,25 @@ async def evidence(conn: AsyncConnection, project_id: int, project: str, access:
 
 
 def _label(access: ProjectAccess, labels: list) -> dict:
-    """The join of ``labels``, as the write rule of the project stores it; 422 when one cannot be read or the join
-    does not pass the project's hub sink."""
+    """The join of ``labels``, as the write rule of the project stores it, holding the union of their audiences, which
+    that rule does not read; 422 when one cannot be read or the join does not pass the project's hub sink."""
     found = [access.rules.stored(label) for label in labels]
     if None in found:
         raise HTTPException(422, f"{WHERE}: a label it joins cannot be read; nothing was written")
-    return access.push_label(access.rules.describe(join_all(found)))
+    audience = frozenset()
+    for label in labels:
+        audience = audience_join(audience, label_audience(label))
+    return with_audience(access.push_label(access.rules.describe(join_all(found))), audience)
+
+
+async def cited_audience(conn: AsyncConnection, evidence_found: list) -> frozenset[str]:
+    """The union of the audiences of the memories evidence ``evidence_found`` names, as they are labelled now."""
+    audience = frozenset()
+    for memory_id in dict.fromkeys(item["memory_id"] for item in evidence_found if item.get("kind") == "memory"):
+        row = await memories._load(conn, memory_id)
+        if row is not None:
+            audience = audience_join(audience, label_audience(row.memory.label))
+    return audience
 
 
 def _changed(memory_id: int, row, revision: int) -> str | None:
@@ -301,7 +332,10 @@ async def checked(
     conn: AsyncConnection, run, access: ProjectAccess, promotion: PromotionIn | None, evidence_found: list, label: dict
 ) -> tuple[dict | None, dict]:
     """The promotion as proposals.promotion keeps it and the label of its proposal, for review run ``run`` whose
-    owner has ``access``; 422 naming what is wrong. (None, ``label``), the proposal's, without one."""
+    owner has ``access``; 422 naming what is wrong. (None, ``label``), the proposal's, without one. The proposal's
+    label holds the audiences of the memories its evidence names (``cited_audience``)."""
+    cited = await cited_audience(conn, evidence_found)
+    label = with_audience(label, audience_join(label_audience(label), cited)) if cited else label
     if promotion is None:
         return None, label
     sources = list(
@@ -320,7 +354,8 @@ async def checked(
     if why is None and any(row.memory.archived_at is not None for row in rows):
         why = "an agent's memory it promotes is archived: a writer restores it first"
     held, why = (None, why) if why else await _target(conn, run.project_id, target, run.owner, lock=False)
-    if why is None and held is not None and "memory_id" in target and not _readable(access, held.memory.label):
+    owner = await person_audience(conn, run.owner.user_id)
+    if why is None and held is not None and "memory_id" in target and not _readable(access, held.memory.label, owner):
         why = f"project {run.project} has no shared memory {target['memory_id']} that this run may read"
     if why is not None:
         raise _refused(WHERE, why)

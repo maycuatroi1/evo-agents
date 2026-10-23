@@ -125,7 +125,10 @@ TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
 TABLES |= pg.ORG_TABLES  # migration 0099
 TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
-TABLES |= pg.INVITE_TABLES  # migration 0104
+TABLES |= pg.SHARE_TABLES  # migration 0105
+TABLES |= pg.WORKER_SHARE_TABLES  # migration 0107
+TABLES |= pg.ATTACHMENT_TABLES  # migration 0109
+TABLES |= pg.INVITE_TABLES  # migration 0110
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -207,8 +210,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_forty_five_tables(hub_db):
-    assert len(TABLES) == 145  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_fifty_tables(hub_db):
+    assert len(TABLES) == 150  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2683,3 +2686,92 @@ def test_0100_keeps_the_questions_of_core_plugins_and_question_runs_and_going_ba
         with pytest.raises(errors.CheckViolation):  # the checks of schema 0099 are back
             conn.execute(insert(t.plugin_deliveries).values(delivery))
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0100") :]
+
+
+def test_0104_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_while_one_does(hub_db):
+    move_to(hub_db, "0103")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    s = t.secrets
+    mine = {"owner_id": ids["user"], "name": "claude-a", "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN"}
+    mine |= {"sealed": b"s" * 20, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s).values(mine))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0104")
+    with live.connect(hub_db) as conn:
+        profile = {"project_id": ids["project"], "handle": "auditor", "name": "Auditor", "color": "#475569"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        pid = conn.execute(insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id)).scalar_one()
+        agent = {"profile_id": pid, "name": "claude-a", "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN"}
+        agent |= {"sealed": b"s" * 20, "nonce": b"n" * 12, "key_id": "0123abcd"}
+        conn.execute(insert(s).values(agent))  # the member's secret of that name is another row
+        assert one(conn, select(func.count()).select_from(s).where(s.c.name == "claude-a")) == 2
+        for bad in (
+            insert(s).values({**agent, "owner_id": ids["user"]}),  # exactly one owner
+            insert(s).values({"name": "orphan", "kind": "env"}),
+            insert(s).values({**agent, "kind": "git", "name": "g"}),  # an agent's secret is env
+            insert(s).values(agent),  # unique by (profile, name) among the live ones
+            insert(s).values({**agent, "profile_id": pid + 1000, "name": "x"}),  # a profile that exists
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        gone = {"deleted_at": func.now(), "sealed": None, "nonce": None, "key_id": None}
+        conn.execute(update(s).values(gone).where(s.c.profile_id == pid))
+        conn.execute(insert(s).values(agent))  # a deleted one frees the name
+    with pytest.raises(RuntimeError, match=r"2 secret row\(s\) belong to agent profiles"):
+        move_to(hub_db, "0103", down=True)
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(s).where(s.c.profile_id.is_not(None)))
+    move_to(hub_db, "0103", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert "profile_id" not in columns(hub_db, "secrets")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0104") :]
+
+
+def test_0109_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_back_restores_them(hub_db):
+    move_to(hub_db, "0108")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        chat_id = _chat(conn, ids)
+        message = {"chat_id": chat_id, "seq": 1, "author_user_id": ids["user"], "body": "", "label": []}
+        with pytest.raises(errors.CheckViolation):  # no message without text before 0109
+            conn.execute(insert(t.chat_messages).values(message))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0109")
+    a, k = t.attachments, t.run_inbox_attachments
+    with live.connect(hub_db) as conn:
+        inbox_id = one(
+            conn, insert(t.run_inbox).values(run_id=run_id, sent_by=ids["user"], body="").returning(t.run_inbox.c.id)
+        )
+        message_id = one(conn, insert(t.chat_messages).values(message).returning(t.chat_messages.c.id))
+        upload = {"uploaded_by": ids["user"], "name": "notes.txt", "media_type": "text/plain", "size": 5}
+        upload |= {"sha256": "a" * 64}
+        to_run = one(conn, insert(a).values({**upload, "run_id": run_id, "inbox_id": inbox_id}).returning(a.c.id))
+        conn.execute(insert(a).values({**upload, "chat_id": chat_id, "chat_message_id": message_id}))
+        conn.execute(insert(k).values(inbox_id=inbox_id, attachment_id=to_run))
+        for bad in (
+            insert(a).values(**upload),  # a run or a chat
+            insert(a).values({**upload, "run_id": run_id, "chat_id": chat_id}),  # not both
+            insert(a).values({**upload, "chat_id": chat_id, "inbox_id": inbox_id}),  # an inbox row holds a run's file
+            insert(a).values({**upload, "run_id": run_id, "chat_message_id": message_id}),  # a message a chat's file
+            insert(a).values({**upload, "name": "", "run_id": run_id}),
+            insert(a).values({**upload, "sha256": "A" * 64, "run_id": run_id}),
+            insert(a).values({**upload, "size": 50 * 1024 * 1024 + 1, "run_id": run_id}),
+            insert(k).values(inbox_id=inbox_id, attachment_id=to_run),  # tied once
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    # Going back gives each empty body a placeholder and drops the files.
+    move_to(hub_db, "0108", down=True)
+    assert query(hub_db, select(t.run_inbox.c.body)) == [("(files)",)]
+    assert query(hub_db, select(t.chat_messages.c.body)) == [("(files)",)]
+    assert {"attachments", "run_inbox_attachments"}.isdisjoint(tables(hub_db))
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.run_inbox))
+        conn.execute(delete(t.chat_messages))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0109") :]

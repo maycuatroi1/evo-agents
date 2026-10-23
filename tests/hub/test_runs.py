@@ -1526,7 +1526,14 @@ def test_events_of_runs_that_ended_long_ago_are_pruned(client, hub, hub_db):
     )
     context = SimpleNamespace(additional_context={"hub": found})
     report_ = client.portal.call(queue.tasks[jobs.PRUNE_RUN_EVENTS].func, context)
-    assert report_ == {"deleted": 1, "days": 30, "tokens_dropped": 0, "tool_outputs": 0, "tool_output_bytes": 0}
+    assert report_ == {
+        "deleted": 1,
+        "days": 30,
+        "tokens_dropped": 0,
+        "tool_outputs": 0,
+        "tool_output_bytes": 0,
+        "attachments": 0,
+    }
     events = tables.run_events
     left = dict(sql(hub_db, select(events.c.run_id, func.count()).group_by(events.c.run_id)))
     assert left == {recent: 1, running: 1}

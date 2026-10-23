@@ -264,6 +264,7 @@ def create_app(config: HubConfig) -> FastAPI:
     )
 
     from evo_agents.hub.server import (
+        attachments,
         curator,
         decisions,
         digests,
@@ -298,6 +299,9 @@ def create_app(config: HubConfig) -> FastAPI:
         run_outputs.worker_router,
         output_content.router,  # their bytes
         output_content.chat_router,
+        attachments.router,  # the files people attach to messages (evo_agents.hub.attachments)
+        attachments.chat_router,
+        attachments.worker_router,
     ):
         app.include_router(routes)
 
@@ -314,6 +318,8 @@ def create_app(config: HubConfig) -> FastAPI:
         protection,
         replays,
         transcripts,
+        worker_doctor,
+        worker_shares,
     )
 
     for routes in (
@@ -334,6 +340,8 @@ def create_app(config: HubConfig) -> FastAPI:
         playbook.router,
         playbook.worker_router,
         org.router,  # the org chart (plan org-chart)
+        worker_shares.router,  # shared workers narrowed to units (plan credential-sharing)
+        worker_doctor.worker_router,  # the doctor reports of workers, which narrowing to units needs
     ):
         app.include_router(routes)
 
@@ -351,6 +359,8 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import (
         account_views,
         accounts,
+        agent_account_views,
+        agent_accounts,
         agent_packs,
         agent_profiles,
         agent_types,
@@ -363,6 +373,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_people,
         chat_read,
         chats,
+        credential_shares,
         credentials,
         features,
         goals,
@@ -385,12 +396,15 @@ def create_app(config: HubConfig) -> FastAPI:
 
     for routes in (
         secrets.router,
+        credential_shares.router,  # the shares of secrets and accounts
         run_leases.router,
         credentials.worker_router,
         accounts.router,
         account_views.router,
         rate_limits.worker_router,
         agent_profiles.router,
+        agent_accounts.router,
+        agent_account_views.router,
         agent_packs.router,
         agent_types.router,
         task_dispatch.router,

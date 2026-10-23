@@ -322,6 +322,9 @@ def _project_path(project: str) -> str:
     return f"/v1/projects/{quote(project, safe='')}"
 
 
+project_path = _project_path  # its public name (see the public names above)
+
+
 def _hub_sink(project: dict) -> str:
     sink = next((s for s in project["sinks"] if s["kind"] == "hub"), None)
     if sink is None:

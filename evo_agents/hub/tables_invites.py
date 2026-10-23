@@ -1,4 +1,4 @@
-"""The invite links of the hub (0104), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.invites``.
+"""The invite links of the hub (0110), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.invites``.
 
 A hub admin makes an invite link (``evo_agents.hub.server.invites``); a signed-in member accepts it once. Kind ``join``
 names a project, a role and a max level, and accepting it gives that grant. Kind ``register`` names none: accepting
@@ -33,7 +33,7 @@ def _when(name: str) -> Column:
 
 
 def invite_tables(metadata: MetaData) -> Table:
-    """invites (0104), added to ``metadata``."""
+    """invites (0110), added to ``metadata``."""
     return Table(
         "invites",
         metadata,

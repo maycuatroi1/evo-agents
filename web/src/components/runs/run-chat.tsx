@@ -1,45 +1,33 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ArrowUp, Bot, CircleCheck, FileText, MessageCircleOff, RotateCw, Square, User, WifiOff } from "lucide-react";
+import { ArrowRight, Bot, FileText, MessageCircleOff, RotateCw, Square, User, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type FormEvent, Fragment, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { InlineError, type WriteFailure } from "@/components/admin/notice";
+import type { WriteFailure } from "@/components/admin/notice";
+import { FileDropFrame } from "@/components/data/attachments";
+import { OutputStrip } from "@/components/data/output-strip";
 import { notify } from "@/components/feedback/toast";
 import { SafeMarkdown } from "@/components/memories/markdown";
 import { planHref } from "@/components/plans/links";
-import { shortcutText } from "@/components/shell/shortcuts";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { LOGIN_PATH } from "@/lib/config";
-import { isSendShortcut, useModifierKey } from "@/lib/keyboard";
+import { runFiles } from "@/lib/attachments";
+import type { ViewedFile } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { ChatStatusPill, Typing } from "./chat-parts";
 import { useRunFailure } from "./hooks";
-import {
-  type ChatMessage,
-  chatKey,
-  chatQuery,
-  finishChat,
-  MAX_MESSAGE_BYTES,
-  type Run,
-  runHref,
-  runKeys,
-  type RunChat,
-  sendRunMessage,
-} from "./queries";
+import { type ChatMessage, chatKey, chatQuery, finishChat, type Run, runHref, runKeys, type RunChat } from "./queries";
 import { ChatDecision, useChatDecisions } from "./run-decisions";
-import { chatDecisionSlots, chatEndable, chatReplyable, utf8Bytes } from "./run-model";
-
-/** The byte count shows once a reply passes this share of the limit. */
-const COUNT_FROM = 0.75;
+import { ChatReply } from "./run-composer";
+import { chatDecisionSlots, chatEndable, chatReplyable } from "./run-model";
 
 /**
  * The Chat tab of an author run (docs/workers.md, Author runs): the member's request, then the agent's messages and
@@ -93,7 +81,7 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
   const slots = chatDecisionSlots(data.messages, decisions.list);
   const card = (decision: (typeof decisions.list)[number]) => <ChatDecision key={decision.id} decision={decision} onSettled={decisions.keep} />;
   return (
-    <div
+    <FileDropFrame
       className={cn("flex min-w-0 flex-col", fill && "xl:min-h-0 xl:flex-1")}
       data-testid="run-chat"
       data-status={data.status}
@@ -129,7 +117,7 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
         {run.request ? <Message author="owner" name={t("request")} at={run.queued_at} text={run.request} testId="run-chat-request" /> : null}
         {data.messages.map((message, index) => (
           <Fragment key={`${message.run_id}:${message.seq}`}>
-            <ChatLine message={message} viewer={owner} asks={data.status === "waiting" && message.author === "agent" && index === data.messages.length - 1} />
+            <ChatLine project={run.project} message={message} viewer={owner} asks={data.status === "waiting" && message.author === "agent" && index === data.messages.length - 1} />
             {slots.after.get(index)?.map(card)}
           </Fragment>
         ))}
@@ -152,7 +140,7 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
           {t("readOnly", { login: data.owner })}
         </p>
       ) : null}
-    </div>
+    </FileDropFrame>
   );
 }
 
@@ -214,7 +202,7 @@ function PlanLink({ run, chat }: { run: Run; chat: RunChat }) {
   );
 }
 
-function ChatLine({ message, viewer, asks }: { message: ChatMessage; viewer: boolean; asks: boolean }) {
+function ChatLine({ project, message, viewer, asks }: { project: string; message: ChatMessage; viewer: boolean; asks: boolean }) {
   const t = useTranslations("runs.author.chat");
   const name = message.author === "agent" ? t("agent") : viewer ? t("you") : (message.login ?? t("owner"));
   return (
@@ -223,6 +211,7 @@ function ChatLine({ message, viewer, asks }: { message: ChatMessage; viewer: boo
       name={name}
       at={message.at}
       text={message.text}
+      files={runFiles(message.attachments, project, message.run_id, message.at)}
       testId={message.author === "agent" ? "run-chat-agent" : "run-chat-owner"}
       tag={asks ? <span className="text-xs font-medium text-attention" data-testid="run-chat-asks">{t("asks")}</span> : null}
     />
@@ -236,6 +225,7 @@ function Message({
   text,
   testId,
   tag = null,
+  files = [],
 }: {
   author: ChatMessage["author"];
   name: string;
@@ -243,8 +233,10 @@ function Message({
   text: string;
   testId: string;
   tag?: ReactNode;
+  files?: readonly ViewedFile[];
 }) {
   const format = useFormatter();
+  const tFiles = useTranslations("attachments");
   const agent = author === "agent";
   const date = new Date(at);
   return (
@@ -266,133 +258,22 @@ function Message({
           </time>
           {tag}
         </header>
-        <div className={cn("min-w-0 max-w-full rounded-md border px-3 py-2", agent ? "bg-card" : "border-brand/20 bg-surface-selected")}>
-          {agent ? (
-            <SafeMarkdown className="leading-[21px]" testId="run-chat-text">
-              {text}
-            </SafeMarkdown>
-          ) : (
-            <p className="text-sm whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]" data-testid="run-chat-text">
-              {text}
-            </p>
-          )}
-        </div>
+        {text || !files.length ? (
+          <div className={cn("min-w-0 max-w-full rounded-md border px-3 py-2", agent ? "bg-card" : "border-brand/20 bg-surface-selected")}>
+            {agent ? (
+              <SafeMarkdown className="leading-[21px]" testId="run-chat-text">
+                {text}
+              </SafeMarkdown>
+            ) : (
+              <p className="text-sm whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]" data-testid="run-chat-text">
+                {text}
+              </p>
+            )}
+          </div>
+        ) : null}
+        <OutputStrip outputs={files} label={tFiles("files")} className={cn(!agent && "justify-end")} testId="run-chat-files" />
       </div>
     </article>
-  );
-}
-
-/**
- * The owner's reply: the kit's Composer, posting to the run that takes the chat's next message (a parked run's reply
- * queues the run that resumes it). A blank reply or one over 8 KiB of UTF-8 is refused here; the hub's refusal shows
- * under the box.
- */
-function ChatReply({ project, chat }: { project: string; chat: RunChat }) {
-  const t = useTranslations("runs.author.chat.reply");
-  const format = useFormatter();
-  const ids = useId();
-  const failure = useRunFailure();
-  const modifier = useModifierKey();
-  const queryClient = useQueryClient();
-  const [text, setText] = useState("");
-  const [problem, setProblem] = useState<"blank" | "long" | null>(null);
-  const [error, setError] = useState<WriteFailure | null>(null);
-  const [sent, setSent] = useState(false);
-  const send = useMutation({
-    mutationFn: (message: string) => sendRunMessage(browserApi(), project, chat.run_id, message),
-    onError: (cause) => {
-      if (isApiError(cause) && cause.kind === "unauthorized") window.location.assign(LOGIN_PATH);
-      setError(failure(cause, t("conflict")));
-    },
-    onSuccess: () => {
-      setText("");
-      setSent(true);
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: runKeys.all(project) }),
-  });
-  const bytes = utf8Bytes(text);
-  const long = bytes > MAX_MESSAGE_BYTES;
-
-  const submit = (event?: FormEvent) => {
-    event?.preventDefault();
-    if (send.isPending) return;
-    setSent(false);
-    setError(null);
-    if (!text.trim()) return setProblem("blank");
-    if (long) return setProblem("long");
-    setProblem(null);
-    send.mutate(text);
-  };
-
-  const describedBy = [`${ids}-hint`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ");
-  return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-2 border-t px-4 pt-3 pb-4" aria-busy={send.isPending || undefined} data-testid="run-chat-reply">
-      <div
-        className={cn(
-          "rounded-md border border-input bg-card transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
-          problem && "border-danger-solid",
-        )}
-      >
-        <label htmlFor={`${ids}-text`} className="sr-only">
-          {t("label")}
-        </label>
-        <textarea
-          id={`${ids}-text`}
-          value={text}
-          rows={3}
-          placeholder={chat.status === "waiting" ? t("placeholderWaiting") : t("placeholderWorking")}
-          onChange={(event) => {
-            setText(event.target.value);
-            setProblem(null);
-            setSent(false);
-          }}
-          onKeyDown={(event) => {
-            if (isSendShortcut(event.nativeEvent)) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-          className="block max-h-60 min-h-[76px] w-full resize-y border-0 bg-transparent p-3 text-sm leading-5 text-foreground outline-none placeholder:text-fg-subtle focus-visible:outline-none max-sm:text-base"
-          aria-invalid={problem ? true : undefined}
-          aria-describedby={describedBy}
-          aria-keyshortcuts="Meta+Enter Control+Enter"
-          data-testid="run-chat-reply-text"
-        />
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t p-2">
-          <p id={`${ids}-hint`} className="min-w-0 flex-1 basis-48 pl-1 text-xs text-pretty text-fg-subtle">
-            {chat.status === "waiting" ? (chat.state === "parked" ? t("hintParked") : t("hintWaiting")) : t("hintWorking")}
-          </p>
-          <span aria-live="polite" className="text-xs font-medium text-success empty:hidden" data-testid="run-chat-reply-sent">
-            {sent ? (
-              <span className="inline-flex items-center gap-1.5">
-                <CircleCheck className="size-3.5 shrink-0" aria-hidden="true" />
-                {t("sent")}
-              </span>
-            ) : null}
-          </span>
-          {bytes >= MAX_MESSAGE_BYTES * COUNT_FROM ? (
-            <span className={cn("text-xs text-muted-foreground tabular-nums", long && "font-medium text-danger")}>
-              {t("bytes", { count: format.number(bytes), max: format.number(MAX_MESSAGE_BYTES) })}
-            </span>
-          ) : null}
-          <Button type="submit" size="sm" className="ml-auto shrink-0" busy={send.isPending} aria-keyshortcuts="Meta+Enter Control+Enter" data-testid="run-chat-send">
-            <ArrowUp aria-hidden="true" />
-            {send.isPending ? t("sending") : t("send")}
-            {modifier && !send.isPending ? (
-              <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70" aria-hidden="true">
-                {shortcutText("send", modifier)}
-              </Kbd>
-            ) : null}
-          </Button>
-        </div>
-      </div>
-      {problem ? (
-        <p id={`${ids}-problem`} className="text-xs font-medium text-danger" data-testid="run-chat-reply-problem">
-          {problem === "blank" ? t("blank") : t("long", { max: format.number(MAX_MESSAGE_BYTES) })}
-        </p>
-      ) : null}
-      {error ? <InlineError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}
-    </form>
   );
 }
 

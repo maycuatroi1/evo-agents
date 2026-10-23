@@ -47,6 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, tables
+from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.chat_agents import agent_run
 from evo_agents.hub.server.chat_runs import chat_run, run_clearers
@@ -55,6 +56,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_audience import note
 from evo_agents.hub.server.runs.models import RunId
+from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.kg.policy import DEFAULT_LEVELS
 from evo_agents.kg.serve import Session
@@ -97,6 +99,11 @@ class ReadMessage(BaseModel):
     run_id: int | None = Field(description="the run of an agent's message")
     sent_at: datetime
     body: str
+    attachments: list[Attachment] = Field(
+        default_factory=list,
+        description="the files its author attached to it; a run's agent fetches their bytes with GET "
+        "/v1/worker/runs/{id}/attachments/{aid}/content",
+    )
 
 
 class ChatReading(BaseModel):
@@ -210,6 +217,14 @@ def _author(row, profiles: dict) -> tuple[str, str]:
     return "hub", "hub"
 
 
+def _files(message: ReadMessage) -> str:
+    """The line that names the files of ``message``, after its body; nothing for a message without files."""
+    if not message.attachments:
+        return ""
+    named = "; ".join(f"{f.name} ({f.media_type}, {f.size} bytes, attachment {f.id})" for f in message.attachments)
+    return f"\n[files attached: {named}]"
+
+
 def _text(reading: ChatReading, anchor: int, whole: bool) -> str:
     title = f"chat #{reading.chat_id} {reading.title!r}"
     if whole:
@@ -222,7 +237,7 @@ def _text(reading: ChatReading, anchor: int, whole: bool) -> str:
     blocks = []
     for message in reading.messages:
         author = f"{message.author} (agent)" if message.author_kind == "agent" else message.author
-        shown = {"id": message.id, "author": author, "at": message.sent_at, "body": message.body}
+        shown = {"id": message.id, "author": author, "at": message.sent_at, "body": message.body + _files(message)}
         blocks.append(rules.render_message(shown, max(chats.MAX_MESSAGE_BYTES, len(message.body.encode()))))  # whole
     lines = [head, DATA_LINE, "", "# The chat's messages", "\n\n".join(blocks), "", "# End of the chat's messages"]
     if reading.more:
@@ -267,13 +282,14 @@ async def read(
     if not any(row.id == anchor.id for row in shown) and not (is_thread and shown):
         raise HTTPException(404, NOT_THERE.format(id=anchor.id))
     profiles = await profiles_by_id(conn, [row.author_profile_id for row in shown if row.author_profile_id])
+    files = await attachment_store.of_messages(conn, [row.id for row in shown])
     c = tables.chats
     title = (await conn.execute(select(c.c.title).where(c.c.id == anchor.chat_id))).scalar_one()
     reading = ChatReading(
         chat_id=anchor.chat_id,
         title=title,
         thread=root,
-        messages=[_message(row, profiles) for row in shown],
+        messages=[_message(row, profiles, files.get(row.id, [])) for row in shown],
         more=len(rows) > MAX_THREAD,
         text="",
     )
@@ -281,7 +297,7 @@ async def read(
     return reading, held(anchor.chat_id, [row.label for row in shown])
 
 
-def _message(row, profiles: dict) -> ReadMessage:
+def _message(row, profiles: dict, files: list) -> ReadMessage:
     kind, author = _author(row, profiles)
     return ReadMessage(
         id=row.id,
@@ -293,6 +309,7 @@ def _message(row, profiles: dict) -> ReadMessage:
         run_id=row.run_id,
         sent_at=row.created_at,
         body=row.body,
+        attachments=files,
     )
 
 

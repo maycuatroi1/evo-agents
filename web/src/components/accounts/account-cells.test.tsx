@@ -32,6 +32,8 @@ const ACCOUNT: Account = {
   cost_24h_usd: 0,
   cost_7d_usd: 0,
   held_by: [],
+  shares: [],
+  cost_by_principal: [],
 };
 
 describe("the state of an OAuth account", () => {

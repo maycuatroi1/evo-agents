@@ -13,6 +13,8 @@ import type { ApiSource } from "@/lib/queries";
 type Schemas = components["schemas"];
 export type Account = Schemas["Account"];
 export type AccountState = Account["state"];
+/** What an account of the visitor's and an account of an agent have in common: what the shared cells read. */
+export type AccountFigures = Omit<Account, "projects" | "auth" | "shares" | "cost_by_principal"> & Partial<Pick<Account, "auth">>;
 export type AccountUsage = NonNullable<Account["last_usage"]>;
 export type AccountChange = Schemas["AccountChange"];
 export type AccountPolicy = Schemas["AccountPolicy"];

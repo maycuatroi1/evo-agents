@@ -241,7 +241,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert all(printed[f"worker {name}"]["json"] is None for name in ("step", "ask", "notify"))
     read = printed["worker chat read"]
     assert [p["name"] for p in read["positionals"]] == ["message"] and read["json"] is None
-    assert [o["flags"] for o in read["options"]] == [["--thread"]]
+    assert [o["flags"] for o in read["options"]] == [["--thread"], ["--fetch"]]
 
 
 def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():
