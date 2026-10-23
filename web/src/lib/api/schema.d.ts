@@ -4241,6 +4241,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Probe
+         * @description One session's result of the probe run this worker holds, or why the probe is stale; with the run's key.
+         */
+        post: operations["report_probe_v1_worker_runs__run_id__probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/probe-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Probe Report
+         * @description The weekly report of the project's probes.
+         */
+        get: operations["probe_report_v1_projects__project__curator_probe_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/org": {
         parameters: {
             query?: never;
@@ -14026,15 +14066,16 @@ export interface components {
          * @description What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
          *     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
          *     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
-         *     head, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own
-         *     key (``evo_agents.hub.server.history``).
+         *     head, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own
+         *     key (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key
+         *     (``evo_agents.hub.server.probe_runs``).
          */
         CuratorSpec: {
             /**
              * Role
              * @enum {string}
              */
-            role: "reviewer" | "builder" | "judge" | "replay" | "history";
+            role: "reviewer" | "builder" | "judge" | "replay" | "history" | "probe";
             /**
              * Protected Paths
              * @description globs of the charter, repo:glob for one repo
@@ -14083,6 +14124,13 @@ export interface components {
              * @description a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); the daemon keeps it as a judge run's
              */
             history_key?: string | null;
+            /** @description a probe run's probe and change; null for any other run */
+            probe?: components["schemas"]["ProbeSpec"] | null;
+            /**
+             * Probe Key
+             * @description a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's
+             */
+            probe_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -14986,6 +15034,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Fix Of
+             * @description the change it says why this run proposed no fix of
+             */
+            fix_of?: number | null;
         };
         /** FindingIn */
         FindingIn: {
@@ -15009,6 +15062,11 @@ export interface components {
             body?: string | null;
             /** Evidence */
             evidence: components["schemas"]["EvidenceIn"][];
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
         };
         /** FindingList */
         FindingList: {
@@ -18772,7 +18830,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -19465,7 +19523,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -21283,6 +21341,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Replaces
+             * @description the probe, not reproduced two weeks in a row, this one replaced
+             */
+            replaces?: number | null;
         };
         /**
          * ProbeAdd
@@ -21314,6 +21377,24 @@ export interface components {
             /** Proposal Id */
             proposal_id?: number | null;
         };
+        /** ProbeArmCount */
+        ProbeArmCount: {
+            /**
+             * Runs
+             * @description the arm's sessions
+             */
+            runs: number;
+            /**
+             * Failed
+             * @description those whose verify did not pass
+             */
+            failed: number;
+            /**
+             * Recurrence
+             * @description 1 - pass^k of the arm; null without a session
+             */
+            recurrence: number | null;
+        };
         /**
          * ProbeEdit
          * @description What an admin changes of a probe: any of its repo, commit, task and verify, at least one.
@@ -21327,6 +21408,20 @@ export interface components {
             task?: string | null;
             /** Verify */
             verify?: string | null;
+        };
+        /**
+         * ProbeFix
+         * @description A proposal that fixes the rule of a change whose probe recurs (criterion a5).
+         */
+        ProbeFix: {
+            /** Proposal Id */
+            proposal_id: number;
+            /** Change Id */
+            change_id: number;
+            /** Title */
+            title: string;
+            /** State */
+            state: string;
         };
         /**
          * ProbeIn
@@ -21382,6 +21477,51 @@ export interface components {
              */
             model?: string | null;
         };
+        /**
+         * ProbeReplacement
+         * @description A probe a review run wrote in place of one not reproduced two weeks in a row (criterion a5).
+         */
+        ProbeReplacement: {
+            /** Probe Id */
+            probe_id: number;
+            /**
+             * Replaces
+             * @description the probe it replaced, now retired
+             */
+            replaces: number;
+            /** Change Id */
+            change_id: number | null;
+            /** State */
+            state: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ProbeReport
+         * @description A session's result with the commits the arms run from; or why the change's diff no longer comes off the tip of
+         *     the default branch (``stale``).
+         */
+        ProbeReport: {
+            /**
+             * Base Sha
+             * @description the task's base commit the sessions start at
+             */
+            base_sha?: string | null;
+            /**
+             * Harness Sha
+             * @description the tip of the default branch of the change's repo arm on runs with
+             */
+            harness_sha?: string | null;
+            session?: components["schemas"]["ProbeSession"] | null;
+            /**
+             * Stale
+             * @description why arm off cannot be made: the probe is stale for the week
+             */
+            stale?: string | null;
+        };
         /** ProbeRetire */
         ProbeRetire: {
             /**
@@ -21389,6 +21529,119 @@ export interface components {
              * @description why it is retired
              */
             note?: string | null;
+        };
+        /** ProbeRun */
+        ProbeRun: {
+            /** Id */
+            id: number;
+            /** Probe Id */
+            probe_id: number;
+            /** Change Id */
+            change_id: number;
+            /**
+             * Week
+             * Format: date
+             * @description the Monday of the ISO week, in the charter's time zone
+             */
+            week: string;
+            /** Runtime */
+            runtime: string;
+            /** Model */
+            model: string | null;
+            /**
+             * K
+             * @description the sessions of each arm
+             */
+            k: number;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "stale" | "failed" | "unmeasured";
+            /** Attempts */
+            attempts: number;
+            /** Base Sha */
+            base_sha: string | null;
+            /** Harness Sha */
+            harness_sha: string | null;
+            /**
+             * Sessions
+             * @description ProbeSession, in the order they were reported
+             */
+            sessions: {
+                [key: string]: unknown;
+            }[];
+            /** Reason */
+            reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProbeSession
+         * @description One session of a probe run: its arm, which of the arm's k it is, whether the probe's verify passed on its work,
+         *     and what the agent took, on the runtime and the model it actually ran.
+         */
+        ProbeSession: {
+            /**
+             * Arm
+             * @description on: the change's rule in place; off: the change's diff taken off
+             * @enum {string}
+             */
+            arm: "on" | "off";
+            /**
+             * Index
+             * @description which of the arm's k sessions, from 1
+             */
+            index: number;
+            /**
+             * Passed
+             * @description the probe's verify exited 0 on the session's work
+             */
+            passed: boolean;
+            /**
+             * Exit Code
+             * @description the verify's; null when it did not run
+             */
+            exit_code?: number | null;
+            /**
+             * Cost Usd
+             * @description the agent's session; null when its runtime names none
+             */
+            cost_usd?: number | null;
+            /** Turns */
+            turns?: number | null;
+            /**
+             * Duration Ms
+             * @description the agent's time
+             */
+            duration_ms: number;
+            /**
+             * Runtime
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description the model the session ran on, as its runtime said it
+             */
+            model?: string | null;
+            /**
+             * Agent Error
+             * @description why its turn ended short
+             */
+            agent_error?: string | null;
+            /** Session Id */
+            session_id?: string | null;
         };
         /**
          * ProbeSettings
@@ -21412,6 +21665,208 @@ export interface components {
              * @description the most the probe runs of an ISO week in the charter's time zone cost; null: no probes run
              */
             budget_usd?: number | null;
+        };
+        /**
+         * ProbeSpec
+         * @description What the worker of a probe run is told (``evo_agents.hub.server.probe_runs``): the probe, the change whose rule
+         *     its arms put on and take off, and the sessions of each arm.
+         */
+        ProbeSpec: {
+            /** Probe Run Id */
+            probe_run_id: number;
+            /** Probe Id */
+            probe_id: number;
+            /**
+             * Repo
+             * @description the repo of the probe's task
+             */
+            repo: string;
+            /**
+             * Base Sha
+             * @description the task's base commit; null: the default branch's tip at made_at
+             */
+            base_sha: string | null;
+            /**
+             * Made At
+             * Format: date-time
+             * @description when the probe was made
+             */
+            made_at: string;
+            /**
+             * Task
+             * @description the only text the agent of a session is given
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line the worker runs on each session's work; never shown the agent
+             */
+            verify: string;
+            /**
+             * K
+             * @description the sessions of each arm
+             */
+            k: number;
+            /**
+             * Week
+             * Format: date
+             * @description the Monday of the ISO week the run measures
+             */
+            week: string;
+            /**
+             * Change Repo
+             * @description the repo of the change, which holds its rule
+             */
+            change_repo: string;
+            /**
+             * Merge Sha
+             * @description the change's merge commit; null: its head against the default branch
+             */
+            merge_sha: string | null;
+        };
+        /**
+         * ProbeUnprobed
+         * @description A merged change born of a correction that has no active probe.
+         */
+        ProbeUnprobed: {
+            /** Change Id */
+            change_id: number;
+            /** Proposal Id */
+            proposal_id: number;
+            /** Title */
+            title: string;
+            /** Merged At */
+            merged_at: string | null;
+            /** Reason */
+            reason: string;
+        };
+        /** ProbeWeek */
+        ProbeWeek: {
+            /**
+             * Week
+             * Format: date
+             * @description the Monday of the ISO week, in the charter's time zone
+             */
+            week: string;
+            /**
+             * Complete
+             * @description false for the week in progress
+             */
+            complete: boolean;
+            /**
+             * Cost Usd
+             * @description what the week's probe runs cost
+             */
+            cost_usd: number;
+            /**
+             * Budget Usd
+             * @description the charter's probes.budget_usd; null: the project runs no probe
+             */
+            budget_usd: number | null;
+            /** Probes */
+            probes: components["schemas"]["ProbeWeekResult"][];
+            totals: components["schemas"]["ProbeWeekTotals"];
+        };
+        /**
+         * ProbeWeekResult
+         * @description One probe on one runtime and model in a week.
+         */
+        ProbeWeekResult: {
+            /** Change Id */
+            change_id: number;
+            /** Probe Id */
+            probe_id: number;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Model
+             * @description null: the runtime's own choice
+             */
+            model: string | null;
+            /**
+             * K
+             * @description the sessions of each arm; null when the week queued none
+             */
+            k: number | null;
+            /** @description the change's rule in place */
+            on: components["schemas"]["ProbeArmCount"];
+            /** @description the change's diff taken off */
+            off: components["schemas"]["ProbeArmCount"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "holds" | "recurring" | "not_reproduced" | "stale" | "unmeasured";
+            /**
+             * Previous
+             * @description the status of the week before; null when it had none
+             */
+            previous: ("holds" | "recurring" | "not_reproduced" | "stale" | "unmeasured") | null;
+            /**
+             * Reason
+             * @description why it is stale or unmeasured
+             */
+            reason: string | null;
+            /**
+             * Run Id
+             * @description the probe run that measured it last
+             */
+            run_id: number | null;
+        };
+        /** ProbeWeekTotals */
+        ProbeWeekTotals: {
+            /**
+             * Probes
+             * @description the results of the week
+             */
+            probes: number;
+            /** Holds */
+            holds: number;
+            /** Recurring */
+            recurring: number;
+            /** Not Reproduced */
+            not_reproduced: number;
+            /** Stale */
+            stale: number;
+            /** Unmeasured */
+            unmeasured: number;
+            on: components["schemas"]["ProbeArmCount"];
+            off: components["schemas"]["ProbeArmCount"];
+        };
+        /** ProbeWeekly */
+        ProbeWeekly: {
+            /** Project */
+            project: string;
+            /**
+             * K
+             * @description the charter's probes.k
+             */
+            k: number;
+            /**
+             * Budget Usd
+             * @description the charter's probes.budget_usd per ISO week; null: no probes
+             */
+            budget_usd: number | null;
+            /**
+             * Weeks
+             * @description the newest first
+             */
+            weeks: components["schemas"]["ProbeWeek"][];
+            /**
+             * Unprobed
+             * @description merged changes born of a correction without an active probe
+             */
+            unprobed: components["schemas"]["ProbeUnprobed"][];
+            /**
+             * Fixes
+             * @description the fix proposals of recurring probes, with their state
+             */
+            fixes: components["schemas"]["ProbeFix"][];
+            /**
+             * Replacements
+             * @description the probes written in place of probes not reproduced two weeks in a row
+             */
+            replacements?: components["schemas"]["ProbeReplacement"][];
         };
         /** Problem */
         Problem: {
@@ -22008,6 +22463,11 @@ export interface components {
              * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
              */
             revert_of?: number | null;
+            /**
+             * Fix Of
+             * @description the merged change whose rule it fixes: its probe recurred two weekly reports in a row
+             */
+            fix_of?: number | null;
             /** Summary */
             summary: string | null;
             /** Paths */
@@ -22135,6 +22595,11 @@ export interface components {
             promotion?: components["schemas"]["PromotionIn"] | null;
             /** @description a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place */
             probe?: components["schemas"]["ProbeIn"] | null;
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix; at least tier 1, and the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
         };
         /** ProposalList */
         ProposalList: {
@@ -22210,6 +22675,11 @@ export interface components {
              * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
              */
             revert_of?: number | null;
+            /**
+             * Fix Of
+             * @description the merged change whose rule it fixes: its probe recurred two weekly reports in a row
+             */
+            fix_of?: number | null;
         };
         /** Protection */
         Protection: {
@@ -23471,6 +23941,11 @@ export interface components {
             verify: string;
             /** Change Id */
             change_id: number;
+            /**
+             * Replaces
+             * @description the change's active probe, not reproduced two weekly reports in a row, that this one replaces; the hub retires it
+             */
+            replaces?: number | null;
         };
         /**
          * ReviewRunSummary
@@ -23658,7 +24133,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /**
@@ -24978,7 +25453,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser";
             /** Project */
             project: string;
             /**
@@ -36416,7 +36891,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -45947,6 +46422,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_probe_v1_worker_runs__run_id__probe_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the probe run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Probe-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeRun"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_report_v1_projects__project__curator_probe_report_get: {
+        parameters: {
+            query?: {
+                /** @description the newest weeks, the one in progress first */
+                weeks?: number;
+                /** @description a day of the newest week to show; default today, in the charter's time zone */
+                week?: string | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeWeekly"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

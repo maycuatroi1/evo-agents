@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   DatabaseZap,
+  FlaskConical,
   GitMerge,
   Goal,
   Hammer,
@@ -106,6 +107,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   browser_needs_login: { icon: LogIn },
   autonomy: { icon: ShieldCheck },
   worker_doctor: { icon: ShieldAlert },
+  curator_probe_report: { icon: FlaskConical },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
