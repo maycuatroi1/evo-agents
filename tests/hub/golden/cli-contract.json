@@ -7518,6 +7518,53 @@
         "schema": "MarketingChannel"
       }
     },
+    "hub marketing denylist": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--add"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--remove"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "kind",
+          "value",
+          "added_at"
+        ],
+        "schema": "MarketingDeny"
+      }
+    },
     "hub marketing kill": {
       "positionals": [],
       "options": [
@@ -7563,6 +7610,68 @@
           "value": "integer",
           "required": true,
           "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "channel",
+          "account",
+          "kind",
+          "mode",
+          "adapter",
+          "owner",
+          "target",
+          "paused",
+          "paused_reason",
+          "autonomous_since",
+          "session_state",
+          "account_kind",
+          "health",
+          "health_reason",
+          "health_checked_at"
+        ],
+        "schema": "MarketingChannel"
+      }
+    },
+    "hub marketing mode": {
+      "positionals": [
+        {
+          "name": "channel_id",
+          "metavar": "CHANNEL_ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "mode",
+          "metavar": "MODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "autonomous",
+            "draft_only"
+          ]
         }
       ],
       "options": [
@@ -17185,7 +17294,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.40.1"
+      "version": "0.40.2"
     },
     "paths": {
       "/v1/health": {
