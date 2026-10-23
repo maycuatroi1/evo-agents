@@ -10,7 +10,7 @@ import os
 
 from evo_agents.hub import browser_login
 from evo_agents.hub.runs import MAX_BROWSERS, RUN_KINDS
-from evo_agents.worker.browser import install, logins, session
+from evo_agents.worker.browser import install, logins
 from evo_agents.worker.home import WorkerHome, WorkerStateError
 
 
@@ -154,10 +154,11 @@ def cmd_login(args) -> int:
 
 def cmd_state(args) -> int:
     agent = _browser_run("state")
+    from evo_agents.worker.browser import session, state  # aiohttp, which the CLI loads without (the worker extra)
+
     cdp = os.environ.get(session.VARIABLE)
     if not cdp:
         raise WorkerStateError(f"{session.VARIABLE} is not set: this run's agent has no browser to read")
-    from evo_agents.worker.browser import state
 
     path = state.out_path(agent.home, agent.run_id, args.out)
     cookies = asyncio.run(state.read_cookies(cdp))
