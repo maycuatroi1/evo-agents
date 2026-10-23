@@ -13,6 +13,13 @@ An engine sits behind ``Engine``, three functions that read and never write:
 The tick (``evo_agents.hub.server.loop.tick``) builds the view, calls the engine and writes what it returns. Changing
 the engine changes the code behind these three functions alone: the rows of loop/1 read the same, and a new engine
 goes on from the cursor with the same keys, so it makes no work item again.
+
+The engine of this release is ``rules/2`` (plan problem-oriented-hub, criterion a6; ``rules2``), which goes from the
+problem a goal answers: each work item it makes carries that problem (``problem_id``), a claim of the cells Solution
+and Unique value proposition moved to testing makes a ``use_case`` only in a project of use cases (``loop.use_cases``,
+``View.use_cases``) and a ``build`` straight from the claim otherwise, and a claim of the Problem cell makes a
+``discover``. ``rules/1`` (``rules``) stays, and its work items read and move as before. Everything here was added to
+loop/1: no word of it changed.
 """
 
 from __future__ import annotations
@@ -22,16 +29,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
-ENGINE = "rules/1"  # the engine of this release: the table of rules of the report's section Loop
+ENGINES = ("rules/1", "rules/2")  # loop_items.engine of the core work items, oldest first
+RULES_1, RULES_2 = ENGINES
+ENGINE = RULES_2  # the engine of this release (plan problem-oriented-hub): it goes from the problem a goal answers
 
-KINDS = ("brainstorm", "use_case", "build", "deliver")
-BRAINSTORM, USE_CASE, BUILD, DELIVER = KINDS
+KINDS = ("brainstorm", "use_case", "build", "deliver", "discover")
+BRAINSTORM, USE_CASE, BUILD, DELIVER, DISCOVER = KINDS
 CYCLES = ("business", "development")
 BUSINESS, DEVELOPMENT = CYCLES
-CYCLE_OF = {BRAINSTORM: BUSINESS, USE_CASE: BUSINESS, BUILD: DEVELOPMENT, DELIVER: DEVELOPMENT}
+CYCLE_OF = {BRAINSTORM: BUSINESS, USE_CASE: BUSINESS, BUILD: DEVELOPMENT, DELIVER: DEVELOPMENT, DISCOVER: BUSINESS}
 # The kinds a core plugin's Loop rules make (extension point loop_rules): of cycle business, so they count against
-# ``loop.business.max_running`` with the core work items of that cycle. The routes and the web know the four of KINDS
-# alone: a work item of these kinds is read through its plugin until the Loop's pages show them.
+# ``loop.business.max_running`` with the core work items of that cycle. The routes and the web know the core kinds of
+# KINDS alone: a work item of these kinds is read through its plugin until the Loop's pages show them.
 PLUGIN_KINDS = ("growth_idea", "growth_draft", "growth_publish", "growth_invite", "growth_review")
 CYCLE_OF.update(dict.fromkeys(PLUGIN_KINDS, BUSINESS))
 PLUGIN_OFF = "plugin_off"  # the cancelled reason of a plugin's work item whose plugin is off in the project
@@ -86,7 +95,16 @@ EVENT_KINDS = (
 )
 CREATED, READY, ADMITTED, DISPATCHED, WAITING, FAILED, TRIAGED, ASKED, DONE_EVENT, CANCELLED_EVENT, NOTED = EVENT_KINDS
 STRATEGIST, BA = "@strategist", "@ba"  # who a business work item stands for: the agent types of canvas and srs
-OWNER_OF = {BRAINSTORM: STRATEGIST, USE_CASE: BA}
+OWNER_OF = {BRAINSTORM: STRATEGIST, USE_CASE: BA, DISCOVER: STRATEGIST}
+# rules/2: the cells of the canvas whose claims a baseline moved to testing make core work items (tables_canvas.CELLS);
+# a claim of any other cell makes none, whatever a core plugin's rule makes of it
+PROBLEM_CELL = "problem"
+SOLUTION_CELLS = ("solution", "unique_value_proposition")
+# loop.use_cases: always and never fix whether a solution goes through use cases of SRS documents; auto does when the
+# plugin srs is on in the project and it has an SRS document not archived
+USE_CASE_MODES = ("always", "never", "auto")
+ALWAYS, NEVER, AUTO_MODE = USE_CASE_MODES
+CLAIM_BUILD = "build:claim:"  # the start of the key of a build rules/2 made straight from a claim
 
 # Claims, goals, tasks and runs as the engine reads them
 TESTING, VALIDATED, INVALIDATED, RETIRED = "testing", "validated", "invalidated", "retired"
@@ -136,7 +154,8 @@ class GoalView:
 
 @dataclass(frozen=True)
 class ClaimView:
-    """A claim of a canvas, its status as the newest approved baseline holds it (None before one holds it)."""
+    """A claim of a canvas, its status as the newest approved baseline holds it (None before one holds it), and its
+    cell (None: not read)."""
 
     id: int
     canvas_id: int
@@ -144,11 +163,13 @@ class ClaimView:
     code: str
     status: str | None
     use_cases: tuple[str, ...] = ()
+    cell: str | None = None
 
 
 @dataclass(frozen=True)
 class ItemView:
-    """A work item as the engine reads it; ``runs`` holds every run handed out for it."""
+    """A work item as the engine reads it; ``runs`` holds every run handed out for it, ``problem_id`` the problem its
+    goal answered when it was made (None: none, or made before rules/2)."""
 
     id: int
     kind: str
@@ -168,10 +189,16 @@ class ItemView:
     runs: tuple[int, ...] = ()
     attempts: int = 0
     failures: int = 0
+    problem_id: int | None = None
 
     @property
     def finished(self) -> bool:
         return self.state in FINISHED
+
+    @property
+    def from_claim(self) -> bool:
+        """Whether it is a build rules/2 made straight from a claim, with no use case and no frame task."""
+        return self.kind == BUILD and self.key.startswith(CLAIM_BUILD)
 
 
 @dataclass(frozen=True)
@@ -268,7 +295,8 @@ class View:
     ``runs`` the runs the work items wait on by the id handed out (the triage chat runs by their own); ``drafts`` the
     version each use_case work item drafted, by work item; ``manual`` the repos whose merge requests the hub's queue
     does not merge (``repos.<repo>.mode`` off, or on GitHub); ``released`` the repos of each deliver's plan its
-    ``repos`` mark merged (or not needed)."""
+    ``repos`` mark merged (or not needed); ``use_cases`` whether a solution goes through use cases of SRS documents in
+    the project (``loop.use_cases``, read by rules/2)."""
 
     now: datetime
     policy: Mapping
@@ -290,6 +318,7 @@ class View:
     drafts: Mapping[int, VersionView] = field(default_factory=dict)
     manual: frozenset[str] = frozenset()
     released: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    use_cases: bool = True
 
     def goal_of_canvas(self, canvas_id: int) -> GoalView | None:
         """The active goal with a metric that a claim of canvas ``canvas_id`` serves: the first by rank among those
@@ -313,7 +342,7 @@ class View:
 @dataclass(frozen=True)
 class WorkSpec:
     """A work item that should exist; the tick makes it unless its key is taken. ``parent_id`` names the work item it
-    comes of."""
+    comes of, ``problem_id`` the problem its goal answers."""
 
     kind: str
     key: str
@@ -329,6 +358,7 @@ class WorkSpec:
     parent_id: int | None = None
     owner: str | None = None
     detail: Mapping = field(default_factory=dict)
+    problem_id: int | None = None
 
 
 @dataclass(frozen=True)

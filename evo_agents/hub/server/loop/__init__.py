@@ -2,7 +2,9 @@
 into work items with ancestors and a key, and moves them on.
 
 - ``model``: the words of contract loop/1 and the narrow interface of an engine (``Engine``);
-- ``rules``: the engine of this release, ``rules/1``, the table of rules of the report's section Loop;
+- ``rules2``: the engine of this release, ``rules/2`` (plan problem-oriented-hub), which goes from the problem a goal
+  answers; ``rules``: the engine before it, ``rules/1``, the table of rules of the report's section Loop, on which
+  rules/2 builds;
 - ``view``: what a tick reads of a project for the engine;
 - ``tick``: the job ``hub.loop_tick``, which writes what the engine returns;
 - ``admit``: the last step of a tick, which checks each queued work item against the breaker, the caps of concurrency,

@@ -68020,7 +68020,8 @@
                       "brainstorm",
                       "use_case",
                       "build",
-                      "deliver"
+                      "deliver",
+                      "discover"
                     ],
                     "type": "string"
                   },
@@ -68073,6 +68074,25 @@
                 "default": 200,
                 "title": "Limit"
               }
+            },
+            {
+              "name": "problem",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^P-[1-9][0-9]{0,8}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a problem's code: the work items that go from it",
+                "title": "Problem"
+              },
+              "description": "a problem's code: the work items that go from it"
             },
             {
               "name": "X-Evo-Sink",
@@ -88050,6 +88070,36 @@
           ],
           "title": "LoopChainPlan"
         },
+        "LoopChainProblem": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "P-<number>"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement",
+              "description": "its statement now, on one line"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "solved",
+                "dropped"
+              ],
+              "title": "Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "statement",
+            "status"
+          ],
+          "title": "LoopChainProblem"
+        },
         "LoopChainRun": {
           "properties": {
             "id": {
@@ -88081,6 +88131,17 @@
         },
         "LoopChainStages": {
           "properties": {
+            "problem": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopChainProblem"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the problem the chain goes from, as it stands now; null for none"
+            },
             "goal": {
               "anyOf": [
                 {
@@ -88390,7 +88451,8 @@
                 "brainstorm",
                 "use_case",
                 "build",
-                "deliver"
+                "deliver",
+                "discover"
               ],
               "title": "Kind"
             },
@@ -88513,6 +88575,18 @@
               ],
               "title": "Goal",
               "description": "the code of its goal"
+            },
+            "problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problem",
+              "description": "the code (P-<number>) of the problem it goes from: the one its goal answered when it was made"
             },
             "claim": {
               "anyOf": [

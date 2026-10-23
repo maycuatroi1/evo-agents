@@ -1,7 +1,9 @@
 """What one tick of the Loop reads of a project (``model.View``), in the tick's transaction: the loop section of its
 policy, its goals with whether each one's metric meets its target now, its work items that are not finished and the
-chains an event needs, the claims of those and their status as the newest approved baseline holds it, the frame tasks,
-approvals, runs, plans and merge requests the work items wait on, and when the weekly look at the goals comes.
+chains an event needs, the claims of those with their cell and their status as the newest approved baseline holds it,
+the frame tasks, approvals, runs, plans and merge requests the work items wait on, when the weekly look at the goals
+comes, and whether a solution goes through use cases (``loop.use_cases``: auto does when the plugin srs is on in the
+project and it has an SRS document not archived).
 
 Everything is read with SQLAlchemy Core on the hub's tables: the claims, use cases and tasks of the core plugins canvas,
 srs and tasks through ``tables_canvas``, ``tables_srs`` and ``tables_tasks``, never by importing a plugin. A goal's
@@ -30,6 +32,8 @@ from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.autonomy_policies import effective_policy, newest, project_repos
 from evo_agents.hub.server.loop.model import (
     ACTIVE,
+    ALWAYS,
+    AUTO_MODE,
     BRAINSTORM,
     DELIVER,
     DISPATCHED,
@@ -52,6 +56,7 @@ from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.plugins import config as plugin_config
 
 TASKS = "tasks"  # the core plugin whose tasks a build waits on
+SRS = "srs"  # the core plugin whose SRS documents put a project in use cases (loop.use_cases auto)
 NUMBER = "number"  # tables_signals: the kind of key a goal's metric names
 OPEN_PROPOSAL = "open"  # canvas_proposals.status
 OPEN_FINDING, DECIDE = "open", "decide"  # tables_srs.FINDING_STATUSES, FINDING_LEVELS: a finding that holds approval
@@ -163,6 +168,7 @@ def _item_query():
         i.c.detail,
         i.c.attempts,
         i.c.failures,
+        i.c.problem_id,
     )
 
 
@@ -224,12 +230,13 @@ async def _brainstorms(conn: AsyncConnection, project_id: int):
 
 
 async def _claims(conn: AsyncConnection, ids: Iterable[int]) -> dict[int, ClaimView]:
-    """The claims ``ids``, each with the status the newest approved baseline of its canvas holds."""
+    """The claims ``ids``, each with its cell and the status the newest approved baseline of its canvas holds."""
     wanted = sorted(set(ids))
     if not wanted:
         return {}
     c, k, b = tables.canvas.claims, tables.canvas.canvases, tables.canvas.baselines
-    query = select(c.c.id, c.c.canvas_id, k.c.slug, c.c.number, c.c.use_cases).join_from(c, k, k.c.id == c.c.canvas_id)
+    columns = (c.c.id, c.c.canvas_id, k.c.slug, c.c.number, c.c.use_cases, c.c.cell)
+    query = select(*columns).join_from(c, k, k.c.id == c.c.canvas_id)
     rows = list(await conn.execute(query.where(c.c.id.in_(wanted))))
     statuses: dict[int, str] = {}
     for canvas_id in sorted({row.canvas_id for row in rows}):
@@ -243,7 +250,7 @@ async def _claims(conn: AsyncConnection, ids: Iterable[int]) -> dict[int, ClaimV
             statuses[entry["claim_id"]] = entry.get("status")
     return {
         row.id: ClaimView(
-            row.id, row.canvas_id, row.slug, f"CL-{row.number}", statuses.get(row.id), tuple(row.use_cases)
+            row.id, row.canvas_id, row.slug, f"CL-{row.number}", statuses.get(row.id), tuple(row.use_cases), row.cell
         )
         for row in rows
     }
@@ -561,6 +568,23 @@ async def _versions(conn: AsyncConnection, events: Sequence[Event]) -> dict[int,
     }
 
 
+# Use cases
+
+
+async def use_cases(conn: AsyncConnection, project_id: int, policy: Mapping) -> bool:
+    """Whether a solution goes through use cases of SRS documents in project ``project_id`` (``loop.use_cases`` of
+    ``policy``, its loop section): always, never, or auto (the default), which does when the plugin srs is on in the
+    project and it has an SRS document not archived."""
+    mode = policy.get("use_cases") or AUTO_MODE
+    if mode != AUTO_MODE:
+        return mode == ALWAYS
+    if await enabled_in(conn, SRS, project_id) is None:
+        return False
+    d = tables.srs.documents
+    held = select(d.c.id).where(d.c.project_id == project_id, d.c.archived_at.is_(None)).limit(1)
+    return await conn.scalar(held) is not None
+
+
 # The week
 
 
@@ -638,7 +662,8 @@ async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] =
         drafts=await _drafts(conn, items, runs),
         manual=manual,
         released=released,
+        use_cases=await use_cases(conn, project_id, policy),
     )
 
 
-__all__ = ["load", "loop_zone", "reached", "run_chains", "week_of"]
+__all__ = ["load", "loop_zone", "reached", "run_chains", "use_cases", "week_of"]

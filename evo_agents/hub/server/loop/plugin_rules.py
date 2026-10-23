@@ -13,7 +13,8 @@ the plugin's own work items not finished (id, kind, key, state, reason, detail, 
 claim_id, parent_id). It returns ``{"effects": [...]}``, each a dict of ``effect``:
 
 - ``work``: ``kind``, ``key`` and ``detail`` (a ``task`` and a ``title`` for a task run), with the ancestors it comes of,
-  ``goal_id``, ``claim_id``, ``parent_id``, ``use_case``, ``task_id`` (each must exist in the project); a ``WorkSpec``;
+  ``goal_id``, ``claim_id``, ``parent_id``, ``use_case``, ``task_id`` (each must exist in the project); a ``WorkSpec``,
+  which carries the problem its goal answers as a core work item does (plan problem-oriented-hub);
 - ``move``: ``item_id`` of one of the plugin's own work items, ``state`` (queued, watching, waiting_human, done or
   cancelled), its ``reason`` of that state (``model.REASONS``), ``detail``, and ``failed`` to count a failure when it
   moves back to queued; a ``Transition``;
@@ -37,7 +38,7 @@ import inspect
 import json
 import logging
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -69,7 +70,7 @@ from evo_agents.hub.server.loop.model import (
     View,
     WorkSpec,
 )
-from evo_agents.hub.server.loop.rules import _asks, _cancel, _run_end, _run_of, _triaged
+from evo_agents.hub.server.loop.rules import _asks, _cancel, _run_end, _triaged, run_of
 
 log = logging.getLogger(__name__)
 
@@ -174,7 +175,10 @@ def _work(rule: Rule, raw: dict, view: View) -> WorkSpec | str:
     if use_case is not None and not isinstance(use_case, str):
         return "use_case is a string"
     detail = {**detail, "plugin": rule.plugin, "rule": rule.name}
-    return WorkSpec(kind=kind, key=f"{rule.plugin}:{key}", use_case=use_case, detail=detail, **ancestors)
+    goal = view.goals.get(ancestors["goal_id"]) if ancestors["goal_id"] is not None else None
+    problem = None if goal is None else goal.problem_id  # the problem its goal answers, as a core work item's
+    spec = WorkSpec(kind=kind, key=f"{rule.plugin}:{key}", use_case=use_case, detail=detail, **ancestors)
+    return spec if problem is None else replace(spec, problem_id=problem)
 
 
 def _move(rule: Rule, raw: dict, view: View) -> Transition | str:
@@ -294,7 +298,7 @@ class RuleSet:
         if not self.declares(plugin, item.kind):
             return _cancel(item, PLUGIN_OFF, plugin=plugin)
         if item.state == RUNNING or item.state == WAITING_HUMAN:
-            run = _run_of(item, view)
+            run = run_of(item, view)
             if run is not None and run.ended and run.state == "done":
                 return Transition(item.id, DONE, DONE_EVENT, detail={"run_id": run.id})
             ended = _run_end(item, view)

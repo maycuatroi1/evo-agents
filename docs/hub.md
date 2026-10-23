@@ -2893,8 +2893,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.loop_ticks`, every 5 minutes: a `hub.loop_tick` for each project whose Loop is on (`loop.enabled` of its
   autonomy policy), which each event of such a project also queues in its own transaction; one tick of a project runs
   at a time and at most one waits (lock `loop:<project id>`). A tick reads the events past the project's cursor, its
-  goals' revisions and weekly look, and its work items not finished, and writes work items by the engine `rules/1`;
-  it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
+  goals' revisions and weekly look, and its work items not finished, and writes work items by the engine `rules/2`
+  (`docs/loop.md`); it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
   (`HubContext.loop_tick`).
 - `hub.loop_notices`, every 5 minutes: for each project whose Loop is on, in the Loop's zone, the notice `goal_review`
   on the first day of a month and the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, each

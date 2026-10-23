@@ -16,9 +16,11 @@ The policy has no key that caps a diff or the merges of a day (the member's answ
 it runs, the worker of its author and plan runs, the time zone of its schedule, how many work items of each cycle run
 at once and how many runs of a repo, how many runs it hands out an hour and how many work items it may make an hour
 before its breaker trips, how long a baseline stays approved before a work item comes of it, the weekday and time of
-its weekly look at each goal, whether a frame task must be in an active sprint, and the turns and minutes of the author
-and plan runs it hands out. It has no estimate and no budget (the member's answer 1 of 2026-10-21, checkpoint of step
-1). ``loop.enabled`` is false by default, so a revision written before these keys reads with the Loop off.
+its weekly look at each goal, whether a frame task must be in an active sprint, the turns and minutes of the author
+and plan runs it hands out, and whether a solution goes through use cases of SRS documents (``loop.use_cases``, plan
+problem-oriented-hub: always, never, or auto, which does when the plugin srs is on and the project has an SRS
+document not archived). It has no estimate and no budget (the member's answer 1 of 2026-10-21, checkpoint of step 1).
+``loop.enabled`` is false by default, so a revision written before these keys reads with the Loop off.
 
 Standard library only: the server checks bodies with it, and the client may import it.
 """
@@ -49,6 +51,7 @@ MAX_NOTE_CHARS = 1000
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")  # loop.brainstorm.weekday
 TIME_OF_DAY = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # loop.brainstorm.time, HH:MM on a 24-hour clock
 TIME_ZONE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")  # loop.timezone, as an IANA name
+USE_CASE_MODES = ("always", "never", "auto")  # loop.use_cases (loop.model.USE_CASE_MODES)
 MAX_TIME_ZONE_CHARS = 64
 
 # Why a value is wrong, or None when it is right.
@@ -171,6 +174,13 @@ LOOP_KEYS = (  # plan loop-engine: the Loop of the project, off by default; no e
     Key("loop.caps.author.turns", 200, _whole(1, 10000), "the turns of an author run the Loop hands out"),
     Key("loop.caps.plan.minutes", 240, _whole(1, 2880), "the minutes of a plan run the Loop hands out"),
     Key("loop.caps.plan.turns", 600, _whole(1, 10000), "the turns of a plan run the Loop hands out"),
+    Key(
+        "loop.use_cases",
+        "auto",
+        _one_of(*USE_CASE_MODES),
+        "whether a claim's solution goes through use cases of SRS documents; auto: when the plugin srs is on and the "
+        "project has an SRS document not archived",
+    ),
 )
 KEYS = (
     Key(

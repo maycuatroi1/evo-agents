@@ -67,7 +67,7 @@ def test_growth_loop_rules_a_customer_segment_claim_in_testing_makes_a_campaign_
     before = len(items(hub_db))
     ticked(client, hub_db)  # the same baseline read again makes nothing more
     assert len(items(hub_db)) == before
-    push_baseline(client, hub, "CL-1")  # a claim of the Problem cell: no campaign
+    push_baseline(client, hub, "CL-1")  # a claim of the Solution cell: no campaign
     ticked(client, hub_db)
     assert len(growth_items(hub_db)) == 1
 
