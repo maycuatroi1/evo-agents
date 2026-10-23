@@ -10,8 +10,8 @@ and is skipped, and one after a gap is not stored, so the daemon sends again fro
 the run ended write its tool figures again (``tool_stats.record``). The hub numbers what it stores itself
 (``run_events.seq``, which ``runs.event_seq`` counts): the worker's events and its own (``state`` on each move,
 ``user_message`` for each message), under the run's row lock, so a reader never sees a number before the ones below
-it. A body whose JSON is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and
-the event marked truncated. A run keeps at most MAX_RUN_EVENTS events of the worker and the owner: a batch that would
+it. A NUL character in a body is stored as U+FFFD (``runs.without_nul``), since jsonb holds none. A body whose JSON
+is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and the event marked truncated. A run keeps at most MAX_RUN_EVENTS events of the worker and the owner: a batch that would
 pass it stores nothing and gets 413 with the ack in its detail; the hub's state events are written past it. A note
 that names a step of a chat run's setup (``chat_runs.SETUP_FIELD``) wakes its chat's streams, as the worker taking the
 run's inbox does, since the thread shows that step (``chat_progress``).
@@ -373,7 +373,7 @@ async def store_events(
     rows = []
     leased = await run_values(conn, request.app.state.sealer, run_id)  # the floor S3, whatever the daemon did
     for number, event in enumerate(fresh, start=last_seq + 1):
-        stored, cut = runs.fit_event_body(masked(event.body, leased))
+        stored, cut = runs.fit_event_body(runs.without_nul(masked(event.body, leased)))
         rows.append(
             {
                 "run_id": run_id,
@@ -619,7 +619,8 @@ async def write_user_message(conn: AsyncConnection, run_id: int, body: dict) -> 
     """Write the ``user_message`` event of a message of the owner into the log of run ``run_id``, whose row the
     caller holds locked, and wake its streams; its seq."""
     seq = await next_seq(conn, run_id)
-    await conn.execute(insert(tables.run_events).values(run_id=run_id, seq=seq, kind="user_message", body=body))
+    values = {"run_id": run_id, "seq": seq, "kind": "user_message", "body": runs.without_nul(body)}
+    await conn.execute(insert(tables.run_events).values(**values))
     await notify_events(conn, run_id)
     return seq
 
