@@ -5172,6 +5172,17 @@
       "accountPlaceholder": "Lọc theo email tài khoản",
       "accountClear": "Xóa bộ lọc tài khoản",
       "accountHint": "Tài khoản Claude của một phiên local"
+    },
+    "browser": {
+      "label": "Trình duyệt",
+      "info": "Chromium cho các run, do worker khởi động. Với một danh tính, trình duyệt khởi động sẵn trạng thái đăng nhập; danh tính của dự án mọi thành viên đều dùng được.",
+      "none": "Không dùng trình duyệt",
+      "bare": "Chromium, không đăng nhập",
+      "identity": "{name} ({owner})",
+      "status": {
+        "needs_login": "cần đăng nhập",
+        "disabled": "đã tắt"
+      }
     }
   },
   "insights": {
@@ -9715,7 +9726,9 @@
     "error": {
       "conflict": "Một run đang giữ danh tính này, hoặc đang có phiên đăng nhập chờ, hoặc nó đã bị tắt. Thử lại khi việc đó kết thúc.",
       "exists": "Bạn đã có một danh tính cùng tên trong dự án này."
-    }
+    },
+    "ownerAgent": "Agent {handle}",
+    "ownerAgentDefault": "Agent {handle} (mặc định)"
   },
   "sharing": {
     "title": "Chia sẻ với member khác",

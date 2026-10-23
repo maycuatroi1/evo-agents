@@ -19,6 +19,7 @@ import { whoamiQuery } from "@/lib/queries";
 
 import { AccountField, useAccountChoice } from "./account-field";
 import { accountField } from "./account-model";
+import { BrowserField, browserFields } from "./browser-field";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
 import { Outlook, Section, Tile, WorkerField, type WorkerChoice } from "./dispatch-fields";
 import { FieldLabel } from "./field-label";
@@ -133,6 +134,7 @@ function DispatchForm({
   const [approval, setApproval] = useState<Approval>("review");
   const [timeout, setTimeoutMinutes] = useState<number>(DEFAULT_TIMEOUT);
   const agents = useAgentChoice(project);
+  const [browser, setBrowser] = useState("");
 
   // The workers of the visitor's for the project, then those the agent lets claim the runs, and the one found for them.
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
@@ -171,6 +173,7 @@ function DispatchForm({
         worker_id: pinned,
         ...accountField(account),
         ...profileField(agents.agent),
+        ...browserFields(browser),
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -280,6 +283,7 @@ function DispatchForm({
             disabled={pending}
           />
           <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
+          <BrowserField project={project} value={browser} onChange={setBrowser} disabled={pending} />
           <ModeField value={mode} onChange={setMode} />
           <Section legend={t("approval")} info={t("approvalInfo")} testId="dispatch-approval">
             <div className="grid grid-cols-2 gap-2">

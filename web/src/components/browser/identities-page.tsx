@@ -88,7 +88,7 @@ function IdentityCard({ identity, highlighted, onAct }: { identity: BrowserIdent
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h2 className="min-w-0 text-base font-semibold [overflow-wrap:anywhere]">{identity.name}</h2>
         {status === "needs_login" || status === "disabled" ? <StatusPill look={LOOKS[status]} label={t(`status.${status}`)} data-testid="browser-status" /> : null}
-        <span className="text-xs text-muted-foreground">{identity.owner === "project" ? t("ownerProject") : t("ownerMember", { login: identity.owner_login ?? "" })}</span>
+        <span className="text-xs text-muted-foreground">{identity.owner === "agent" ? t(identity.agent_default ? "ownerAgentDefault" : "ownerAgent", { handle: identity.agent ?? "" }) : identity.owner === "project" ? t("ownerProject") : t("ownerMember", { login: identity.owner_login ?? "" })}</span>
       </div>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
         <Fact label={t("fact.domains")} testId="browser-domains">
