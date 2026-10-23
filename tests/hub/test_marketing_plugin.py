@@ -609,5 +609,5 @@ def test_marketing_the_manifest_declares_the_tables_the_job_the_judge_and_the_se
         "tiktok_token",
     } <= secret
     assert MANIFEST["config"]["properties"]["budget_usd"]["default"] == 50
-    assert [a["name"] for a in MANIFEST["contributes"]["agent_types"]] == ["marketing-judge"]
+    assert [a["name"] for a in MANIFEST["contributes"]["agent_types"]] == ["marketing-judge", "marketer"]
     assert hub_api.plugin("evo_agents.core_plugins.marketing.settings").id == "marketing"

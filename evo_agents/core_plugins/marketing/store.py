@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -154,9 +154,101 @@ async def in_flight(conn: AsyncConnection, channel_id: int) -> bool:
 
 
 async def open_posts(conn: AsyncConnection, project_id: int) -> list:
+    """The posts the gate has not decided, but a scheduled one the Loop has not released yet (``loop``)."""
     t = tables.marketing_posts.c
     found = await conn.execute(
-        select(*post_columns()).where(t.project_id == project_id, t.state.in_(OPEN)).order_by(t.id)
+        select(*post_columns())
+        .where(
+            t.project_id == project_id,
+            t.state.in_(OPEN),
+            or_(t.scheduled_at.is_(None), t.released_at.is_not(None)),
+        )
+        .order_by(t.id)
+    )
+    return list(found)
+
+
+async def due_posts(conn: AsyncConnection, project_id: int, now: datetime, limit: int) -> list:
+    """The scheduled posts whose time came that the Loop has not released, oldest time first."""
+    t = tables.marketing_posts.c
+    found = await conn.execute(
+        select(t.id, t.claim_id)
+        .where(
+            t.project_id == project_id,
+            t.state == "proposed",
+            t.scheduled_at <= now,
+            t.released_at.is_(None),
+        )
+        .order_by(t.scheduled_at, t.id)
+        .limit(limit)
+    )
+    return list(found)
+
+
+async def release(conn: AsyncConnection, post_id: int, now: datetime) -> None:
+    """Let a scheduled post through to the gate: the job ``advance`` decides it next."""
+    t = tables.marketing_posts
+    await conn.execute(update(t).where(t.c.id == post_id, t.c.released_at.is_(None)).values(released_at=now))
+
+
+async def gone_out(conn: AsyncConnection, project_id: int, since: datetime, limit: int) -> list:
+    """The posts that went out since ``since`` (dry runs excluded), oldest first: each is measured."""
+    t = tables.marketing_posts.c
+    found = await conn.execute(
+        select(t.id, t.claim_id)
+        .where(t.project_id == project_id, t.state == "posted", t.dry_run.is_(False), t.posted_at >= since)
+        .order_by(t.posted_at, t.id)
+        .limit(limit)
+    )
+    return list(found)
+
+
+async def kept_numbers(conn: AsyncConnection, post_id: int) -> dict[str, dict[str, float]]:
+    """span -> metric -> value of the numbers kept for a post."""
+    m = tables.marketing_metrics.c
+    found: dict[str, dict[str, float]] = {}
+    for row in await conn.execute(select(m.span, m.metric, m.value).where(m.post_id == post_id)):
+        found.setdefault(row.span, {})[row.metric] = float(row.value)
+    return found
+
+
+# Replies to the posts of a project account
+
+
+async def add_reply(conn: AsyncConnection, project_id: int, post_id: int, **values) -> bool:
+    """Whether the reply was new; the same reply of a post is kept once."""
+    t = tables.marketing_replies
+    statement = (
+        pg_insert(t)
+        .values(project_id=project_id, post_id=post_id, **values)
+        .on_conflict_do_nothing(constraint="marketing_replies_once_key")
+        .returning(t.c.id)
+    )
+    return (await conn.execute(statement)).scalar() is not None
+
+
+async def new_replies(conn: AsyncConnection, project_id: int, since: datetime, limit: int) -> list:
+    """The replies seen since ``since`` under posts of the project's project accounts, oldest first, with the post's
+    channel and its reply target."""
+    r, p, c = tables.marketing_replies, tables.marketing_posts, tables.marketing_channels
+    found = await conn.execute(
+        select(
+            r.c.id,
+            r.c.post_id,
+            r.c.external_id,
+            r.c.author,
+            r.c.url,
+            r.c.body,
+            p.c.channel_id,
+            p.c.channel,
+            p.c.claim_id,
+            p.c.posted_url,
+        )
+        .join_from(r, p, p.c.id == r.c.post_id)
+        .join(c, c.c.id == p.c.channel_id)
+        .where(r.c.project_id == project_id, r.c.seen_at >= since, c.c.account_kind == "project")
+        .order_by(r.c.id)
+        .limit(limit)
     )
     return list(found)
 

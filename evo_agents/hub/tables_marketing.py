@@ -14,7 +14,9 @@ the Judge's scores, where it ended (posted, draft with the reason, failed, withd
 proposed it. A post for a browser channel waits as queued until a worker's script claims it (posting, claimed_at) and
 reports; its screenshot is kept on it (0120). marketing_budget holds the money reserved and spent in each month. marketing_denylist holds the terms,
 domains and people a post must never name. marketing_state holds the kill switch of a project. marketing_metrics holds
-the numbers read from a post at +24h and +7d.
+the numbers read from a post at +24h and +7d. A post of a campaign names the claim it tests and the Signal key its
+numbers count toward, and may wait for its time (scheduled_at) until the Loop releases it (released_at);
+marketing_replies holds what someone answered under a post of a project account (0121).
 """
 
 from __future__ import annotations
@@ -60,6 +62,7 @@ MAX_SHOT_BYTES = 2 * 1024 * 1024
 DENY_KINDS = ("term", "domain", "person")
 SPANS = ("24h", "7d")
 MAX_TEXT = 20000
+MAX_REPLY_TEXT = 4000
 
 
 def _stamp(name: str) -> Column:
@@ -129,12 +132,39 @@ def posts_table(metadata: MetaData) -> Table:
         Column("posted_at", DateTime(timezone=True)),
         Column("claimed_at", DateTime(timezone=True)),
         Column("screenshot", LargeBinary),
+        Column("claim_id", BigInteger),  # 0121
+        Column("signal_key", Text),  # 0121
+        Column("scheduled_at", DateTime(timezone=True)),  # 0121
+        Column("released_at", DateTime(timezone=True)),  # 0121
         _key("marketing_posts", "project_id", "projects", ondelete="CASCADE"),
         _key("marketing_posts", "channel_id", "marketing_channels", ondelete="CASCADE"),
         _key("marketing_posts", "proposed_by", "users", ondelete="SET NULL"),
+        _key("marketing_posts", "claim_id", "canvas_claims", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="marketing_posts_pkey"),
         Index("marketing_posts_project_idx", "project_id", "state"),
         Index("marketing_posts_channel_idx", "channel_id", "posted_at"),
+        Index("marketing_posts_scheduled_idx", "project_id", "scheduled_at"),
+    )
+
+
+def replies_table(metadata: MetaData) -> Table:
+    """What someone answered under a post of a project account (0121), once per reply."""
+    return Table(
+        "marketing_replies",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("post_id", BigInteger, nullable=False),
+        Column("external_id", Text, nullable=False),
+        Column("author", Text),
+        Column("url", Text),
+        Column("body", Text, nullable=False),
+        _stamp("seen_at"),
+        _key("marketing_replies", "project_id", "projects", ondelete="CASCADE"),
+        _key("marketing_replies", "post_id", "marketing_posts", ondelete="CASCADE"),
+        PrimaryKeyConstraint("id", name="marketing_replies_pkey"),
+        UniqueConstraint("post_id", "external_id", name="marketing_replies_once_key"),
+        Index("marketing_replies_project_idx", "project_id", "seen_at"),
     )
 
 
@@ -200,9 +230,9 @@ def metrics_table(metadata: MetaData) -> Table:
     )
 
 
-def marketing_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:
-    """(marketing_channels, marketing_posts, marketing_budget, marketing_denylist, marketing_state, marketing_metrics),
-    added to ``metadata``."""
+def marketing_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table, Table]:
+    """(marketing_channels, marketing_posts, marketing_budget, marketing_denylist, marketing_state, marketing_metrics,
+    marketing_replies), added to ``metadata``."""
     return (
         channels_table(metadata),
         posts_table(metadata),
@@ -210,4 +240,5 @@ def marketing_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Ta
         denylist_table(metadata),
         state_table(metadata),
         metrics_table(metadata),
+        replies_table(metadata),
     )

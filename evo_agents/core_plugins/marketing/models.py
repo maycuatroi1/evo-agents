@@ -64,6 +64,15 @@ class MarketingPostIn(BaseModel):
     links: list[str] = Field(default_factory=list, max_length=20)
     sources: list[MarketingSource] = Field(default_factory=list, max_length=50)
     run_id: int | None = Field(default=None, description="the run that proposed it, kept in the audit")
+    claim: str | None = Field(
+        default=None, pattern=r"^CL-[0-9]{1,9}$", description="the canvas claim the post tests, as CL-<n>"
+    )
+    signal_key: str | None = Field(
+        default=None, min_length=1, max_length=200, description="the Signal key the post's numbers count toward"
+    )
+    scheduled_at: datetime | None = Field(
+        default=None, description="when the gate decides it; a time to come keeps it waiting until the Loop releases it"
+    )
 
 
 class MarketingPost(BaseModel):
@@ -84,6 +93,9 @@ class MarketingPost(BaseModel):
     dry_run: bool = Field(description="it would have gone out, but the channel is in its dry-run time")
     created_at: datetime
     posted_at: datetime | None
+    claim_id: int | None = Field(default=None, description="the canvas claim the post tests")
+    signal_key: str | None = Field(default=None, description="the Signal key its numbers count toward")
+    scheduled_at: datetime | None = Field(default=None, description="when the gate decides it")
 
 
 class MarketingDenyIn(BaseModel):

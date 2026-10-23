@@ -971,7 +971,9 @@ release_schedules, release_cycles, release_runs, release_tags, release_checks = 
     metadata, runs, RUN_ACTIVE
 )
 # the contacts of the core plugin crm (0118)
-crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions = tables_crm.crm_tables(metadata)
+crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions, crm_invites_sent = tables_crm.crm_tables(
+    metadata
+)
 # the channel accounts, posts and gate of the core plugin marketing (0119)
 (
     marketing_channels,
@@ -980,4 +982,5 @@ crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions = t
     marketing_denylist,
     marketing_state,
     marketing_metrics,
+    marketing_replies,
 ) = tables_marketing.marketing_tables(metadata)

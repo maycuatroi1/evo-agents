@@ -143,12 +143,35 @@ def deletions_table(metadata: MetaData) -> Table:
     )
 
 
-def crm_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table]:
-    """(crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions), added to ``metadata``."""
+def invites_sent_table(metadata: MetaData) -> Table:
+    """Each invite link @community made for an invite request (0121): once per request, counted by the weekly cap."""
+    return Table(
+        "crm_invites_sent",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("ref", Text, nullable=False),
+        Column("login", Text, nullable=False),
+        Column("invite_id", BigInteger),
+        Column("run_id", BigInteger),
+        _stamp("sent_at"),
+        _key("crm_invites_sent", "project_id", "projects", ondelete="CASCADE"),
+        _key("crm_invites_sent", "invite_id", "invites", ondelete="SET NULL"),
+        _key("crm_invites_sent", "run_id", "runs", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="crm_invites_sent_pkey"),
+        UniqueConstraint("project_id", "ref", name="crm_invites_sent_ref_key"),
+        Index("crm_invites_sent_week_idx", "project_id", "sent_at"),
+    )
+
+
+def crm_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:
+    """(crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions, crm_invites_sent), added to
+    ``metadata``."""
     return (
         contacts_table(metadata),
         touchpoints_table(metadata),
         history_table(metadata),
         cursors_table(metadata),
         deletions_table(metadata),
+        invites_sent_table(metadata),
     )

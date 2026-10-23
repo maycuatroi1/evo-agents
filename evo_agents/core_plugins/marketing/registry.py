@@ -14,6 +14,7 @@ from evo_agents.hub.tables_marketing import ACCOUNT_KINDS, ADAPTERS, CHANNELS, P
 
 DEFAULT_BUDGET_USD = 50.0
 DEFAULT_DRY_RUN_HOURS = 72  # a channel made autonomous only drafts for this long
+DEFAULT_REPLIES_PER_DAY = 10  # reply work items of the Loop in 24 hours (plan autonomous-oss-growth, step 19)
 
 
 @dataclass(frozen=True)

@@ -174,7 +174,7 @@ def counts(db) -> dict[str, list[float]]:
 # Manifest
 
 
-def test_crm_manifest_declares_no_permission_no_page_and_the_five_tables():
+def test_crm_manifest_declares_no_permission_no_page_and_the_six_tables():
     contributes = MANIFEST["contributes"]
     assert MANIFEST["id"] == "crm" and MANIFEST["permissions"] == [] and "pages" not in contributes
     assert [j["name"] for j in contributes["jobs"]] == ["intake"] and contributes["jobs"][0]["cron"]
@@ -184,6 +184,7 @@ def test_crm_manifest_declares_no_permission_no_page_and_the_five_tables():
         "crm_stage_history",
         "crm_cursors",
         "crm_deletions",
+        "crm_invites_sent",
     }
     assert [k["name"] for k in contributes["kg_sources"]] == ["contacts"]
 
