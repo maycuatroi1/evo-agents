@@ -8,7 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.tables_marketing import ADAPTERS, CHANNELS, DENY_KINDS, MAX_TEXT, MODES, POST_KINDS
+from evo_agents.hub.marketing_browser import OUTCOMES
+from evo_agents.hub.tables_marketing import ADAPTERS, CHANNELS, DENY_KINDS, MAX_TEXT, MODES, POST_KINDS, SESSION_STATES
 
 ChannelName = Literal[*CHANNELS]
 
@@ -37,6 +38,9 @@ class MarketingChannel(BaseModel):
     paused: bool = Field(description="the breaker is open: the channel posts nothing until an admin resumes it")
     paused_reason: str | None
     autonomous_since: datetime | None
+    session_state: str = Field(
+        default="none", description="none, ok or stale: whether the login session of a browser channel works"
+    )
 
 
 class MarketingModeIn(BaseModel):
@@ -70,7 +74,7 @@ class MarketingPost(BaseModel):
     kind: str
     body: str
     links: list[str]
-    state: str = Field(description="proposed, judging, posted, draft, failed or withdrawn")
+    state: str = Field(description="proposed, judging, queued, posting, posted, draft, failed or withdrawn")
     reason: str | None = Field(description="why it is a draft, failed or withdrawn")
     layers: dict = Field(description="layer -> {ok, detail}, in the order the gate ran them")
     judge: dict | None = Field(description="the Judge's scores and verdict")
@@ -112,3 +116,37 @@ class MarketingStatus(BaseModel):
 
 class MarketingDone(BaseModel):
     ok: bool = Field(description="false when nothing changed (it was so already)")
+
+
+class MarketingSessionIn(BaseModel):
+    state: Literal[*SESSION_STATES] = Field(
+        description="ok once the account's owner logged in and the session is sealed"
+    )
+
+
+class MarketingBrowserJob(BaseModel):
+    """What a worker's script posts. ``session`` is the sealed login session of the account: it goes to the script and
+    to no other answer of the plugin."""
+
+    post_id: int
+    channel: str
+    account: str
+    target: str | None
+    body: str
+    session: str = Field(repr=False, description="Playwright's storage state as JSON")
+
+
+class MarketingBrowserClaim(BaseModel):
+    job: MarketingBrowserJob | None = Field(description="the next post to make, none when nothing waits")
+
+
+class MarketingBrowserResultIn(BaseModel):
+    outcome: Literal[*OUTCOMES]
+    url: str | None = Field(default=None, max_length=2000, description="the link of the post, when it went out")
+    detail: str = Field(default="", max_length=1000, description="what the script saw, never the page's text")
+    screenshot: str | None = Field(default=None, description="a PNG after the post or where the script stopped, base64")
+
+
+class MarketingBrowserResult(BaseModel):
+    state: str = Field(description="posted or failed")
+    reason: str | None

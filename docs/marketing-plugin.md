@@ -13,9 +13,9 @@ answer 404.
 | reddit | project, personal | api | scored: a breaker reads the score; target `r/name` |
 | x | project, personal | api | the only paid channel (0.01 USD a post, [Unverified]) |
 | linkedin | project, personal | api | target is the author urn (`urn:li:person:...`) |
-| viblo | project, personal | browser | the browser adapter is a later step |
+| viblo | project, personal | browser | posts through the browser adapter (below); first line is the title |
 | facebook_page | project | api | target is the page id; posting only |
-| facebook_profile | personal | browser | only its owner may switch it to autonomous |
+| facebook_profile | personal | browser | only its owner may switch it to autonomous; posts through the browser adapter |
 | tiktok | project, personal | api | photo posts from an image link; posting only |
 
 Each account has a kind (`project` or `personal`), a mode (`autonomous` or `draft_only`) and an adapter (`api` or
@@ -108,7 +108,61 @@ evo-agents hub marketing posts --project P [--state draft] [--json]
 evo-agents hub marketing pause --project P CHANNEL_ID [--reason TEXT]
 evo-agents hub marketing resume --project P [CHANNEL_ID]
 evo-agents hub marketing kill --project P [--reason TEXT]
+evo-agents hub marketing login --project P CHANNEL_ID
+evo-agents hub marketing browser-post --project P [--json]
 ```
 
-The browser adapter for the channels without an API (Hacker News, Viblo, Facebook profile) is a later step: until then a
-post there is a draft that a person posts.
+## Browser adapter
+
+A channel with no posting API (Viblo, the Facebook profile; Reddit and LinkedIn while their API has no approved
+credential; TikTok only as a draft, see below) posts through a deterministic script in a logged-in browser. No model
+drives the browser: the script (`evo_agents/hub/marketing_browser.py`) opens the compose page, fills the text the gate
+passed, presses the button and reads the address it lands on. It opens the compose page and the page of the post and
+nothing else, so it reads no feed, no comment and no number; a browser post has no metrics.
+
+The road of a post: the gate passes it, the post is `queued` (a draft with a reason when the account has no session, the
+session is `stale`, another post of the channel is on its way, or the post is a reply). A script claims the oldest queued
+post (`posting`), posts it, and reports the outcome with a screenshot; the post is then `posted` with its link, or
+`failed`. The screenshot is kept on the post (`GET /v1/x/marketing/P/posts/ID/screenshot`) and its hash is in the post's
+layers, labelled internal; the audit holds `marketing.post.posted` with the link.
+
+The script stops, never retries, never solves a captcha and never types a password when it sees:
+
+| Outcome | What it saw | What follows |
+|---|---|---|
+| `captcha` | a captcha frame or field | the post fails, the breaker of the channel opens at once |
+| `lockout` | a checkpoint or challenge address, a 403 or 429, or a lock or restriction notice (English or Vietnamese) | the same |
+| `session_expired` | the login page or a password field | the post fails, the channel is `stale` and its breaker opens, and the Inbox of the admins says its owner logs in again |
+| `failed` | any other page after the button, or an error of the script | counts towards the two failures in a row that open the breaker |
+
+A post that no script reports on in 30 minutes fails, and one that no script claims in a day becomes a draft. A claim
+checks the kill switch, the breaker, the mode and the session again, as the queue may have waited.
+
+### Log in once
+
+The session is Playwright's storage state (the cookies of the channel's domains), sealed in the plugin's config field
+`<channel>_session` (16 KiB at most; an admin reads no value back). The member who owns the account logs in once, on
+a machine with a screen:
+
+```
+pip install playwright && playwright install chromium
+evo-agents hub marketing login --project P CHANNEL_ID
+```
+
+The command opens a visible Chromium on the login page of the channel. Log in by hand (password, two-factor, any captcha),
+press Enter in the terminal, and the command seals the session and marks the channel `ok`. Nothing types the password.
+Log in again the same way when a session expires. The session reaches the hub-side claim of a person's login and nothing
+else: the scope of an agent's run is refused, and the session is in no post, list, status or audit.
+
+### The worker with a browser
+
+`evo-agents hub marketing browser-post --project P` claims one queued post, posts it and reports. Run it, on a schedule,
+on a machine or container that has Playwright and Chromium and the login of a member with the writer role (a container
+from `mcr.microsoft.com/playwright/python` works, [Unverified]). It is a script of the member's login, not an agent run.
+Two limits to know:
+
+- The addresses and selectors of each channel (`PROFILES` in the script) are [Unverified] against the live sites; the
+  tests use a fake page and never a real platform, so try a channel by hand, with a throwaway account, before relying on it.
+- Hacker News stays a draft always. TikTok takes a video, which the script does not upload, so its posts stay drafts
+  through the Content Posting API or by hand. LinkedIn's terms may forbid automation: the member decides, and the plugin
+  does not post there through the browser until its owner stores a session.

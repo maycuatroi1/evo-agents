@@ -11,7 +11,8 @@ autonomous but on facebook_profile and tiktok, facebook_profile is personal only
 
 marketing_posts holds what an agent proposed: the text, its links and sources, the result of each layer of the gate,
 the Judge's scores, where it ended (posted, draft with the reason, failed, withdrawn), its cost and the run that
-proposed it. marketing_budget holds the money reserved and spent in each month. marketing_denylist holds the terms,
+proposed it. A post for a browser channel waits as queued until a worker's script claims it (posting, claimed_at) and
+reports; its screenshot is kept on it (0120). marketing_budget holds the money reserved and spent in each month. marketing_denylist holds the terms,
 domains and people a post must never name. marketing_state holds the kill switch of a project. marketing_metrics holds
 the numbers read from a post at +24h and +7d.
 """
@@ -26,6 +27,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Identity,
     Index,
+    LargeBinary,
     MetaData,
     Numeric,
     PrimaryKeyConstraint,
@@ -52,7 +54,9 @@ MODES = ("autonomous", "draft_only")
 ADAPTERS = ("api", "browser")
 PERSONAL_AUTONOMOUS = ("facebook_profile", "tiktok")  # the only channels a personal account may post on by itself
 POST_KINDS = ("post", "reply")
-POST_STATES = ("proposed", "judging", "posted", "draft", "failed", "withdrawn")
+POST_STATES = ("proposed", "judging", "queued", "posting", "posted", "draft", "failed", "withdrawn")
+SESSION_STATES = ("none", "ok", "stale")  # the sealed login session of a browser channel
+MAX_SHOT_BYTES = 2 * 1024 * 1024
 DENY_KINDS = ("term", "domain", "person")
 SPANS = ("24h", "7d")
 MAX_TEXT = 20000
@@ -82,6 +86,7 @@ def channels_table(metadata: MetaData) -> Table:
         Column("autonomous_since", DateTime(timezone=True)),
         Column("paused_at", DateTime(timezone=True)),
         Column("paused_reason", Text),
+        Column("session_state", Text, nullable=False, server_default="none"),
         Column("created_by", BigInteger),
         _stamp("created_at"),
         _key("marketing_channels", "project_id", "projects", ondelete="CASCADE"),
@@ -122,6 +127,8 @@ def posts_table(metadata: MetaData) -> Table:
         _stamp("created_at"),
         Column("decided_at", DateTime(timezone=True)),
         Column("posted_at", DateTime(timezone=True)),
+        Column("claimed_at", DateTime(timezone=True)),
+        Column("screenshot", LargeBinary),
         _key("marketing_posts", "project_id", "projects", ondelete="CASCADE"),
         _key("marketing_posts", "channel_id", "marketing_channels", ondelete="CASCADE"),
         _key("marketing_posts", "proposed_by", "users", ondelete="SET NULL"),

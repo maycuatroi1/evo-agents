@@ -222,7 +222,8 @@ def test_a_fresh_database_gets_the_one_hundred_and_sixty_three_tables(hub_db):
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
-    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066)
+    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066), and
+    # the screenshot (at most 2 MiB) a browser script took of a marketing post (0120)
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
@@ -230,6 +231,7 @@ def test_a_fresh_database_gets_the_one_hundred_and_sixty_three_tables(hub_db):
         ("accounts", "oauth_sealed"),
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
+        ("marketing_posts", "screenshot"),
         ("secrets", "nonce"),
         ("secrets", "sealed"),
     ]
@@ -2860,3 +2862,30 @@ def test_0119_marketing_keeps_the_registry_rules_in_the_database_and_going_back_
     assert not {name for name in tables(hub_db) if name.startswith("marketing_")}
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0119") :]
+
+
+def test_0120_marketing_browser_adds_the_queue_states_and_the_session_and_going_back_makes_drafts(hub_db):
+    move_to(hub_db, "0119")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    t = hub_tables
+    account = {"project_id": ids["project"], "channel": "viblo", "account": "evo", "account_kind": "project"}
+    with live.connect(hub_db) as conn:
+        channel_id = one(conn, insert(t.marketing_channels).values(account).returning(t.marketing_channels.c.id))
+        post = {"project_id": ids["project"], "channel_id": channel_id, "channel": "viblo", "account": "evo"}
+        post = {**post, "body": "hi"}
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(t.marketing_posts).values({**post, "state": "queued"}))  # not a state yet
+    move_to(hub_db, "0120")
+    with live.connect(hub_db) as conn:
+        assert one(conn, select(t.marketing_channels.c.session_state)) == "none"  # the safe default
+        for state in ("queued", "posting"):
+            conn.execute(insert(t.marketing_posts).values({**post, "state": state, "screenshot": b"png"}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(t.marketing_channels).values({**account, "account": "b", "session_state": "maybe"}))
+    move_to(hub_db, "0119", down=True)
+    with live.connect(hub_db) as conn:
+        found = conn.execute(select(t.marketing_posts.c.state, t.marketing_posts.c.reason)).all()
+        assert [row.state for row in found] == ["draft", "draft"]
+        assert all("browser adapter" in row.reason for row in found)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0120") :]
