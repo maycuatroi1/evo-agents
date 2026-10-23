@@ -2758,6 +2758,264 @@
         "schema": "Run"
       }
     },
+    "hub canvas baseline decide": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "claim",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "decision",
+          "metavar": "DECISION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "accepted",
+            "deferred",
+            "extended",
+            "rejected",
+            "retired"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--deadline"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "kind",
+          "week",
+          "due_at",
+          "time_zone",
+          "status",
+          "created_by",
+          "created_at",
+          "approved_at",
+          "expired_at",
+          "item_count",
+          "waiting",
+          "canvas",
+          "items",
+          "approved_by",
+          "snapshot"
+        ],
+        "schema": "CanvasBaseline"
+      }
+    },
+    "hub canvas baseline list": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "number",
+          "kind",
+          "week",
+          "due_at",
+          "time_zone",
+          "status",
+          "created_by",
+          "created_at",
+          "approved_at",
+          "expired_at",
+          "item_count",
+          "waiting"
+        ],
+        "schema": "CanvasBaselineSummary"
+      }
+    },
+    "hub canvas baseline open": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "claim",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "kind",
+          "week",
+          "due_at",
+          "time_zone",
+          "status",
+          "created_by",
+          "created_at",
+          "approved_at",
+          "expired_at",
+          "item_count",
+          "waiting",
+          "canvas",
+          "items",
+          "approved_by",
+          "snapshot"
+        ],
+        "schema": "CanvasBaseline"
+      }
+    },
+    "hub canvas baseline show": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "kind",
+          "week",
+          "due_at",
+          "time_zone",
+          "status",
+          "created_by",
+          "created_at",
+          "approved_at",
+          "expired_at",
+          "item_count",
+          "waiting",
+          "canvas",
+          "items",
+          "approved_by",
+          "snapshot"
+        ],
+        "schema": "CanvasBaseline"
+      }
+    },
     "hub canvas brainstorm": {
       "positionals": [
         {
@@ -17294,7 +17552,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.40.2"
+      "version": "0.40.3"
     },
     "paths": {
       "/v1/health": {
