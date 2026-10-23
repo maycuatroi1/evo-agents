@@ -410,6 +410,23 @@ class ReplaySpec(BaseModel):
     repo: str = Field(description="the change's repo")
 
 
+class ProbeSpec(BaseModel):
+    """What the worker of a probe run is told (``evo_agents.hub.server.probe_runs``): the probe, the change whose rule
+    its arms put on and take off, and the sessions of each arm."""
+
+    probe_run_id: int
+    probe_id: int
+    repo: str = Field(description="the repo of the probe's task")
+    base_sha: str | None = Field(description="the task's base commit; null: the default branch's tip at made_at")
+    made_at: datetime = Field(description="when the probe was made")
+    task: str = Field(description="the only text the agent of a session is given")
+    verify: str = Field(description="one shell line the worker runs on each session's work; never shown the agent")
+    k: int = Field(description="the sessions of each arm")
+    week: date = Field(description="the Monday of the ISO week the run measures")
+    change_repo: str = Field(description="the repo of the change, which holds its rule")
+    merge_sha: str | None = Field(description="the change's merge commit; null: its head against the default branch")
+
+
 class HistorySpec(BaseModel):
     """What the worker of a history run is told (``evo_agents.hub.server.history``): how it reads the project's
     history in batches."""
@@ -424,10 +441,11 @@ class CuratorSpec(BaseModel):
     """What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
-    head, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own
-    key (``evo_agents.hub.server.history``)."""
+    head, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own
+    key (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key
+    (``evo_agents.hub.server.probe_runs``)."""
 
-    role: Literal["reviewer", "builder", "judge", "replay", "history"]
+    role: Literal["reviewer", "builder", "judge", "replay", "history", "probe"]
     protected_paths: list[str] = Field(default_factory=list, description="globs of the charter, repo:glob for one repo")
     change_id: int | None = None
     branch: str | None = Field(None, description="curator/..., the one branch a Builder pushes")
@@ -451,6 +469,11 @@ class CuratorSpec(BaseModel):
         None,
         description="a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); "
         "the daemon keeps it as a judge run's",
+    )
+    probe: ProbeSpec | None = Field(None, description="a probe run's probe and change; null for any other run")
+    probe_key: str | None = Field(
+        None,
+        description="a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's",
     )
 
 

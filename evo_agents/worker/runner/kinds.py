@@ -11,6 +11,7 @@ from evo_agents.worker.runner.chat import ChatRun
 from evo_agents.worker.runner.history import HistoryRun
 from evo_agents.worker.runner.judge import JudgeRun
 from evo_agents.worker.runner.plan import PlanRun
+from evo_agents.worker.runner.probe import ProbeRun
 from evo_agents.worker.runner.question import QuestionRun
 from evo_agents.worker.runner.release import ReleaseRun
 from evo_agents.worker.runner.replay import ReplayRun
@@ -31,6 +32,7 @@ KINDS = {
     "task": TaskRun,
     "replay": ReplayRun,
     "history": HistoryRun,
+    "probe": ProbeRun,
     "release": ReleaseRun,
     "question": QuestionRun,
     "browser": BrowserLoginRun,
