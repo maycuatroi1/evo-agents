@@ -41,11 +41,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs as chat_rules
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import attachment_store, audit
 from evo_agents.hub.server.chat_access import (
     ChatAccess,
     chat_access,
@@ -54,7 +53,6 @@ from evo_agents.hub.server.chat_access import (
     uncleared,
 )
 from evo_agents.hub.server.chat_direct import direct_mention
-from evo_agents.hub.server.chat_files import attach
 from evo_agents.hub.server.chat_members import (
     LOGIN_PATTERN,
     REFUSALS,
@@ -94,6 +92,7 @@ from evo_agents.hub.server.chat_views import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
+from evo_agents.hub.server.runs.models.attachment_parts import AttachmentIds
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -124,25 +123,16 @@ class ChatCreate(BaseModel):
 
 
 class ChatMessageIn(BaseModel):
-    body: str = Field("", description=f"at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8; blank only with files")
+    body: str = Field(description=f"at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8; empty only with attachment_ids")
     reply_to: int | None = Field(None, ge=1, le=MAX_ID, description="the message it answers: it goes in its thread")
-    file_ids: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
-        default_factory=list,
-        max_length=chats.MAX_MESSAGE_FILES,
-        description="the files it carries, each uploaded to the chat by the sender (POST .../files) and not sent yet",
-    )
-
-    @field_validator("body")
-    @classmethod
-    def _bounded(cls, value: str) -> str:
-        if len(value.encode()) > chats.MAX_MESSAGE_BYTES:
-            raise ValueError(f"a message is at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
-        return value
+    attachment_ids: AttachmentIds = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _said(self) -> ChatMessageIn:
-        if not self.body.strip() and not self.file_ids:
-            raise ValueError("a message has some text, or a file")
+    def _bounded(self):
+        if not self.body.strip() and not self.attachment_ids:
+            raise ValueError("a message has some text")
+        if len(self.body.encode()) > chats.MAX_MESSAGE_BYTES:
+            raise ValueError(f"a message is at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
         return self
 
 
@@ -354,8 +344,9 @@ async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Princip
         root = answered.thread_root_id or answered.id
     names = chats.mention_names(body.body)
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
+    files = await attachment_store.take(conn, body.attachment_ids, user.user_id, chat_id=chat.chat_id)
     message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
-    files = await attach(conn, chat, user, body.file_ids, message_id)
+    await attachment_store.hold_in_chat(conn, message_id, files)  # before hand_mentions, whose inboxes carry them
     if chat.kind == chats.DIRECT:
         kept += await _direct_agent(conn, chat, user, root, kept)
     elif chat.kind == chats.SETTLE:
@@ -363,8 +354,7 @@ async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Princip
     elif not any(mention["profile_id"] is not None for mention in kept):
         kept += await _thread_agent(conn, chat, user, root)
     via = dispatch_credential(user.kind)
-    text = "\n".join([body.body.strip(), *chat_rules.file_lines(files)]).strip()  # what the agent reads
-    hand = Hand(chat, message_id, root or message_id, None, user.user_id, user.login, via, 1, user.login, text)
+    hand = Hand(chat, message_id, root or message_id, None, user.user_id, user.login, via, 1, user.login, body.body)
     await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]

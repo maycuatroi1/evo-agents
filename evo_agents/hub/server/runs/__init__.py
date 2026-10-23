@@ -17,7 +17,8 @@ project lists an origin for (409 naming it: no credential is leased for a repo w
 would fail the run; a rerun and a plan run are refused the same way), and a worker named must be one of the caller's
 own or one another member shares in the project while holding writer there (``worker_fit.shared_in``; 403 for any
 other id, a hub admin's included), live and serving the project (409). A shared worker claims the runs of its owner and
-of every member who holds writer on the run's project, one member's runs at a time (``claims``).
+of every member who holds writer on the run's project, and whom the units it is narrowed to admit
+(``worker_fit.unit_admits``), one member's runs at a time (``claims``).
 Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
 one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
 Each run keeps the credential it was dispatched with in dispatched_via (``credentials.dispatch_credential``): web for a
@@ -27,7 +28,7 @@ spent already (``ClaimedBudget``). A worker whose owner set its dispatch_from to
 session only: a dispatch, plan run or rerun pinned to it with a token gets 403 saying so, and its claims pass over
 the runs dispatched with a token.
 
-A plan the Curator made (``evo_agents.hub.server.changes``) is run by the night shift alone: a dispatch of its steps, a
+A plan the Curator made (``evo_agents.hub.server.changes``) is run by the night shift alone, at any hour: a dispatch of its steps, a
 plan run of it and a rerun of a run of it get 409, as does a rerun of a review run or a judge run, which only the night
 shift queues. A judge run is claimed only by a worker whose daemon says it runs judge runs, with a checkout of its repo,
 and comes with ``judge.build_judge_prompt``; the claim of any run of the Curator says so (``curator``: its role, the

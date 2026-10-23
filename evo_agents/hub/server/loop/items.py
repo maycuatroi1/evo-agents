@@ -147,7 +147,8 @@ def _query():
 async def rows_of(conn: AsyncConnection, project_id: int, *where, limit: int | None = None) -> list:
     """The project's work items matching ``where``, the newest first, with what their ancestors are named by."""
     i = tables.loop_items
-    query = _query().where(i.c.project_id == project_id, *where).order_by(i.c.id.desc())
+    # the kinds of a core plugin's Loop rules (``model.PLUGIN_KINDS``) are not listed here: the routes name four kinds
+    query = _query().where(i.c.project_id == project_id, i.c.kind.in_(KINDS), *where).order_by(i.c.id.desc())
     return list(await conn.execute(query if limit is None else query.limit(limit)))
 
 

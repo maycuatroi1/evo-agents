@@ -49,6 +49,7 @@ DECISION_KEYS = (
     "recommended",
     "state",
     "owner",
+    "asked_of",
     "answer_option",
     "answer_text",
     "answered_by",
@@ -115,14 +116,14 @@ def cmd_list(args) -> int:
             f"#{decision['run_id']}",
             decision["plan_id"] or "-",
             decision["step_key"] or "-",
-            decision["owner"],
+            decision.get("asked_of") or decision["owner"],
             _one_line(decision["question"], QUESTION_CHARS),
             _when(decision["asked_at"]),
         )
         for decision in listed["decisions"]
     ]
     if rows:
-        _table(("DECISION", "STATE", "CATEGORY", "RUN", "PLAN", "STEP", "OWNER", "QUESTION", "ASKED (UTC)"), rows)
+        _table(("DECISION", "STATE", "CATEGORY", "RUN", "PLAN", "STEP", "ANSWERER", "QUESTION", "ASKED (UTC)"), rows)
     shown = len(rows)
     print(f"{shown} of {listed['total']} decision(s) of project {project}")
     if listed["offset"] + shown < listed["total"]:
@@ -201,7 +202,8 @@ def cmd_show(args) -> int:
     step = f", step {decision['step_key']}" if decision["step_key"] else ""
     lines = [
         ("run", _run_line(decision, step)),
-        ("owner", f"{decision['owner']}, who alone answers it"),
+        ("owner", decision["owner"]),
+        ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
         ("asked", f"{_when(decision['asked_at'])} UTC"),
         *_answer_lines(decision),
     ]

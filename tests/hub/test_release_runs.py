@@ -410,7 +410,10 @@ def test_the_pull_request_names_its_cycle_and_run_and_no_member(world):
     [asked] = [json.loads(item.body) for item in requests]
     assert asked["head"] == "release/0.25.0" and asked["base"] == "main" and asked.get("draft") is not True
     assert f"cut by release run #{run_id} of cycle #" in asked["body"] and DECISION in asked["body"]
-    assert OWNER not in asked["body"] and "tags that commit v0.25.0" in asked["body"]
+    # the trailer of the floor S1 (autonomy-levels) names the run's principal; nothing else names a member
+    signed = f"Evo-Principal: {OWNER}"
+    assert signed in asked["body"] and OWNER not in asked["body"].replace(signed, "")
+    assert "tags that commit v0.25.0" in asked["body"]
 
 
 @pytest.mark.parametrize(

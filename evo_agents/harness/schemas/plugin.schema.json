@@ -242,6 +242,9 @@
         },
         "tables": {
           "$ref": "#/$defs/tables"
+        },
+        "loop_rules": {
+          "$ref": "#/$defs/loop_rules"
         }
       }
     },
@@ -903,6 +906,104 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/agent_type"
+      }
+    },
+    "loop_rule": {
+      "description": "A rule of the Loop a core plugin adds to the core table (extension point loop_rules, version 1): the events it reads and the clock, the kinds of work items it makes and how each gets its run. The hub calls its Python handler with the project, the event and the plugin's own work items and writes the work items and moves it returns through the same path as the core rules.",
+      "type": "object",
+      "required": [
+        "name",
+        "python",
+        "kinds"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "on": {
+          "description": "The events the rule reads: events of the hub (canvas.baseline, signal.posted, ...) or events of the plugin's own, plugin.<id with - made _>.<name> of its `emits`. None when the rule reads the clock alone.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){1,3}$"
+          }
+        },
+        "emits": {
+          "description": "The names of the events of its own the plugin records, each plugin.<id with - made _>.<name>.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$"
+          }
+        },
+        "schedule": {
+          "description": "Whether the handler is also called on each tick with no event (the clock).",
+          "type": "boolean"
+        },
+        "kinds": {
+          "description": "The kinds of work items the rule makes, each with the run kind or agent type that takes the work.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/loop_rule_kind"
+          }
+        }
+      }
+    },
+    "loop_rule_kind": {
+      "type": "object",
+      "required": [
+        "kind",
+        "run"
+      ],
+      "properties": {
+        "kind": {
+          "description": "A kind of work item a plugin may make.",
+          "enum": [
+            "growth_idea",
+            "growth_draft",
+            "growth_publish",
+            "growth_invite",
+            "growth_review"
+          ]
+        },
+        "run": {
+          "description": "How the work gets done once admitted: task (a task run of the plugin's own agent type `agent_type`), or job (the plugin's own handler does it, the work item running with no run until the plugin moves it).",
+          "enum": [
+            "task",
+            "job"
+          ]
+        },
+        "agent_type": {
+          "description": "The plugin's own agent type that takes a task; required for run task.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        }
+      }
+    },
+    "loop_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/loop_rule"
       }
     }
   }

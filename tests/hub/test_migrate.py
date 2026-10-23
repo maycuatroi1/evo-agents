@@ -125,7 +125,16 @@ TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
 TABLES |= pg.ORG_TABLES  # migration 0099
 TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
-TABLES |= pg.CHAT_FILE_TABLES  # migration 0104
+TABLES |= pg.SHARE_TABLES  # migration 0105
+TABLES |= pg.WORKER_SHARE_TABLES  # migration 0107
+TABLES |= pg.ATTACHMENT_TABLES  # migration 0109
+TABLES |= pg.INVITE_TABLES  # migration 0110
+TABLES |= pg.AUTONOMY_LEVEL_TABLES  # migration 0112
+TABLES |= pg.AUTONOMY_STOP_TABLES  # migration 0116
+TABLES |= pg.BROWSER_TABLES  # migration 0117
+TABLES |= pg.CRM_TABLES  # migration 0124
+TABLES |= pg.MARKETING_TABLES  # migration 0125
+TABLES |= pg.GROWTH_TABLES  # migration 0127
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -207,22 +216,29 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_forty_four_tables(hub_db):
-    assert len(TABLES) == 144  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_sixty_six_tables(hub_db):
+    assert len(TABLES) == 166  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
-    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066)
+    # are the sealed values of credentials (0011) and their nonces, the sealed tokens of OAuth accounts (0066), the
+    # sealed data keys of browser profiles (0117), whose profiles are in the bucket, sealed, and the screenshot (at
+    # most 2 MiB) a browser script took of a marketing post (0126)
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
         ("accounts", "oauth_nonce"),
         ("accounts", "oauth_sealed"),
+        ("browser_identities", "key_nonce"),
+        ("browser_identities", "previous_key_nonce"),
+        ("browser_identities", "previous_sealed_key"),
+        ("browser_identities", "sealed_key"),
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
+        ("marketing_posts", "screenshot"),
         ("secrets", "nonce"),
         ("secrets", "sealed"),
     ]
@@ -2683,3 +2699,279 @@ def test_0100_keeps_the_questions_of_core_plugins_and_question_runs_and_going_ba
         with pytest.raises(errors.CheckViolation):  # the checks of schema 0099 are back
             conn.execute(insert(t.plugin_deliveries).values(delivery))
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0100") :]
+
+
+def test_0104_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_while_one_does(hub_db):
+    move_to(hub_db, "0103")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    s = t.secrets
+    mine = {"owner_id": ids["user"], "name": "claude-a", "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN"}
+    mine |= {"sealed": b"s" * 20, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s).values(mine))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0104")
+    with live.connect(hub_db) as conn:
+        profile = {"project_id": ids["project"], "handle": "auditor", "name": "Auditor", "color": "#475569"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        pid = conn.execute(insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id)).scalar_one()
+        agent = {"profile_id": pid, "name": "claude-a", "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN"}
+        agent |= {"sealed": b"s" * 20, "nonce": b"n" * 12, "key_id": "0123abcd"}
+        conn.execute(insert(s).values(agent))  # the member's secret of that name is another row
+        assert one(conn, select(func.count()).select_from(s).where(s.c.name == "claude-a")) == 2
+        for bad in (
+            insert(s).values({**agent, "owner_id": ids["user"]}),  # exactly one owner
+            insert(s).values({"name": "orphan", "kind": "env"}),
+            insert(s).values({**agent, "kind": "git", "name": "g"}),  # an agent's secret is env
+            insert(s).values(agent),  # unique by (profile, name) among the live ones
+            insert(s).values({**agent, "profile_id": pid + 1000, "name": "x"}),  # a profile that exists
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        gone = {"deleted_at": func.now(), "sealed": None, "nonce": None, "key_id": None}
+        conn.execute(update(s).values(gone).where(s.c.profile_id == pid))
+        conn.execute(insert(s).values(agent))  # a deleted one frees the name
+    with pytest.raises(RuntimeError, match=r"2 secret row\(s\) belong to agent profiles"):
+        move_to(hub_db, "0103", down=True)
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(s).where(s.c.profile_id.is_not(None)))
+    move_to(hub_db, "0103", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert "profile_id" not in columns(hub_db, "secrets")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0104") :]
+
+
+def test_0109_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_back_restores_them(hub_db):
+    move_to(hub_db, "0108")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        chat_id = _chat(conn, ids)
+        message = {"chat_id": chat_id, "seq": 1, "author_user_id": ids["user"], "body": "", "label": []}
+        with pytest.raises(errors.CheckViolation):  # no message without text before 0109
+            conn.execute(insert(t.chat_messages).values(message))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0109")
+    a, k = t.attachments, t.run_inbox_attachments
+    with live.connect(hub_db) as conn:
+        inbox_id = one(
+            conn, insert(t.run_inbox).values(run_id=run_id, sent_by=ids["user"], body="").returning(t.run_inbox.c.id)
+        )
+        message_id = one(conn, insert(t.chat_messages).values(message).returning(t.chat_messages.c.id))
+        upload = {"uploaded_by": ids["user"], "name": "notes.txt", "media_type": "text/plain", "size": 5}
+        upload |= {"sha256": "a" * 64}
+        to_run = one(conn, insert(a).values({**upload, "run_id": run_id, "inbox_id": inbox_id}).returning(a.c.id))
+        conn.execute(insert(a).values({**upload, "chat_id": chat_id, "chat_message_id": message_id}))
+        conn.execute(insert(k).values(inbox_id=inbox_id, attachment_id=to_run))
+        for bad in (
+            insert(a).values(**upload),  # a run or a chat
+            insert(a).values({**upload, "run_id": run_id, "chat_id": chat_id}),  # not both
+            insert(a).values({**upload, "chat_id": chat_id, "inbox_id": inbox_id}),  # an inbox row holds a run's file
+            insert(a).values({**upload, "run_id": run_id, "chat_message_id": message_id}),  # a message a chat's file
+            insert(a).values({**upload, "name": "", "run_id": run_id}),
+            insert(a).values({**upload, "sha256": "A" * 64, "run_id": run_id}),
+            insert(a).values({**upload, "size": 50 * 1024 * 1024 + 1, "run_id": run_id}),
+            insert(k).values(inbox_id=inbox_id, attachment_id=to_run),  # tied once
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    # Going back gives each empty body a placeholder and drops the files.
+    move_to(hub_db, "0108", down=True)
+    assert query(hub_db, select(t.run_inbox.c.body)) == [("(files)",)]
+    assert query(hub_db, select(t.chat_messages.c.body)) == [("(files)",)]
+    assert {"attachments", "run_inbox_attachments"}.isdisjoint(tables(hub_db))
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.run_inbox))
+        conn.execute(delete(t.chat_messages))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0109") :]
+
+
+def test_0117_keeps_browser_identities_and_going_back_records_their_blobs_for_deletion(hub_db):
+    move_to(hub_db, "0116")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        worker = one(conn, _worker_row(ids, ids["token"], "box", 2))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0117")
+    b = t.browser_identities
+    mine = {"project_id": ids["project"], "owner_kind": "member", "owner_id": ids["user"], "name": "northwind"}
+    mine |= {"domains": ["northwind.example"], "worker_id": worker, "created_by": ids["user"]}
+    saved = {"version": 2, "sha256": "a" * 64, "size": 10, "sealed_key": b"k" * 48, "key_nonce": b"n" * 12}
+    saved |= {"key_id": "0123abcd", "chromium_version": "141.0.7390.54"}
+    saved |= {"previous_sha256": "b" * 64, "previous_size": 9, "previous_sealed_key": b"k" * 48}
+    saved |= {"previous_key_nonce": b"n" * 12, "previous_key_id": "0123abcd"}
+    with live.connect(hub_db) as conn:
+        first = one(conn, insert(b).values(mine).returning(b.c.id))
+        assert conn.execute(select(b.c.status, b.c.version, b.c.sha256).where(b.c.id == first)).one() == (
+            "active",
+            0,
+            None,
+        )
+        conn.execute(update(b).values(saved).where(b.c.id == first))
+        project = {**mine, "owner_kind": "project", "owner_id": None}
+        conn.execute(insert(b).values(project))  # the project's identity of that name is another one
+        for bad in (
+            insert(b).values(mine),  # unique by (project, member, name) among the live ones
+            insert(b).values(project),  # unique by (project, name) among the project's live ones
+            insert(b).values({**mine, "owner_id": None}),  # a member's has its member
+            insert(b).values({**project, "owner_id": ids["user"], "name": "p2"}),  # the project's has none
+            insert(b).values({**mine, "name": "Northwind"}),  # the name of a secret
+            insert(b).values({**mine, "name": "n2", "domains": []}),  # at least one domain
+            insert(b).values({**mine, "name": "n3", "status": "broken"}),
+            insert(b).values({**mine, "name": "n4", "version": 1}),  # a saved version has its blob
+            insert(b).values({**mine, "name": "n5", **saved, "key_id": None}),  # a version is whole
+            insert(b).values({**mine, "name": "n6", **saved, "sha256": "A" * 64}),  # a hash in hex
+            insert(b).values({**mine, "name": "n7", **saved, "sha256": None, "size": None, "sealed_key": None}),
+            insert(b).values({**mine, "name": "n8", "worker_id": worker + 1000}),  # a worker that exists
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        with pytest.raises(errors.CheckViolation):  # a deleted one keeps no key
+            conn.execute(update(b).values(deleted_at=func.now()).where(b.c.id == first))
+        conn.execute(update(b).values(deleted_at=func.now()).where(b.c.owner_kind == "project"))
+        conn.execute(insert(b).values(project))  # a deleted one frees the name
+    move_to(hub_db, "0116", down=True)
+    assert "browser_identities" not in tables(hub_db)
+    deletions = t.blob_deletions
+    recorded = select(deletions.c.sha256, deletions.c.size, deletions.c.kind).order_by(deletions.c.sha256)
+    assert query(hub_db, recorded) == [("a" * 64, 10, "browser-profile"), ("b" * 64, 9, "browser-profile")]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(deletions))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0117") :]
+
+
+def test_0121_lets_a_run_ask_a_login_decision_and_going_back_deletes_those_with_their_inbox_rows(hub_db):
+    move_to(hub_db, "0120")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        with pytest.raises(errors.CheckViolation):  # no login category before 0121
+            conn.execute(_decision_row(ids, run_id, "wait-helper").values(category="login"))
+    move_to(hub_db, "0121")
+    with live.connect(hub_db) as conn:
+        login = one(conn, _decision_row(ids, run_id, "wait-helper").values(category="login"))
+        scope = one(conn, _decision_row(ids, run_id, "wait-helper"))
+        for decision_id in (login, scope):
+            conn.execute(
+                insert(t.run_inbox).values(run_id=run_id, sent_by=ids["user"], body="A.", decision_id=decision_id)
+            )
+
+    move_to(hub_db, "0120", down=True)
+    assert query(hub_db, select(t.decisions.c.id, t.decisions.c.category)) == [(scope, "scope")]
+    assert query(hub_db, select(t.run_inbox.c.decision_id)) == [(scope,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0121") :]
+
+
+def test_0124_crm_keeps_one_contact_a_login_and_going_back_drops_the_tables(hub_db):
+    move_to(hub_db, "0123")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0124")
+    t = hub_tables
+    contact = {"project_id": ids["project"], "login": "octocat", "profile_url": "https://github.com/octocat"}
+    contact |= {"source": "issue"}
+    with live.connect(hub_db) as conn:
+        contact_id = one(conn, insert(t.crm_contacts).values(contact).returning(t.crm_contacts.c.id))
+        assert one(conn, select(t.crm_contacts.c.stage)) == "lead"
+        touch = {"contact_id": contact_id, "kind": "issue", "ref": "issue#1", "happened_at": func.now()}
+        conn.execute(insert(t.crm_touchpoints).values(touch))
+        conn.execute(insert(t.crm_touchpoints).values({**touch, "kind": "note", "ref": "n", "note": "asked about CI"}))
+        conn.execute(insert(t.crm_stage_history).values(contact_id=contact_id, stage="lead", reached_at=func.now()))
+        for bad in (
+            insert(t.crm_contacts).values(contact),  # one contact a login
+            insert(t.crm_contacts).values({**contact, "login": "Octo"}),  # lower case alone
+            insert(t.crm_contacts).values({**contact, "login": "other", "source": "email"}),
+            insert(t.crm_contacts).values({**contact, "login": "other", "stage": "customer"}),
+            insert(t.crm_touchpoints).values(touch),  # once a kind and reference
+            insert(t.crm_touchpoints).values({**touch, "ref": "issue#2", "note": "a note on an issue"}),
+            insert(t.crm_touchpoints).values({**touch, "kind": "note", "ref": "n2"}),  # a note has text
+            insert(t.crm_stage_history).values(contact_id=contact_id, stage="lead", reached_at=func.now()),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    with live.connect(hub_db) as conn:  # the contact takes its touchpoints and history with it
+        conn.execute(delete(t.crm_contacts).where(t.crm_contacts.c.id == contact_id))
+        assert one(conn, select(func.count()).select_from(t.crm_touchpoints)) == 0
+        assert one(conn, select(func.count()).select_from(t.crm_stage_history)) == 0
+    move_to(hub_db, "0123", down=True)
+    assert not {name for name in tables(hub_db) if name.startswith("crm_")}
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0124") :]
+
+
+def test_0125_marketing_keeps_the_registry_rules_in_the_database_and_going_back_drops_the_tables(hub_db):
+    move_to(hub_db, "0124")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0125")
+    t = hub_tables
+    account = {"project_id": ids["project"], "channel": "x", "account": "evo_agents", "account_kind": "project"}
+    personal = {**account, "channel": "tiktok", "account": "me", "account_kind": "personal", "owner_id": ids["user"]}
+    with live.connect(hub_db) as conn:
+        channel_id = one(conn, insert(t.marketing_channels).values(account).returning(t.marketing_channels.c.id))
+        assert one(conn, select(t.marketing_channels.c.mode)) == "draft_only"  # the default is the safe one
+        conn.execute(insert(t.marketing_channels).values({**personal, "mode": "autonomous"}))  # tiktok may
+        post = {"project_id": ids["project"], "channel_id": channel_id, "channel": "x", "account": "a", "body": "hi"}
+        post_id = one(conn, insert(t.marketing_posts).values(post).returning(t.marketing_posts.c.id))
+        conn.execute(insert(t.marketing_metrics).values(post_id=post_id, span="24h", metric="likes", value=3))
+        for bad in (
+            insert(t.marketing_channels).values(account),  # one row for each account
+            insert(t.marketing_channels).values({**account, "account": "b", "channel": "mastodon"}),
+            insert(t.marketing_channels).values({**account, "account": "b", "mode": "robot"}),
+            insert(t.marketing_channels).values({**personal, "account": "b", "owner_id": None}),  # an owner
+            insert(t.marketing_channels).values({**personal, "account": "b", "channel": "x", "mode": "autonomous"}),
+            insert(t.marketing_channels).values({**account, "account": "b", "channel": "facebook_profile"}),
+            insert(t.marketing_channels).values(
+                {**account, "account": "b", "channel": "hackernews", "mode": "autonomous"}
+            ),
+            insert(t.marketing_posts).values({**post, "state": "sent"}),
+            insert(t.marketing_posts).values({**post, "body": ""}),
+            insert(t.marketing_metrics).values(post_id=post_id, span="24h", metric="likes", value=4),
+            insert(t.marketing_denylist).values(project_id=ids["project"], kind="name", value="x"),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    with live.connect(hub_db) as conn:  # a channel takes its posts and their metrics with it
+        conn.execute(delete(t.marketing_channels).where(t.marketing_channels.c.id == channel_id))
+        assert one(conn, select(func.count()).select_from(t.marketing_posts)) == 0
+        assert one(conn, select(func.count()).select_from(t.marketing_metrics)) == 0
+    move_to(hub_db, "0124", down=True)
+    assert not {name for name in tables(hub_db) if name.startswith("marketing_")}
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0125") :]
+
+
+def test_0126_marketing_browser_adds_the_queue_states_and_the_session_and_going_back_makes_drafts(hub_db):
+    move_to(hub_db, "0125")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    t = hub_tables
+    account = {"project_id": ids["project"], "channel": "viblo", "account": "evo", "account_kind": "project"}
+    with live.connect(hub_db) as conn:
+        channel_id = one(conn, insert(t.marketing_channels).values(account).returning(t.marketing_channels.c.id))
+        post = {"project_id": ids["project"], "channel_id": channel_id, "channel": "viblo", "account": "evo"}
+        post = {**post, "body": "hi"}
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(t.marketing_posts).values({**post, "state": "queued"}))  # not a state yet
+    move_to(hub_db, "0126")
+    with live.connect(hub_db) as conn:
+        assert one(conn, select(t.marketing_channels.c.session_state)) == "none"  # the safe default
+        for state in ("queued", "posting"):
+            conn.execute(insert(t.marketing_posts).values({**post, "state": state, "screenshot": b"png"}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(t.marketing_channels).values({**account, "account": "b", "session_state": "maybe"}))
+    move_to(hub_db, "0125", down=True)
+    with live.connect(hub_db) as conn:
+        found = conn.execute(select(t.marketing_posts.c.state, t.marketing_posts.c.reason)).all()
+        assert [row.state for row in found] == ["draft", "draft"]
+        assert all("browser adapter" in row.reason for row in found)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0126") :]

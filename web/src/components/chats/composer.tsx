@@ -1,16 +1,19 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { ArrowUp, Bot, Paperclip, Reply, TriangleAlert, X } from "lucide-react";
+import { ArrowUp, Bot, Reply, TriangleAlert, X } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
+import { AttachButton, AttachmentTray, pastedFiles, useFileDrop } from "@/components/data/attachments";
 import { InlineError, type WriteFailure } from "@/components/feedback/notice";
 import { shortcutText } from "@/components/shell/shortcuts";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { FilesNotReady, useAttachments } from "@/hooks/use-attachments";
 import { TOUCH_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import { browserApi } from "@/lib/api/browser";
+import { chatUploadBase } from "@/lib/attachments";
 import { sendChatMessage } from "@/lib/chat-queries";
 import {
   type Chat,
@@ -29,7 +32,6 @@ import {
 import { isChatSend, isSendShortcut, useModifierKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
-import { AttachmentList, useAttachments } from "./composer-files";
 import { useChatFailure } from "./hooks";
 import { MentionMenu, optionId } from "./mention-menu";
 
@@ -64,32 +66,30 @@ export type Replying = { name: string; text: string; onCancel: () => void };
  * nothing (`isChatSend`); on a touch screen Enter adds a line and Send sends. Typing `@` opens the suggestions of whom
  * it can name (`MentionMenu`), and Enter then puts the name in. A blank message or one over 16 KiB of UTF-8 is
  * refused here with the reason; a refusal of the hub shows here too, with its words. Answering one message (`replying`,
- * a direct chat's Reply), the box says which above the text, with Cancel the reply (Escape too). Files come with Attach
- * (`Paperclip`), a paste or a drop on the box: each uploads at once and shows as a chip under the text
- * (`composer-files.tsx`); a message may then have no text, and Send waits until every upload has ended.
+ * a direct chat's Reply), the box says which above the text, with Cancel the reply (Escape too).
  */
 export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hint, testId, focusKey = null, replying = null }: Props) {
   const t = useTranslations("chats.composer");
+  const tFiles = useTranslations("attachments");
   const format = useFormatter();
   const ids = useId();
   const failure = useChatFailure();
   const modifier = useModifierKey();
   const touch = useMediaQuery(TOUCH_QUERY);
   const area = useRef<HTMLTextAreaElement>(null);
-  const picker = useRef<HTMLInputElement>(null);
   const caretAfter = useRef<number | null>(null);
   const [text, setText] = useState("");
   const [at, setAt] = useState<MentionQuery | null>(null);
   const [active, setActive] = useState(0);
   const [closedAt, setClosedAt] = useState<number | null>(null);
-  const [problem, setProblem] = useState<"blank" | "long" | "failed" | null>(null);
+  const [problem, setProblem] = useState<"blank" | "long" | "files" | null>(null);
   const [error, setError] = useState<WriteFailure | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const files = useAttachments(chat.id);
+  const files = useAttachments(chatUploadBase(chat.id));
+  useFileDrop(files.add);
 
   const send = useMutation({
-    mutationFn: ({ body, to, fileIds }: { body: string; to: number | null; fileIds: number[] }) => sendChatMessage(browserApi(), chat.id, body, to, fileIds),
-    onError: (cause) => setError(failure(cause)),
+    mutationFn: async ({ body, to }: { body: string; to: number | null }) => sendChatMessage(browserApi(), chat.id, body, to, await files.settled()),
+    onError: (cause) => (cause instanceof FilesNotReady ? setProblem("files") : setError(failure(cause))),
     onSuccess: (message) => {
       setText("");
       setAt(null);
@@ -131,44 +131,12 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
-    if (send.isPending || files.uploading) return;
+    if (send.isPending) return;
     setError(null);
-    if (files.failed) return setProblem("failed");
-    if (!text.trim() && files.fileIds.length === 0) return setProblem("blank");
+    if (!text.trim() && files.count === 0) return setProblem("blank");
     if (utf8Bytes(text) > MAX_MESSAGE_BYTES) return setProblem("long");
     setProblem(null);
-    send.mutate({ body: text, to: replyTo, fileIds: files.fileIds });
-  };
-
-  const attach = (picked: readonly File[]) => {
-    if (picked.length === 0) return;
-    setProblem(null);
-    files.add(picked);
-  };
-
-  // A paste that holds files attaches them; the text it holds too still goes in the box.
-  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const pasted = [...event.clipboardData.files];
-    if (pasted.length === 0) return;
-    if (!event.clipboardData.types.includes("text/plain")) event.preventDefault();
-    attach(pasted);
-  };
-
-  const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
-  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!carriesFiles(event)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    setDragging(true);
-  };
-  const onDragLeave = (event: DragEvent<HTMLDivElement>) => {
-    if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setDragging(false);
-  };
-  const onDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (!carriesFiles(event)) return;
-    event.preventDefault();
-    setDragging(false);
-    attach([...event.dataTransfer.files]);
+    send.mutate({ body: text, to: replyTo });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -206,27 +174,16 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
   const handed = handedAgents(text, chat);
   const over = handed.slice(MAX_RUNS_PER_MESSAGE);
   const describedBy = [replying ? `${ids}-replying` : null, `${ids}-hint`, touch ? null : `${ids}-keys`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ");
-  const busy = send.isPending || files.uploading;
   const keyShortcuts = touch ? "Meta+Enter Control+Enter" : "Enter Meta+Enter Control+Enter";
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-2" aria-busy={busy || undefined} data-testid={testId}>
+    <form onSubmit={submit} noValidate className="flex flex-col gap-2" aria-busy={send.isPending || undefined} data-testid={testId}>
       <div
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
         className={cn(
           "relative rounded-md border border-input bg-card transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
           problem && "border-danger-solid",
-          dragging && "border-brand ring-1 ring-brand",
         )}
-        data-dragging={dragging || undefined}
       >
-        {dragging ? (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-card/90 text-sm font-medium text-foreground" aria-hidden="true">
-            {t("files.drop")}
-          </div>
-        ) : null}
         {open ? <MentionMenu id={menuId} options={options} active={current} onPick={pick} onHover={setActive} /> : null}
         {replying ? (
           <div className="flex items-center gap-2 border-b py-1.5 pr-1.5 pl-3" data-testid={`${testId}-replying`}>
@@ -251,6 +208,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
             </Button>
           </div>
         ) : null}
+        <AttachmentTray files={files} testId={testId} />
         <label htmlFor={`${ids}-text`} className="sr-only">
           {label}
         </label>
@@ -267,8 +225,13 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
           }}
           onSelect={(event) => follow(event.currentTarget.value, event.currentTarget.selectionStart)}
           onBlur={() => setAt(null)}
+          onPaste={(event) => {
+            const pasted = pastedFiles(event);
+            if (!pasted.length) return;
+            event.preventDefault();
+            files.add(pasted);
+          }}
           onKeyDown={onKeyDown}
-          onPaste={onPaste}
           aria-autocomplete="list"
           aria-controls={open ? menuId : undefined}
           aria-activedescendant={open ? optionId(menuId, current) : undefined}
@@ -278,32 +241,9 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
           className="block max-h-48 min-h-[60px] w-full resize-y border-0 bg-transparent p-3 text-sm leading-5 text-foreground outline-none placeholder:text-fg-subtle focus-visible:outline-none max-md:text-base"
           data-testid={`${testId}-text`}
         />
-        <AttachmentList attachments={files.attachments} onRemove={files.remove} testId={testId} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t p-2">
-          <input
-            ref={picker}
-            type="file"
-            multiple
-            hidden
-            tabIndex={-1}
-            onChange={(event) => {
-              attach([...(event.target.files ?? [])]);
-              event.target.value = "";
-            }}
-            data-testid={`${testId}-file-input`}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("files.attach")}
-            title={t("files.attach")}
-            onClick={() => picker.current?.click()}
-            data-testid={`${testId}-attach`}
-          >
-            <Paperclip aria-hidden="true" />
-          </Button>
-          <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-48 items-start gap-1.5 pl-1 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
+          <AttachButton onFiles={files.add} testId={testId} />
+          <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-40 items-start gap-1.5 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
             {handed.length ? (
               <>
                 <Bot className="mt-px size-3.5 shrink-0 text-running" aria-hidden="true" />
@@ -332,16 +272,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
               {t("bytes", { count: format.number(bytes), max: format.number(MAX_MESSAGE_BYTES) })}
             </span>
           ) : null}
-          <Button
-            type="submit"
-            size="sm"
-            className="ml-auto shrink-0"
-            busy={send.isPending}
-            disabled={files.uploading}
-            title={files.uploading ? t("files.wait") : undefined}
-            aria-keyshortcuts={keyShortcuts}
-            data-testid={`${testId}-send`}
-          >
+          <Button type="submit" size="sm" className="ml-auto shrink-0" busy={send.isPending} aria-keyshortcuts={keyShortcuts} data-testid={`${testId}-send`}>
             <ArrowUp aria-hidden="true" />
             {send.isPending ? t("sending") : t("send")}
             {modifier && !touch && !send.isPending ? (
@@ -355,13 +286,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
       {problem ? (
         <p id={`${ids}-problem`} className="flex items-center gap-1.5 text-xs font-medium text-danger" data-testid={`${testId}-problem`}>
           <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
-          {problem === "blank" ? t("blank") : problem === "failed" ? t("files.failed") : t("long", { max: format.number(MAX_MESSAGE_BYTES) })}
-        </p>
-      ) : null}
-      {files.refusal ? (
-        <p role="status" className="flex items-center gap-1.5 text-xs font-medium text-danger" data-testid={`${testId}-files-problem`}>
-          <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
-          {files.refusal}
+          {problem === "blank" ? t("blank") : problem === "long" ? t("long", { max: format.number(MAX_MESSAGE_BYTES) }) : tFiles("notReady")}
         </p>
       ) : null}
       {error ? <InlineError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}

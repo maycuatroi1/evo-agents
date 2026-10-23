@@ -88,8 +88,10 @@ from evo_agents.hub import plugin_events, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
+from evo_agents.hub.server import browser_holds
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.run_retry import next_attempt
 from evo_agents.hub.server.security import MACHINE, Principal
 
 if TYPE_CHECKING:
@@ -109,7 +111,6 @@ CHAT_DECISION_WAIT = timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS)  # the s
 PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cancelled
 # The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error
 CAUSED_KINDS = ("step", "plan", "author", "chat")
-CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps them; NULL for any other kind
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
 MOVE_COLUMNS |= {"evidence", "usage", "failure_cause"}
@@ -195,7 +196,7 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
 
 
 async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str, body: dict) -> None:
-    await conn.execute(insert(tables.run_events).values(run_id=run_id, seq=seq, kind=kind, body=body))
+    await conn.execute(insert(tables.run_events).values(run_id=run_id, seq=seq, kind=kind, body=runs.without_nul(body)))
 
 
 async def notify_queued(conn: AsyncConnection, run_id: int) -> None:
@@ -252,6 +253,7 @@ async def move_run(
         await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
     if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
         await infer_failure_cause(conn, run_id, row.error)
+    await browser_holds.follow(conn, run_id, new)
     await notify_events(conn, run_id)
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
 
@@ -659,52 +661,6 @@ async def reported_steps(conn: AsyncConnection, run_id: int) -> list[str]:
 # Runs that lose their worker
 
 
-def _next_attempt(run_id: int):
-    """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
-    the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
-    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the schedule,
-    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config; a
-    task run's agent type and pull requests."""
-    r = tables.runs
-    copied = (
-        "kind",
-        "project_id",
-        "plan_id",
-        "step_key",
-        "title",
-        "plan_revision",
-        "dispatched_by",
-        "dispatched_via",
-        "pinned_worker_id",
-        "requested_runtime",
-        "mode",
-        "approval",
-        "timeout_s",
-        "max_attempts",
-        "repo",
-        "branch",
-        "repos",
-        "model",
-        "schedule_id",
-        "schedule_night",
-        "budget",
-        "request",
-        "profile_id",
-        "profile_version",
-        "plugin_config",
-        "agent_type_id",
-        "pulls",
-        *CHAT_COLUMNS,
-    )
-    source = select(
-        *(r.c[name] for name in copied),
-        r.c.requested_runtime.label("runtime"),
-        (r.c.attempt + 1).label("attempt"),
-        r.c.id.label("parent_run_id"),
-    ).where(r.c.id == run_id)
-    return insert(r).from_select([*copied, "runtime", "attempt", "parent_run_id"], source).returning(r.c.id)
-
-
 async def end_held(
     conn: AsyncConnection,
     run_id: int,
@@ -728,7 +684,7 @@ async def end_held(
         await move_run(conn, run_id, state, "failed", "reaper", reason=reason, error=f"{reason}, and {why}")
         return "failed"
     await move_run(conn, run_id, state, "lost", "reaper", reason=reason, error=reason)
-    next_id = (await conn.execute(_next_attempt(run_id))).scalar_one()
+    next_id = (await conn.execute(next_attempt(run_id))).scalar_one()
     await notify_queued(conn, next_id)
     return "lost"
 
@@ -877,10 +833,11 @@ def _hours(span: timedelta) -> str:
 
 async def expire_seats(engine: AsyncEngine, sealer, github_app) -> dict:
     """The job hub.expire_seats (``org_expiry.expire_seats``): the org seats past their end date ended, and the leases
-    of the people whose primary seat ended taken back. The hub's worker reaches it through this module, as the reaper."""
-    from evo_agents.hub.server.org_expiry import expire_seats as expire
+    of the people whose primary seat ended taken back, and the leads of an intern's unit told of a decision of the
+    intern's runs open 24 hours (``principals.escalate``). The hub's worker reaches it through this module."""
+    from evo_agents.hub.server import org_expiry, principals
 
-    return await expire(engine, sealer, github_app)
+    return {**await org_expiry.expire_seats(engine, sealer, github_app), "escalated": await principals.escalate(engine)}
 
 
 async def recover_runs(
@@ -960,8 +917,10 @@ async def recover_runs(
     report = {state: ended.get(state, 0) for state in ("lost", "failed", "cancelled", "parked")}
     if expired or ended:
         log.warning("runs recovered", extra=report)
-    from evo_agents.hub.server import credentials
+    from evo_agents.hub.server import credentials, share_leases
 
+    async with engine.begin() as conn:  # the leases still out under a share that was revoked or ended
+        await share_leases.end_lapsed(conn)
     await credentials.revoke_tokens(engine, sealer, github_app)
     return report
 
@@ -970,9 +929,9 @@ async def prune_run_events(engine: AsyncEngine, days: int, store=None) -> dict:
     """Delete the events of runs that ended more than ``days`` days ago, once their tool figures are written from them
     (``tool_stats.record``, for a run that ended before the hub wrote them at the end), and the outputs of source tool
     of those runs that nothing carries, with the blobs no output names any longer (``output_prune``, whose objects go
-    from ``store`` now when it is given); and drop the sealed values of the GitHub tokens leased to runs that are past
-    their end (``credentials.drop_expired``)."""
-    from evo_agents.hub import output_prune
+    from ``store`` now when it is given), and the files of the messages to those runs (``attachment_prune``); and drop
+    the sealed values of the GitHub tokens leased to runs that are past their end (``credentials.drop_expired``)."""
+    from evo_agents.hub import attachment_prune, output_prune
     from evo_agents.hub.server import credentials, tool_stats
 
     r, e = tables.runs, tables.run_events
@@ -990,4 +949,5 @@ async def prune_run_events(engine: AsyncEngine, days: int, store=None) -> dict:
         extra={"deleted": deleted, "runs": len(counted), "days": days, "tokens_dropped": dropped},
     )
     pruned = await output_prune.prune_tool_outputs(engine, store, days)
+    pruned |= await attachment_prune.prune_run_files(engine, store, days)  # the files of the runs' messages
     return {"deleted": deleted, "days": days, "tokens_dropped": dropped, **pruned}

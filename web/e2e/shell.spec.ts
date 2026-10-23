@@ -58,9 +58,12 @@ test.describe("security headers", () => {
     baseURL,
     signInAs,
   }) => {
-    // Signed out, / is a redirect to the sign-in page, and that response carries the policy too.
+    // Signed out, / is the product page and any other page a redirect to the sign-in page; both carry the policy.
     const anonymous = await playwright.request.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
-    const redirect = await anonymous.get("/", { maxRedirects: 0 });
+    const product = await anonymous.get("/", { maxRedirects: 0 });
+    expect(product.status()).toBe(200);
+    expect(product.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+    const redirect = await anonymous.get("/settings", { maxRedirects: 0 });
     expect(redirect.status()).toBe(307);
     expect(redirect.headers()["location"]).toMatch(/\/login$/);
     expect(redirect.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
@@ -231,6 +234,7 @@ test.describe("shell", () => {
       "nav-loop",
       "nav-curator",
       "nav-releases",
+      "nav-browser",
       "nav-agents",
       "nav-memories",
       "nav-skills",

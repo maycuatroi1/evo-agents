@@ -37,7 +37,7 @@ class KgSeeder:
         shutil.rmtree(work_dir, ignore_errors=True)
         work_dir.mkdir(parents=True)
 
-    def _hub(self, body: dict) -> Hub:
+    def member(self, body: dict) -> Hub:
         """The API as the member ``body`` names, signed in with a machine token as the CLI is."""
         token = self.github.issue_token(Account(str(body["login"]), int(body["id"])))
         signed = Hub(self.api_url).call("POST", "/v1/auth/github", {"github_token": token, "host": STACK_HOST})
@@ -45,7 +45,7 @@ class KgSeeder:
 
     def handle(self, path: str, body: dict) -> dict:
         project = str(body["project"])
-        hub = self._hub(body)
+        hub = self.member(body)
         if path == "/kg/seed":
             harness = Harness(self.work_dir / "machines", project)
             harness.sync(body.get("extra"))
@@ -56,6 +56,10 @@ class KgSeeder:
                 return build
         else:
             raise KeyError(path)
+        return self.finish(project, hub, build)
+
+    def finish(self, project: str, hub: Hub, build: dict | None) -> dict:
+        """Run ``build``, which a push or a POST of ``hub`` queued, as the worker would; the build as it ended."""
         if build is None:
             raise RuntimeError(f"no build of project {project} was queued")
         asyncio.run(self._run(project, int(build["id"]), build.get("job_id")))

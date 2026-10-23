@@ -471,3 +471,25 @@ def test_a_profile_run_is_never_handed_to_a_terminal(tmp_path):
     )
     run.spec = {"profile": DEFAULT}
     assert agent.interactive_unsupported() is None
+
+
+# An agent with a config dir of its own gets the daemon's MCP servers alone
+
+
+def test_own_home_claude_code_gets_the_hub_server_alone_with_a_strict_mcp_config(tmp_path):
+    needs("claude_agent_sdk")
+    from evo_agents.worker.runtimes import claude_home
+
+    own = {"CLAUDE_CONFIG_DIR": str(claude_home.config_dir(tmp_path / "worktree"))}
+    command, _, options = _launch(tmp_path, own_home=True, profile=profile(), env=own)
+    assert "--strict-mcp-config" in command
+    servers = json.loads(command[command.index("--mcp-config") + 1])["mcpServers"]
+    assert list(servers) == ["evo-hub"] and servers["evo-hub"]["args"][-2:] == ["hub", "mcp"]
+    no_hub = profile(tool=["Read", "Bash"])
+    command, _, _ = _launch(tmp_path, own_home=True, profile=no_hub, env=own)
+    assert "--strict-mcp-config" in command and "--mcp-config" not in command
+    # the owner's own config dir, as before: no strict config
+    command, _, _ = _launch(tmp_path, own_home=False, profile=profile())
+    assert "--strict-mcp-config" not in command
+    command, _, _ = _launch(tmp_path, own_home=True, profile=profile(), env={"CLAUDE_CONFIG_DIR": "/owner/claude"})
+    assert "--strict-mcp-config" not in command

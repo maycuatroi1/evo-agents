@@ -286,8 +286,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A claim's edit, undo of a rev, compared revs, a conflict at an old rev; @strategist's judgings | `PencilLine`, `Undo2`, `GitCompareArrows`, `GitMerge`; `Scale` |
 | Signals, a project's measures and feedback; a key of kind number, of kind feedback; a series over time | `RadioTower`; `Hash`, `MessageSquareQuote`; `ChartLine` |
 | A run's outputs: the Outputs tab, its preview on a phone, the notice run_outputs | `Images` |
-| An output's source: sent by the agent, a tool's result, the run's output folder, a person's attachment to a chat message | `Paperclip`, `Wrench`, `FolderOpen`, `Paperclip` |
-| The chat composer's Attach files; a file uploading, refused; Remove it | `Paperclip`; `LoaderCircle`, `TriangleAlert`; `X` |
+| An output's source: sent by the agent, a tool's result, the run's output folder | `Paperclip`, `Wrench`, `FolderOpen` |
 | An output's kind: image, video, audio, PDF and text, code and JSON, CSV, HTML page, other; an image that did not load | `ImageIcon`, `Film`, `AudioLines`, `FileText`, `FileCode`, `FileSpreadsheet`, `AppWindow`, `File`; `ImageOff` |
 | The viewer: previous, next; zoom out, in, fit; download; show in trace; delete; an HTML page's sandbox | `ChevronLeft`, `ChevronRight`; `ZoomOut`, `ZoomIn`, `Maximize2`; `Download`; `ListTree`; `Trash2`; `ShieldCheck` |
 | Notices, the kinds of notice a member turns off | `BellRing` |
@@ -989,22 +988,17 @@ Shared pieces built on them:
   grouped Agents, Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space,
   Escape closes it, a polite region says how many there are); the bar under the box says what the message will do ("Hands work to
   @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
-  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. Files
-  (`composer-files.tsx`) come with Attach files (`Paperclip`, first in the bar, a hidden file input that takes
-  several), a paste that holds files (its text still goes in) or a drop on the box (a `brand` edge and "Drop the files
-  to attach them" over it while files are dragged over): each uploads at once (`POST /v1/chats/{id}/files`, the bytes
-  as the body) and shows as a chip under the text with its name and size, a spinner while it uploads, the hub's reason
-  in `danger` when it could not, and Remove (which stops an upload). A file over 25 MiB, an empty one and the files
-  past ten are refused before they are sent, the reason under the box. A message may then have no text; Send is
-  disabled while a file uploads and refuses while a chip failed, and the chips go once the message is sent (its
-  `file_ids`). A Markdown file of a message (attached or sent by a run) has "Open NAME beside the chat" (`BookOpen`)
-  under it: the document panel (`doc-panel.tsx`) reads it in a column beside the chat from lg, above it below lg, so
-  the composer stays in reach. Files of the chat with the same name (any case) are versions of one document; the panel
+  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. A Markdown file of
+  a message (attached by a person or sent by a run) has "Open NAME beside the chat" (`BookOpen`) under it: the
+  document panel (`doc-panel.tsx`) reads it in a column beside the chat from lg, the composer in reach, and in a sheet
+  as a thread's below lg (split, a phone's height left no room for the messages); it takes the focus when it opens
+  and Close gives it back, and while it is a column a thread opens in its sheet. Files of the chat with the same last part of their name (any case) are versions of one document; the panel
   shows the latest, and when a new one comes (an agent sends the file it fixed back under its name) it reloads by
   itself, says so in a polite status and switches to Changes: a unified line diff (`doc-diff.tsx`, `lib/line-diff.ts`)
-  against the version read before, green rows with + for lines added, red rows with − for lines removed or replaced,
-  plain rows for the lines kept around them (runs of more than 8 folded behind a button), +N −M in the bar. Selects
-  pick the version shown and the one it is compared with. Members
+  against the version read before, rows on `success-soft` with + for lines added and on `danger-soft` with − for
+  lines removed or replaced, each also named for screen readers, plain rows for the lines kept around them (runs of
+  more than 8 folded behind a button), +N −M in the bar. Selects pick the version shown and the one it is compared
+  with. A version over 2 MiB is not read there: the message's files open it. Members
   (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
   project, or takes one out), the people (any member adds one with New chat's people picker, or by login; the creator
   takes others out; each may Leave, confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its
@@ -1398,9 +1392,7 @@ Shared pieces built on them:
   readers), so on a run's page, in the Inbox's sheet and on the phone's screen; the Inbox's row of a question and of
   the notice run_outputs (`Images`, "Files from a run") show their chips under the body. An agent's chat message shows
   the files of its run under its bubble, on its side, and a `message_changed` event of the chat replaces the message
-  held, so files that came after it show. A person's message shows the files they attached the same way, in a strip of
-  its own ("Files attached to this message", source Attached to the message in the viewer), and one of files only has
-  no bubble; a reply's quote and Replying to name its files when it has no words. The Inbox's header has Notices (`notice-settings.tsx`, the dialog loaded when
+  held, so files that came after it show. The Inbox's header has Notices (`notice-settings.tsx`, the dialog loaded when
   first opened): a switch per kind of notice a member may turn off (today Files from your runs), applied when flipped
   with a toast. The project's overview has a Run outputs card (`pages/output-settings.tsx`): the switch of the images of
   tools' results, which an admin of the project flips and anyone else reads disabled, and the hub's limits.
@@ -1757,6 +1749,32 @@ Shared pieces built on them:
   at each signal (Recharts, loaded on demand), and every series, numbers and feedback alike, is a table of its values,
   the newest first, with when, the tenant and who sent it. It shows values and their series over time and analyses
   nothing.
+- `components/crm`, the core plugin crm's Contacts (`/p/{project}/x/crm/contacts`, its page `contacts` in the sidebar's
+  plugin group; `/x/crm` leads there), only where the project enabled crm. Its words are the `crm` namespace. The
+  pipeline is a row of five toggle buttons (All, then lead, invited, activated, retained, each with its count,
+  `aria-pressed` on the one shown) that filters the list on the client; the list is a `Table`: the login in mono
+  opening the contact, the stage as a badge (lead outline, invited info, activated and retained success), where the
+  person came from, first seen and in this stage since. A contact (`/contacts/{login}`, a GitHub login or 404) heads
+  with a back link, the login, its stage and a link to the GitHub profile; then its touchpoints, newest first (kind,
+  ref, link, a note's text and who wrote it) beside the stages it reached. A writer adds a note (1,000 characters at
+  most); an admin's Delete contact opens a `ConfirmAction` that says everything goes for good, as the person asked.
+  Readers see a note that they only read, and no control that writes.
+- `components/marketing`, the core plugin marketing's pages (`/p/{project}/x/marketing/overview|posts|weekly`, one
+  `TabNav`; `/x/marketing` leads to the overview), only where the project enabled marketing. Its words are the
+  `marketing` namespace. The overview heads with Stop all posting (a writer's, a `ConfirmAction`; an admin's Resume
+  posting once stopped, with the danger banner of the reason), then the month: the channel accounts, the breakers open
+  (red once one is) and the cost against the cap as a `Meter` (`warning` from 80 %, `danger` once spent, the split
+  between spent and held by posts in flight below it), and the channel accounts as a `Table`: channel and account (and
+  whose, for a personal one), mode, the breaker (Closed, or Open with its reason and an admin's Close breaker) and the
+  login session of a browser channel (Expired in amber). Posts are grouped by what the gate did: drafts to share by hand
+  (a member's personal account, a Facebook group; each with Copy text, `useClipboard`), waiting for the gate, passed,
+  went out (with its link and cost) and stopped (with the reason); their text is a writer's, so a reader is told so.
+  The Growth weekly, the link of the Monday notice, is the bulletin's Growth section: each Goal's signal against its
+  target (Met, Not yet), the posts that went out, the breakers open, the week's cost and the month's `Meter`, and the
+  drafts kept for the blog project the config `proposals_project` names. On the Decisions page
+  (`components/marketing/growth-decisions.tsx`, the `extra` slot of `DecidePage`) a Growth card lists what waits for a
+  person, from the same reads, and nothing where marketing is off: each open breaker, each browser channel whose login
+  session expired and the month's spent budget, each with who acts and Open to the overview.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are

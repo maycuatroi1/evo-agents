@@ -1,5 +1,5 @@
-"""The commands of the org chart (``evo_agents.hub.cli_org``), as criterion a4 of plan org-chart names them:
-`hub org show [--json]`, `hub org unit create|edit|archive`, `hub org seat add|edit|end` and
+"""The commands of the org chart (``evo_agents.hub.cli_org``, ``.cli_autonomy``), as criterion a4 of plan org-chart
+names them: `hub org show [--json]`, `hub org unit create|edit|archive`, `hub org seat add|edit|end` and
 `hub autonomy ceiling set`, over HTTP alone; a refusal of the hub prints its reason and exits non-zero.
 
 The tree and the choice of a seat run without Postgres; the commands against a hub skip without EVO_HUB_TEST_DSN."""
@@ -137,7 +137,17 @@ def test_orgchart_cli_commands_are_in_the_contract_with_the_keys_of_the_hub():
         assert printed[path]["json"] is not None, path
     assert printed["hub org show"]["json"]["keys"] == ["units", "seats", "viewer"]
     flags = {flag for option in printed["hub autonomy ceiling set"]["options"] for flag in option["flags"]}
-    assert {"--unit", "--login", "--seat", "--level", "--note", "--json"} == flags
+    assert {
+        "--unit",
+        "--login",
+        "--seat",
+        "--level",
+        "--note",
+        "--class",
+        "--environment",
+        "--worker",
+        "--json",
+    } == flags
     level = next(o for o in printed["hub autonomy ceiling set"]["options"] if o["flags"] == ["--level"])
     assert level["choices"] == ["A0", "A1", "A2", "A3", "A4", "A5"] and level["required"]
 

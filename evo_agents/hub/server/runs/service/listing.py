@@ -73,14 +73,16 @@ def _list_conditions(
     number: bool,
 ) -> list:
     """The filters of GET .../runs but the state's, which the counts by state leave out: the runs of project
-    :project_id and of the plans in :plans, and its author runs of a new plan and chat and task runs on no plan when
+    :project_id and of the plans in :plans, and its author runs of a new plan and chat, task and browser runs on no plan when
     :unplanned, and the local runs of :viewer, then each filter given,
     by its bind parameter (one not given leaves every run): :plan_id, :step, :worker_id, :login, :kind, :account (the
     Claude account of a local run, by email), :session (the branch of a chat session, the runs of that session), and
     the text (``_searched``)."""
     r, u = tables.runs, tables.users
     unplanned = and_(
-        r.c.kind.in_(("author", "chat", "task")), r.c.plan_id.is_(None), bindparam("unplanned", type_=Boolean)
+        r.c.kind.in_(("author", "chat", "task", "browser")),
+        r.c.plan_id.is_(None),
+        bindparam("unplanned", type_=Boolean),
     )
     # A local run is its member's alone (:viewer): only they list it, whatever its plan.
     mine = and_(r.c.kind == "local", r.c.dispatched_by == bindparam("viewer"))

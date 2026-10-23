@@ -46,9 +46,18 @@ def golden() -> dict:
     return json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
+PHRASES = {"Unprocessable Content": "Unprocessable Entity", "Content Too Large": "Request Entity Too Large"}
+
+
 def without_version(document: dict) -> dict:
-    """The OpenAPI document with the package version left out, so a release does not change the golden copy."""
-    return {**document, "info": {**document["info"], "version": "<version>"}}
+    """The OpenAPI document with the package version left out, so a release does not change the golden copy.
+
+    Python 3.13 renamed two HTTP status phrases that FastAPI copies into the document; they go back to the old
+    names so the golden copy holds on every supported Python."""
+    text = json.dumps({**document, "info": {**document["info"], "version": "<version>"}})
+    for new, old in PHRASES.items():
+        text = text.replace(new, old)
+    return json.loads(text)
 
 
 def run(*args: str):
@@ -178,8 +187,8 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     printed = commands()
     assert sorted(key for key in printed if not key.startswith("hub ")) == [
         "worker ask",
+        "worker backup",
         "worker chat create",
-        "worker chat file",
         "worker chat mention",
         "worker chat post",
         "worker chat react",
@@ -234,6 +243,9 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "spend_money",
         "architecture",
         "scope",
+        "merge",
+        "credential",
+        "access",
         "triage",
     ]
     notify = {o["flags"][0]: o for o in printed["worker notify"]["options"]}
@@ -242,7 +254,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert all(printed[f"worker {name}"]["json"] is None for name in ("step", "ask", "notify"))
     read = printed["worker chat read"]
     assert [p["name"] for p in read["positionals"]] == ["message"] and read["json"] is None
-    assert [o["flags"] for o in read["options"]] == [["--thread"]]
+    assert [o["flags"] for o in read["options"]] == [["--thread"], ["--fetch"]]
 
 
 def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():

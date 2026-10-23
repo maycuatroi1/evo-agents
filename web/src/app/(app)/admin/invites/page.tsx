@@ -1,0 +1,30 @@
+import { dehydrate } from "@tanstack/react-query";
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
+
+import { adminInvitesQuery } from "@/components/admin/invite-data";
+import { AdminInvites } from "@/components/admin/invites-page";
+import { HydrationBoundary } from "@/lib/api/hydration-boundary";
+import { getQueryClient, prefetch } from "@/lib/api/prefetch";
+import { serverApi } from "@/lib/api/server";
+import { projectsQuery } from "@/lib/queries";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("admin.invites");
+  return { title: t("title") };
+}
+
+/** Hub admins only: the API answers 403 to anyone else, and the page shows that state. */
+export default async function InvitesPage() {
+  const api = await serverApi();
+  const client = getQueryClient();
+  const [error] = await Promise.all([
+    prefetch(client, adminInvitesQuery(() => api)),
+    prefetch(client, projectsQuery(() => api)), // the dialog's project list, shared with the layout's fetch
+  ]);
+  return (
+    <HydrationBoundary state={dehydrate(client)}>
+      <AdminInvites initialError={error} />
+    </HydrationBoundary>
+  );
+}

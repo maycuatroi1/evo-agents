@@ -54,6 +54,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import (
     KIND_LIMITS,
     STALE_AFTER,
+    UPLOAD_KINDS,
     UPLOAD_TTL,
     BlobStore,
     BlobStoreUnavailable,
@@ -85,7 +86,7 @@ router = APIRouter(prefix="/v1/blobs", tags=["blobs"], responses={401: {"model":
 class UploadItem(BaseModel):
     sha256: Sha256
     size: int = Field(ge=0, description="bytes, at most the limit of the kind")
-    kind: Literal[tuple(KIND_LIMITS)]
+    kind: Literal[UPLOAD_KINDS]
 
 
 class UploadRequest(BaseModel):

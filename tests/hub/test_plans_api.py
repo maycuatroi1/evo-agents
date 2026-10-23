@@ -114,7 +114,7 @@ def test_a_step_marked_done_changes_only_its_own_lines_in_the_copy():
 
 
 def test_plan_text_is_the_copy_without_its_header_and_hub_key():
-    body = fixture_body("evo-lms-migration")
+    body = fixture_body("fabrikam-lms-migration")
     text = plan_text(body)
     assert text.startswith(f"id: {body['id']}\n") and "\nhub:" not in text and "Mirror of" not in text
     assert plan_text(dict(reversed(list(body.items())))) == text

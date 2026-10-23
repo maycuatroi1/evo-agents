@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import plugin_calls, plugin_events, profiles, runs, tables, task_runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, pull_trailers, run_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_types import contributed, enabled_type, type_spend
 from evo_agents.hub.server.chat_agents import open_draft
@@ -219,8 +219,9 @@ def _title(body: TaskIn, name: str) -> str:
     return runs.step_title({"title": body.title or body.task}) or f"task of agent type {name}"
 
 
-async def _queue(conn: AsyncConnection, enabled, row, body: TaskIn, left: float) -> int:
-    """Queue the task run of ``body`` for agent type ``row`` on the branch task/<its id> of each repo of the project."""
+async def _queue(conn: AsyncConnection, enabled, row, body: TaskIn, left: float, for_id: int | None = None) -> int:
+    """Queue the task run of ``body`` for agent type ``row`` on the branch task/<its id> of each repo of the project;
+    its principal its run_as, or the person ``for_id`` it is for, bounded by the run_as too (``run_autonomy``)."""
     profile = await by_id(conn, row.profile_id)
     allow = profiles.allowed(profile.permissions, "model")
     values = {
@@ -241,9 +242,10 @@ async def _queue(conn: AsyncConnection, enabled, row, body: TaskIn, left: float)
         "request": body.task,
         "agent_type_id": row.id,
     }
-    run_id = await insert_run(conn, values)
-    branch = task_runs.branch_of(run_id)
     names = await project_repos(conn, enabled.project_id)
+    also = () if for_id is None else (row.run_as_id,)
+    run_id = await insert_run(conn, values, run_autonomy.For(user_id=for_id, also=also, repos=tuple(names)))
+    branch = task_runs.branch_of(run_id)
     repos = [{"repo": name, "branch": branch} for name in names] or null()  # SQL NULL, not a JSON null
     r = tables.runs
     await conn.execute(update(r).values(branch=branch, repos=repos, pulls=[]).where(r.c.id == run_id))
@@ -265,11 +267,18 @@ async def _audited(conn: AsyncConnection, enabled, row, run_id: int) -> None:
 
 
 async def hand_own_task(
-    conn: AsyncConnection, plugin: str, project_id: int, name: str, task: str, title: str | None = None
+    conn: AsyncConnection,
+    plugin: str,
+    project_id: int,
+    name: str,
+    task: str,
+    title: str | None = None,
+    for_id: int | None = None,
 ) -> tuple[int | None, str | None]:
     """A core plugin hands ``task`` to its own agent type ``name`` in project ``project_id``, in the caller's
     transaction: (the task run, None), or (None, why it was not dispatched) for each refusal of the API's route but
-    the token's and the grant's. ``task`` is cut to MAX_TASK_BYTES."""
+    the token's and the grant's. ``task`` is cut to MAX_TASK_BYTES; ``for_id``, the person the run is for (``_queue``).
+    """
     enabled = await plugin_calls.enabled_in(conn, plugin, project_id)
     if enabled is None:
         return None, f"plugin {plugin} is not enabled in the project, or it is turned off"
@@ -284,7 +293,7 @@ async def hand_own_task(
     body = TaskIn(
         task=runs.clip(task, task_runs.MAX_TASK_BYTES), title=(title or "")[: task_runs.MAX_TITLE_CHARS] or None
     )
-    run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent)
+    run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent, for_id)
     await _audited(conn, enabled, row, run_id)
     log.info(
         "task dispatched", extra={"project_id": project_id, "plugin": plugin, "agent_type": name, "run_id": run_id}
@@ -429,11 +438,12 @@ async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: Curren
         agent_type, plugin = (
             await conn.execute(query.join(pl, pl.c.id == t.c.plugin_id).where(r.c.id == run_id))
         ).one()
+        signed = await pull_trailers.block(conn, run_id)
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
     url, number, opened, problem = None, None, False, None
     if target is not None and app is not None:
-        text = task_runs.DRAFT_TEXT.format(agent_type=agent_type, plugin=plugin, run=run_id)
+        text = task_runs.DRAFT_TEXT.format(agent_type=agent_type, plugin=plugin, run=run_id) + signed
         try:
             made, opened = await open_draft(app, target, body.branch, (title or body.branch)[:240], text)
             url, number = made.get("html_url"), made.get("number")

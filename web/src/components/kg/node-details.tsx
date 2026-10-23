@@ -264,7 +264,7 @@ function FilterChip({ pressed, onClick, children }: { pressed: boolean; onClick:
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+        "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors outline-none max-md:h-11 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         pressed ? "border-brand/40 bg-surface-selected text-foreground" : "bg-card hover:bg-muted",
       )}
     >

@@ -17,6 +17,7 @@ from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.server.runs.models import Rerun, Run
+from evo_agents.hub.server.runs.service import browsers
 from evo_agents.hub.server.runs.service.accounts import rerun_picks
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.dispatch import (
@@ -85,7 +86,7 @@ def _web_only_worker(run_id: int):
         r.c.state == "queued",
         r.c.pinned_worker_id.is_(None),
         r.c.dispatched_via == "web",
-        or_(w.c.owner_id == r.c.dispatched_by, shared_in(r.c.project_id)),
+        or_(w.c.owner_id == r.c.dispatched_by, shared_in(r.c.project_id, r.c.dispatched_by)),
     )
     relation = case(
         (and_(held, r.c.state == "parked"), "was parked on"),
@@ -253,6 +254,7 @@ async def rerun_in(
     await lock_plan(conn, access.project_id, plan_id)
     activity = await plan_activity(conn, access.project_id, plan_id)
     no_plan_run(activity, plan_id)
+    browser, identities = await browsers.rerun_browser(conn, user, run_id, body, worker)
     new_id = await queue_run(
         conn,
         access,
@@ -270,6 +272,8 @@ async def rerun_in(
         picked=tuple(picked),
         chosen=chosen,
         plugin_config=await run_layer_of(conn, run_id),
+        browser=browser,
+        identities=identities,
     )
     accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
     target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"

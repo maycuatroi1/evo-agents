@@ -50,6 +50,7 @@ const DECISION: Decision = {
   recommended: "deploy",
   state: "open",
   owner: "octo",
+  asked_of: "octo",
   answer_option: null,
   answer_text: null,
   answered_by: null,
@@ -309,7 +310,7 @@ describe("DecisionCard", () => {
     setup(DECISION, "mona");
     expect(screen.queryByTestId("decision-form")).toBeNull();
     expect(screen.getByTestId("decision-state")).toHaveTextContent("Đang chờ octo");
-    expect(screen.getByTestId("decision-locked")).toHaveTextContent("Chỉ octo, người đã giao run #12, mới trả lời được quyết định này.");
+    expect(screen.getByTestId("decision-locked")).toHaveTextContent("Chỉ octo, người được hỏi quyết định này của run #12, mới trả lời được.");
     const options = screen.getAllByTestId("decision-option");
     expect(options.map((option) => option.getAttribute("data-key"))).toEqual(["deploy", "wait"]);
     expect(within(options[0]).getByTestId("decision-recommended")).toHaveTextContent("Agent đề xuất");

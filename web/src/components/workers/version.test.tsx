@@ -154,6 +154,21 @@ describe("SharedSwitch", () => {
     expect(await screen.findByText("Không đổi được chế độ chia sẻ của lab-ws-01")).toBeInTheDocument();
     expect(toggle).toBeChecked();
   });
+
+  it("keeps a worker its doctor blocks from being shared again, with the reason, and lets a shared one stop", () => {
+    const reason = "báo cáo doctor mới nhất có 1 phát hiện high";
+    const { unmount } = renderWithQueries(<SharedSwitch worker={worker()} locked={reason} />);
+    const toggle = screen.getByRole("switch", { name: "Chia sẻ với writer của các dự án của nó" });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAccessibleDescription(new RegExp(reason));
+    expect(screen.getByTestId("worker-shared")).toHaveAttribute("data-locked", "true");
+    unmount();
+
+    renderWithQueries(<SharedSwitch worker={worker({ shared: true })} locked={reason} />);
+    expect(screen.getByRole("switch", { name: "Chia sẻ với writer của các dự án của nó" })).toBeEnabled();
+    expect(screen.getByTestId("worker-shared-locked")).toHaveTextContent(reason);
+    expect(screen.getByTestId("worker-shared")).not.toHaveAttribute("data-locked");
+  });
 });
 
 describe("VersionCard", () => {

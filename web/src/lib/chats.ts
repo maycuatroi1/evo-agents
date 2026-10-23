@@ -1,7 +1,6 @@
 import type { Route } from "next";
 
 import type { components } from "@/lib/api/schema";
-import type { ShownFile } from "@/lib/outputs";
 
 /**
  * Group chats of the hub (docs/hub.md, Group chats; `evo_agents.hub.chats` of the API): people and the agents of
@@ -32,8 +31,6 @@ export type ChatCandidate = Schemas["ChatCandidate"];
 export type ChatImageChange = Schemas["ChatImageChange"];
 /** The latest message of a chat's main line, as its row in the list shows it. */
 export type ChatLastMessage = Schemas["ChatLastMessage"];
-/** A file a person attached to a message (`chat_files` of the API), with the chat's URL of its bytes. */
-export type ChatFile = Schemas["ChatFile"];
 
 /** The API's limits (`chats.MAX_*`, `chat_runs.*`). */
 export const MAX_TITLE_CHARS = 120;
@@ -42,9 +39,6 @@ export const MAX_PEOPLE = 50;
 export const MAX_AGENTS = 10;
 export const MAX_EMOJI_KINDS = 20;
 export const MAX_RUNS_PER_MESSAGE = 3;
-/** `chats.MAX_FILE_BYTES` and `chats.MAX_MESSAGE_FILES`: a file a person attaches, and how many one message carries. */
-export const MAX_FILE_BYTES = 25 * 1024 * 1024;
-export const MAX_MESSAGE_FILES = 10;
 /** `chat_members.LOGIN_PATTERN`: a GitHub login. */
 export const LOGIN = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 /** `runs.models.LINE`: one line of text, no control characters. */
@@ -55,12 +49,6 @@ export { chatHref, chatsHref } from "@/lib/chat-keys";
 /** A run's page, where a mention's work and an agent's message lead. */
 export function chatRunHref(project: string, runId: number): Route {
   return `/p/${encodeURIComponent(project)}/runs/${runId}` as Route;
-}
-
-/** A file a person attached, as the strips and the viewer show a run's outputs: no run, no caption, `attached`. */
-export function chatFileOutput(file: ChatFile): ShownFile {
-  const { id, name, media_type, viewer, size, sha256, created_at, url } = file;
-  return { id, name, media_type, viewer, size, sha256, created_at, url, source: "attached", caption: null };
 }
 
 export function utf8Bytes(text: string): number {

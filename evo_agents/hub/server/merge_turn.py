@@ -55,7 +55,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_gate, post_merge, tables
-from evo_agents.hub.server import audit, ledger, merge_pass
+from evo_agents.hub.server import audit, autonomy_gates, ledger, merge_pass
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.gitlab import GitLabRefused, MergeRequest, NotMergeable, ShaMismatch
@@ -407,6 +407,11 @@ class Turn:
             if row.change_id is not None:
                 await curator_merged(conn, row, after)
             await after_merge.merged(conn, f, row, after)
+            act = queue.merge_act(row)
+            title = f"The hub merged !{row.iid} of {f.repo} into {self.target} for your run {row.run_id}"
+            await autonomy_gates.tell_after(
+                conn, row.run_id, "K5", key=act["key"], title=title, repo=f.repo, risk=act["risk"]
+            )
         f.outcomes["merged"] += 1
         log.info("merge queue merged", extra={"project": f.project.name, "queue_id": row_id, "sha": after})
         return True

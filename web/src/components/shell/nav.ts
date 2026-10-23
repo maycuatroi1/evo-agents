@@ -8,6 +8,7 @@ import {
   ChartColumn,
   FolderKanban,
   GitMerge,
+  Globe,
   Goal,
   Inbox,
   IterationCw,
@@ -56,6 +57,7 @@ export type NavLabel =
   | "loop"
   | "curator"
   | "releases"
+  | "browser"
   | "agents"
   | "chats"
   | "org"
@@ -116,6 +118,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "loop", icon: IterationCw, segment: "loop" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator" },
   { label: "releases", icon: Tags, segment: "releases" },
+  { label: "browser", icon: Globe, segment: "browser" },
   { label: "agents", icon: Bot, segment: "agents" },
   { label: "memories", icon: BookOpen, segment: "memories" },
   { label: "skills", icon: Sparkles, segment: "skills" },

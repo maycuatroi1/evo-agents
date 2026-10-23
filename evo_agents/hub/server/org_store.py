@@ -37,7 +37,7 @@ def _newest_ceilings():
     """The newest revision of each scope's ceiling."""
     c = tables.autonomy_ceilings
     return (
-        select(c.c.scope, c.c.scope_id, c.c.level)
+        select(c.c.scope, c.c.scope_id, c.c.level, c.c.overrides, c.c.environments, c.c.workers)
         .ext(distinct_on(c.c.scope, c.c.scope_id))
         .order_by(c.c.scope, c.c.scope_id, c.c.revision.desc())
         .subquery("ceilings")
@@ -49,12 +49,24 @@ async def today(conn: AsyncConnection) -> date:
     return (await conn.execute(select(func.current_date()))).scalar_one()
 
 
+def _ceiling_parts(row) -> dict:
+    """The class overrides, environments and workers of a row's newest ceiling; none without one."""
+    return {
+        "ceiling": row.level,
+        "overrides": dict(row.overrides or {}),
+        "environments": tuple(row.environments or ()),
+        "workers": tuple(row.workers or ()),
+    }
+
+
 async def load(conn: AsyncConnection) -> org.Chart:
-    """The whole chart, each unit and seat with the level of its newest ceiling."""
+    """The whole chart, each unit and seat with its newest ceiling: the level, class overrides, environments and
+    workers."""
     u, s, newest = tables.org_units, tables.org_seats, _newest_ceilings()
+    parts = (newest.c.level, newest.c.overrides, newest.c.environments, newest.c.workers)
     unit_ceiling = and_(newest.c.scope == org.UNIT, newest.c.scope_id == u.c.id)
     seat_ceiling = and_(newest.c.scope == org.SEAT, newest.c.scope_id == s.c.id)
-    unit_rows = await conn.execute(select(u, newest.c.level).outerjoin(newest, unit_ceiling))
+    unit_rows = await conn.execute(select(u, *parts).outerjoin(newest, unit_ceiling))
     units = {
         row.id: org.Unit(
             id=row.id,
@@ -65,11 +77,11 @@ async def load(conn: AsyncConnection) -> org.Chart:
             ends_on=row.ends_on,
             archived_at=row.archived_at,
             revision=row.revision,
-            ceiling=row.level,
+            **_ceiling_parts(row),
         )
         for row in unit_rows
     }
-    seat_rows = await conn.execute(select(s, newest.c.level).outerjoin(newest, seat_ceiling))
+    seat_rows = await conn.execute(select(s, *parts).outerjoin(newest, seat_ceiling))
     seats = {
         row.id: org.Seat(
             id=row.id,
@@ -83,7 +95,7 @@ async def load(conn: AsyncConnection) -> org.Chart:
             starts_on=row.starts_on,
             ends_on=row.ends_on,
             ended_at=row.ended_at,
-            ceiling=row.level,
+            **_ceiling_parts(row),
         )
         for row in seat_rows
     }
@@ -254,3 +266,5 @@ async def merge_user(conn: AsyncConnection, into: int, holder_id: int) -> None:
     )
     await conn.execute(update(s).values(user_id=into, updated_at=func.now()).where(s.c.user_id == holder_id))
     await conn.execute(update(s).values(sponsor_id=into).where(s.c.sponsor_id == holder_id))
+    stops = tables.autonomy_stops  # a stop of the login holds on the account that took it
+    await conn.execute(update(stops).values(user_id=into).where(stops.c.user_id == holder_id))

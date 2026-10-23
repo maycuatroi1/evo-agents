@@ -416,6 +416,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invites
+         * @description Every invite link, newest first, with its status; never a token.
+         */
+        get: operations["list_invites_v1_admin_invites_get"];
+        put?: never;
+        /**
+         * Create
+         * @description Make a one-time invite link; the answer holds its token, which the hub shows this once.
+         */
+        post: operations["create_v1_admin_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/invites/{invite_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description Revoke an open link, or the unused right an accepted register link gave.
+         */
+        post: operations["revoke_v1_admin_invites__invite_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description What an invite link gives, for its page: public, the token being the credential; never the login it is bound
+         *     to, and its project and role only to someone it is for.
+         */
+        post: operations["preview_v1_invites_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept
+         * @description Accept an invite link: a join link gives its grant, a register link the right to register one project.
+         */
+        post: operations["accept_v1_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -836,8 +921,8 @@ export interface paths {
         };
         /**
          * List Skills
-         * @description The skills the caller sees, each with its latest version: the global ones and those of every project the
-         *     caller has a grant on.
+         * @description The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and
+         *     those of every project the caller has a grant on.
          */
         get: operations["list_skills_v1_skills_get"];
         put?: never;
@@ -922,6 +1007,27 @@ export interface paths {
          * @description A new version of a skill of a project from a bundle the project committed.
          */
         post: operations["publish_project_v1_skills_projects__project___name__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/global/{name}/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Audience
+         * @description Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one
+         *     audit row; the audience it has already changes nothing.
+         */
+        put: operations["set_audience_v1_skills_global__name__audience_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3309,6 +3415,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload To Run
+         * @description Upload a file for a message to the run's agent: the run's owner, while the run takes messages.
+         */
+        post: operations["upload_to_run_v1_projects__project__runs__run_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Run Upload
+         * @description Take back an upload of yours for the run that no message holds.
+         */
+        delete: operations["delete_run_upload_v1_projects__project__runs__run_id__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Content
+         * @description The bytes of a file of a message to the run, for its readers.
+         */
+        get: operations["run_content_v1_projects__project__runs__run_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload To Chat
+         * @description Upload a file for a message of the chat: a member of it.
+         */
+        post: operations["upload_to_chat_v1_chats__chat_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Chat Upload
+         * @description Take back an upload of yours for the chat that no message holds.
+         */
+        delete: operations["delete_chat_upload_v1_chats__chat_id__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Content
+         * @description The bytes of a file a message of the chat carries, for a member who reads that message.
+         */
+        get: operations["chat_content_v1_chats__chat_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Content
+         * @description The bytes of a file for the agent of a run the worker claimed: a file of a message its inbox took, or of a chat
+         *     message the agent may read.
+         */
+        get: operations["worker_content_v1_worker_runs__run_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/changes": {
         parameters: {
             query?: never;
@@ -4069,6 +4316,212 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/autonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Autonomy
+         * @description The effective autonomy of a person, alone or running an agent profile on a repo, with the source of each mode.
+         */
+        get: operations["show_autonomy_v1_autonomy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Pref
+         * @description The next revision of the caller's own preference; one above their ceilings is stored, the ceilings still
+         *     decide.
+         */
+        put: operations["set_pref_v1_autonomy_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/stops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Autonomy
+         * @description Stop the runs of a person, a unit or the hub, and hold new ones until the stop is lifted.
+         */
+        post: operations["stop_autonomy_v1_autonomy_stops_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/stops/lift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift Stop
+         * @description Lift the stop that holds for a person, a unit or the hub.
+         */
+        post: operations["lift_stop_v1_autonomy_stops_lift_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/stops/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Stop
+         * @description How many runs and people a stop of that scope would cover now, and whether one holds already.
+         */
+        get: operations["preview_stop_v1_autonomy_stops_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Settings
+         * @description The caller's own autonomy, preference, ceiling, stop and 30-day figures, for the web's settings page.
+         */
+        get: operations["show_settings_v1_autonomy_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Org Autonomy
+         * @description Every seat's effective mode of each class, and the stops that hold, for the web's org page.
+         */
+        get: operations["show_org_autonomy_v1_autonomy_org_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Worker Shares
+         * @description The caller's live workers, every live worker for a hub admin, with whom each is shared.
+         */
+        get: operations["list_worker_shares_v1_org_workers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/workers/{worker_id}/units/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Share Worker
+         * @description Narrow the worker to a live unit of the org chart, sharing it when it was not.
+         */
+        put: operations["share_worker_v1_org_workers__worker_id__units__slug__put"];
+        post?: never;
+        /**
+         * Unshare Worker
+         * @description Take a unit back from the worker; with its last unit, sharing ends too.
+         */
+        delete: operations["unshare_worker_v1_org_workers__worker_id__units__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Doctor
+         * @description Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a
+         *     high finding stops it taking the runs of the units it is shared with.
+         */
+        post: operations["report_doctor_v1_worker_doctor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -4595,6 +5048,442 @@ export interface paths {
          */
         post: operations["decide_item_v1_x_canvas__project__canvases__slug__baselines__number__items__ref__decide_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/crm/{project}/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Contacts
+         * @description The contacts of the project and how many are in each stage.
+         */
+        get: operations["list_contacts_v1_x_crm__project__contacts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/crm/{project}/contacts/{login}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Contact
+         * @description One contact with its touchpoints and the stages it reached.
+         */
+        get: operations["show_contact_v1_x_crm__project__contacts__login__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Contact
+         * @description Delete a contact on its request: the contact, every touchpoint and its stage history.
+         */
+        delete: operations["delete_contact_v1_x_crm__project__contacts__login__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/crm/{project}/contacts/{login}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Note
+         * @description A writer's note on a contact: kept as a touchpoint, deleted with the contact.
+         */
+        post: operations["add_note_v1_x_crm__project__contacts__login__notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Channels
+         * @description The channel accounts of the project, with their mode and whether their breaker is open.
+         */
+        get: operations["list_channels_v1_x_marketing__project__channels_get"];
+        put?: never;
+        /**
+         * Add Channel
+         * @description Make a channel account, always draft_only. An admin makes a project account; any writer makes a personal one,
+         *     which belongs to them. The credential is not here: it is a secret of the plugin's config.
+         */
+        post: operations["add_channel_v1_x_marketing__project__channels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/channels/{channel_id}/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Mode
+         * @description Switch an account between draft_only and autonomous. An agent never does; a personal account goes autonomous only
+         *     for its owner and only on facebook_profile and tiktok; hackernews is always draft_only.
+         */
+        put: operations["set_mode_v1_x_marketing__project__channels__channel_id__mode_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/channels/{channel_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Channel
+         * @description Open the breaker of a channel by hand: it posts nothing until an admin resumes it.
+         */
+        post: operations["pause_channel_v1_x_marketing__project__channels__channel_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/channels/{channel_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Channel
+         * @description Close the breaker of a channel; only an admin does, and nothing closes it by itself.
+         */
+        post: operations["resume_channel_v1_x_marketing__project__channels__channel_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/channels/{channel_id}/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Session
+         * @description Say whether the login session of a browser channel works: ``ok`` after its owner logged in
+         *     (``evo-agents hub marketing login``), which does not close a breaker; ``stale`` when it is known gone. The owner of a
+         *     personal account or an admin; never the scope of an agent's run.
+         */
+        post: operations["set_session_v1_x_marketing__project__channels__channel_id__session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/kill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Kill
+         * @description Stop every channel of the project at once. Any member with a grant may.
+         */
+        post: operations["kill_v1_x_marketing__project__kill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume
+         * @description Clear the kill switch; only an admin does. The breakers that are open stay open.
+         */
+        post: operations["resume_v1_x_marketing__project__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description The kill switch, the breakers and this month's budget.
+         */
+        get: operations["status_v1_x_marketing__project__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Weekly
+         * @description The Growth section of the weekly bulletin: the 7 days up to now.
+         */
+        get: operations["show_weekly_v1_x_marketing__project__weekly_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Posts
+         * @description The posts of the project, newest first, with what each layer of the gate said.
+         */
+        get: operations["list_posts_v1_x_marketing__project__posts_get"];
+        put?: never;
+        /**
+         * Propose Post
+         * @description Propose a post to the gate: it is checked in order and goes out when every layer passes, with no human. A post
+         *     command to a personal account that is draft_only, or on a channel a personal account never posts on by itself, is
+         *     refused here (403); save a draft instead.
+         */
+        post: operations["propose_post_v1_x_marketing__project__posts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/posts/{post_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Post */
+        get: operations["show_post_v1_x_marketing__project__posts__post_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Draft
+         * @description Save a draft that goes through no gate and posts nothing: a person posts it. The only way an agent leaves a text
+         *     for a personal account.
+         */
+        post: operations["save_draft_v1_x_marketing__project__drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/posts/{post_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Post
+         * @description A report or complaint about a post that went out: the breaker of its channel opens at once.
+         */
+        post: operations["report_post_v1_x_marketing__project__posts__post_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/browser/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Browser Post
+         * @description The next post the gate passed for a browser channel, with the sealed session of its account, for the script of
+         *     ``evo-agents hub marketing browser-post``. Needs the writer role and a login: the scope of an agent's run gets 403.
+         */
+        post: operations["claim_browser_post_v1_x_marketing__project__browser_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/browser/{post_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Browser Post
+         * @description What the script found: the link and a screenshot of the post, or the captcha, lock or login page it stopped at,
+         *     which opens the breaker of the channel.
+         */
+        post: operations["report_browser_post_v1_x_marketing__project__browser__post_id__result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/posts/{post_id}/screenshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Screenshot
+         * @description The PNG the script took after the post, or where it stopped (labelled internal in the audit).
+         */
+        get: operations["show_screenshot_v1_x_marketing__project__posts__post_id__screenshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/denylist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Denylist */
+        get: operations["list_denylist_v1_x_marketing__project__denylist_get"];
+        put?: never;
+        /**
+         * Add Deny
+         * @description Add a term, a domain or a person no post may name. Only an admin edits it; the audit holds the change.
+         */
+        post: operations["add_deny_v1_x_marketing__project__denylist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/marketing/{project}/denylist/{deny_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Deny */
+        delete: operations["remove_deny_v1_x_marketing__project__denylist__deny_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5419,6 +6308,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/secrets/{name}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shares
+         * @description The shares of the caller's secret or account ``name``, revoked ones too, newest first.
+         */
+        get: operations["list_shares_v1_secrets__name__shares_get"];
+        put?: never;
+        /**
+         * Create Share
+         * @description Share the caller's secret or account ``name``; a personal subscription token needs ``terms_ack``.
+         */
+        post: operations["create_share_v1_secrets__name__shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares/{share_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Share
+         * @description Revoke a share: its secret's owner may, and a hub admin may revoke any.
+         */
+        delete: operations["revoke_share_v1_shares__share_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/credentials": {
         parameters: {
             query?: never;
@@ -5494,7 +6427,8 @@ export interface paths {
         };
         /**
          * Get Account
-         * @description The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.
+         * @description The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;
+         *     404 for a name that is neither.
          */
         get: operations["get_account_v1_accounts__name__get"];
         put?: never;
@@ -5593,6 +6527,47 @@ export interface paths {
          *     module says.
          */
         post: operations["report_rate_limit_v1_worker_runs__run_id__rate_limit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Backup
+         * @description Record a backup the run's agent made, as the module says.
+         */
+        post: operations["record_backup_v1_worker_runs__run_id__backups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/autonomy-acts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Autonomy Act
+         * @description The mode of the class of a command the run's agent is about to run, and whether its decision is answered; the
+         *     principal told when the mode is notify, as the module says.
+         */
+        post: operations["autonomy_act_v1_worker_runs__run_id__autonomy_acts_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5699,6 +6674,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Account
+         * @description The account ``name`` of agent ``handle`` with its figures; 404 when the agent has no live account of that name.
+         */
+        get: operations["get_agent_account_v1_projects__project__agents__handle__accounts__name__get"];
+        /**
+         * Put Agent Account
+         * @description Give the agent the account ``name``, or replace it whole; the value is sealed and never shown again.
+         */
+        put: operations["put_agent_account_v1_projects__project__agents__handle__accounts__name__put"];
+        post?: never;
+        /**
+         * Delete Agent Account
+         * @description Delete the account: its value and bindings go, and its leases not given back are revoked.
+         */
+        delete: operations["delete_agent_account_v1_projects__project__agents__handle__accounts__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Agent Account
+         * @description Renew the account (``value``), or change its weight, priority, workers or end, or pause or resume it.
+         */
+        patch: operations["change_agent_account_v1_projects__project__agents__handle__accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Accounts
+         * @description The live accounts of agent ``handle``, by variable and name, with their figures; never a value.
+         */
+        get: operations["list_agent_accounts_v1_projects__project__agents__handle__accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Agent Accounts
+         * @description The live accounts of the agents of every project the caller holds a grant on, by project, handle, variable and
+         *     name; a hub admin's grants alone count, as for reading a profile.
+         */
+        get: operations["list_all_agent_accounts_v1_agent_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agent-packs": {
         parameters: {
             query?: never;
@@ -5758,6 +6806,260 @@ export interface paths {
          * @description Turn agent type ``name`` of ``plugin`` off in the project: the plugin's tasks are refused; its profile stays.
          */
         delete: operations["disable_agent_type_v1_projects__project__agent_types__plugin___name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Browser Identities
+         * @description The project's identities and your own in it, never another member's, and its agents' for an admin; metadata
+         *     only.
+         */
+        get: operations["list_browser_identities_v1_projects__project__browser_identities_get"];
+        put?: never;
+        /**
+         * Create Browser Identity
+         * @description Create an identity with no profile yet (version 0): your own with the writer role, or the project's or an
+         *     agent's as an admin. It is logged in later, on its worker.
+         */
+        post: operations["create_browser_identity_v1_projects__project__browser_identities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Browser Identity
+         * @description Delete an identity: its member, or an admin for the project's. Its keys go from the hub and its profiles from
+         *     the blob store; 409 while a run holds it.
+         */
+        delete: operations["delete_browser_identity_v1_projects__project__browser_identities__identity_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Default Browser Identity
+         * @description Make an agent's identity the one its profile hands to every run under it, in place of the one that was: an admin
+         *     of the project. 409 for an identity no agent owns.
+         */
+        post: operations["default_browser_identity_v1_projects__project__browser_identities__identity_id__default_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login Browser Identity
+         * @description Queue a login session of an identity: Chromium on its profile, on its worker, for at most 30 minutes, which you
+         *     open in the live view in human mode and end with Save (the profile is sealed, its version raised) or by cancelling
+         *     it (nothing is saved). With ``worker`` it is a Move: the session runs there and the identity moves after Save.
+         *     409 while another run holds the identity or a session of it waits, and for a disabled one.
+         */
+        post: operations["login_browser_identity_v1_projects__project__browser_identities__identity_id__login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable Browser Identity
+         * @description Disable an identity: no run attaches it and its login session is refused until it is enabled; its profile is
+         *     kept. Its member, or an admin for the project's; 409 while a run holds it.
+         */
+        post: operations["disable_browser_identity_v1_projects__project__browser_identities__identity_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/browser-identities/{identity_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable Browser Identity
+         * @description Enable a disabled identity: active when it has a saved profile, else needs_login.
+         */
+        post: operations["enable_browser_identity_v1_projects__project__browser_identities__identity_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/browser-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Login
+         * @description Ask the dispatcher of a run with a browser to sign in on one of its identities, or, for a run that cannot wait,
+         *     set the identity needs_login and fail the run.
+         */
+        post: operations["ask_login_v1_worker_runs__run_id__browser_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/browser-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lease Browser Profile
+         * @description One of the run's browser identities, with its profile: what its Chromium opens with.
+         */
+        post: operations["lease_browser_profile_v1_worker_runs__run_id__browser_profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/browser-profile/{identity_id}/needs-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Browser Needs Login
+         * @description The run's Chromium could not use the identity's profile: it waits for a new login.
+         */
+        post: operations["browser_needs_login_v1_worker_runs__run_id__browser_profile__identity_id__needs_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/browser-profile/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Browser Profile
+         * @description Seal the profile the run's Chromium leaves as the identity's next version, while the run holds it.
+         */
+        put: operations["save_browser_profile_v1_worker_runs__run_id__browser_profile__identity_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/browser-identities/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Local Login
+         * @description The identity, with its profile, for a login on this worker's own machine; created, held by this worker, when it
+         *     does not exist yet.
+         */
+        post: operations["open_local_login_v1_worker_browser_identities_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/browser-identities/{identity_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Local Profile
+         * @description Seal the profile a login on the worker's machine leaves as the identity's next version.
+         */
+        put: operations["save_local_profile_v1_worker_browser_identities__identity_id__profile_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6071,47 +7373,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/chats/{chat_id}/files": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upload File
-         * @description Upload a file to attach to a message of the chat: the request's body is the file. The message that names it in
-         *     ``file_ids`` carries it.
-         */
-        post: operations["upload_file_v1_chats__chat_id__files_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/chats/{chat_id}/files/{file_id}/content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * File Content
-         * @description The bytes of a file a message of the chat carries, for a member who reads that message.
-         */
-        get: operations["file_content_v1_chats__chat_id__files__file_id__content_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/chats/{chat_id}/events": {
         parameters: {
             query?: never;
@@ -6291,27 +7552,6 @@ export interface paths {
          * @description A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring).
          */
         post: operations["read_chat_v1_worker_runs__run_id__chat_read_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/worker/runs/{run_id}/chat/files/{file_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * File Link
-         * @description A presigned GET of a file a person attached to a chat message, for the agent of the run when it may read that
-         *     message (as ``read`` rules), behind ``evo-agents worker chat file``.
-         */
-        post: operations["file_link_v1_worker_runs__run_id__chat_files__file_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7792,6 +9032,16 @@ export interface components {
              * @description the runs a worker holds now with it
              */
             held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Cost By Principal
+             * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
+             */
+            cost_by_principal: components["schemas"]["PrincipalCost"][];
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -8050,6 +9300,263 @@ export interface components {
             deleted_at: string | null;
         };
         /**
+         * AgentAccount
+         * @description An account of an agent as an admin sees it: everything but the value.
+         */
+        AgentAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+        };
+        /** AgentAccountChange */
+        AgentAccountChange: {
+            /**
+             * Value
+             * @description renew: a new value for the same account
+             */
+            value?: string | null;
+            /**
+             * Workers
+             * @description replaces the workers it is bound to
+             */
+            workers?: string[] | null;
+            /**
+             * Expires At
+             * @description its new end; null drops the end
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, so no new run takes it; false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** AgentAccountWrite */
+        AgentAccountWrite: {
+            /**
+             * Env Var
+             * @description the variable of the agent's environment it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)
+             */
+            env_var: string;
+            /**
+             * Value
+             * Format: password
+             * @description the secret itself, 1 to 16384 bytes of UTF-8; written once, never shown again
+             */
+            value: string;
+            /**
+             * Workers
+             * @description names of the workers it is bound to: yours that are not revoked, or a member's shared worker; each serves the agent's project
+             */
+            workers: string[];
+            /**
+             * Expires At
+             * @description after this no run gets it; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Weight
+             * @description its share in a weighted pool; 1 when new
+             */
+            weight?: number | null;
+            /**
+             * Priority
+             * @description the lower, the sooner; 0 when new
+             */
+            priority?: number | null;
+        };
+        /** AgentAccountWritten */
+        AgentAccountWritten: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Created
+             * @description false when an account of this name was replaced
+             */
+            created: boolean;
+        };
+        /**
          * AgentAxis
          * @description One axis of a profile's permissions: every value (all), or those of ``allow`` alone (allowlist).
          */
@@ -8158,33 +9665,6 @@ export interface components {
              * @description 409 unless the profile is at this version now
              */
             if_version?: number | null;
-        };
-        /** AgentFileLink */
-        AgentFileLink: {
-            /** Id */
-            id: number;
-            /** Chat Id */
-            chat_id: number;
-            /** Message Id */
-            message_id: number;
-            /** Name */
-            name: string;
-            /** Media Type */
-            media_type: string;
-            /** Size */
-            size: number;
-            /** Sha256 */
-            sha256: string;
-            /**
-             * Url
-             * @description a presigned GET of the bytes, working until expires_at
-             */
-            url: string;
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
         };
         /** AgentHanded */
         AgentHanded: {
@@ -8509,6 +9989,34 @@ export interface components {
             /** Session Id */
             session_id?: string | null;
         };
+        /** Attachment */
+        Attachment: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** AudienceChange */
+        AudienceChange: {
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+        };
         /** AudienceIn */
         AudienceIn: {
             /**
@@ -8653,6 +10161,61 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** AutonomyActIn */
+        AutonomyActIn: {
+            /**
+             * Klass
+             * @description the class of the command
+             * @enum {string}
+             */
+            klass: "K5" | "K6" | "K8" | "K9" | "K10" | "K12";
+            /**
+             * What
+             * @description the command, cut, never a credential's value
+             */
+            what: string;
+            /**
+             * Decision Id
+             * @description for a class in ask: the decision of the run, of the class's category, that the agent asked first
+             */
+            decision_id?: number | null;
+        };
+        /** AutonomyActOut */
+        AutonomyActOut: {
+            /**
+             * Mode
+             * @description the class's mode for the run's principal now, the stricter of its snapshot and the value now; null for a run without a snapshot
+             */
+            mode: ("deny" | "ask" | "notify" | "auto") | null;
+            /**
+             * Told
+             * @description whether the hub told the principal (mode notify)
+             */
+            told: boolean;
+            /**
+             * Answered
+             * @description whether decision_id is a decision of the run, of the class, answered
+             */
+            answered: boolean;
+        };
+        /** AutonomyClass */
+        AutonomyClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets the mode: pref:<login>, seat:<id>, unit:<slug>, policy:<project>/<repo>, profile:<handle>, credential_share or instance
+             */
+            source: string;
+            /**
+             * Detail
+             * @description how that source sets it, with the condition the mode acts under
+             */
+            detail: string;
+        };
         /**
          * AutonomyPolicy
          * @description One revision of a project's autonomy policy.
@@ -8689,6 +10252,98 @@ export interface components {
             /** Created At */
             created_at: string | null;
         };
+        /**
+         * AutonomySettings
+         * @description The caller's own autonomy: the effective level and classes, the preference, the ceiling over it, the stop that
+         *     holds them and the figures of each class.
+         */
+        AutonomySettings: {
+            /** Principal */
+            principal: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Level Source */
+            level_source: string;
+            /**
+             * Revision
+             * @description the preference's newest revision; null when none was set
+             */
+            revision: number | null;
+            /** Pref Level */
+            pref_level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Pref Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            pref_classes: {
+                [key: string]: string;
+            };
+            /**
+             * Ceiling
+             * @description the lowest level the sources other than the preference set
+             * @enum {string}
+             */
+            ceiling: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Ceiling Source */
+            ceiling_source: string;
+            /**
+             * Ceiling Detail
+             * @description what that source is, in words
+             */
+            ceiling_detail: string;
+            /** Classes */
+            classes: {
+                [key: string]: components["schemas"]["SettingsClass"];
+            };
+            /** @description the stop that holds the caller; null when none does */
+            stop: components["schemas"]["HeldStop"] | null;
+            /**
+             * Days
+             * @default 30
+             */
+            days: number;
+        };
+        /** AutonomyView */
+        AutonomyView: {
+            /**
+             * Principal
+             * @description the login of the person whose autonomy it is
+             */
+            principal: string;
+            /** Project */
+            project: string | null;
+            /**
+             * Agent
+             * @description the handle of the agent profile it runs as; null for the person alone
+             */
+            agent: string | null;
+            /**
+             * Level
+             * @description the lowest level the sources set
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Classes
+             * @description K1 to K12, each its effective mode
+             */
+            classes: {
+                [key: string]: components["schemas"]["AutonomyClass"];
+            };
+            /**
+             * Environments
+             * @description the environments allowed; null: no limit
+             */
+            environments: string[] | null;
+            /**
+             * Workers
+             * @description the workers allowed; null: no limit
+             */
+            workers: string[] | null;
+        };
         /** AvatarUpload */
         AvatarUpload: {
             /**
@@ -8719,6 +10374,47 @@ export interface components {
             retry_at: string | null;
             /** Reported At */
             reported_at: string | null;
+        };
+        /** BackupIn */
+        BackupIn: {
+            /**
+             * Target
+             * @description what was backed up: a database, a table, a bucket
+             */
+            target: string;
+            /**
+             * Location
+             * @description where the backup is: a path, a URL, a snapshot id
+             */
+            location: string;
+            /**
+             * Made At
+             * @description when it was made, with its time zone; now when absent
+             */
+            made_at?: string | null;
+            /**
+             * Restore
+             * @description the command that restores it
+             */
+            restore?: string | null;
+        };
+        /** BackupOut */
+        BackupOut: {
+            /**
+             * Seq
+             * @description the run event that records the backup
+             */
+            seq: number;
+            /**
+             * Made At
+             * Format: date-time
+             */
+            made_at: string;
+            /**
+             * Fresh
+             * @description made within the last 24 hours: it opens the floor S2 of K9
+             */
+            fresh: boolean;
         };
         /** Blob */
         Blob: {
@@ -8932,6 +10628,276 @@ export interface components {
             notification_id: number | null;
             /** Title */
             title: string;
+        };
+        /** BrowserIdentity */
+        BrowserIdentity: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /**
+             * Owner
+             * @enum {string}
+             */
+            owner: "member" | "project" | "agent";
+            /**
+             * Owner Login
+             * @description the member who owns it; null for the project's and an agent's
+             */
+            owner_login: string | null;
+            /**
+             * Agent
+             * @description the handle of the agent profile that owns it; null for a member's or the project's
+             */
+            agent: string | null;
+            /**
+             * Agent Default
+             * @description whether its agent profile hands it to every run under it
+             */
+            agent_default: boolean;
+            /** Domains */
+            domains: string[];
+            /**
+             * Login Url
+             * @description the page its login session opens; null: its first domain's home page
+             */
+            login_url: string | null;
+            /** Worker */
+            worker: string;
+            /**
+             * Worker Owner
+             * @description the login of the worker's owner
+             */
+            worker_owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_login" | "disabled";
+            /**
+             * Version
+             * @description profiles saved so far; 0 until the first login is saved
+             */
+            version: number;
+            /**
+             * Size
+             * @description bytes of the current profile, sealed; null at version 0
+             */
+            size: number | null;
+            /**
+             * Chromium Version
+             * @description the Chromium that saved the current profile
+             */
+            chromium_version: string | null;
+            /**
+             * Held By Run
+             * @description the run that holds it now
+             */
+            held_by_run: number | null;
+            /** Last Saved At */
+            last_saved_at: string | null;
+            /** Last Saved By */
+            last_saved_by: string | null;
+            /** Last Used At */
+            last_used_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Can Manage
+             * @description whether you may delete it: its member, or an admin for the project's
+             */
+            can_manage: boolean;
+        };
+        /** BrowserIdentityCreate */
+        BrowserIdentityCreate: {
+            /**
+             * Name
+             * @description unique among its owner's live identities in the project
+             */
+            name: string;
+            /**
+             * Domains
+             * @description the sites whose cookies it keeps, each with its subdomains; the others are dropped at every save
+             */
+            domains: string[];
+            /**
+             * Worker
+             * @description the worker that holds it: your own, or a shared one, serving the project; its profile opens there alone
+             */
+            worker: string;
+            /**
+             * Owner
+             * @description member: yours alone (the writer role); project: the admins', usable by every writer; agent: an agent profile's (``agent``), the admins' to manage, which the profile hands to its runs
+             * @default member
+             * @enum {string}
+             */
+            owner: "member" | "project" | "agent";
+            /**
+             * Agent
+             * @description the handle of the agent profile that owns it, @ left out; required for owner agent, refused otherwise. The first identity of a profile is the one it hands its runs
+             */
+            agent?: string | null;
+            /**
+             * Login Url
+             * @description the page a login session opens, an http or https URL; null: the home page of the first domain
+             */
+            login_url?: string | null;
+        };
+        /** BrowserIdentityState */
+        BrowserIdentityState: {
+            /** Identity Id */
+            identity_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_login" | "disabled";
+        };
+        /** BrowserLogin */
+        BrowserLogin: {
+            /**
+             * Worker
+             * @description a Move: the name of the worker the identity should live on after the session saves (your own, or a shared one that serves the project and has the feature browser); null: the worker that holds it
+             */
+            worker?: string | null;
+        };
+        /** BrowserLoginAsked */
+        BrowserLoginAsked: {
+            /**
+             * Outcome
+             * @description asked: a decision is open; failed: the run ends
+             * @enum {string}
+             */
+            outcome: "asked" | "failed";
+            /**
+             * Decision Id
+             * @description the login decision, for outcome asked
+             */
+            decision_id: number | null;
+            /**
+             * Identity Id
+             * @description the browser identity the login is for
+             */
+            identity_id: number;
+            /**
+             * Message
+             * @description what the agent is told
+             */
+            message: string;
+        };
+        /** BrowserLoginBody */
+        BrowserLoginBody: {
+            /**
+             * Identity
+             * @description the id or the name of one of the run's browser identities
+             */
+            identity: string;
+            /**
+             * Url
+             * @description the page to sign in on
+             */
+            url: string;
+            /**
+             * Reason
+             * @description why the agent needs the login
+             */
+            reason: string;
+        };
+        /** BrowserNeedsLogin */
+        BrowserNeedsLogin: {
+            /**
+             * Cause
+             * @description unopenable: the worker's Chromium could not open the profile; newer_chromium: a Chromium newer than the worker's saved it
+             * @enum {string}
+             */
+            cause: "unopenable" | "newer_chromium";
+        };
+        /** BrowserProfileAsk */
+        BrowserProfileAsk: {
+            /**
+             * Identity Id
+             * @description one of the run's browser_identities
+             */
+            identity_id: number;
+        };
+        /** BrowserProfileLease */
+        BrowserProfileLease: {
+            /** Identity Id */
+            identity_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Domains
+             * @description the sites whose cookies the profile keeps, each with its subdomains; the worker drops every other cookie before it saves the profile
+             */
+            domains: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_login" | "disabled";
+            /**
+             * Version
+             * @description the version of the profile handed out, the base_version of its save; 0: none
+             */
+            version: number;
+            /**
+             * Chromium Version
+             * @description the Chromium that saved it, as it said; null for none
+             */
+            chromium_version: string | null;
+            /**
+             * Profile
+             * @description the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null too for a login session on another worker than the identity's (a Move)
+             */
+            profile: string | null;
+            /**
+             * Login Url
+             * @description the page a login session opens: the identity's, else its first domain's
+             */
+            login_url: string;
+        };
+        /** BrowserProfileSaved */
+        BrowserProfileSaved: {
+            /** Identity Id */
+            identity_id: number;
+            /**
+             * Version
+             * @description the version the profile is at now, the one saved
+             */
+            version: number;
+        };
+        /**
+         * BrowserReport
+         * @description The Chromium a daemon starts for a browser run, as its heartbeat says.
+         */
+        BrowserReport: {
+            /**
+             * Chromium
+             * @description its version, as `chrome --version` prints it
+             */
+            chromium: string;
+            /**
+             * Display
+             * @description headless: it runs with --headless=new, no screen needed; screen: it draws on a display
+             * @enum {string}
+             */
+            display: "headless" | "screen";
+            /**
+             * Max
+             * @description how many browser runs the worker holds at once, each its own Chromium; the hub hands it no more
+             */
+            max: number;
+            /**
+             * Sandbox
+             * @description whether Chromium runs with its own sandbox; false where the machine does not let it (no unprivileged user namespaces), as the install found
+             */
+            sandbox: boolean;
         };
         /** Build */
         Build: {
@@ -10365,6 +12331,23 @@ export interface components {
             level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
             /** Note */
             note?: string | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes?: {
+                [key: string]: string;
+            };
+            /**
+             * Environments
+             * @description the environments it allows; empty: no limit
+             */
+            environments?: string[];
+            /**
+             * Workers
+             * @description the workers it allows; empty: no limit
+             */
+            workers?: string[];
         };
         /** CeilingWritten */
         CeilingWritten: {
@@ -10392,6 +12375,23 @@ export interface components {
             previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
             /** Note */
             note: string | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes: {
+                [key: string]: string;
+            };
+            /**
+             * Environments
+             * @description the environments it allows; empty: no limit
+             */
+            environments: string[];
+            /**
+             * Workers
+             * @description the workers it allows; empty: no limit
+             */
+            workers: string[];
         };
         /**
          * Change
@@ -10931,49 +12931,6 @@ export interface components {
              */
             progress?: components["schemas"]["ChatProgress"][] | null;
         };
-        /** ChatFile */
-        ChatFile: {
-            /** Id */
-            id: number;
-            /**
-             * Name
-             * @description the file's name, as its uploader's browser named it
-             */
-            name: string;
-            /**
-             * Media Type
-             * @description type/subtype, as the uploader's browser named it
-             */
-            media_type: string;
-            /**
-             * Viewer
-             * @description what the web opens it with; none offers a download only
-             * @enum {string}
-             */
-            viewer: "image" | "video" | "audio" | "pdf" | "text" | "html" | "none";
-            /**
-             * Size
-             * @description bytes
-             */
-            size: number;
-            /** Sha256 */
-            sha256: string;
-            /**
-             * Uploaded By
-             * @description the login of the member who uploaded it; null once they are gone
-             */
-            uploaded_by: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Url
-             * @description where this hub answers its bytes to the chat's members; ?download=true to save it
-             */
-            url: string;
-        };
         /** ChatImageChange */
         ChatImageChange: {
             /**
@@ -11089,13 +13046,17 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /**
+             * Attachments
+             * @description the files of the owner's message, whose bytes GET /v1/projects/{p}/runs/{id}/attachments/{aid}/content serves
+             */
+            attachments?: components["schemas"]["SentFile"][];
         };
         /** ChatMessageIn */
         ChatMessageIn: {
             /**
              * Body
-             * @description at most 16384 bytes of UTF-8; blank only with files
-             * @default
+             * @description at most 16384 bytes of UTF-8; empty only with attachment_ids
              */
             body: string;
             /**
@@ -11104,10 +13065,10 @@ export interface components {
              */
             reply_to?: number | null;
             /**
-             * File Ids
-             * @description the files it carries, each uploaded to the chat by the sender (POST .../files) and not sent yet
+             * Attachment Ids
+             * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
              */
-            file_ids?: number[];
+            attachment_ids?: number[];
         };
         /** ChatPage */
         ChatPage: {
@@ -11467,6 +13428,42 @@ export interface components {
              */
             spent_seconds: number;
         };
+        /**
+         * ClassFigures
+         * @description What the hub saw of one class over the last FIGURE_DAYS days for the person's runs.
+         */
+        ClassFigures: {
+            /**
+             * Refused
+             * @description the acts a gate or the worker's hook refused (autonomy.decided result=refused)
+             */
+            refused: number;
+            /**
+             * Asked
+             * @description the acts a gate held for an answer (result=asked)
+             */
+            asked: number;
+            /**
+             * Decisions
+             * @description the decisions asked in the class's categories
+             */
+            decisions: number;
+            /**
+             * Merged
+             * @description K5: the merges of the person's runs
+             */
+            merged?: number | null;
+            /**
+             * Reverted
+             * @description K5: those of them the hub reverted
+             */
+            reverted?: number | null;
+            /**
+             * Rolled Back
+             * @description K6: those of them PROD was rolled back from
+             */
+            rolled_back?: number | null;
+        };
         /** Clearance */
         Clearance: {
             /** Level */
@@ -11615,6 +13612,82 @@ export interface components {
              */
             expires_at: string | null;
         };
+        /**
+         * CredentialShare
+         * @description A share of a secret or an account, as its owner sees it.
+         */
+        CredentialShare: {
+            /** Id */
+            id: number;
+            /**
+             * Secret
+             * @description the name of the secret or account shared
+             */
+            secret: string;
+            /**
+             * Credential
+             * @description subscription (a personal Claude account, shared only after its owner acknowledged the terms warning), api_key, git or env
+             * @enum {string}
+             */
+            credential: "subscription" | "api_key" | "git" | "env";
+            /**
+             * Grantee Kind
+             * @description user: one member; unit: a unit and below; all: everyone
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Grantee
+             * @description the member's login or the unit's slug; null for all
+             */
+            grantee: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to; null for none
+             */
+            level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD; null for none
+             */
+            budget_usd: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description 1 to 100: no run takes the account while its usage is at this percent or above; null for none
+             */
+            usage_ceiling_pct: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once; null for no limit
+             */
+            max_running: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; null for no end
+             */
+            expires_at: string | null;
+            /**
+             * Terms Ack At
+             * @description when its owner acknowledged the terms warning; null for none
+             */
+            terms_ack_at: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+        };
         /** Credentials */
         Credentials: {
             /** Leases */
@@ -11626,6 +13699,162 @@ export interface components {
              * @description each repo of the run, in the run's order
              */
             repos?: components["schemas"]["RunRepoSource"][];
+        };
+        /** CrmContact */
+        CrmContact: {
+            /**
+             * Login
+             * @description the GitHub login, in lower case
+             */
+            login: string;
+            /**
+             * Profile Url
+             * @description the public profile on GitHub
+             */
+            profile_url: string;
+            /**
+             * Source
+             * @description what it was first seen from: invite_request, invite_link, grant, issue, ...
+             */
+            source: string;
+            /**
+             * Stage
+             * @description lead, invited, activated or retained; it only moves forward
+             */
+            stage: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Stage At
+             * Format: date-time
+             * @description when it reached its stage
+             */
+            stage_at: string;
+        };
+        /** CrmContactDetail */
+        CrmContactDetail: {
+            /**
+             * Login
+             * @description the GitHub login, in lower case
+             */
+            login: string;
+            /**
+             * Profile Url
+             * @description the public profile on GitHub
+             */
+            profile_url: string;
+            /**
+             * Source
+             * @description what it was first seen from: invite_request, invite_link, grant, issue, ...
+             */
+            source: string;
+            /**
+             * Stage
+             * @description lead, invited, activated or retained; it only moves forward
+             */
+            stage: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Stage At
+             * Format: date-time
+             * @description when it reached its stage
+             */
+            stage_at: string;
+            /**
+             * Touchpoints
+             * @description newest first
+             */
+            touchpoints: components["schemas"]["CrmTouchpoint"][];
+            /**
+             * History
+             * @description each stage the contact reached, in the order of the stages
+             */
+            history: components["schemas"]["CrmStageReached"][];
+        };
+        /** CrmContacts */
+        CrmContacts: {
+            /** Project */
+            project: string;
+            /**
+             * Counts
+             * @description stage -> how many of the contacts you can see are in it
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Contacts
+             * @description newest first, at most 500
+             */
+            contacts: components["schemas"]["CrmContact"][];
+        };
+        /** CrmDeleted */
+        CrmDeleted: {
+            /**
+             * Deleted
+             * @description true: the contact, its touchpoints and its history are gone
+             */
+            deleted: boolean;
+            /**
+             * Touchpoints
+             * @description how many touchpoints went with it
+             */
+            touchpoints: number;
+        };
+        /** CrmNoteIn */
+        CrmNoteIn: {
+            /**
+             * Note
+             * @description what to remember about the contact
+             */
+            note: string;
+        };
+        /** CrmStageReached */
+        CrmStageReached: {
+            /** Stage */
+            stage: string;
+            /**
+             * Reached At
+             * Format: date-time
+             */
+            reached_at: string;
+        };
+        /** CrmTouchpoint */
+        CrmTouchpoint: {
+            /**
+             * Kind
+             * @description invite_request, invite_link, grant, issue, pull_request, discussion or note
+             */
+            kind: string;
+            /**
+             * Ref
+             * @description what makes it one touchpoint: issue#12, invite:3, a note's id
+             */
+            ref: string;
+            /** Url */
+            url?: string | null;
+            /**
+             * Note
+             * @description the text of a note a writer added; the other kinds have none
+             */
+            note?: string | null;
+            /**
+             * Author
+             * @description the login of the member who wrote a note
+             */
+            author?: string | null;
+            /**
+             * Happened At
+             * Format: date-time
+             */
+            happened_at: string;
         };
         /** Csrf */
         Csrf: {
@@ -11801,7 +14030,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login";
             /** Question */
             question: string;
             /**
@@ -11823,9 +14052,14 @@ export interface components {
             state: "open" | "answered" | "expired" | "cancelled";
             /**
              * Owner
-             * @description the login of the run's owner, the one member who may answer
+             * @description the login of the run's owner
              */
             owner: string;
+            /**
+             * Asked Of
+             * @description the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0115
+             */
+            asked_of: string;
             /** Answer Option */
             answer_option: string | null;
             /** Answer Text */
@@ -11862,7 +14096,7 @@ export interface components {
              * @description the agent asks only about these
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "triage";
             /** Question */
             question: string;
             /**
@@ -12129,6 +14363,18 @@ export interface components {
                     [key: string]: unknown;
                 };
             } | null;
+            /**
+             * Browser
+             * @description true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Identities
+             * @description browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one
+             * @default []
+             */
+            identities: string[];
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -12138,6 +14384,44 @@ export interface components {
              * @enum {string}
              */
             value: "any" | "web";
+        };
+        /** DoctorAnswer */
+        DoctorAnswer: {
+            /** Worker Id */
+            worker_id: number;
+            /**
+             * Doctor At
+             * Format: date-time
+             * @description when the hub took the report
+             */
+            doctor_at: string;
+            /** Doctor High */
+            doctor_high: number;
+            /** Doctor Medium */
+            doctor_medium: number;
+        };
+        /** DoctorFinding */
+        DoctorFinding: {
+            /**
+             * Code
+             * @description what the doctor found, as `worker doctor --json` names it
+             */
+            code: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
+            /**
+             * Detail
+             * @description what it found, as the doctor prints it
+             */
+            detail: string;
+        };
+        /** DoctorReport */
+        DoctorReport: {
+            /** Findings */
+            findings: components["schemas"]["DoctorFinding"][];
         };
         /** EarlierFinding */
         EarlierFinding: {
@@ -12951,10 +15235,10 @@ export interface components {
              */
             outputs?: components["schemas"]["RunOutput"][];
             /**
-             * Files
-             * @description the files its person attached, in the order they were uploaded, each with the chat's URL of its bytes
+             * Attachments
+             * @description the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes
              */
-            files?: components["schemas"]["ChatFile"][];
+            attachments?: components["schemas"]["LinkedAttachment"][];
         };
         /** GroupSample */
         GroupSample: {
@@ -13090,6 +15374,8 @@ export interface components {
             self_update?: components["schemas"]["SelfUpdateReport"] | null;
             /** @description for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off */
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
+            /** @description the Chromium the daemon starts for a browser run, with the feature browser; null for a daemon without one */
+            browser?: components["schemas"]["BrowserReport"] | null;
         };
         /** HeldAnswer */
         HeldAnswer: {
@@ -13112,6 +15398,35 @@ export interface components {
         HeldRequest: {
             /** Session Ids */
             session_ids: string[];
+        };
+        /** HeldStop */
+        HeldStop: {
+            /** Id */
+            id: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Target
+             * @description login:<login>, unit:<slug> or all
+             */
+            target: string;
+            /** Login */
+            login: string | null;
+            /**
+             * Unit
+             * @description the unit's slug, for a stop of a unit
+             */
+            unit: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Stopped At
+             * Format: date-time
+             */
+            stopped_at: string;
         };
         /** HeldTranscript */
         HeldTranscript: {
@@ -13587,6 +15902,244 @@ export interface components {
              * @description the decision this message answers; null for any other message
              */
             decision_id?: number | null;
+            /**
+             * Attachments
+             * @description the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves
+             */
+            attachments?: components["schemas"]["Attachment"][];
+        };
+        /** InviteAccept */
+        InviteAccept: {
+            /**
+             * Token
+             * @description the token of the link, evn_...
+             */
+            token: string;
+        };
+        /** InviteCreated */
+        InviteCreated: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
+            /**
+             * Token
+             * @description evn_...: shown this once, the hub keeps only its SHA-256
+             */
+            token: string;
+            /**
+             * Url
+             * @description the link to hand out, EVO_HUB_PUBLIC_URL + /invite/ + token; null without one
+             */
+            url: string | null;
+        };
+        /** InvitePreview */
+        InvitePreview: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Invited By
+             * @description the hub admin who made the link
+             */
+            invited_by: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Bound
+             * @description whether one GitHub login alone may accept the link; which one is never shown
+             */
+            bound: boolean;
+            /**
+             * Viewer
+             * @description the login signed in on the web that asks; null for a visitor
+             */
+            viewer: string | null;
+            /**
+             * For Viewer
+             * @description whether the viewer may accept the link: signed in, and it unbound or theirs
+             */
+            for_viewer: boolean;
+            /**
+             * Accepted By Viewer
+             * @description whether the viewer accepted the link
+             */
+            accepted_by_viewer: boolean;
+            /**
+             * Project
+             * @description join: the project; register: the project its right registered, once used. Null unless the link is open and for the viewer (unbound, anyone), or the viewer accepted it
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives, shown as the project is
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches, shown as the project is
+             */
+            max_level: string | null;
+        };
+        /** InviteRequest */
+        InviteRequest: {
+            /**
+             * Kind
+             * @description join: a grant on an existing project; register: the right to register one new project
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on
+             */
+            project?: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role?: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level of the project's ladder it reaches
+             */
+            max_level?: string | null;
+            /**
+             * For Login
+             * @description the one GitHub login that may accept the link; anyone signed in if left out
+             */
+            for_login?: string | null;
+            /**
+             * Days
+             * @description how long the link stays open
+             * @default 7
+             */
+            days: number;
+        };
+        /** InviteRow */
+        InviteRow: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
         };
         /** Job */
         Job: {
@@ -14053,6 +16606,149 @@ export interface components {
              */
             created_at: string;
         };
+        /** LinkedAttachment */
+        LinkedAttachment: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Url
+             * @description the hub's URL of its bytes, for those who may read the message
+             */
+            url: string;
+        };
+        /**
+         * ListedAgentAccount
+         * @description An account of an agent, with the project and the agent it belongs to.
+         */
+        ListedAgentAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /** Project */
+            project: string;
+            /**
+             * Handle
+             * @description the agent's handle, @ left out
+             */
+            handle: string;
+            /**
+             * Agent Name
+             * @description the agent's display name
+             */
+            agent_name: string;
+            /**
+             * Color
+             * @description the agent's colour, on which the web draws its initial
+             */
+            color: string;
+            /**
+             * Icon Url
+             * @description GET of the agent's avatar on this hub; null: draw the initial
+             */
+            icon_url: string | null;
+        };
         /** Live */
         Live: {
             /**
@@ -14091,7 +16787,7 @@ export interface components {
              * @default question
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question";
             /** Question */
             question: string;
             /**
@@ -14116,6 +16812,86 @@ export interface components {
              * @description outputs of the run the question carries, such as the screenshot it is about
              */
             output_ids?: number[];
+        };
+        /** LocalLogin */
+        LocalLogin: {
+            /** Identity Id */
+            identity_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Domains
+             * @description the sites whose cookies the profile keeps, each with its subdomains; the worker drops every other cookie before it saves the profile
+             */
+            domains: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_login" | "disabled";
+            /**
+             * Version
+             * @description the version of the profile handed out, the base_version of its save; 0: none
+             */
+            version: number;
+            /**
+             * Chromium Version
+             * @description the Chromium that saved it, as it said; null for none
+             */
+            chromium_version: string | null;
+            /**
+             * Profile
+             * @description the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null too for a login session on another worker than the identity's (a Move)
+             */
+            profile: string | null;
+            /**
+             * Login Url
+             * @description the page a login session opens: the identity's, else its first domain's
+             */
+            login_url: string;
+            /** Project */
+            project: string;
+            /**
+             * Created
+             * @description whether this login created the identity
+             */
+            created: boolean;
+        };
+        /** LocalLoginAsk */
+        LocalLoginAsk: {
+            /**
+             * Project
+             * @description the project of the identity
+             */
+            project: string;
+            /**
+             * Name
+             * @description unique among its owner's live identities in the project
+             */
+            name: string;
+            /**
+             * Owner
+             * @description whose identity: yours, the project's or an agent's
+             * @default member
+             * @enum {string}
+             */
+            owner: "member" | "project" | "agent";
+            /**
+             * Agent
+             * @description the agent's handle, for owner agent
+             */
+            agent?: string | null;
+            /**
+             * Domains
+             * @description the sites a new identity keeps; needed to create one, else ignored
+             * @default []
+             */
+            domains: string[];
+            /**
+             * Login Url
+             * @description of a new identity
+             */
+            login_url?: string | null;
         };
         /** LocalRegister */
         LocalRegister: {
@@ -14511,6 +17287,485 @@ export interface components {
              * @description the version of the document it was read from
              */
             version: number | null;
+        };
+        /** MarketingBrowserClaim */
+        MarketingBrowserClaim: {
+            /** @description the next post to make, none when nothing waits */
+            job: components["schemas"]["MarketingBrowserJob"] | null;
+        };
+        /**
+         * MarketingBrowserJob
+         * @description What a worker's script posts. ``session`` is the sealed login session of the account: it goes to the script and
+         *     to no other answer of the plugin.
+         */
+        MarketingBrowserJob: {
+            /** Post Id */
+            post_id: number;
+            /** Channel */
+            channel: string;
+            /** Account */
+            account: string;
+            /** Target */
+            target: string | null;
+            /** Body */
+            body: string;
+            /**
+             * Session
+             * @description Playwright's storage state as JSON
+             */
+            session: string;
+        };
+        /** MarketingBrowserResult */
+        MarketingBrowserResult: {
+            /**
+             * State
+             * @description posted or failed
+             */
+            state: string;
+            /** Reason */
+            reason: string | null;
+        };
+        /** MarketingBrowserResultIn */
+        MarketingBrowserResultIn: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "posted" | "captcha" | "lockout" | "session_expired" | "failed";
+            /**
+             * Url
+             * @description the link of the post, when it went out
+             */
+            url?: string | null;
+            /**
+             * Detail
+             * @description what the script saw, never the page's text
+             * @default
+             */
+            detail: string;
+            /**
+             * Screenshot
+             * @description a PNG after the post or where the script stopped, base64
+             */
+            screenshot?: string | null;
+        };
+        /** MarketingBudget */
+        MarketingBudget: {
+            /** Month */
+            month: string;
+            /** Budget Usd */
+            budget_usd: number;
+            /** Reserved Usd */
+            reserved_usd: number;
+            /** Spent Usd */
+            spent_usd: number;
+        };
+        /** MarketingChannel */
+        MarketingChannel: {
+            /** Id */
+            id: number;
+            /** Channel */
+            channel: string;
+            /** Account */
+            account: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Mode
+             * @description autonomous or draft_only
+             */
+            mode: string;
+            /** Adapter */
+            adapter: string;
+            /**
+             * Owner
+             * @description the login of the member who owns a personal account
+             */
+            owner: string | null;
+            /** Target */
+            target: string | null;
+            /**
+             * Paused
+             * @description the breaker is open: the channel posts nothing until an admin resumes it
+             */
+            paused: boolean;
+            /** Paused Reason */
+            paused_reason: string | null;
+            /** Autonomous Since */
+            autonomous_since: string | null;
+            /**
+             * Session State
+             * @description none, ok or stale: whether the login session of a browser channel works
+             * @default none
+             */
+            session_state: string;
+        };
+        /** MarketingChannelIn */
+        MarketingChannelIn: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "github" | "hackernews" | "reddit" | "x" | "linkedin" | "viblo" | "facebook_page" | "facebook_profile" | "tiktok" | "facebook_group";
+            /**
+             * Account
+             * @description the handle, page or repo the account posts as
+             */
+            account: string;
+            /**
+             * Kind
+             * @description a personal account belongs to the member who makes it and is draft_only
+             * @default project
+             * @enum {string}
+             */
+            kind: "project" | "personal";
+            /**
+             * Adapter
+             * @description api or browser; the channel's default
+             */
+            adapter?: ("api" | "browser") | null;
+            /**
+             * Target
+             * @description a subreddit, a page id, owner/name, an author urn
+             */
+            target?: string | null;
+        };
+        /** MarketingDeny */
+        MarketingDeny: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Value */
+            value: string;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+        };
+        /** MarketingDenyIn */
+        MarketingDenyIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "term" | "domain" | "person";
+            /** Value */
+            value: string;
+        };
+        /** MarketingDone */
+        MarketingDone: {
+            /**
+             * Ok
+             * @description false when nothing changed (it was so already)
+             */
+            ok: boolean;
+        };
+        /** MarketingGoalSignal */
+        MarketingGoalSignal: {
+            /**
+             * Code
+             * @description G-<n>
+             */
+            code: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Metric
+             * @description how the goal's metric reads
+             */
+            metric: string;
+            /**
+             * Value
+             * @description the metric's value now; none when no signal is in its window
+             */
+            value: number | null;
+            /** Target */
+            target: number | null;
+            /**
+             * Reached
+             * @description whether the value meets the target; none without a value
+             */
+            reached: boolean | null;
+        };
+        /** MarketingModeIn */
+        MarketingModeIn: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "autonomous" | "draft_only";
+        };
+        /** MarketingPost */
+        MarketingPost: {
+            /** Id */
+            id: number;
+            /** Channel Id */
+            channel_id: number;
+            /** Channel */
+            channel: string;
+            /** Account */
+            account: string;
+            /** Kind */
+            kind: string;
+            /** Body */
+            body: string;
+            /** Links */
+            links: string[];
+            /**
+             * State
+             * @description proposed, judging, queued, posting, posted, draft, failed or withdrawn
+             */
+            state: string;
+            /**
+             * Reason
+             * @description why it is a draft, failed or withdrawn
+             */
+            reason: string | null;
+            /**
+             * Layers
+             * @description layer -> {ok, detail}, in the order the gate ran them
+             */
+            layers: {
+                [key: string]: unknown;
+            };
+            /**
+             * Judge
+             * @description the Judge's scores and verdict
+             */
+            judge: {
+                [key: string]: unknown;
+            } | null;
+            /** Run Id */
+            run_id: number | null;
+            /** Posted Url */
+            posted_url: string | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /**
+             * Dry Run
+             * @description it would have gone out, but the channel is in its dry-run time
+             */
+            dry_run: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Posted At */
+            posted_at: string | null;
+            /**
+             * Claim Id
+             * @description the canvas claim the post tests
+             */
+            claim_id?: number | null;
+            /**
+             * Signal Key
+             * @description the Signal key its numbers count toward
+             */
+            signal_key?: string | null;
+            /**
+             * Scheduled At
+             * @description when the gate decides it
+             */
+            scheduled_at?: string | null;
+        };
+        /** MarketingPostIn */
+        MarketingPostIn: {
+            /** Channel Id */
+            channel_id: number;
+            /** Body */
+            body: string;
+            /**
+             * Kind
+             * @default post
+             * @enum {string}
+             */
+            kind: "post" | "reply";
+            /**
+             * Reply To
+             * @description what a reply answers
+             */
+            reply_to?: string | null;
+            /** Links */
+            links?: string[];
+            /** Sources */
+            sources?: components["schemas"]["MarketingSource"][];
+            /**
+             * Run Id
+             * @description the run that proposed it, kept in the audit
+             */
+            run_id?: number | null;
+            /**
+             * Claim
+             * @description the canvas claim the post tests, as CL-<n>
+             */
+            claim?: string | null;
+            /**
+             * Signal Key
+             * @description the Signal key the post's numbers count toward
+             */
+            signal_key?: string | null;
+            /**
+             * Scheduled At
+             * @description when the gate decides it; a time to come keeps it waiting until the Loop releases it
+             */
+            scheduled_at?: string | null;
+        };
+        /** MarketingReasonIn */
+        MarketingReasonIn: {
+            /**
+             * Reason
+             * @default stopped by hand
+             */
+            reason: string;
+        };
+        /** MarketingSessionIn */
+        MarketingSessionIn: {
+            /**
+             * State
+             * @description ok once the account's owner logged in and the session is sealed
+             * @enum {string}
+             */
+            state: "none" | "ok" | "stale";
+        };
+        /** MarketingSource */
+        MarketingSource: {
+            /**
+             * Quote
+             * @description the sentence of the post the source backs
+             */
+            quote: string;
+            /**
+             * Url
+             * @description a link to the docs, a release or the changelog
+             */
+            url: string;
+        };
+        /** MarketingStatus */
+        MarketingStatus: {
+            /** Project */
+            project: string;
+            /**
+             * Killed
+             * @description the kill switch of the project is set: no channel posts
+             */
+            killed: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Channels */
+            channels: number;
+            /** Open Breakers */
+            open_breakers: number;
+            budget: components["schemas"]["MarketingBudget"];
+        };
+        /** MarketingWeekBreaker */
+        MarketingWeekBreaker: {
+            /** Channel Id */
+            channel_id: number;
+            /** Channel */
+            channel: string;
+            /** Account */
+            account: string;
+            /** Reason */
+            reason: string | null;
+            /** Paused At */
+            paused_at: string | null;
+        };
+        /** MarketingWeekPost */
+        MarketingWeekPost: {
+            /** Id */
+            id: number;
+            /** Channel */
+            channel: string;
+            /** Account */
+            account: string;
+            /** Posted Url */
+            posted_url: string | null;
+            /** Posted At */
+            posted_at: string | null;
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /** MarketingWeekProposal */
+        MarketingWeekProposal: {
+            /**
+             * Id
+             * @description the post that holds the content for a member's personal channel
+             */
+            id: number;
+            /** Channel */
+            channel: string;
+            /** Account */
+            account: string;
+            /** State */
+            state: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * MarketingWeekly
+         * @description The Growth section of the project's weekly bulletin: the 7 days up to ``until``.
+         */
+        MarketingWeekly: {
+            /** Project */
+            project: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+            /**
+             * Goals
+             * @description the active goals with a metric, against their target
+             */
+            goals: components["schemas"]["MarketingGoalSignal"][];
+            /**
+             * Posted
+             * @description the posts that went out in the week, dry runs excluded
+             */
+            posted: components["schemas"]["MarketingWeekPost"][];
+            /**
+             * Counts
+             * @description the posts proposed in the week, by where the gate left them
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Breakers
+             * @description the channels whose breaker is open now
+             */
+            breakers: components["schemas"]["MarketingWeekBreaker"][];
+            /** Killed */
+            killed: boolean;
+            /** Reason */
+            reason: string | null;
+            budget: components["schemas"]["MarketingBudget"];
+            /**
+             * Week Cost Usd
+             * @description what the posts of the week cost
+             */
+            week_cost_usd: number;
+            /**
+             * Proposals
+             * @description content for members' personal channels in the week: the proposals for the blog project
+             */
+            proposals: components["schemas"]["MarketingWeekProposal"][];
+            /**
+             * Proposals Project
+             * @description the hub project the proposals go to; none when not set
+             */
+            proposals_project: string | null;
         };
         /** MemberCounts */
         MemberCounts: {
@@ -15008,14 +18263,24 @@ export interface components {
              * @description when the worker took it for the agent
              */
             delivered_at: string | null;
+            /**
+             * Attachments
+             * @description the files it carries
+             */
+            attachments?: components["schemas"]["Attachment"][];
         };
         /** MessageIn */
         MessageIn: {
             /**
              * Text
-             * @description at most 8 KiB of UTF-8
+             * @description at most 8 KiB of UTF-8; empty only with attachment_ids
              */
             text: string;
+            /**
+             * Attachment Ids
+             * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
+             */
+            attachment_ids?: number[];
         };
         /** MissingBlobs */
         MissingBlobs: {
@@ -15361,7 +18626,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -15512,6 +18777,17 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * OrgAutonomy
+         * @description Every seat's effective mode of each class (its ceiling, its units' and the instance's) and the stops that
+         *     hold.
+         */
+        OrgAutonomy: {
+            /** Seats */
+            seats: components["schemas"]["SeatClasses"][];
+            /** Stops */
+            stops: components["schemas"]["HeldStop"][];
         };
         /** OrgChartView */
         OrgChartView: {
@@ -15979,7 +19255,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login";
             /** Question */
             question: string;
             /**
@@ -16043,7 +19319,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -16677,6 +19953,18 @@ export interface components {
              * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
              */
             profile?: string | null;
+            /**
+             * Browser
+             * @description true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Identities
+             * @description browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one
+             * @default []
+             */
+            identities: string[];
         };
         /** PlanSummary */
         PlanSummary: {
@@ -17719,6 +21007,77 @@ export interface components {
              */
             changed: boolean;
         };
+        /**
+         * PrefSet
+         * @description The next revision of the caller's own preference: a level, class overrides merged onto those before, or a reset
+         *     that drops them (to A5 without a level).
+         */
+        PrefSet: {
+            /** Level */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes?: {
+                [key: string]: string;
+            };
+            /**
+             * Reset
+             * @default false
+             */
+            reset: boolean;
+        };
+        /** PrefWritten */
+        PrefWritten: {
+            /** Login */
+            login: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Previous
+             * @description the level of the revision before; null for the first
+             */
+            previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes: {
+                [key: string]: string;
+            };
+        };
+        /** PrincipalCost */
+        PrincipalCost: {
+            /**
+             * Principal
+             * @description the member the runs were made for, by login; null for one now gone
+             */
+            principal: string | null;
+            /** Runs 24H */
+            runs_24h: number;
+            /** Runs 7D */
+            runs_7d: number;
+            /**
+             * Runs Month
+             * @description the runs that took it since the month began, UTC
+             */
+            runs_month: number;
+            /** Cost 24H Usd */
+            cost_24h_usd: number;
+            /** Cost 7D Usd */
+            cost_7d_usd: number;
+            /**
+             * Cost Month Usd
+             * @description what those runs cost since the month began, in USD, an estimate
+             */
+            cost_month_usd: number;
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -18605,6 +21964,11 @@ export interface components {
              * @description hex, abbreviated or whole
              */
             source_commit?: string | null;
+            /**
+             * Audience
+             * @description a global skill's audience: default everyone for a new skill, unchanged for one that exists
+             */
+            audience?: ("everyone" | "admins") | null;
         };
         /** Published */
         Published: {
@@ -18623,6 +21987,12 @@ export interface components {
              */
             created: boolean;
             latest: components["schemas"]["Version"];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** Queued */
         Queued: {
@@ -18853,12 +22223,10 @@ export interface components {
             /** Body */
             body: string;
             /**
-             * Files
-             * @description the files its person attached: id, name, media_type and size of each
+             * Attachments
+             * @description the files its author attached to it; a run's agent fetches their bytes with GET /v1/worker/runs/{id}/attachments/{aid}/content
              */
-            files?: {
-                [key: string]: unknown;
-            }[];
+            attachments?: components["schemas"]["Attachment"][];
         };
         /** ReadRequest */
         ReadRequest: {
@@ -19694,6 +23062,11 @@ export interface components {
              * @default false
              */
             account_by_rule: boolean;
+            /**
+             * Browser
+             * @description true: the rerun gets a Chromium of its own; false: it gets none, nor the run's browser identities; null keeps what the run rerun had
+             */
+            browser?: boolean | null;
         };
         /** RerunCandidates */
         RerunCandidates: {
@@ -19918,7 +23291,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /**
@@ -20121,6 +23494,18 @@ export interface components {
              */
             session_per_step: boolean;
             /**
+             * Browser
+             * @description a run whose agent got a Chromium of its own on its worker (dispatched with browser); false for any other
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Browser Identities
+             * @description the ids of the browser identities the run's Chromium opened with, in the order dispatched
+             * @default []
+             */
+            browser_identities: number[];
+            /**
              * Profile
              * @description the handle of the agent profile the run went under; null for a run from before schema 0030
              */
@@ -20200,6 +23585,13 @@ export interface components {
              * @description the last time a local run's session said anything; null for any other run
              */
             last_activity_at?: string | null;
+            /**
+             * Principal
+             * @description the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null for a local run and one queued before the hub knew principals
+             */
+            principal?: string | null;
+            /** @description the autonomy it acts under; null where principal is */
+            autonomy?: components["schemas"]["RunAutonomy"] | null;
         };
         /** RunAccount */
         RunAccount: {
@@ -20212,10 +23604,10 @@ export interface components {
             account: string | null;
             /**
              * How
-             * @description picked by hand, bound to the worker, by the charter, the pool, cooling
+             * @description picked by hand, bound to the worker, by the charter, the pool, cooling, shared by another member
              * @enum {string}
              */
-            how: "manual" | "worker" | "charter" | "pool" | "cooling";
+            how: "manual" | "worker" | "charter" | "pool" | "cooling" | "shared";
             /**
              * Failovers
              * @description the times the run moved to another account
@@ -20260,6 +23652,88 @@ export interface components {
              * @description until when the account cools down
              */
             cooldown_until: string | null;
+        };
+        /**
+         * RunAutonomy
+         * @description The autonomy a run acts under: its principal's effective autonomy as the hub took it when it queued the run,
+         *     made stricter by every gate that found it lower since (``run_autonomy.recheck``).
+         */
+        RunAutonomy: {
+            /**
+             * Level
+             * @description the lowest level of the sources, A0 to A5
+             */
+            level: string;
+            /**
+             * Level Source
+             * @description the source that sets that level
+             */
+            level_source: string;
+            /**
+             * Classes
+             * @description K1 to K12, each its mode
+             */
+            classes: {
+                [key: string]: components["schemas"]["RunAutonomyClass"];
+            };
+            /**
+             * Environments
+             * @description the environments it may run in; null: no limit
+             */
+            environments?: string[] | null;
+            /**
+             * Workers
+             * @description the workers (names, lowered) that may take it; null: any
+             */
+            workers?: string[] | null;
+            /**
+             * Restricted
+             * @description whether a class is below auto, so only a daemon that applies the modes takes it
+             * @default false
+             */
+            restricted: boolean;
+            /**
+             * Also
+             * @description logins besides the principal whose autonomy bounds it
+             */
+            also?: string[];
+            /**
+             * Taken At
+             * Format: date-time
+             * @description when the hub took it
+             */
+            taken_at: string;
+            /**
+             * Tightened At
+             * @description when a gate last made it stricter; null: never
+             */
+            tightened_at?: string | null;
+        };
+        /**
+         * RunAutonomyClass
+         * @description One class of a run's autonomy snapshot (plan autonomy-levels): its mode, the source that set it and how.
+         */
+        RunAutonomyClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets the mode, as GET /v1/autonomy names it
+             */
+            source: string;
+            /**
+             * Detail
+             * @description how that source sets it
+             */
+            detail: string;
+            /**
+             * Condition
+             * @description the condition the mode acts under; null for none
+             */
+            condition?: string | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -20311,6 +23785,42 @@ export interface components {
              * @description the agent time it may use; a Codex run stops there
              */
             max_seconds?: number | null;
+        };
+        /**
+         * RunCard
+         * @description The autonomy card of a run (plan autonomy-levels, ``autonomy_card.card``): what its prompt opens with, built
+         *     from the run's snapshot and its principal when the worker claims it.
+         */
+        RunCard: {
+            /**
+             * Card
+             * @description the card's text, first in the run's prompt
+             */
+            card: string;
+            /**
+             * Modes
+             * @description K1 to K12, the mode each acts in for the agent: an ask a project policy sets shows as auto
+             */
+            modes: {
+                [key: string]: "deny" | "ask" | "notify" | "auto";
+            };
+            /**
+             * Categories
+             * @description the categories of decision its agent may ask
+             */
+            categories: string[];
+            /**
+             * Sources
+             * @description K1 to K12, what set the mode of each: a ceiling, a preference, a policy
+             */
+            sources?: {
+                [key: string]: string;
+            };
+            /**
+             * Principal
+             * @description the login of the run's principal, which its commits name in the trailer Evo-Principal
+             */
+            principal?: string | null;
         };
         /** RunChat */
         RunChat: {
@@ -20667,7 +24177,7 @@ export interface components {
             id: number;
             /**
              * Name
-             * @description the secret's name, or github-app:<account>
+             * @description the secret's name, github-app:<account>, or @<handle>:<name> for an account of an agent
              */
             name: string;
             /**
@@ -21101,7 +24611,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser";
             /** Project */
             project: string;
             /**
@@ -21200,6 +24710,18 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /**
+             * Browser
+             * @description true: start a Chromium for the run's agent before its first turn and hand its DevTools endpoint to the agent (EVO_BROWSER_CDP); absent for a run without one
+             * @default false
+             */
+            browser: boolean;
+            /**
+             * Browser Identities
+             * @description the ids of the browser identities to open the run's Chromium with (POST /v1/worker/runs/{id}/browser-profile hands each one's profile), in order; absent for a run without them
+             * @default []
+             */
+            browser_identities: number[];
             /** @description the agent profile the run went under; null for a run from before schema 0030 */
             profile?: components["schemas"]["RunProfile"] | null;
             /**
@@ -21221,6 +24743,18 @@ export interface components {
             packs?: components["schemas"]["RunPack"][];
             /** @description a release run's cycle, mode and start commit; null for any other run */
             release?: components["schemas"]["ReleaseSpec"] | null;
+            /** @description the autonomy card its prompt opens with; null for a run without a snapshot of autonomy */
+            autonomy?: components["schemas"]["RunCard"] | null;
+            /**
+             * Attachments
+             * @description a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run
+             */
+            attachments?: components["schemas"]["Attachment"][];
+            /**
+             * Chat Message Id
+             * @description a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run
+             */
+            chat_message_id?: number | null;
         };
         /** RunState */
         RunState: {
@@ -21588,6 +25122,28 @@ export interface components {
             /** Ends On */
             ends_on?: string | null;
         };
+        /** SeatClass */
+        SeatClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /** Source */
+            source: string;
+        };
+        /** SeatClasses */
+        SeatClasses: {
+            /** Id */
+            id: number;
+            /**
+             * Classes
+             * @description K1 to K12, the effective mode of the seat and its units
+             */
+            classes: {
+                [key: string]: components["schemas"]["SeatClass"];
+            };
+        };
         /**
          * SeatEdit
          * @description The fields to change; a field left out keeps its value, reports_to or ends_on null clears it.
@@ -21637,6 +25193,11 @@ export interface components {
              */
             username: string | null;
             /**
+             * Environment
+             * @description kind env: the environment it is labelled for (test)
+             */
+            environment?: string | null;
+            /**
              * Projects
              * @description the projects whose runs get it
              */
@@ -21659,6 +25220,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
         };
         /** SecretWrite */
         SecretWrite: {
@@ -21683,6 +25249,11 @@ export interface components {
              * @description kind git only: the user git sends with the value; oauth2 when left out
              */
             username?: string | null;
+            /**
+             * Environment
+             * @description kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is leased the env secrets labelled test alone (docs/autonomy.md)
+             */
+            environment?: "test" | null;
             /**
              * Projects
              * @description the projects whose runs get it; the writer role on each, the admin role for kind forge
@@ -21732,6 +25303,11 @@ export interface components {
              */
             username: string | null;
             /**
+             * Environment
+             * @description kind env: the environment it is labelled for (test)
+             */
+            environment?: string | null;
+            /**
              * Projects
              * @description the projects whose runs get it
              */
@@ -21754,6 +25330,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
             /**
              * Created
              * @description false when a secret of this name was replaced
@@ -21797,6 +25378,26 @@ export interface components {
             error_at?: string | null;
             /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
             update_now?: components["schemas"]["UpdateNowReport"] | null;
+        };
+        /**
+         * SentFile
+         * @description A file as a ``user_message`` event names it (``as_event``).
+         */
+        SentFile: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
         };
         /**
          * SessionDigest
@@ -21909,6 +25510,52 @@ export interface components {
              */
             transcripts: components["schemas"]["TranscriptFile"][];
         };
+        /** SettingsClass */
+        SettingsClass: {
+            /**
+             * Name
+             * @description what the class covers, in words
+             */
+            name: string;
+            /**
+             * Mode
+             * @description the effective mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets it, as AutonomyClass.source
+             */
+            source: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Modes
+             * @description the modes the class takes, the strictest first
+             */
+            modes: ("deny" | "ask" | "notify" | "auto")[];
+            /**
+             * Ceiling
+             * @description the loosest mode the sources other than the preference allow
+             * @enum {string}
+             */
+            ceiling: "deny" | "ask" | "notify" | "auto";
+            /** Ceiling Source */
+            ceiling_source: string;
+            /**
+             * Pref
+             * @description the mode the preference sets; null without a preference
+             */
+            pref: ("deny" | "ask" | "notify" | "auto") | null;
+            /**
+             * Lowered
+             * @description the effective mode is stricter than the preference sets
+             */
+            lowered: boolean;
+            /** @description null for a class no gate records */
+            figures: components["schemas"]["ClassFigures"] | null;
+        };
         /**
          * SettingsLayer
          * @description One layer of a setting at one version.
@@ -21981,6 +25628,61 @@ export interface components {
              * @description 409 unless the layer is at this version now
              */
             if_version?: number | null;
+        };
+        /** ShareWrite */
+        ShareWrite: {
+            /**
+             * Grantee Kind
+             * @description user: one member, named by login; unit: a unit of the org chart and every unit below it, named by unit; all: everyone on the hub
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Login
+             * @description grantee_kind user only: the member's login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description grantee_kind unit only: the unit's slug
+             */
+            unit?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it, each one the secret is bound to
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to
+             */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD
+             */
+            budget_usd?: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description no run takes the account while its usage is at this percent or above
+             */
+            usage_ceiling_pct?: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once
+             */
+            max_running?: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Terms Ack
+             * @description the owner acknowledges the terms warning, which sharing a personal subscription token needs
+             * @default false
+             */
+            terms_ack: boolean;
         };
         /** Sign */
         Sign: {
@@ -22333,6 +26035,28 @@ export interface components {
              * Format: date-time
              */
             published_at: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+        };
+        /** SkillAudience */
+        SkillAudience: {
+            /** Name */
+            name: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+            /**
+             * Changed
+             * @description false when the skill had this audience already
+             */
+            changed: boolean;
         };
         /** SkillCount */
         SkillCount: {
@@ -22412,6 +26136,12 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** SkillStat */
         SkillStat: {
@@ -23643,6 +27373,109 @@ export interface components {
              * @description whether the report wrote a revision; false for a resend that changed nothing
              */
             written: boolean;
+        };
+        /**
+         * StopPreview
+         * @description What a stop of that scope would do now, once the caller may write it.
+         */
+        StopPreview: {
+            /** Target */
+            target: string;
+            /**
+             * Runs
+             * @description the runs it would cancel or ask to stop
+             */
+            runs: number;
+            /**
+             * People
+             * @description the people it covers; null for the whole hub
+             */
+            people: number | null;
+            /**
+             * Holds
+             * @description a stop of that scope holds already
+             */
+            holds: boolean;
+        };
+        /**
+         * StopSet
+         * @description What to stop, or lift the stop of: a person, a unit and those below it, or the whole hub.
+         */
+        StopSet: {
+            /**
+             * Scope
+             * @description login: a person; unit: a unit and below; all: the hub
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Login
+             * @description the person, for login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description the unit's slug, for unit
+             */
+            unit?: string | null;
+            /**
+             * Reason
+             * @description why; a lift takes none
+             */
+            reason?: string | null;
+        };
+        /**
+         * StopView
+         * @description A stop of autonomy, as written or lifted.
+         */
+        StopView: {
+            /** Id */
+            id: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Target
+             * @description login:<login>, unit:<slug> or all
+             */
+            target: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Stopped By
+             * @description the login of who stopped
+             */
+            stopped_by: string;
+            /**
+             * Stopped At
+             * Format: date-time
+             */
+            stopped_at: string;
+            /**
+             * Lifted By
+             * @description the login of who lifted it; null while it holds
+             */
+            lifted_by: string | null;
+            /** Lifted At */
+            lifted_at: string | null;
+            /**
+             * Runs
+             * @description the runs this call cancelled or asked to stop; empty for a lift
+             */
+            runs?: number[];
+            /**
+             * Leases
+             * @description how many leases this call ended
+             * @default 0
+             */
+            leases: number;
+            /**
+             * Told
+             * @description the logins told
+             */
+            told?: string[];
         };
         /** StorageCounts */
         StorageCounts: {
@@ -25517,7 +29350,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "run-output" | "plugin-bundle";
+            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "run-output" | "attachment" | "plugin-bundle";
         };
         /** UploadRequest */
         UploadRequest: {
@@ -25796,6 +29629,8 @@ export interface components {
             self_update: components["schemas"]["WorkerSelfUpdate"] | null;
             /** @description what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it */
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
+            /** @description what the worker's last heartbeat said of its Chromium; null when it said nothing of one */
+            browser?: components["schemas"]["BrowserReport"] | null;
             /** @description the last Update now its owner or a hub admin asked for, open or ended; null when none was */
             update_now: components["schemas"]["WorkerUpdateNow"] | null;
             /** @description where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once */
@@ -26048,6 +29883,49 @@ export interface components {
              * @description the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config
              */
             projects?: string[];
+        };
+        /**
+         * WorkerShares
+         * @description Whom a worker is shared with: its owner's writers, narrowed to ``units`` when it names any.
+         */
+        WorkerShares: {
+            /** Id */
+            id: number;
+            /**
+             * Worker
+             * @description the worker's name, unique among its owner's live workers
+             */
+            worker: string;
+            /**
+             * Owner
+             * @description the login of the member who registered it
+             */
+            owner: string;
+            /**
+             * Shared
+             * @description whether other members' runs may go to it
+             */
+            shared: boolean;
+            /**
+             * Units
+             * @description the slugs of the units it is narrowed to, sorted; none: shared with every writer of a project it serves
+             */
+            units: string[];
+            /**
+             * Doctor At
+             * @description when its daemon sent the newest doctor report; null: none
+             */
+            doctor_at?: string | null;
+            /**
+             * Doctor High
+             * @description findings of severity high in that report; null: no report
+             */
+            doctor_high?: number | null;
+            /**
+             * Doctor Medium
+             * @description findings of severity medium in that report; null: no report
+             */
+            doctor_medium?: number | null;
         };
         /**
          * WorkerUpdate
@@ -26556,7 +30434,10 @@ export interface operations {
     };
     web_login_v1_auth_web_login_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the page of the hub to come back to, a relative path; any other is ignored */
+                next?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -26569,6 +30450,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
             /** @description web sign-in is not configured */
             503: {
@@ -27436,6 +31326,316 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_invites_v1_admin_invites_get: {
+        parameters: {
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_v1_admin_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_v1_admin_invites__invite_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_v1_invites_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_v1_invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the link was accepted, revoked or has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -29408,6 +33608,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_audience_v1_skills_global__name__audience_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudienceChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillAudience"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -31786,7 +36049,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -38081,6 +42344,622 @@ export interface operations {
             };
         };
     };
+    upload_to_run_v1_projects__project__runs__run_id__attachments_post: {
+        parameters: {
+            query: {
+                /** @description the file's name */
+                name: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the file's bytes, at most 52428800; Content-Type is its media type */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_run_upload_v1_projects__project__runs__run_id__attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_content_v1_projects__project__runs__run_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_to_chat_v1_chats__chat_id__attachments_post: {
+        parameters: {
+            query: {
+                /** @description the file's name */
+                name: string;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the file's bytes, at most 52428800; Content-Type is its media type */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_chat_upload_v1_chats__chat_id__attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_content_v1_chats__chat_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                chat_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    worker_content_v1_worker_runs__run_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_changes_v1_projects__project__curator_changes_get: {
         parameters: {
             query?: never;
@@ -40763,6 +45642,626 @@ export interface operations {
             };
         };
     };
+    show_autonomy_v1_autonomy_get: {
+        parameters: {
+            query?: {
+                login?: string | null;
+                project?: string | null;
+                agent?: string | null;
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_pref_v1_autonomy_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrefSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrefWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stop_autonomy_v1_autonomy_stops_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lift_stop_v1_autonomy_stops_lift_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_stop_v1_autonomy_stops_preview_get: {
+        parameters: {
+            query: {
+                scope: "login" | "unit" | "all";
+                login?: string | null;
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopPreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_settings_v1_autonomy_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomySettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_org_autonomy_v1_autonomy_org_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgAutonomy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_worker_shares_v1_org_workers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    share_worker_v1_org_workers__worker_id__units__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unshare_worker_v1_org_workers__worker_id__units__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_doctor_v1_worker_doctor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoctorReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoctorAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_proposals_v1_x_builder__project__proposals_get: {
         parameters: {
             query?: {
@@ -42905,6 +48404,1718 @@ export interface operations {
             };
             /** @description Request Entity Too Large */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_contacts_v1_x_crm__project__contacts_get: {
+        parameters: {
+            query?: {
+                /** @description only contacts in this stage */
+                stage?: ("lead" | "invited" | "activated" | "retained") | null;
+                /** @description only contacts first seen from this source */
+                source?: ("invite_request" | "invite_link" | "grant" | "issue" | "pull_request" | "discussion") | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrmContacts"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_contact_v1_x_crm__project__contacts__login__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the contact's GitHub login */
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrmContactDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_contact_v1_x_crm__project__contacts__login__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the contact's GitHub login */
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrmDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_note_v1_x_crm__project__contacts__login__notes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the contact's GitHub login */
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrmNoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrmTouchpoint"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_channels_v1_x_marketing__project__channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingChannel"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_channel_v1_x_marketing__project__channels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingChannelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingChannel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_mode_v1_x_marketing__project__channels__channel_id__mode_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                channel_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingModeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingChannel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pause_channel_v1_x_marketing__project__channels__channel_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                channel_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingReasonIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resume_channel_v1_x_marketing__project__channels__channel_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                channel_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_session_v1_x_marketing__project__channels__channel_id__session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                channel_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingSessionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingChannel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    kill_v1_x_marketing__project__kill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingReasonIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resume_v1_x_marketing__project__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    status_v1_x_marketing__project__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_weekly_v1_x_marketing__project__weekly_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingWeekly"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_posts_v1_x_marketing__project__posts_get: {
+        parameters: {
+            query?: {
+                /** @description only posts in this state */
+                state?: ("proposed" | "judging" | "queued" | "posting" | "posted" | "draft" | "failed" | "withdrawn") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingPost"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    propose_post_v1_x_marketing__project__posts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingPostIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingPost"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_post_v1_x_marketing__project__posts__post_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                post_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingPost"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_draft_v1_x_marketing__project__drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingPostIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingPost"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_post_v1_x_marketing__project__posts__post_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                post_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingReasonIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    claim_browser_post_v1_x_marketing__project__browser_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingBrowserClaim"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_browser_post_v1_x_marketing__project__browser__post_id__result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                post_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingBrowserResultIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingBrowserResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_screenshot_v1_x_marketing__project__posts__post_id__screenshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                post_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_denylist_v1_x_marketing__project__denylist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDeny"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_deny_v1_x_marketing__project__denylist_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingDenyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_deny_v1_x_marketing__project__denylist__deny_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                deny_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -46266,6 +53477,205 @@ export interface operations {
             };
         };
     };
+    list_shares_v1_secrets__name__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_share_v1_secrets__name__shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_share_v1_shares__share_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the id of the share */
+                share_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_credentials_v1_projects__project__runs__run_id__credentials_get: {
         parameters: {
             query?: never;
@@ -46474,7 +53884,10 @@ export interface operations {
     };
     get_account_v1_accounts__name__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the member who shared the account with the caller; omit for one's own */
+                owner?: string | null;
+            };
             header?: never;
             path: {
                 /** @description one of the caller's env secrets */
@@ -46882,6 +54295,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RateLimitAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_backup_v1_worker_runs__run_id__backups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    autonomy_act_v1_worker_runs__run_id__autonomy_acts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutonomyActIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyActOut"];
                 };
             };
             /** @description Unauthorized */
@@ -47547,6 +55084,417 @@ export interface operations {
             };
         };
     };
+    get_agent_account_v1_projects__project__agents__handle__accounts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_agent_account_v1_projects__project__agents__handle__accounts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccountWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_agent_account_v1_projects__project__agents__handle__accounts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_agent_account_v1_projects__project__agents__handle__accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_agent_accounts_v1_projects__project__agents__handle__accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_agent_accounts_v1_agent_accounts_get: {
+        parameters: {
+            query?: {
+                /** @description only the agents of this project */
+                project?: string | null;
+                /** @description only the agent of this handle */
+                handle?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListedAgentAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_agent_packs_v1_projects__project__agent_packs_get: {
         parameters: {
             query?: never;
@@ -47791,6 +55739,950 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_browser_identities_v1_projects__project__browser_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_browser_identity_v1_projects__project__browser_identities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserIdentityCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_browser_identity_v1_projects__project__browser_identities__identity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    default_browser_identity_v1_projects__project__browser_identities__identity_id__default_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_browser_identity_v1_projects__project__browser_identities__identity_id__login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disable_browser_identity_v1_projects__project__browser_identities__identity_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    enable_browser_identity_v1_projects__project__browser_identities__identity_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the identity's id (`evo-agents hub browser identity list`) */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_login_v1_worker_runs__run_id__browser_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserLoginBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserLoginAsked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lease_browser_profile_v1_worker_runs__run_id__browser_profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserProfileAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfileLease"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    browser_needs_login_v1_worker_runs__run_id__browser_profile__identity_id__needs_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                /** @description one of the run's browser identities */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserNeedsLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserIdentityState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_browser_profile_v1_worker_runs__run_id__browser_profile__identity_id__put: {
+        parameters: {
+            query: {
+                /** @description the version the run's profile started from */
+                base_version: number;
+                /** @description the worker's Chromium, as it says its version */
+                chromium_version?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: number;
+                /** @description one of the run's browser identities */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the archive of the profile, as `evo_agents.hub.browser_archive.pack` makes it */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfileSaved"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    open_local_login_v1_worker_browser_identities_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalLoginAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalLogin"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_local_profile_v1_worker_browser_identities__identity_id__profile_put: {
+        parameters: {
+            query: {
+                /** @description the version the login started from */
+                base_version: number;
+                /** @description the worker's Chromium, as it says its version */
+                chromium_version?: string | null;
+            };
+            header?: never;
+            path: {
+                /** @description a browser identity this worker logged in */
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the archive of the profile, as `evo_agents.hub.browser_archive.pack` makes it */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserProfileSaved"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -49250,189 +58142,6 @@ export interface operations {
             };
         };
     };
-    upload_file_v1_chats__chat_id__files_post: {
-        parameters: {
-            query: {
-                /** @description the file's name */
-                name: string;
-            };
-            header?: {
-                /** @description the file's media type */
-                "content-type"?: string | null;
-                /** @description the file's size in bytes */
-                "content-length"?: string | null;
-            };
-            path: {
-                chat_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatFile"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Request Entity Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    file_content_v1_chats__chat_id__files__file_id__content_get: {
-        parameters: {
-            query?: {
-                /** @description answer it as an attachment, which a browser saves */
-                download?: boolean;
-            };
-            header?: {
-                /** @description one byte range, bytes=first-last */
-                Range?: string | null;
-                /** @description the ETag of the bytes the browser holds */
-                "if-none-match"?: string | null;
-            };
-            path: {
-                chat_id: number;
-                file_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description the output's bytes, in its own media type */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": unknown;
-                };
-            };
-            /** @description the byte range asked for */
-            206: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": unknown;
-                };
-            };
-            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description the range asked for lies outside the output */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     list_events_v1_chats__chat_id__events_get: {
         parameters: {
             query?: {
@@ -49966,65 +58675,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatReading"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    file_link_v1_worker_runs__run_id__chat_files__file_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: number;
-                file_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentFileLink"];
                 };
             };
             /** @description Unauthorized */

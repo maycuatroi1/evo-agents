@@ -52,7 +52,7 @@ import webbrowser
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
-from evo_agents.hub import claude_oauth, setup_token
+from evo_agents.hub import claude_oauth, cli_shares, setup_token
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import (
     MAX_COOLDOWN_SECONDS,
@@ -65,7 +65,14 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.credentials import FORGE_KIND, MAX_SECRET_BYTES, SECRET_KINDS, SECRET_NAME, env_name_refusal
+from evo_agents.hub.credentials import (
+    FORGE_KIND,
+    MAX_SECRET_BYTES,
+    SECRET_ENVIRONMENTS,
+    SECRET_KINDS,
+    SECRET_NAME,
+    env_name_refusal,
+)
 from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
@@ -77,11 +84,13 @@ SECRET_KEYS = (
     "env_var",
     "url_prefix",
     "username",
+    "environment",
     "projects",
     "workers",
     "expires_at",
     "created_at",
     "updated_at",
+    "shares",
 )
 
 
@@ -118,6 +127,7 @@ def expires_at(day: str) -> str:
 
 def target(args) -> dict:
     """The fields of the secret's kind from ``args``; Refused for a flag of the other kind or one missing."""
+    environment = getattr(args, "environment", None)
     if args.kind == "env":
         if args.url_prefix is not None or args.username is not None:
             raise Refused("--url-prefix and --username belong to --kind git, not env")
@@ -126,9 +136,10 @@ def target(args) -> dict:
         refusal = env_name_refusal(args.env_var)
         if refusal is not None:
             raise Refused(f"--env-var {refusal}")
-        return {"env_var": args.env_var}
-    if args.env_var is not None:
-        raise Refused(f"--env-var belongs to --kind env, not {args.kind}")
+        return {"env_var": args.env_var, **({"environment": environment} if environment is not None else {})}
+    for flag, given in (("--env-var", args.env_var), ("--environment", environment)):
+        if given is not None:
+            raise Refused(f"{flag} belongs to --kind env, not {args.kind}")
     if args.url_prefix is None:
         raise Refused(f"--kind {args.kind} needs --url-prefix, the https prefix of the origins it answers for")
     if args.kind == FORGE_KIND:
@@ -182,7 +193,8 @@ def check_value(kind: str, value: str) -> None:
 
 def _target_text(secret: dict) -> str:
     if secret["kind"] == "env":
-        return secret["env_var"] or "-"
+        labelled = f" ({secret['environment']})" if secret.get("environment") else ""
+        return (secret["env_var"] or "-") + labelled
     if secret["kind"] == FORGE_KIND:
         return secret["url_prefix"] or "-"
     return f"{secret['url_prefix']} as {secret['username']}"
@@ -290,6 +302,12 @@ def register_secrets(hsub) -> None:
     )
     put.add_argument("--username", metavar="USER", help="kind git: the user git sends with the value (default oauth2)")
     put.add_argument(
+        "--environment",
+        choices=SECRET_ENVIRONMENTS,
+        help="kind env: the environment it is for; a run whose principal's K7 is auto:test_secrets gets only the env "
+        "secrets labelled test",
+    )
+    put.add_argument(
         "--project",
         required=True,
         action="append",
@@ -318,6 +336,7 @@ def register_secrets(hsub) -> None:
     )
     delete.add_argument("name", metavar="NAME")
     delete.set_defaults(func=cmd_delete)
+    cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
 
@@ -349,6 +368,8 @@ ACCOUNT_KEYS = (
     "cost_24h_usd",
     "cost_7d_usd",
     "held_by",
+    "shares",
+    "cost_by_principal",
 )
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
@@ -511,7 +532,8 @@ def cmd_account_show(args) -> int:
     if not SECRET_NAME.fullmatch(args.name):
         return _usage_error(f"{args.name!r} is not a secret's name")
     hub, _ = _signed_in()
-    a = hub.call("GET", _account_path(args.name))
+    owner = getattr(args, "owner", None)
+    a = hub.call("GET", _account_path(args.name) + (f"?owner={quote(owner, safe='')}" if owner else ""))
     if args.json:
         _print_json(a)
     else:
@@ -537,6 +559,9 @@ def _print_account(a: dict) -> None:
         print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
         print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
     print(f"  Held by: {held}.")
+    for row in a.get("cost_by_principal") or []:
+        print(f"  For {row['principal'] or '(gone)'}: {row['runs_month']} runs this month", end="")
+        print(f" ({money(row['cost_month_usd'])}), {row['runs_7d']} in 7 days ({money(row['cost_7d_usd'])}).")
 
 
 @_client_command
@@ -897,12 +922,13 @@ def register_accounts(hsub) -> None:
     json_option(listed, returns_array(*ACCOUNT_KEYS, schema="Account"))
     listed.set_defaults(func=cmd_account_list)
 
-    _named(
+    shown = _named(
         asub,
         "show",
-        "one account: state, last usage, runs and cost over 24 hours and 7 days, runs holding it",
+        "one account: state, last usage, runs and cost over 24 hours and 7 days and by principal, runs holding it",
         cmd_account_show,
     )
+    shown.add_argument("--owner", metavar="LOGIN", help="an account LOGIN shared with you: your runs' figures alone")
     changed = _named(asub, "set", "change the weight or priority of an account", cmd_account_set)
     changed.add_argument(
         "--weight",
@@ -920,6 +946,7 @@ def register_accounts(hsub) -> None:
     _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
     _register_login(asub)
     _register_oauth_login(asub)
+    cli_shares.register_share_commands(asub, "account")
 
     policy = asub.add_parser(
         "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"

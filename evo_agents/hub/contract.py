@@ -4,8 +4,8 @@
 hub-cli-v1. ``commands`` is generated from the argparse definitions: for every ``evo-agents hub`` command (keyed ``"hub
 plan step"``) and every command the agent of a run uses (``evo-agents worker step|ask|notify|plan`` of a plan run,
 ``evo-agents worker finding|propose|playbook ...`` of a review run, ``evo-agents worker put`` of an author run,
-``evo-agents worker chat post|react|create|mention|read|file`` of a run in group chats, ``evo-agents worker triage
-rerun|plan|invite`` of a triage thread, ``evo-agents worker repo open`` of a chat run and ``evo-agents worker output``
+``evo-agents worker chat post|react|create|mention`` of a run in group chats, ``evo-agents worker triage
+rerun|plan|invite`` of a triage thread, ``evo-agents worker repo open`` of a chat run and ``evo-agents worker output|backup``
 of any run, keyed ``"worker step"``, AGENT_COMMANDS), its positional arguments and options, and for a command with
 ``--json`` the keys of what it prints, declared next to the flag with ``json_option``. ``openapi`` is the API's
 OpenAPI document, the one ``evo-agents hub openapi`` prints, so ``print`` needs the hub-server extra. evo-cli checks
@@ -42,11 +42,12 @@ EXIT_USAGE = 2
 # `evo-agents worker ...` that the agent of a run runs: a plan run's, a review run's, an author run's, then those of
 # group chats, which a chat run's agent runs and a step, plan or author run's too
 AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose", "put")
-AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention", "chat read", "chat file")
+AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention", "chat read")
 AGENT_COMMANDS += ("triage rerun", "triage plan", "triage invite")
 AGENT_COMMANDS += ("playbook add", "playbook helpful", "playbook harmful", "playbook retire")  # a review run's, too
 AGENT_COMMANDS += ("repo open",)  # a chat run's agent opens a repo of its project
 AGENT_COMMANDS += ("output",)  # any run's agent sends files to the run's outputs
+AGENT_COMMANDS += ("backup",)  # any run's agent records a backup before it deletes data (floor S2)
 _FIRST_WORDS = "|".join(dict.fromkeys(name.split()[0] for name in AGENT_COMMANDS))
 HUB_COMMAND = re.compile(rf"(?<![\w./-])evo-agents\s+(hub|worker\s+({_FIRST_WORDS}))\b")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")

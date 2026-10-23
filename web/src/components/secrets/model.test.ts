@@ -26,6 +26,7 @@ const SECRET: Secret = {
   expires_at: "2027-09-15T00:00:00+00:00",
   created_at: "2026-10-01T00:00:00Z",
   updated_at: "2026-10-02T00:00:00Z",
+  shares: [],
 };
 
 function form(patch: Partial<SecretForm>): SecretForm {

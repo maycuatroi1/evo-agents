@@ -6,7 +6,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 
 import { renewalDue } from "./model";
-import type { Account, AccountState } from "./queries";
+import type { AccountFigures, AccountState } from "./queries";
 
 /** The cells of the accounts table that read more than one field: its state, with a token's end. */
 
@@ -44,7 +44,7 @@ export function Day({ value }: { value: string }) {
  * visible for a ready account; under it, the day a token that
  * ends within 30 days ends, with the reminder to renew it, or the day an expired one ended.
  */
-export function StateCell({ account, now }: { account: Account; now: number }) {
+export function StateCell({ account, now }: { account: AccountFigures; now: number }) {
   const t = useTranslations("accounts");
   const { icon: Icon, variant } = STATES[account.state];
   const due = account.state === "expired" ? null : renewalDue(account, now);

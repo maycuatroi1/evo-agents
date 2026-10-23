@@ -89,7 +89,7 @@ export type Seeded = { project: string; revisions: number };
 export async function seedPlans(writer: Account, project: string): Promise<Seeded> {
   const api = bearerClient(await machineToken(writer));
   await put(api, project, loadFixture(COMPLETED_PLAN), "completed");
-  await put(api, project, loadFixture("evo-lms-migration"), "completed");
+  await put(api, project, loadFixture("fabrikam-lms-migration"), "completed");
   const first = await put(api, project, reopened(loadFixture(ACTIVE_PLAN)), "active");
   const second = await patchStep(
     api,

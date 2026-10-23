@@ -40,9 +40,6 @@ MAX_MENTIONS = 20  # names of one message the hub reads; the ones after are text
 MAX_EMOJI_KINDS = 20  # different emoji on one message
 MAX_EMOJI_CHARS = 16  # code points of one emoji: a ZWJ family with skin tones fits
 MAX_NAME_CHARS = 100  # of a mentioned name: a handle's bound
-MAX_FILE_BYTES = 25 * 1024 * 1024  # a file a person attaches to a message (chat_files, 0104)
-MAX_MESSAGE_FILES = 10  # files one message of a person carries
-FILE_KIND = "chat-file"  # the kind blob_deletions records a chat file's bytes with
 
 EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 # The reaction a run of an agent puts on the message that started it, by the state it moves to; the hub takes EYES

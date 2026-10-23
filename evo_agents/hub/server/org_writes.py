@@ -4,8 +4,10 @@ and ended, and ceilings set, each by the rules of ``evo_agents.hub.org`` (403 na
 Every write holds ``org_store.lock`` until its transaction ends and reads the chart under it, so two writes at once
 apply one after the other and neither breaks what the other checked: one root, no cycle, one live primary seat a
 person. A write raises the revision of the unit it changes, or of the unit of the seat it changes, by one, or adds a
-ceiling revision, and adds one audit row of an ``org.`` action naming the actor, the unit or seat, and each field's
-value before and after it. Units and seats are never deleted: a unit is archived, a seat ended.
+ceiling revision, and adds one audit row of an ``org.`` action (``autonomy.ceiling_set`` for a ceiling) naming the
+actor, the unit or seat, and each field's value before and after it. Units and seats are never deleted: a unit is
+archived, a seat ended. A ceiling revision is whole: its class overrides, environments and workers replace those of
+the revision before, and a lead sets no class above their own effective mode on it (``org.class_refusal``).
 
 A seat made primary takes the place of the person's primary seat before it, which stays live as a secondary seat. The
 writer must be one who may edit that seat too, unless it lies at the root, where everyone starts: a lead pulls a person
@@ -16,14 +18,14 @@ person would fall back to the root's level.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from fastapi import HTTPException
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import org, tables
+from evo_agents.hub import autonomy_levels, org, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.org_models import CeilingSet, CeilingWritten, SeatAdd, SeatEdit, UnitCreate, UnitEdit
 from evo_agents.hub.server.org_store import load, lock, profile_by_handle, today, user_by_login
@@ -372,20 +374,64 @@ async def end_seat(w: Write, seat_id: int) -> int:
 # Ceilings
 
 
+@dataclass(frozen=True)
+class Limits:
+    """What a ceiling revision sets besides its level: the class overrides and the environments and workers it
+    allows (schema 0112)."""
+
+    classes: dict[str, str] = field(default_factory=dict)
+    environments: tuple[str, ...] = ()
+    workers: tuple[str, ...] = ()
+
+    @classmethod
+    def of(cls, body: CeilingSet) -> Limits:
+        problem = autonomy_levels.overrides_problem(body.classes)
+        if problem is not None:
+            raise HTTPException(422, f"{problem}; nothing changed")
+        classes = {klass: body.classes[klass] for klass in autonomy_levels.CLASSES if klass in body.classes}
+        return cls(classes, tuple(sorted(set(body.environments))), tuple(sorted(set(body.workers))))
+
+    def words(self) -> str:
+        """The limits as audit words; empty without any."""
+        parts = [f"{klass}={mode}" for klass, mode in self.classes.items()]
+        parts += [f"environments={','.join(self.environments)}"] if self.environments else []
+        parts += [f"workers={','.join(self.workers)}"] if self.workers else []
+        return "".join(f" {part}" for part in parts)
+
+
 async def write_ceiling(
-    w: Write, scope: str, scope_id: int, target: str, previous: str | None, level: str, note: str | None
+    w: Write,
+    scope: str,
+    scope_id: int,
+    target: str,
+    previous: str | None,
+    level: str,
+    note: str | None,
+    limits: Limits | None = None,
 ) -> CeilingWritten:
-    """The next ceiling revision of the unit or seat, with its audit row; the caller checked who writes it."""
+    """The next ceiling revision of the unit or seat, whole, with its ``autonomy.`` audit row; the caller checked who
+    writes it."""
+    limits = limits or Limits()
     c = tables.autonomy_ceilings
     held = select(func.coalesce(func.max(c.c.revision), 0)).where(c.c.scope == scope, c.c.scope_id == scope_id)
     revision = (await w.conn.execute(held)).scalar_one() + 1
     note = " ".join((note or "").split()) or None
     values = {"scope": scope, "scope_id": scope_id, "revision": revision, "level": level, "note": note}
-    await w.conn.execute(insert(c).values({**values, "author_id": w.actor.user_id}))
-    await _record(
-        w, audit.ORG_CEILING_SET, f"ceiling {target} {_changed('level', previous, level)} revision={revision}"
+    parts = {"overrides": limits.classes, "environments": list(limits.environments), "workers": list(limits.workers)}
+    await w.conn.execute(insert(c).values({**values, **parts, "author_id": w.actor.user_id}))
+    changed = _changed("level", previous, level)
+    await _record(w, audit.AUTONOMY_CEILING_SET, f"ceiling {target} {changed}{limits.words()} revision={revision}")
+    return CeilingWritten(
+        scope=scope,
+        target=target,
+        revision=revision,
+        level=level,
+        previous=previous,
+        note=note,
+        classes=limits.classes,
+        environments=list(limits.environments),
+        workers=list(limits.workers),
     )
-    return CeilingWritten(scope=scope, target=target, revision=revision, level=level, previous=previous, note=note)
 
 
 async def set_ceiling(w: Write, body: CeilingSet) -> CeilingWritten:
@@ -393,12 +439,14 @@ async def set_ceiling(w: Write, body: CeilingSet) -> CeilingWritten:
     named = [given for given in (body.unit, body.login, body.seat) if given is not None]
     if len(named) != 1:
         raise HTTPException(422, "a ceiling names exactly one of unit, login and seat; nothing changed")
+    limits = Limits.of(body)
     if body.unit is not None:
         unit = w.unit(body.unit)
         if unit.archived_at is not None:
             raise HTTPException(409, f"unit {unit.slug} is archived; nothing changed")
-        forbid(org.ceiling_refusal(w.chart, w.actor, org.UNIT, unit, body.level, w.today))
-        return await write_ceiling(w, org.UNIT, unit.id, f"unit:{unit.slug}", unit.ceiling, body.level, body.note)
+        forbid(org.ceiling_refusal(w.chart, w.actor, org.UNIT, unit, body.level, w.today, limits.classes))
+        target = f"unit:{unit.slug}"
+        return await write_ceiling(w, org.UNIT, unit.id, target, unit.ceiling, body.level, body.note, limits)
     if body.login is not None:
         user_id, login = await _person(w, body.login)
         seat = w.chart.primary_seat(user_id, w.today)
@@ -408,5 +456,5 @@ async def set_ceiling(w: Write, body: CeilingSet) -> CeilingWritten:
         seat = w.seat(body.seat)
         if w.chart.ended(seat, w.today):
             raise HTTPException(409, f"seat {seat.id} has ended; nothing changed")
-    forbid(org.ceiling_refusal(w.chart, w.actor, org.SEAT, seat, body.level, w.today))
-    return await write_ceiling(w, org.SEAT, seat.id, f"seat:{seat.id}", seat.ceiling, body.level, body.note)
+    forbid(org.ceiling_refusal(w.chart, w.actor, org.SEAT, seat, body.level, w.today, limits.classes))
+    return await write_ceiling(w, org.SEAT, seat.id, f"seat:{seat.id}", seat.ceiling, body.level, body.note, limits)

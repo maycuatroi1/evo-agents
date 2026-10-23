@@ -5,7 +5,8 @@ GET /v1/projects/{p}/runs/{id}/credentials lists every lease the run got, given 
 dispatched it: the secret's name or ``github-app:<account>``, provider, kind, target (the variable, or the origins it
 answered for), the worker, and when it was issued, ends and was revoked; never a value, sealed or not. The run must be
 one the caller may read (``runs.readable_run``: 404 otherwise); another member, a hub admin included, gets 403, since
-the leases name the owner's secrets as GET /v1/secrets does to the owner alone. Each lease names the agent profile and
+the leases name the owner's secrets as GET /v1/secrets does to the owner alone. A lease of an account of the run's
+agent (``agent_accounts``) is named ``@<handle>:<name>``, which no secret of the owner can be. Each lease names the agent profile and
 version it was handed out under (``evo_agents.hub.profiles``), null for one from before schema 0030.
 """
 
@@ -17,9 +18,10 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 
 from evo_agents.hub import tables
-from evo_agents.hub.credentials import LEASED_KINDS, PROVIDERS, github_repo
+from evo_agents.hub.credentials import LEASED_KINDS, PROVIDERS, agent_lease_name, github_repo
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -35,7 +37,10 @@ class RunLease(BaseModel):
     """A lease a run got, as its owner sees it: everything but the value."""
 
     id: int
-    name: str = Field(description="the secret's name, or github-app:<account>")
+    name: str = Field(
+        description="the secret's name, github-app:<account>, or @<handle>:<name> for an account of an agent"
+    )
+
     provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
     kind: Literal[LEASED_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answered")
     target: str = Field(
@@ -66,6 +71,7 @@ def _run_leases(run_id: int):
     """Every lease of run ``run_id``, with the worker's name and the secret's name and kind (none for a GitHub token),
     in the order they were made."""
     cl, w, s, ap = tables.credential_leases, tables.workers, tables.secrets, tables.agent_profiles
+    owner = aliased(tables.agent_profiles)  # the agent that owns the secret, when one does
     return (
         select(
             cl.c.id,
@@ -78,12 +84,14 @@ def _run_leases(run_id: int):
             cl.c.expires_at,
             cl.c.revoked_at,
             ap.c.handle.label("profile"),
+            owner.c.handle.label("agent"),
             cl.c.profile_id,
             cl.c.profile_version,
         )
         .join_from(cl, w, w.c.id == cl.c.worker_id)
         .outerjoin(s, s.c.id == cl.c.secret_id)
         .outerjoin(ap, ap.c.id == cl.c.profile_id)
+        .outerjoin(owner, owner.c.id == s.c.profile_id)
         .where(cl.c.run_id == run_id)
         .order_by(cl.c.id)
     )
@@ -94,6 +102,12 @@ def _token_name(target: str) -> str:
     origins = target.split()
     found = github_repo(origins[0]) if origins else None
     return f"github-app:{found[0]}" if found else "github-app"
+
+
+def _lease_name(row) -> str:
+    if row.provider != "secret":
+        return _token_name(row.target)
+    return row.secret if row.agent is None else agent_lease_name(row.agent, row.secret)
 
 
 @router.get("/{project}/runs/{run_id}/credentials", response_model=list[RunLease], responses=REFUSALS)
@@ -114,7 +128,7 @@ async def run_credentials(
     return [
         RunLease(
             id=row.id,
-            name=row.secret if row.provider == "secret" else _token_name(row.target),
+            name=_lease_name(row),
             provider=row.provider,
             kind=row.secret_kind if row.provider == "secret" else "git",
             target=row.target,

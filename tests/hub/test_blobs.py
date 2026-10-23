@@ -37,7 +37,9 @@ from sqlalchemy import Text, cast, delete, func, insert, literal, select, true, 
 from evo_agents import __version__
 from evo_agents.hub import tables
 from evo_agents.hub.blobs import (
+    HUB_ONLY_KINDS,
     KIND_LIMITS,
+    UPLOAD_KINDS,
     BlobStore,
     BlobStoreUnavailable,
     Upload,
@@ -456,6 +458,16 @@ def test_an_item_over_the_limit_of_its_kind_is_refused_before_any_url_is_issued(
     too_many = [{"sha256": f"{n:064x}", "size": 1, "kind": "kg-blob"} for n in range(1001)]
     assert ask(hub, writer, "alpha", *too_many).status_code == 422
     assert pending(hub.db) == 1
+
+
+def test_a_browser_profile_is_a_kind_of_64_mib_only_the_hub_puts_and_no_client_gets_an_upload_url_for(hub):
+    assert KIND_LIMITS["browser-profile"] == 64 * 1024 * 1024
+    assert HUB_ONLY_KINDS == {"browser-profile"} and set(UPLOAD_KINDS) == set(KIND_LIMITS) - HUB_ONLY_KINDS
+    alpha = live.add_project(hub.db, "alpha")
+    writer = member(hub.db, alpha, "writer-1", "writer")
+    refused = ask(hub, writer, "alpha", {"sha256": "e" * 64, "size": 10, "kind": "browser-profile"})
+    assert refused.status_code == 422 and "X-Amz" not in refused.text
+    assert pending(hub.db) == 0
 
 
 def test_uploads_of_another_user_or_project_or_older_than_a_day_are_unknown_and_left_alone(hub):

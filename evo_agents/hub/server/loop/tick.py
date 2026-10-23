@@ -30,7 +30,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from functools import partial
 
 from sqlalchemy import func, insert, literal, select, update
@@ -47,6 +47,7 @@ from evo_agents.hub.server.loop.model import (
     CYCLE_OF,
     FINISHED,
     NOTED,
+    PLUGIN_KINDS,
     Effect,
     Engine,
     Event,
@@ -54,6 +55,7 @@ from evo_agents.hub.server.loop.model import (
     Transition,
     WorkSpec,
 )
+from evo_agents.hub.server.loop.plugin_rules import RuleSet, load_rules
 from evo_agents.hub.server.loop.rules import RULES
 from evo_agents.hub.server.loop.view import load
 
@@ -170,20 +172,25 @@ async def apply(conn: AsyncConnection, project_id: int, effect: Effect, event_id
 # The tick
 
 
-async def _read(conn: AsyncConnection, project_id: int, events: Sequence[Event], engine: Engine) -> int:
-    """The engine's rules for each of ``events``, in order; how many effects changed something."""
+async def _read(
+    conn: AsyncConnection, project_id: int, events: Sequence[Event], engine: Engine, plugins: RuleSet
+) -> int:
+    """The engine's rules for each of ``events``, in order, then those of the core plugins that read it; how many
+    effects changed something."""
     view, changed = await load(conn, project_id, events), 0
     for event in events:
         made = 0
         for effect in engine.rules(event, view):
             made += await apply(conn, project_id, effect, event.id, engine.name)
+        for found in await plugins.rules_for(event, view):
+            made += await apply(conn, project_id, found.effect, event.id, found.engine)
         if made:
             changed += made
             view = await load(conn, project_id, events)  # a later event may answer a work item this one made
     return changed
 
 
-async def _events(engine: AsyncEngine, project_id: int, rules: Engine, report: Counter) -> bool:
+async def _events(engine: AsyncEngine, project_id: int, rules: Engine, report: Counter, plugins: Loader) -> bool:
     """Step 1: read the events past the cursor, a batch at a time; False when the Loop is off."""
     s = tables.loop_states
     while True:
@@ -198,7 +205,7 @@ async def _events(engine: AsyncEngine, project_id: int, rules: Engine, report: C
             if not found:
                 return True
             events = [Event(event.id, event.kind, event.payload, event.created_at) for event in found]
-            report["changed"] += await _read(conn, project_id, events, rules)
+            report["changed"] += await _read(conn, project_id, events, rules, await plugins(conn, project_id, engine))
             moved = update(s).where(s.c.project_id == project_id).values(cursor=events[-1].id, updated_at=func.now())
             await conn.execute(moved)
             report["events"] += len(events)
@@ -206,13 +213,19 @@ async def _events(engine: AsyncEngine, project_id: int, rules: Engine, report: C
             return True
 
 
-async def _clock_and_reconcile(conn: AsyncConnection, project_id: int, *, rules: Engine, report: Counter) -> None:
-    """Steps 2 and 3."""
+async def _clock_and_reconcile(
+    conn: AsyncConnection, project_id: int, *, rules: Engine, plugins: Loader, engine: AsyncEngine, report: Counter
+) -> None:
+    """Steps 2 and 3; a work item of a core plugin's kind is reconciled by the plugin's rules, the others by the
+    engine's."""
     view = await load(conn, project_id)
+    ruled = await plugins(conn, project_id, engine)
     for effect in rules.scheduled(view):
         report["changed"] += await apply(conn, project_id, effect, None, rules.name)
+    for found in await ruled.scheduled(view):
+        report["changed"] += await apply(conn, project_id, found.effect, None, found.engine)
     for item in view.items:
-        move = rules.reconcile(item, view)
+        move = ruled.reconcile(item, view) if item.kind in PLUGIN_KINDS else rules.reconcile(item, view)
         if move is not None:
             report["changed"] += await apply(conn, project_id, move, None, rules.name)
 
@@ -225,17 +238,26 @@ async def _stalls(conn: AsyncConnection, project_id: int, *, report: Counter) ->
     report.update(await stall.handle(conn, project_id, view))
 
 
+Loader = Callable[[AsyncConnection, int, AsyncEngine], Awaitable[RuleSet]]  # the rules of the core plugins of a project
+
+
 async def tick(
-    engine: AsyncEngine, project_id: int, *, rules: Engine = RULES, dispatch: Dispatch | None = hand_out
+    engine: AsyncEngine,
+    project_id: int,
+    *,
+    rules: Engine = RULES,
+    dispatch: Dispatch | None = hand_out,
+    plugins: Loader = load_rules,
 ) -> dict:
     """One tick of project ``project_id``'s Loop with ``rules``, handing out runs with ``dispatch`` (see the module;
     None hands out none): what it read and changed, whether its breaker tripped (``tripped``), the triage it opened
     and the decisions it asked (``triaged``, ``asked``), the runs it handed out (``dispatched``) and the queued work
-    items whose reason changed (``waiting``) when there are any."""
+    items whose reason changed (``waiting``) when there are any. ``plugins`` loads the rules the core plugins of the
+    project add (extension point loop_rules; ``plugin_rules``): they read beside ``rules``, never in its place."""
     report: Counter = Counter()
-    if not await _events(engine, project_id, rules, report):
+    if not await _events(engine, project_id, rules, report, plugins):
         return {"off": 1}
-    for step in (partial(_clock_and_reconcile, rules=rules), _stalls):
+    for step in (partial(_clock_and_reconcile, rules=rules, plugins=plugins, engine=engine), _stalls):
         async with engine.begin() as conn:
             state = await _state(conn, project_id)
             if state is None or not state.enabled:

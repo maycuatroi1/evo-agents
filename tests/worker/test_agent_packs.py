@@ -513,6 +513,7 @@ def test_a_pack_run_whose_pack_does_not_build_fails_before_its_agent_starts(mach
 
 
 def test_a_pack_run_on_a_runtime_that_loads_no_pack_fails_before_its_agent_starts(machine, tmp_path, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(fake_adapter.FakeAdapter, "pack_kinds", ())
     found = _pack_daemon(machine, tmp_path, monkeypatch, accepted=[PLUGIN])
     hub, run_id = found["hub"], found["run"]
     run = hub.runs[run_id]
@@ -543,3 +544,49 @@ def test_a_pack_run_goes_on_with_its_packs_built_for_each_agent(machine, tmp_pat
     ) in hub.texts(run_id)
     assert seen and all(len(item) == 1 for item in seen)
     assert seen[0][0].root == found["directory"] / PLUGIN / "reviewer"
+
+
+# The pack of the core plugin browser (plan agent-browser, criterion a8)
+
+CDP = "http://127.0.0.1:41234"
+
+
+def browser_built(tmp_path, tickets=()) -> tuple[packs.Pack, ...]:
+    return packs.build(list(tickets), tmp_path / "run" / "packs", browser=True)
+
+
+def test_browser_pack_is_built_for_a_run_with_a_browser_alone_and_names_its_chromium(tmp_path):
+    from evo_agents.core_plugins import browser
+
+    assert packs.build([], tmp_path / "none", browser=False) == ()
+    (found,) = browser_built(tmp_path)
+    assert (found.pack, found.plugin, found.name) == (packs.BROWSER_PACK, "browser", "browser")
+    (server,) = found.components.servers
+    assert server.name == "playwright" and server.args[:2] == ("-y", browser.PLAYWRIGHT_MCP)
+    assert server.args[-2:] == ("--cdp-endpoint", "${" + packs.BROWSER_VARIABLE + "}")
+    assert "evo-agents worker browser login" in (found.root / "INSTRUCTIONS.md").read_text(encoding="utf-8")
+
+    plain = packs.claude_servers([found])["playwright"]
+    assert "${" + packs.BROWSER_VARIABLE + "}" in plain["args"]  # no Chromium yet: the name stays
+    found.variables[packs.BROWSER_VARIABLE] = CDP
+    assert packs.claude_servers([found])["playwright"]["args"][-2:] == ["--cdp-endpoint", CDP]
+    assert packs.codex_servers([found])["playwright"]["args"][-1] == CDP
+    assert packs.opencode_server(found.servers()[0])["command"][-1] == CDP
+
+
+def test_browser_pack_is_given_once_when_the_profile_attaches_it_too_and_beside_the_profiles_packs(tmp_path):
+    held = bundle(tmp_path)
+    store = Store(held)
+    both = packs.build([ticket(held)], tmp_path / "run" / "packs", fetch=store, browser=True)
+    assert [pack.pack for pack in both] == [f"{PLUGIN}/reviewer", packs.BROWSER_PACK]
+    assert packs.build([ticket(held)], tmp_path / "again", fetch=store, browser=False)[0].pack == f"{PLUGIN}/reviewer"
+    attached = bundle(tmp_path, names=("browser",), plugin="browser")  # a profile that attaches the pack by itself
+    twice = packs.build([ticket(attached, "browser")], tmp_path / "twice", fetch=Store(attached), browser=True)
+    assert [pack.pack for pack in twice] == [packs.BROWSER_PACK]
+
+
+def test_browser_pack_is_refused_on_a_runtime_without_mcp_servers_before_the_agent_starts(tmp_path):
+    (found,) = browser_built(tmp_path)
+    why = packs.refusal([found], "bare", kinds=packs.KINDS, transports=("http",))
+    assert why and "playwright" in why and "does not connect to" in why
+    assert packs.refusal([found], "claude-code", kinds=packs.KINDS, transports=("stdio", "http")) is None

@@ -10,18 +10,18 @@ nothing of it runs (``proposal_plans.plan_from_proposal``). A write of a Curator
 branch for it, or changes anything but the progress of its steps (status, done_at, evidence and note) and its status,
 is refused (``plan_write_refusal``, from ``plans._store``): its what, goal, context, verify and acceptance stay as the
 hub made them. A plan whose id starts with ``curator-`` is made this way alone, never by hand. No member dispatches a
-run of a Curator's plan, step or plan (``refuse_manual_dispatch``): the night shift alone runs it.
+run of a Curator's plan, step or plan (``refuse_manual_dispatch``): the night shift alone runs it, at any hour.
 
-The night shift (``curator.gate_of`` and ``_fire``) queues, after the night's review run, the judge run of a change
-waiting for one (``queue_judge``), then the Builder of a planned change (``queue_builder``): a plan run of the
-Curator's plan, pinned to the worker on duty, as the schedule's owner, within the night's caps. A change on GitHub gets
-its Builder only once the hub checked the repo's ruleset within PROTECTION_DAYS and found it keeps the Curator's App
-off the default branch (curator_repo_checks); one on GitLab only once the charter names the owner's git secret
-(``git_secret``) and the secret is there. A Builder never runs while a judge run of its change is active, nor a judge
-run while a run of the plan is. Each planned change ``queue_builder`` passes over keeps why as its reason, written only
-when it says something new, and null again once its Builder is queued: its plan gone, the repo's ruleset not checked
-or not keeping the Curator off (``protection.ruleset_wait``), the owner's git secret missing, a run of the plan still
-active, no step ready, or a worker on duty that cannot build it.
+The night shift (``curator.gate_of`` and ``_fire``) queues, after the night's review run and outside its window too
+(``shift_hours``), the judge run of a change waiting for one (``queue_judge``), then the Builder of a planned change
+(``queue_builder``): a plan run of the Curator's plan, pinned to the worker on duty, as the schedule's owner, within the
+night's caps. A change on GitHub gets its Builder only once the hub checked the repo's ruleset within PROTECTION_DAYS
+and found it keeps the Curator's App off the default branch (curator_repo_checks); one on GitLab only once the charter
+names the owner's git secret (``git_secret``) and the secret is there. A Builder never runs while a judge run of its
+change is active, nor a judge run while a run of the plan is. Each planned change ``queue_builder`` passes over keeps
+why as its reason, written only when it says something new, and null again once its Builder is queued: its plan gone,
+the repo's ruleset not checked or not keeping the Curator off (``protection.ruleset_wait``), the owner's git secret
+missing, a run of the plan still active, no step ready, or a worker on duty that cannot build it.
 
 When the Builder ends done with every step of the plan done (``builder_ended``), the change waits for its pull
 request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitLab, where the push opened the merge
@@ -77,7 +77,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, judge, runs, tables, tiers
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, change_tiers, merge_gate, skill_release
+from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -322,12 +322,12 @@ async def plan_write_refusal(
 
 
 async def refuse_manual_dispatch(conn: AsyncConnection, project_id: int, plan_id: str) -> None:
-    """409 when plan ``plan_id`` is the Curator's: the night shift alone runs it."""
+    """409 when plan ``plan_id`` is the Curator's: the night shift alone runs it, at any hour."""
     if await change_of_plan(conn, project_id, plan_id) is not None:
         raise HTTPException(
             409,
-            f"plan {plan_id} is the Curator's: only the night shift of the project's charter runs it, on its worker on "
-            "duty, on its own branch; nothing was dispatched",
+            f"plan {plan_id} is the Curator's: the night shift of the project's charter runs it itself, at any hour, "
+            "within a minute once its worker on duty is free, on its own branch; nothing was dispatched",
         )
 
 
@@ -1032,7 +1032,7 @@ def _pr_body(project: str, change, proposal_title: str) -> str:
 
 
 async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server import pull_trailers, pulls
 
     target = github_target(change.origin)
     if target is None:
@@ -1049,7 +1049,7 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
             )
         ).one()
         charter = await _charter(conn, change.project_id)
-        rev = tables.plans
+        rev, signed = tables.plans, await pull_trailers.block(conn, change.builder_run_id)
         body = (
             await conn.execute(
                 select(rev.c.body).where(rev.c.project_id == change.project_id, rev.c.plan_id == change.plan_id)
@@ -1069,7 +1069,7 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
             branch=change.branch,
             base=base,
             title=f"Curator: {title}"[:240],
-            body=_pr_body(project, change, title),
+            body=_pr_body(project, change, title) + signed,
         )
         return {"pull": made, "base": base}
 
@@ -1153,12 +1153,16 @@ async def _night_paused(conn: AsyncConnection, project_id: int) -> bool:
     return bool((await conn.execute(query)).scalar_one())
 
 
-async def _wait_paused(engine: AsyncEngine, change) -> str:
-    """Leave a judged change as it is while its project's night shift is paused, saying why."""
+async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None) -> str:
+    """Leave a judged change open for a person, saying ``why``; with ``kept``, the outcome of a change left as it is for
+    a later pass (its night shift paused, its principal asked)."""
     async with engine.begin() as conn:
-        c = tables.curator_changes
-        await conn.execute(update(c).values(reason=PAUSED).where(c.c.id == change.id))
-    return "paused"
+        if kept is None:
+            await _set(conn, change.id, state="open", reason=why)
+        else:
+            c = tables.curator_changes
+            await conn.execute(update(c).values(reason=why).where(c.c.id == change.id))
+    return kept or "open"
 
 
 async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
@@ -1263,12 +1267,8 @@ async def _merge(
     from evo_agents.hub.server import pulls
 
     if not change.passed:
-        async with engine.begin() as conn:
-            failures = (change.verdict or {}).get("failures") or []
-            await _set(
-                conn, change.id, state="open", reason=reason_line("the Judge did not pass it: " + "; ".join(failures))
-            )
-        return "open"
+        failures = (change.verdict or {}).get("failures") or []
+        return await _reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
     target = github_target(change.origin)
     async with engine.begin() as conn:
         charter = await _charter(conn, change.project_id)
@@ -1284,11 +1284,9 @@ async def _merge(
     auto = tuple(item for item in charter.get("auto_merge") or [] if isinstance(item, int))
     if tier != 0 or 0 not in auto:  # no call to GitHub for a change the hub would never merge
         why = reason_line(waits) if tier != 0 else "the charter's auto_merge does not name tier 0"
-        async with engine.begin() as conn:
-            await _set(conn, change.id, state="open", reason=why)
-        return "open"
+        return await _reopen(engine, change, why)
     if paused:
-        return await _wait_paused(engine, change)
+        return await _reopen(engine, change, PAUSED, "paused")
     ruleset = await _ruleset_now(engine, curator_app, change, target)
     seen = await pulls.with_token(app, target.owner, target.name, "read", partial(_read_merge, app, target, change))
     found = seen["pull"]
@@ -1349,15 +1347,16 @@ async def _merge(
             )
         return "wait"
     if decided == "open":
-        async with engine.begin() as conn:
-            await _set(conn, change.id, state="open", reason=reason_line("; ".join(reasons)))
-        return "open"
+        return await _reopen(engine, change, reason_line("; ".join(reasons)))
 
     async with engine.begin() as conn:
-        if await _night_paused(conn, change.project_id):  # paused while the hub read GitHub
-            paused = True
+        paused = paused or await _night_paused(conn, change.project_id)  # paused while the hub read GitHub
+        act = autonomy_gates.pull_act(change.repo, change.pr_number, change.base_branch)
+        said = None if paused else await autonomy_gates.check(conn, change.builder_run_id, "K5", **act)
     if paused:
-        return await _wait_paused(engine, change)
+        return await _reopen(engine, change, PAUSED, "paused")
+    if not said.act:  # K5 of the principal of the Builder's run (``autonomy_gates``)
+        return await _reopen(engine, change, reason_line(said.reason), "wait" if said.waits else None)
 
     async def merge(token: str) -> str:
         title = f"Merge the Curator's change #{change.id} (proposal #{change.proposal_id}, tier 0)"
@@ -1368,9 +1367,7 @@ async def _merge(
     try:
         merged = await pulls.with_token(app, target.owner, target.name, "merge", merge)
     except GitHubRefused as exc:
-        async with engine.begin() as conn:
-            await _set(conn, change.id, state="open", reason=reason_line(f"GitHub refused the merge: {exc}"))
-        return "open"
+        return await _reopen(engine, change, reason_line(f"GitHub refused the merge: {exc}"))
     async with engine.begin() as conn:
         before = (found.get("base") or {}).get("sha")  # the default branch the pull request merged into
         await _set(
@@ -1418,6 +1415,8 @@ async def _merge(
             target=f"{project}/{change.plan_id} change:{change.id} pr={change.pr_url} sha={merged}",
             project_id=change.project_id,
         )
+        told = f"The hub merged pull request #{change.pr_number} of {change.repo} for run {change.builder_run_id}"
+        await autonomy_gates.tell_after(conn, change.builder_run_id, "K5", key=act["key"], title=told, repo=change.repo)
     log.info("curator change merged", extra={"change_id": change.id, "sha": merged})
     return "merged"
 

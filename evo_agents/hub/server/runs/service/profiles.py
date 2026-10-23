@@ -7,7 +7,7 @@ what out: the run's project (a profile of another project needs the dispatcher t
 writer there too, and its project axis to name this one), the runtime (a plugin's runtime as one of the core's; any,
 which takes a runtime of the core, needs the axis to allow one), the model (none named on a profile that limits
 models takes the first it allows), the worker it is pinned to or, unpinned, at least one worker of the dispatcher's
-the profile allows, the account picked by hand, the environment (at least one of the axis's allowlist registered in
+the profile allows, the account picked by hand (and one for a variable the agent has accounts of its own for), the environment (at least one of the axis's allowlist registered in
 the project, ``plugin_environments.check``), and for an author run the skill create-exec-plan. A deleted profile takes
 no new run (422). A worker pinned to the run whose daemon does not apply profiles, for a profile that needs one
 (``profiles.needs_worker``), that could never take an environment the profile allows, or that could never build the
@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.server import run_autonomy
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
@@ -153,7 +154,7 @@ async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess,
         return
     w, wp = tables.workers, tables.worker_projects
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
-    mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id))
+    mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id, user.user_id))
     rows = await conn.execute(select(w.c.name, w.c.labels).where(mine_or_shared, w.c.revoked_at.is_(None), serves))
     if not any(profiles.allows_worker(profile.permissions, row.name, row.labels) for row in rows):
         raise _refuse(
@@ -186,6 +187,33 @@ def _rest(profile: Profile, asked: Asked) -> None:
             f"it and restart its daemon; {NOTHING}",
         )
     _pinned_packs(profile, pinned)
+
+
+async def _own_account(conn: AsyncConnection, profile: Profile, asked: Asked) -> None:
+    """422 when an account is picked by hand for a variable the agent has accounts of its own for
+    (``agent_accounts``): its runs take those, whoever dispatches them, and never the dispatcher's."""
+    if not asked.picked:
+        return
+    s = tables.secrets
+    owned = set(
+        (
+            await conn.execute(
+                select(s.c.env_var).where(
+                    s.c.profile_id == profile.id,
+                    s.c.kind == "env",
+                    s.c.deleted_at.is_(None),
+                    s.c.env_var.in_([picked.env_var for picked in asked.picked]),
+                )
+            )
+        ).scalars()
+    )
+    for picked in asked.picked:
+        if picked.env_var in owned:
+            raise _refuse(
+                profile,
+                f"has accounts of its own for {picked.env_var}, which its runs take instead of yours: account "
+                f"{picked.name} cannot be picked for it",
+            )
 
 
 def _pinned_packs(profile: Profile, pinned) -> None:
@@ -244,6 +272,7 @@ async def choose(
     model = _model(profile, asked.model)
     await _worker(conn, user, access, profile, asked)
     _rest(profile, asked)
+    await _own_account(conn, profile, asked)
     return Chosen(profile, model)
 
 
@@ -296,7 +325,8 @@ def claim_clause(
     the worker axis, one of its ``runtimes`` of the core on the runtime axis, or for a run of a plugin's runtime one
     of its ``plugin_runtimes``, host or one of the plugins' ``environments`` it takes on the environment axis, a
     daemon that applies profiles (``features``) when the profile needs one, and one that builds agent packs when it
-    attaches some, each of a plugin of ``plugins``, those its owner accepted. Always for a run without a profile."""
+    attaches some, each of a plugin of ``plugins``, those its owner accepted. Always for a run without a profile. And,
+    for a run with an autonomy snapshot, the workers, environments and daemon it allows (``run_autonomy.claim_clause``)."""
     r = tables.runs
     v, permissions = _rules()
     names = [name.lower(), *(profiles.LABEL_PREFIX + label.lower() for label in labels or ())]
@@ -321,7 +351,8 @@ def claim_clause(
         conditions.append(func.coalesce(v.c.body["instructions"].astext, "") == "")
     if runs.AGENT_HOME not in (features or ()):
         conditions.append(_default_or_not_claude(permissions, runtimes))
-    return or_(r.c.profile_id.is_(None), exists().where(*conditions))
+    held = run_autonomy.claim_clause(name, runtimes, features, environments, runtime_rule())
+    return and_(or_(r.c.profile_id.is_(None), exists().where(*conditions)), held)
 
 
 CLAUDE = "claude-code"

@@ -14,6 +14,209 @@
     "access": "You only see the projects an administrator has granted to your account.",
     "cli": "On your machine, sign the CLI in with <code>evo-agents hub login</code>."
   },
+  "invite": {
+    "title": "Invitation",
+    "heading": "{inviter} invites you to {hub}",
+    "facts": {
+      "invitedBy": "Invited by",
+      "gives": "Gives",
+      "project": "Project",
+      "role": "Role",
+      "visibility": "Visibility",
+      "expires": "Expires"
+    },
+    "register": "The right to register one project of your own on this hub",
+    "hidden": "This link is for one GitHub login. Its project and role show once that login signs in.",
+    "signInHint": "Sign in with GitHub to accept it. You come back to this page.",
+    "github": "Sign in with GitHub",
+    "loginUnavailable": "This hub cannot sign anyone in with GitHub right now. Try again later, or tell {inviter}.",
+    "signedInAs": "Signed in as {login}",
+    "accept": "Accept the invitation",
+    "accepting": "Accepting…",
+    "notForYou": "This link was made for another GitHub login, not {login}. Sign out, then sign in with the login it was made for.",
+    "signOut": "Sign out",
+    "signingOut": "Signing out…",
+    "signOutFailed": "Couldn't sign out",
+    "unknownTitle": "This invite link is not valid",
+    "unknownDescription": "The hub does not know this link. Check that you opened all of it, or ask the person who sent it for a new one.",
+    "closed": {
+      "accepted": "This invite link was used already",
+      "revoked": "This invite link was revoked",
+      "expired": "This invite link has expired"
+    },
+    "closedDescription": "A link works once, before it expires. Ask {inviter} for a new one.",
+    "acceptedTitle": "You accepted the invitation",
+    "acceptedJoin": "You now work on project {project} with the {role} role.",
+    "acceptedRegister": "You may register one project of your own on this hub, with the steps below.",
+    "acceptedRegistered": "You registered project {project} with this link.",
+    "acceptedToast": "Invitation accepted",
+    "errors": {
+      "failed": "Couldn't accept the invitation",
+      "forbidden": "This link is for another GitHub login. Nothing was granted.",
+      "notFound": "The hub no longer knows this link. Ask {inviter} for a new one.",
+      "conflict": "The visibility level of this link is no longer one of the project's. Ask {inviter} for a new link.",
+      "gone": "This link was used, revoked or expired in the meantime. Ask {inviter} for a new one."
+    },
+    "openHub": "Open the hub",
+    "start": {
+      "title": "Get started",
+      "description": "Run these in a terminal on the machine where you work. Each command has a copy button.",
+      "commands": "Commands",
+      "install": {
+        "title": "Install the evo-agents CLI",
+        "hint": "It needs uv. The extras add the knowledge graph builder and the worker.",
+        "label": "install command"
+      },
+      "login": {
+        "title": "Sign the CLI in to this hub",
+        "hint": "It opens GitHub in your browser to confirm. Once per machine.",
+        "label": "sign-in command"
+      },
+      "plugins": {
+        "title": "Install the evo-hub and evo-kg plugins",
+        "hint": "For Claude Code, or for Codex, which takes the evo-hub plugin.",
+        "claude": "Claude Code",
+        "codex": "Codex",
+        "label": "{agent} plugin command {number}"
+      },
+      "project": {
+        "title": "Make a harness and register your project",
+        "hint": "Run both in the directory that holds your repos. Registering spends the right this link gave you and makes you the project's admin.",
+        "name": "Project name",
+        "nameHint": "Optional. Without one, the project takes the directory's name.",
+        "invalid": "Use lowercase letters, digits and dashes, starting with a letter or a digit.",
+        "initLabel": "harness command",
+        "registerLabel": "register command"
+      },
+      "worker": {
+        "title": "Pair a worker",
+        "hint": "Make a pairing code, then run the join command it shows on the machine that will run plans. Then keep the worker running as a service.",
+        "afterRegister": "Pair it once your project is registered: a worker serves the projects you can write to.",
+        "pair": "Make a pairing code",
+        "credentials": "The worker runs agents with the Claude Code, Codex or opencode login of its machine, and pushes with the git credentials of that machine.",
+        "serviceLabel": "service command"
+      },
+      "run": {
+        "title": "Run a plan",
+        "hint": "Open the project's plans, pick one and press Run plan. Your worker takes the run.",
+        "open": "Open the plans of {project}",
+        "noProject": "Once your project is registered, open it from the hub's home.",
+        "home": "Open the hub"
+      },
+      "read": {
+        "title": "Read the project",
+        "hint": "As a reader you see its memories, plans, skills and knowledge graph, up to your visibility.",
+        "open": "Open {project}"
+      }
+    }
+  },
+  "product": {
+    "meta": {
+      "title": "evo-agents runs your plans with coding agents on your own machines",
+      "description": "Open-source tooling for Claude Code, Codex CLI and opencode. A worker on your own laptop or desktop runs your team's plans and stops for a person only at decisions. Apache-2.0.",
+      "imageAlt": "A plan run waiting for a decision: reindex the 48,210 products on staging now, or wait for tonight's window."
+    },
+    "header": {
+      "nav": "evo-agents on GitHub",
+      "docs": "Docs",
+      "source": "Source code"
+    },
+    "hero": {
+      "title": "Hand a plan to a coding agent on your own machine. It asks you only at decisions.",
+      "signIn": "Sign in with GitHub",
+      "openHub": "Open the hub",
+      "invite": "Ask for an invite",
+      "inviteHint": "The invite form is a public GitHub issue that asks for your GitHub login and what you want to do. No email."
+    },
+    "claims": {
+      "lede": "<readme>evo-agents</readme> is open-source tooling for teams that work with Claude Code, Codex CLI or opencode. A <workers>worker</workers> on your own laptop or desktop takes plan steps from your team's hub, runs them with one of those agents and sends the log and the evidence back.",
+      "planRuns": "A <planRuns>plan run</planRuns> hands a whole plan to one worker, and the agent does its steps in the order the plan allows. As the agent reports a step, <verify>the worker runs the step's verify commands again</verify>, then commits and pushes. <timeout>The run's timeout</timeout> of 2, 4, 8 or 24 hours counts only the time the agent works.",
+      "sleep": "On macOS the worker <sleep>keeps the machine awake</sleep> while it holds a run. A laptop on battery with its lid closed sleeps anyway: its runs stop, and <retry>the hub tries them again</retry> once their leases run out.",
+      "decisions": "A plan run's agent stops for you only at <decisions>decisions of a few kinds</decisions>, such as deleting data, a migration on real data, sending to an outside service, spending money, or a choice of architecture or scope the plan leaves open. It makes every other choice itself and <why>writes down why</why> in the step's evidence.",
+      "waiting": "While you decide, the run <waits>waits, and the wait does not count toward its timeout</waits>. You answer in the <inbox>Inbox</inbox> on the web, or with <telegram>a button on Telegram</telegram> when the hub has a bot. After 24 hours without an answer the run <parks>parks and frees its slot on the worker</parks>, and a later answer resumes it in the same session.",
+      "spool": "With the <spool>evo-hub plugin</spool> in Claude Code, a successful Bash, Grep, WebFetch or MCP result longer than 10,000 characters is written whole to a file on your machine. The model gets <head>its first and last 1,500 characters</head> and a line that names the file.",
+      "sessionPerStep": "A plan run can also give <sessionPerStep>each step a session of its own</sessionPerStep>, which holds that step and the plan's handoff instead of everything the run read before it.",
+      "graph": "<harnessInit>evo-agents harness init</harnessInit> gives each repo of a project a source, and the harness one of its own, for one knowledge graph of the project. Agents query it over MCP: <kgSearch>kg_search</kgSearch> finds ids by name, code, path or words, and <kgImpact>kg_impact</kgImpact> lists what depends on a file or a diff before you change it.",
+      "worktrees": "In a <planRuns>plan run</planRuns> the agent works in a worktree of each repo the plan names, on the branch the plan gives that repo, so one plan can change several repos.",
+      "install": "<graphify>The graphify extra</graphify> gives the knowledge graph code symbols in about 40 languages, and <worker>the worker extra</worker> adds the worker's daemon.",
+      "login": "You <hubLogin>sign in once per machine</hubLogin>, and the token stays in ~/.evo/hub.",
+      "plugins": "<hubPlugin>evo-hub</hubPlugin> connects the agent to the hub's plans, and <kgPlugin>evo-kg</kgPlugin> to the project's knowledge graph. Codex takes the evo-hub plugin with <codex>two commands of its own</codex>.",
+      "next": "Then <quickStart>make a harness</quickStart> for your repos and <workers>pair a worker</workers>.",
+      "roadmap": "<roadmap>The roadmap</roadmap> says what works today and what is still being built, without dates.",
+      "loop": "<loop>The Loop</loop> turns changes in a project, such as a revised goal or a plan an agent wrote, into work for the kinds of run the hub already has, and asks people at three gates. It is in the code, off by default, and <roadmap>still changing</roadmap>.",
+      "canvas": "<canvas>Canvas</canvas> keeps a Lean Canvas for each product of a project, and a claim on it reaches validated only with real evidence. It is in the code, does nothing until an admin of the project enables it, and is <roadmap>still changing</roadmap>.",
+      "growth": "<growth>Growth plugins</growth> are not built yet: one would follow the people who come to a project on their own, and the other would post the project's news through its own accounts, with a check before each post and a cap on spending.",
+      "status": "evo-agents is early and before 1.0: <pypi>releases go to PyPI as evo-ak</pypi>, and commands, routes and file formats still change between them. The <license>code is Apache-2.0</license>, and you get access to a hub <invites>from an invite link or a hub admin</invites>."
+    },
+    "needs": {
+      "title": "What evo-agents does",
+      "demo": "The screens come from a demo hub. Its projects, people and machines are made up.",
+      "need": "The need",
+      "answer": "In evo-agents",
+      "rows": {
+        "unattended": {
+          "title": "Long work without anyone at the keyboard",
+          "need": "People want agent work to keep going while they are away. Claude Code users asked for a session to go on once its session limit resets, and Claude Code now does that. A Show HN tool keeps a lid-closed Mac awake while agents work.",
+          "imageAlt": "The Monitor of a demo hub: four runs in flight on three workers, one of them waiting for a decision."
+        },
+        "away": {
+          "title": "Questions that wait for an answer",
+          "need": "Claude Code users reported a question that gave up after 60 seconds and went on without an answer. Others asked for a push to their phone when a permission approval waits.",
+          "imageAlt": "A plan run waiting for a decision: reindex the 48,210 products on staging now, or wait for tonight's window."
+        },
+        "context": {
+          "title": "Context that fills up",
+          "need": "People ask for compaction they can steer, and for a way back to what it dropped. An article by Anthropic says that “getting agents to make consistent progress across multiple context windows remains an open problem.”",
+          "imageAlt": "A run's log in which a long test output became a note that names the file holding all of it."
+        },
+        "repos": {
+          "title": "Changes that span repos",
+          "need": "People ask Claude Code and Codex for one session or workspace that holds several Git repositories.",
+          "imageAlt": "A knowledge graph search for checkout that finds files and symbols in the web, API and harness sources."
+        }
+      }
+    },
+    "sources": {
+      "title": "Sources",
+      "asOf": "Counts as of {date}.",
+      "issue": "Issue in {repo}",
+      "hn": "Hacker News",
+      "article": "Article by {publisher}",
+      "reactions": "{count, plural, one {# reaction} other {# reactions}}",
+      "discussion": "{points, plural, one {# point} other {# points}}, {comments, plural, one {# comment} other {# comments}}",
+      "open": "open",
+      "closed": "closed as completed on {date}"
+    },
+    "start": {
+      "title": "Get started",
+      "description": "Run these in a terminal on the machine where you work.",
+      "install": {
+        "title": "Install the evo-agents CLI",
+        "label": "install command"
+      },
+      "login": {
+        "title": "Sign the CLI in to this hub",
+        "label": "sign-in command"
+      },
+      "plugins": {
+        "title": "Add the evo-hub and evo-kg plugins to Claude Code",
+        "label": "plugin command {number}"
+      }
+    },
+    "direction": {
+      "title": "Direction",
+      "loop": "The Loop",
+      "canvas": "Canvas",
+      "growth": "Growth plugins"
+    },
+    "footer": {
+      "nav": "More about evo-agents",
+      "docs": "Docs",
+      "source": "Source code",
+      "roadmap": "Roadmap",
+      "license": "Apache-2.0 license"
+    }
+  },
   "nav": {
     "label": "Main navigation",
     "home": "Home",
@@ -67,7 +270,8 @@
     "mergeQueue": "Merge queue",
     "mergeQueueFigures": "Figures",
     "mergeQueuePolicy": "Policy",
-    "org": "Org chart"
+    "org": "Org chart",
+    "browser": "Browser"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -208,6 +412,7 @@
     "themeDark": "Dark",
     "themeSystem": "System",
     "language": "Language",
+    "autonomy": "Autonomy",
     "shortcuts": "Keyboard shortcuts",
     "logout": "Sign out",
     "loggingOut": "Signing out…",
@@ -400,10 +605,11 @@
     },
     "empty": {
       "title": "No project has been granted to you yet",
-      "description": "A hub administrator grants roles on projects. Send them your login, {login}, then reload this page.",
-      "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page.",
+      "description": "A hub administrator grants roles on projects, or sends you an invite link. Send them your login, {login}, then reload this page.",
+      "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page. To bring others in, make them invite links.",
       "admin": "Open Administration",
-      "copyLogin": "Copy your login"
+      "copyLogin": "Copy your login",
+      "invites": "Make an invite link"
     },
     "authorWaiting": {
       "title": "Waiting for your reply",
@@ -554,6 +760,7 @@
       "members": "Members",
       "tokens": "Tokens",
       "audit": "Audit",
+      "invites": "Invites",
       "plugins": "Plugins",
       "diagnostics": "Diagnostics",
       "branding": "Branding",
@@ -763,6 +970,89 @@
       "failed": "Couldn't revoke token {id}",
       "openMember": "Open member"
     },
+    "invites": {
+      "title": "Invite links",
+      "caption": "Invite links",
+      "sub": "A link lets someone join a project, or register a project of their own, by signing in with GitHub. Each works once.",
+      "count": "{count, plural, one {# link} other {# links}}",
+      "new": "New invite link",
+      "emptyTitle": "No invite links yet",
+      "emptyDescription": "Make one to bring someone onto a project, or to let them register a project of their own.",
+      "columns": {
+        "id": "ID",
+        "kind": "Kind",
+        "gives": "Gives",
+        "forLogin": "For",
+        "createdBy": "Made by",
+        "expires": "Expires",
+        "status": "Status",
+        "acceptedBy": "Accepted by",
+        "actions": "Actions"
+      },
+      "kinds": {
+        "join": "Join a project",
+        "register": "Register a project"
+      },
+      "statuses": {
+        "open": "Open",
+        "accepted": "Accepted",
+        "revoked": "Revoked",
+        "expired": "Expired"
+      },
+      "anyone": "Anyone with the link",
+      "registerGives": "One project of their own",
+      "rightUsed": "Used for {project}",
+      "rightUnused": "Right not used yet",
+      "nobody": "Nobody",
+      "mobileTitle": "{kind} #{id}",
+      "revoke": "Revoke",
+      "revokeLabel": "Revoke invite link {id}",
+      "form": {
+        "title": "New invite link",
+        "description": "Pick what the link gives. It works once, for whoever opens it first or for one GitHub login.",
+        "kind": "The link gives",
+        "kindHints": {
+          "join": "A role on one project of this hub.",
+          "register": "The right to register one project of their own, as its admin."
+        },
+        "project": "Project",
+        "projectPlaceholder": "Pick a project",
+        "projectRequired": "Pick a project.",
+        "noProjects": "The hub has no project yet. Make a register link instead, or register a project first.",
+        "role": "Role",
+        "visibility": "Visibility",
+        "visibilityHint": "The highest level of the project's ladder this person sees.",
+        "days": "Expires after (days)",
+        "daysHint": "From 1 to 30 days.",
+        "daysInvalid": "Enter a whole number of days from 1 to 30.",
+        "forLogin": "For one GitHub login (optional)",
+        "forLoginHint": "Only this login can accept the link, and only it sees the project and role. Leave it empty for anyone with the link.",
+        "cancel": "Cancel",
+        "create": "Make the link",
+        "creating": "Making…",
+        "notFound": "Project {project} is no longer on the hub. Pick another project."
+      },
+      "created": {
+        "title": "Invite link made",
+        "description": "Copy it now and send it to the person you invite. The hub keeps only a hash of it, so it is not shown again.",
+        "label": "invite link",
+        "done": "Done"
+      },
+      "revokeDialog": {
+        "title": "Revoke invite link {id}?",
+        "open": "Nobody can accept it any more. Whoever opens it sees that it was revoked.",
+        "right": "{login} accepted this link and has not registered a project with it yet: revoking takes that right back.",
+        "audit": "This cannot be undone, and it is audited.",
+        "cancel": "Cancel",
+        "confirm": "Revoke link",
+        "pending": "Revoking…",
+        "notFound": "The hub no longer has this link. The list was reloaded.",
+        "conflict": "This link can no longer be revoked: it was used, revoked or has expired. The list was reloaded.",
+        "success": "Nobody can accept it any more.",
+        "successTitle": "Invite link {id} revoked",
+        "failed": "Couldn't revoke invite link {id}"
+      }
+    },
     "audit": {
       "title": "Audit trail",
       "caption": "Audit trail, newest first",
@@ -807,7 +1097,8 @@
         "plan_put": "Write plan",
         "plan_patch": "Edit plan",
         "plan_complete": "Complete plan",
-        "skill_publish": "Publish skill"
+        "skill_publish": "Publish skill",
+        "skill_audience": "Change skill audience"
       }
     },
     "branding": {
@@ -1412,6 +1703,17 @@
     "onGitHub": "(opens the commit on GitHub in a new tab)",
     "scopeGlobal": "Shared",
     "scopeProject": "Project {project}",
+    "audience": {
+      "admins": "Hub admins only",
+      "adminsHint": "Only hub admins see, download and sync this skill",
+      "title": "Who sees this skill",
+      "description": "A shared skill is for every signed-in member: they see it here, download it and sync it to their machines. You can keep it for hub admins alone. Only hub admins see this card.",
+      "adminsOnly": "Hub admins only",
+      "adminsOnlyHint": "On: members no longer see, download or sync it, and their next sync removes it from their machines after a backup. Off: every signed-in member has it again. Each change goes into the audit log.",
+      "nowAdmins": "{name} is for hub admins alone now",
+      "nowEveryone": "{name} is for every signed-in member now",
+      "failed": "Could not change who sees {name}"
+    },
     "by": "by {login}",
     "columns": {
       "name": "Name",
@@ -1952,7 +2254,8 @@
       "sharedSuccessText": "The writers of its projects may dispatch to it from now on.",
       "privateSuccess": "{name} takes your runs alone",
       "privateSuccessText": "The runs of other members it holds finish; it claims none of theirs from now on.",
-      "failed": "Couldn't change whether {name} is shared"
+      "failed": "Couldn't change whether {name} is shared",
+      "locked": "Its doctor keeps it from the units it is narrowed to: {reason}"
     },
     "settings": {
       "title": "Settings",
@@ -2077,6 +2380,40 @@
       "askFailed": "Couldn't ask {name} to update now",
       "cancelFailed": "Couldn't cancel the Update now of {name}",
       "refused": "The hub refused it; its reason follows. The page was reloaded."
+    },
+    "sharing": {
+      "title": "Sharing",
+      "description": "Whom it takes runs from besides you, and what its doctor found the last time it ran.",
+      "loading": "Loading",
+      "loadFailed": "Couldn't load whom it is shared with. The page tries again shortly.",
+      "noUnits": "Not narrowed: shared, it takes the runs of every writer of a project it serves.",
+      "unitsLabel": "Units it is shared with",
+      "addLabel": "Narrow to a unit",
+      "pick": "Pick a unit",
+      "noChoice": "No other live unit",
+      "chartFailed": "Couldn't load the org chart",
+      "unitOption": "{name} ({slug})",
+      "add": "Add",
+      "addFailed": "Couldn't share it with unit {unit}",
+      "removeFailed": "Couldn't take unit {unit} back",
+      "added": "{name} is shared with unit {unit}",
+      "addedText": "It takes the runs of that unit's members, and of the units below it.",
+      "removed": "Unit {unit} taken back from {name}",
+      "removedText": "Its members' runs it holds finish; it claims none of theirs from now on.",
+      "removedLastText": "It was the last unit, so the worker takes your runs alone now.",
+      "removeLabel": "Take unit {unit} back",
+      "blocked": {
+        "none": "Its daemon has sent no doctor report: update it to a release that sends one, then share it.",
+        "stale": "Its newest doctor report, from {at} UTC, is more than 48 hours old.",
+        "high": "Its newest doctor report has {count, plural, one {# high finding} other {# high findings}}: run evo-agents worker doctor on the machine to see how to fix them."
+      },
+      "doctor": {
+        "title": "Doctor report",
+        "counts": "{high} high, {medium} medium",
+        "high": "{count} high",
+        "stale": "Older than 48 h",
+        "none": "None yet"
+      }
     }
   },
   "secrets": {
@@ -2295,7 +2632,9 @@
       "editSeat": "Edit seat",
       "endSeat": "End seat",
       "seatMenu": "Actions for the seat of {who}",
-      "unitMenu": "Actions for {name}"
+      "unitMenu": "Actions for {name}",
+      "stopRuns": "Stop their runs",
+      "stopUnit": "Stop the unit's runs"
     },
     "unitDialog": {
       "createTitle": "New unit",
@@ -2385,6 +2724,113 @@
       "grants": "{count, plural, one {# grant} other {# grants}}",
       "placeLabel": "Add a seat for {login}",
       "place": "Add seat"
+    },
+    "stops": {
+      "stopped": "Stopped",
+      "stoppedSince": "Stopped {since}",
+      "stoppedWhy": "Stopped {since}: {reason}",
+      "lift": "Lift",
+      "liftLabel": "Lift the stop of {name}",
+      "liftAllLabel": "Lift the stop of the whole hub",
+      "lifted": "Stop of {name} lifted",
+      "liftedAll": "Stop of the whole hub lifted",
+      "classes": "{count, plural, =0 {Autonomy: every class auto} one {Autonomy: # class not auto} other {Autonomy: # classes not auto}}",
+      "stoppedOne": "Runs of {name} stopped",
+      "stoppedAll": "Every run on the hub stopped",
+      "count": "{runs, plural, =0 {No run at work would be cancelled} one {# run at work will be cancelled or asked to stop} other {# runs at work will be cancelled or asked to stop}}, {people, plural, one {# person covered} other {# people covered}}.",
+      "countAll": "{runs, plural, =0 {No run at work would be cancelled} one {# run at work will be cancelled or asked to stop} other {# runs at work will be cancelled or asked to stop}}.",
+      "countFailed": "The hub could not count the runs it would stop.",
+      "counting": "Counting the runs at work…",
+      "title": "Stop the runs of {name}?",
+      "titleAll": "Stop every run on the hub?",
+      "textLogin": "Their agents act at A0 until someone lifts the stop, and they are told.",
+      "textUnit": "Everyone whose primary seat is in this unit or below acts at A0 until someone lifts the stop.",
+      "textAll": "Every agent on the hub acts at A0 until a hub administrator lifts the stop.",
+      "confirm": "Stop runs",
+      "stopping": "Stopping…",
+      "cancel": "Cancel",
+      "allHeld": "Every run on this hub is stopped.",
+      "stopAll": "Stop all runs"
+    }
+  },
+  "autonomy": {
+    "modes": {
+      "deny": "Deny",
+      "ask": "Ask",
+      "notify": "Notify",
+      "auto": "Auto"
+    },
+    "sources": {
+      "ownPref": "your preference",
+      "pref": "the preference of {login}",
+      "seat": "seat #{id}",
+      "unit": "unit {slug}",
+      "policy": "the policy of {repo}",
+      "profile": "agent profile {handle}",
+      "credential": "a shared credential",
+      "instance": "this hub's limit"
+    },
+    "levels": {
+      "A0": {
+        "name": "A0: Read only",
+        "hint": "Agents read code, documents and logs; they change nothing."
+      },
+      "A1": {
+        "name": "A1: Branch work",
+        "hint": "Agents edit, commit and push their own branch and open pull requests; a merge waits for your answer."
+      },
+      "A2": {
+        "name": "A2: Supervised",
+        "hint": "Merges go ahead and tell you, except on risk paths; deploys and sending out wait for you."
+      },
+      "A3": {
+        "name": "A3: Trusted",
+        "hint": "Merges go ahead; deploys tell you; deleting data, credentials and spending wait for you."
+      },
+      "A4": {
+        "name": "A4: Broad",
+        "hint": "Almost everything goes ahead and tells you; changing grants and policies waits for you."
+      },
+      "A5": {
+        "name": "A5: Full",
+        "hint": "Everything goes ahead, within the budget and never above the writer's own level."
+      }
+    },
+    "figures": {
+      "line": "Last {days} days: {figures}",
+      "none": "Nothing in the last {days} days",
+      "refused": "{count, plural, one {# hook block} other {# hook blocks}}",
+      "asked": "{count, plural, one {# held for an answer} other {# held for answers}}",
+      "decisions": "{count, plural, one {# decision} other {# decisions}}",
+      "merged": "{count, plural, one {# merge} other {# merges}}",
+      "reverted": "{count, plural, one {# revert} other {# reverts}}",
+      "rolled_back": "{count, plural, one {# rollback} other {# rollbacks}}"
+    },
+    "settings": {
+      "title": "Autonomy",
+      "level": "Level {level}",
+      "levelFrom": "Set by {source}",
+      "stopTitle": "{scope, select, login {Your runs are stopped} unit {The runs of unit {name} are stopped} other {Every run on this hub is stopped}}",
+      "stopText": "Stopped {when}. Reason: {reason}. Your agents act at A0 until it is lifted.",
+      "loweredTitle": "{count, plural, one {# class is lower than your preference} other {# classes are lower than your preference}}",
+      "loweredText": "{classes}: the ceiling {ceiling}, set by {source}, keeps them below what you chose.",
+      "noPrefTitle": "No preference yet",
+      "noPrefText": "You have not chosen a level, so you prefer A5 and the ceilings above you decide. Pick a level below to set one.",
+      "saved": "Preference saved: {level}, revision {revision}",
+      "forbidden": "You may not change this preference.",
+      "discard": "Discard",
+      "save": "Save preference",
+      "saving": "Saving…",
+      "levelTitle": "Your preferred level",
+      "aboveCeiling": "Above your ceiling {ceiling}, set by {source}",
+      "sourceDetail": "{source} ({detail})",
+      "classesTitle": "Classes of action",
+      "setBy": "set by {source}",
+      "lowered": "Lowered from {mode}",
+      "modeOf": "Mode of {klass}, {name}",
+      "levelDefault": "As the level: {mode} ({level})",
+      "modeAbove": "{mode}: above the ceiling {ceiling}, set by {source}",
+      "ceilingOf": "Ceiling {mode}, set by {source}"
     }
   },
   "agents": {
@@ -2868,7 +3314,7 @@
       "sending": "Sending",
       "send": "Send",
       "keys": "Enter sends, Shift Enter adds a line.",
-      "blank": "Write something or attach a file first.",
+      "blank": "Write something first.",
       "long": "A message is at most {max} bytes of UTF-8.",
       "mention": {
         "label": "Agents, projects and people to mention",
@@ -2881,20 +3327,7 @@
         }
       },
       "replying": "Replying to {name}",
-      "cancelReply": "Cancel the reply",
-      "files": {
-        "attach": "Attach files",
-        "label": "Files to send",
-        "remove": "Remove {name}",
-        "uploading": "Uploading",
-        "drop": "Drop the files to attach them",
-        "wait": "Wait until the files are uploaded",
-        "failed": "A file could not be uploaded: remove it or attach it again.",
-        "tooBig": "{names}: a file is at most {max}.",
-        "tooBigOne": "Over {max}",
-        "empty": "{names}: the file is empty.",
-        "tooMany": "A message carries at most {max} files: {count, plural, one {# file was} other {# files were}} left out."
-      }
+      "cancelReply": "Cancel the reply"
     },
     "thread": {
       "title": "Thread",
@@ -3009,20 +3442,25 @@
     "doc": {
       "open": "Open {name} beside the chat",
       "close": "Close the document",
+      "sheet": "Document",
+      "sheetBody": "{name}, a document of {title}",
       "modeLabel": "How the document shows",
       "read": "Read",
       "changes": "Changes",
       "shownLabel": "Version shown",
       "against": "against",
-      "version": "Version {number} · {author} · {at, time, short}",
+      "version": "Version {number}, {author}, {at, date, short} {at, time, short}",
       "reloaded": "{author} sent a new version: reloaded, the changes show below.",
       "bodyLabel": "{name}",
       "gone": "This document is no longer in the messages read.",
+      "tooBig": "This version is over 2 MiB, too big to read here: open it from the message's files.",
       "readFailed": "The document could not be read.",
       "retry": "Retry",
       "loading": "Reading the document…",
       "diffLabel": "Changes of the document",
       "hiddenLines": "{count, plural, one {# unchanged line} other {# unchanged lines}}",
+      "addedLine": "Added:",
+      "removedLine": "Removed:",
       "legendAdded": "added",
       "legendRemoved": "removed or replaced",
       "legendSame": "unchanged"
@@ -3297,13 +3735,121 @@
         "title": "Service credentials",
         "description": "Tokens and keys a run uses for something else: a repository, a workspace, a host. They have no cost.",
         "none": "No service credential. Add one as a secret bound to a project."
+      },
+      "agent": {
+        "title": "Agent accounts",
+        "description": "Secrets an agent owns in the projects you belong to. Its admins change them on the agent's page.",
+        "none": "No agent has an account of its own.",
+        "agent": "Agent",
+        "projectTitle": "Project {project}",
+        "open": "Open @{handle} of {project}",
+        "loadFailed": "The agents' accounts could not be loaded."
       }
     },
     "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
     "variablesLabel": "Variables of {provider}",
     "apiValue": "API value",
     "costLabel": "Cost",
-    "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run."
+    "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run.",
+    "sharing": {
+      "overCeiling": "Over its ceiling: shared runs wait"
+    },
+    "costByPrincipal": {
+      "title": "Cost by member",
+      "description": "The runs of the members your accounts are shared with, and what they cost, an estimate. Your own runs are in each account's row.",
+      "empty": "No run of another member has used them yet.",
+      "caption": "Runs and cost of each account by member",
+      "gone": "A member now gone",
+      "columns": {
+        "principal": "Member",
+        "day": "Cost 24 h",
+        "week": "Cost 7 d",
+        "month": "Cost this month",
+        "runs": "Runs 24 h / 7 d / month"
+      },
+      "runs": "{day} / {week} / {month}"
+    },
+    "agent": {
+      "title": "Accounts",
+      "description": "Secrets this agent owns. A run under @{handle} takes them on the workers each one is bound to.",
+      "readOnly": "Secrets this agent owns. Only an admin of {project} adds or changes them.",
+      "add": "Add account",
+      "full": "An agent has at most {max} accounts.",
+      "empty": "@{handle} has no account of its own.",
+      "emptyAdmin": "@{handle} has no account of its own. Add one to give its runs a key that is not yours.",
+      "renew": "Renew",
+      "renewLabel": "Renew {name}",
+      "editLabel": "Edit {name}",
+      "delete": "Delete",
+      "deleteLabel": "Delete {name}",
+      "deleteTitle": "Delete account {name}?",
+      "deleteText": "Runs under @{handle} no longer get {variable} from it, and a run holding it now loses it. Its value is gone for good.",
+      "deleteConfirm": "Delete account",
+      "deleting": "Deleting",
+      "deleted": "Account {name} deleted",
+      "deletedText": "Runs under @{handle} no longer take it.",
+      "form": {
+        "saving": "Saving",
+        "cancel": "Cancel",
+        "name": "Name",
+        "nameHint": "Lowercase letters, digits, dot, dash and underscore.",
+        "envVar": "Variable",
+        "envVarHint": "The environment variable a run gets, such as OPENAI_API_KEY.",
+        "value": "Value",
+        "valueHint": "Sealed when you save. Nobody sees it again, you included.",
+        "workers": "Workers",
+        "workersHint": "Runs under this agent take the account only on these workers. You can bind your own workers and shared ones that serve {project}.",
+        "workersFailed": "The workers could not be loaded.",
+        "noWorkers": "No worker of yours or shared one serves {project}.",
+        "expires": "Ends on (optional)",
+        "expiresHint": "From 00:00 UTC of this day no run takes it. Leave empty for no end.",
+        "expiresRenewHint": "Leave empty to keep its end.",
+        "weight": "Weight",
+        "weightHint": "0 to {max}.",
+        "priority": "Priority",
+        "priorityHint": "0 to {max}, the lower the sooner.",
+        "add": {
+          "title": "Add an account to @{handle}",
+          "description": "A secret of the agent: its runs get it as an environment variable on the workers you pick.",
+          "save": "Add account",
+          "done": "Account {name} added",
+          "doneText": "The next run under @{handle} can take it."
+        },
+        "edit": {
+          "title": "Edit account {name}",
+          "description": "Its workers, its end, and how a pool of the same variable picks it.",
+          "save": "Save",
+          "done": "Account {name} changed",
+          "doneText": "The next run under @{handle} reads it."
+        },
+        "renew": {
+          "title": "Renew account {name}",
+          "description": "A new value replaces the old one. Its workers, weight and priority stay.",
+          "save": "Renew",
+          "done": "Account {name} renewed",
+          "doneText": "The next run under @{handle} gets the new value."
+        },
+        "problems": {
+          "nameRequired": "Enter a name.",
+          "nameInvalid": "Use up to {chars} lowercase letters, digits, dots, dashes or underscores, starting with a letter or digit.",
+          "nameTaken": "This agent has an account of that name.",
+          "envVarRequired": "Enter a variable.",
+          "envVarInvalid": "Use capital letters, digits and underscores, not starting with a digit, up to {max} characters.",
+          "envVarDenied": "A run sets this variable itself. Pick another.",
+          "valueRequired": "Enter the value.",
+          "valueTooLong": "The value is longer than {bytes} bytes.",
+          "workersRequired": "Pick at least one worker.",
+          "expiresInvalid": "Enter a day.",
+          "expiresPast": "Pick a day after today.",
+          "whole": "Enter a whole number.",
+          "range": "Enter a number from {min} to {max}."
+        }
+      },
+      "errors": {
+        "forbidden": "The hub refused: only an admin of the project changes its agents' accounts.",
+        "conflict": "The hub refused: the agent keeps as many accounts as it may. Delete one first."
+      }
+    }
   },
   "runs": {
     "title": "Runs",
@@ -3531,7 +4077,7 @@
         "loading": "Checking the plan's runs…",
         "planRun": "Plan run #{id} is {state}.",
         "stepRun": "Run #{id} of step {step} is {state}; a plan run waits until it ends.",
-        "curator": "The Curator's plan: only the night shift runs it.",
+        "curator": "The Curator's plan: the night shift runs it itself, at any hour.",
         "noPending": "No step is pending."
       },
       "model": {
@@ -3567,7 +4113,7 @@
         "repoBranch": "{repo} ({branch})"
       },
       "blocker": {
-        "curator": "This is a plan of the Curator: only the night shift of the project's charter runs it, on its worker on duty and its own branch.",
+        "curator": "This is a plan of the Curator: the night shift of the project's charter runs it itself, at any hour, within a minute once its worker on duty is free, on its own branch.",
         "planRun": "<link>Plan run #{id}</link> is {state}, dispatched by {login}: one plan run at a time.",
         "stepRun": "<link>Run #{id}</link> of step {step} is {state}: a plan run waits until no run of the plan's steps is active.",
         "noPending": "No step of this plan is pending: a plan run has nothing to do.",
@@ -3903,7 +4449,8 @@
           "log": "Raw log",
           "terminal": "Terminal",
           "chat": "Chat",
-          "outputs": "Outputs"
+          "outputs": "Outputs",
+          "browser": "Browser"
         },
         "where": "The agent's TUI on {worker}, relayed through the hub.",
         "connect": "Connect terminal",
@@ -3948,6 +4495,58 @@
         "hint": "Keys go to the agent's TUI on {worker}. Press Esc, then Tab, to leave the terminal.",
         "size": "{cols} × {rows}",
         "sizeLabel": "Terminal size: {cols} columns, {rows} rows"
+      },
+      "browser": {
+        "label": "Browser of run #{id}",
+        "labelTab": "Browser of run #{id}: {title}",
+        "keys": "Keys and text for the browser",
+        "address": "Address",
+        "back": "Back",
+        "forward": "Forward",
+        "reload": "Reload",
+        "tabs": "Tabs of the browser",
+        "takeControl": "Take control",
+        "takingControl": "Taking control",
+        "handBack": "Hand back",
+        "handingBack": "Handing back",
+        "asked": "The agent stops at the end of its turn, then the browser is yours.",
+        "keyboard": "Keyboard",
+        "hint": {
+          "agent": "The agent drives this browser. Take control to use it.",
+          "human": "You drive this browser. Press Esc, then Tab, to leave it.",
+          "watch": "The agent drives this browser.",
+          "login": "Sign in, then press Save to keep the profile. Cancel the run to keep nothing."
+        },
+        "waiting": "Waiting for the browser on {worker}.",
+        "connecting": "Connecting to the browser.",
+        "notOpen": "Run #{id} is {state}. Its browser runs only while a worker holds the run.",
+        "retrying": "The connection to the hub dropped. Trying again.",
+        "workerGone": "{worker} dropped its end of the browser. The view comes back when it reconnects.",
+        "notice": "The browser says: {notice}",
+        "reconnect": "Connect again",
+        "viewHere": "View here",
+        "signIn": "Sign in again",
+        "tooOld": "You signed in {hours} hours ago. The browser opens only for a sign-in less than 12 hours old: sign in again, then come back to this run.",
+        "hubSays": "The hub says: {reason}",
+        "end": {
+          "closed": "You closed the browser view.",
+          "ended": "The browser view ended: {worker} closed its end.",
+          "shutdown": "The hub restarted and closed the browser view. Connect again.",
+          "protocol": "The hub closed the browser view over a message it does not accept.",
+          "lost": "The connection to the hub was lost. Connect again.",
+          "unavailable": "The hub could not check the request: its database did not answer. Try again shortly.",
+          "signIn": "The hub asks you to sign in again before it shows the browser.",
+          "forbidden": "The hub refused to show this browser.",
+          "timeout": "The browser view closed: it was idle for 15 minutes, or open for 4 hours.",
+          "busy": "This browser is now open in another window or tab. View it here to bring it back.",
+          "upgrade": "{worker} speaks another version of the worker protocol: upgrade evo-agents on it."
+        },
+        "save": "Save",
+        "saving": "Saving",
+        "saveFailed": "Couldn't save the login of run #{id}",
+        "done": "Done, I signed in",
+        "doneSending": "Sending",
+        "doneFailed": "Couldn't send Done for run #{id}"
       },
       "composer": {
         "label": "Message the agent",
@@ -4067,7 +4666,8 @@
           "worker": "Bound to the worker",
           "charter": "Named by the charter",
           "pool": "From the pool",
-          "cooling": "All cooling: the first to be back"
+          "cooling": "All cooling: the first to be back",
+          "shared": "Shared by another member"
         },
         "gone": "a deleted account",
         "failovers": "{count, plural, =0 {No failover} one {# failover} other {# failovers}}",
@@ -4259,6 +4859,7 @@
       },
       "chatSub": "A turn of @{agent} in a group chat, hop {hop}. <chatLink>Open the message it answers</chatLink>.",
       "taskSub": "A task a plugin handed to @{agent}: one turn on branch {branch}, which the hub opens as a draft pull request.",
+      "browserSub": "A browser login session: {title}. A person logs the identity in; Save keeps its profile.",
       "header": {
         "back": "Plan {plan}",
         "step": "Step {key}: {title}",
@@ -4293,7 +4894,8 @@
         "open": "Open the full trace",
         "openEmpty": "Open the trace",
         "back": "Back to run #{id}",
-        "openChat": "Open the chat"
+        "openChat": "Open the chat",
+        "openBrowser": "Open the browser"
       },
       "detailsToggle": "Details",
       "local": {
@@ -4342,6 +4944,22 @@
         "deleteForbidden": "Only who dispatched the run, or an admin of the project, deletes its files.",
         "preview": "Outputs",
         "previewOpen": "Open all outputs"
+      },
+      "autonomy": {
+        "title": "Autonomy",
+        "tightened": "Tightened",
+        "principal": "Acts for",
+        "also": "Also bounded by {logins}",
+        "level": "Level",
+        "levelFrom": "{level}, set by {source}",
+        "taken": "Taken",
+        "tightenedAt": "Tightened",
+        "environments": "Environments",
+        "workers": "Workers",
+        "noneAllowed": "none allowed",
+        "boundedLabel": "Classes that are not auto",
+        "allAuto": "Every class is auto.",
+        "showAll": "{count, plural, one {Show the class} other {Show all # classes}}"
       }
     },
     "diff": {
@@ -4580,6 +5198,17 @@
       "accountPlaceholder": "Filter by account email",
       "accountClear": "Clear the account filter",
       "accountHint": "The Claude account of a local session"
+    },
+    "browser": {
+      "label": "Browser",
+      "info": "A Chromium for the runs, started by the worker. With an identity it starts logged in; an identity of the project can be used by every member.",
+      "none": "No browser",
+      "bare": "Chromium, no login",
+      "identity": "{name} ({owner})",
+      "status": {
+        "needs_login": "needs a login",
+        "disabled": "disabled"
+      }
     }
   },
   "insights": {
@@ -5196,10 +5825,15 @@
       "spend_money": "Spend money",
       "architecture": "Architecture",
       "scope": "Scope",
+      "merge": "Merge",
+      "credential": "Credential",
+      "access": "Access",
       "question": "Question",
       "triage": "Failed run",
       "release": "Release",
-      "loop": "Loop"
+      "loop": "Loop",
+      "login": "Login",
+      "autonomy": "Autonomy"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",
@@ -5222,7 +5856,10 @@
       "loop_paused": "The Loop stopped itself",
       "goal_review": "The month's review of the goals",
       "loop_brief": "The Loop's morning brief",
-      "plugin_notice": "A notice from a plugin"
+      "plugin_notice": "A notice from a plugin",
+      "browser_needs_login": "A browser identity needs a new login",
+      "autonomy": "What the hub did under your autonomy",
+      "worker_doctor": "A shared worker's doctor found something high"
     },
     "item": {
       "unread": "Unread",
@@ -5248,7 +5885,8 @@
       "answerProposalLabel": "Answer proposal #{id}",
       "viewProposalLabel": "View proposal #{id}",
       "openProposal": "Open proposal #{id}",
-      "openTriage": "Open triage thread"
+      "openTriage": "Open triage thread",
+      "openLogin": "Log in"
     },
     "sheet": {
       "title": "Decision #{id}",
@@ -5279,7 +5917,7 @@
       "notDelivered": "Waiting for the worker to hand the answer to the agent at its next turn.",
       "hubTook": "The hub did what the answer chose.",
       "resumed": "Run #{run} was parked: the answer resumed it as <link>run #{next}</link>.",
-      "onlyOwner": "Only {owner}, who dispatched run #{run}, can answer this decision.",
+      "onlyOwner": "Only {owner}, whom this decision of run #{run} is asked of, can answer it.",
       "runGone": "Run #{run} is {state}: no agent can take an answer any more.",
       "expired": "Nobody answered while run #{run} was parked for 7 days, so the run was cancelled and the decision expired.",
       "cancelled": "Run #{run} ended before anyone answered, so the decision was cancelled.",
@@ -8159,6 +8797,218 @@
       "counts": "{doing} in progress of {limit}, {review} to review as QA, {late} late"
     }
   },
+  "crm": {
+    "meta": {
+      "contacts": "Contacts of {project}",
+      "contact": "{login} in {project}"
+    },
+    "sub": "The people who found the project themselves, and how far each came: lead, invited, activated, retained.",
+    "readerTitle": "You read {project}",
+    "readerText": "You see the contacts and their history. Writers add notes; an admin deletes a contact on that person's request.",
+    "all": "All",
+    "pipeline": "Pipeline",
+    "pipelineFilter": "Show the contacts of one stage",
+    "stages": {
+      "lead": "Lead",
+      "invited": "Invited",
+      "activated": "Activated",
+      "retained": "Retained"
+    },
+    "kinds": {
+      "invite_request": "Invite request",
+      "invite_link": "Invite link",
+      "grant": "Grant",
+      "issue": "Issue",
+      "pull_request": "Pull request",
+      "discussion": "Discussion",
+      "note": "Note"
+    },
+    "emptyTitle": "No contact yet",
+    "emptyText": "A contact appears once someone asks for an invite, opens an issue or a pull request, or joins with a link.",
+    "emptyStage": "No contact is {stage}",
+    "tableLabel": "Contacts",
+    "columns": {
+      "login": "GitHub login",
+      "stage": "Stage",
+      "source": "Came from",
+      "firstSeen": "First seen",
+      "stageAt": "In this stage since"
+    },
+    "back": "All contacts",
+    "detail": {
+      "sub": "Came from: {source}",
+      "profile": "GitHub profile",
+      "touchpoints": "Touchpoints",
+      "noTouchpoints": "No touchpoint is kept for this contact.",
+      "by": "(by {author})",
+      "history": "Stages reached",
+      "noteLabel": "Add a note",
+      "addNote": "Add note",
+      "noting": "Adding",
+      "noted": "Note added",
+      "delete": "Delete contact",
+      "deleteTitle": "Delete {login}?",
+      "deleteText": "The contact, every touchpoint and its stage history are deleted for good, as the person asked. The audit log keeps only that it happened.",
+      "deleteConfirm": "Delete for good",
+      "deleting": "Deleting",
+      "keep": "Keep",
+      "deleted": "{login} deleted",
+      "deleteForbidden": "Only an admin of the project deletes a contact."
+    }
+  },
+  "marketing": {
+    "meta": {
+      "overview": "Marketing of {project}",
+      "posts": "Posts of {project}",
+      "weekly": "Growth weekly of {project}"
+    },
+    "sub": "Every post goes through the gate; a breaker stops a channel and the kill switch stops them all.",
+    "readerTitle": "You read {project}",
+    "readerText": "You see the channels, the budget and the week. Writers propose posts and stop posting; an admin resumes.",
+    "month": "This month",
+    "channelCount": "Channel accounts",
+    "breakerCount": "Breakers open",
+    "tabs": {
+      "label": "Marketing pages",
+      "overview": "Overview",
+      "posts": "Posts",
+      "weekly": "Growth weekly"
+    },
+    "budget": {
+      "label": "Cost of {month}",
+      "figures": "{used} of {cap}",
+      "split": "Spent {spent}, held by posts in flight {reserved}.",
+      "spentAll": "The month's budget is spent."
+    },
+    "kill": {
+      "stop": "Stop all posting",
+      "stopTitle": "Stop all posting in this project?",
+      "stopText": "No channel posts until an admin resumes. Drafts and posts waiting at the gate stay as they are.",
+      "stopConfirm": "Stop posting",
+      "resume": "Resume posting",
+      "resumeTitle": "Resume posting?",
+      "resumeText": "Channels post again through the gate. Breakers that are open stay open.",
+      "resumeConfirm": "Resume",
+      "pending": "Saving",
+      "cancel": "Cancel",
+      "stopped": "All posting stopped",
+      "resumed": "Posting resumed",
+      "forbidden": "Only a writer stops posting, and only an admin resumes it.",
+      "killedTitle": "All posting is stopped",
+      "killedReason": "Reason: {reason}",
+      "killedText": "No channel posts until an admin resumes.",
+      "killedBadge": "Stopped"
+    },
+    "channels": {
+      "title": "Channels",
+      "tableLabel": "Channel accounts",
+      "channel": "Channel",
+      "mode": "Mode",
+      "breaker": "Breaker",
+      "session": "Login session",
+      "actions": "Actions",
+      "ownedBy": "of {owner}",
+      "autonomous": "Autonomous",
+      "draftOnly": "Drafts only",
+      "open": "Open, not posting",
+      "shut": "Closed",
+      "close": "Close breaker",
+      "closed": "Breaker of {channel} {account} closed",
+      "noSession": "Not needed",
+      "stale": "Expired",
+      "sessionOk": "Valid",
+      "sessionNone": "None yet",
+      "emptyTitle": "No channel account yet",
+      "emptyText": "An admin adds a project account and each member their own with evo-agents hub marketing channel add."
+    },
+    "posts": {
+      "sub": "The posts of the project by what the gate did with them. Copy a draft to share it by hand.",
+      "readerText": "A post's text is for the project's writers; you read the overview and the week.",
+      "groups": {
+        "drafts": "Drafts to share by hand",
+        "waiting": "Waiting for the gate",
+        "passed": "Passed the gate",
+        "posted": "Went out",
+        "stopped": "Stopped"
+      },
+      "groupText": {
+        "drafts": "For a member's personal account or a Facebook group: nothing posts them, the member copies and shares them.",
+        "waiting": "The deny-list, the rules and the Judge have not decided yet.",
+        "passed": "Queued to post on the channel.",
+        "posted": "Posted on their channel.",
+        "stopped": "Stopped by the gate or withdrawn, with the reason."
+      },
+      "states": {
+        "proposed": "Proposed",
+        "judging": "Being judged",
+        "queued": "Queued",
+        "posting": "Posting",
+        "posted": "Posted",
+        "draft": "Draft",
+        "failed": "Stopped by the gate",
+        "withdrawn": "Withdrawn"
+      },
+      "count": "{count, plural, one {# post} other {# posts}}",
+      "none": "None.",
+      "dryRun": "Dry run",
+      "reason": "Why: {reason}",
+      "open": "Open the post",
+      "cost": "Cost {cost}",
+      "copy": "Copy text",
+      "copiedShort": "Copied",
+      "copied": "Draft copied to the clipboard",
+      "selected": "Draft text selected: press Ctrl+C or Cmd+C",
+      "emptyTitle": "No post yet",
+      "emptyText": "Posts appear once @marketer or a member proposes one."
+    },
+    "weekly": {
+      "sub": "From {since} to {until}",
+      "count": "{count, plural, =0 {none yet} other {#}}",
+      "goals": "Signal against Goal",
+      "noGoals": "No active Goal with a metric.",
+      "goal": "Goal",
+      "signal": "Signal",
+      "value": "Value",
+      "target": "Target",
+      "met": "Met",
+      "noValue": "No signal",
+      "unknown": "Unknown",
+      "reached": "Met",
+      "notReached": "Not yet",
+      "killed": "All posting is stopped",
+      "posted": "Posts that went out",
+      "noPosts": "No post went out this week.",
+      "open": "Open",
+      "breakers": "Breakers open",
+      "noBreakers": "No breaker is open.",
+      "cost": "Cost",
+      "weekCost": "This week:",
+      "proposals": "Proposals for the blog project",
+      "proposalsFor": "Proposals for {project}",
+      "noProposalsProject": "No blog project is set: the config proposals_project of marketing names it.",
+      "noProposals": "No proposal this week."
+    },
+    "decide": {
+      "title": "Growth",
+      "note": "Channels, login sessions and the budget of the plugin marketing",
+      "waiting": "{count, plural, one {# waits} other {# wait}}",
+      "kind": {
+        "breaker": "Breaker open",
+        "session": "Session expired",
+        "budget": "Budget spent"
+      },
+      "who": {
+        "breaker": "An admin closes it on the Marketing page once the cause is fixed.",
+        "session": "The account's owner logs in again with evo-agents hub marketing session.",
+        "budget": "An admin raises budget_usd, or posting waits for the next month."
+      },
+      "breaker": "{channel} {account} stopped posting: its breaker waits for a reset",
+      "session": "The login session of {channel} {account} expired",
+      "budget": "The budget of {month} ({cap}) is spent",
+      "open": "Open",
+      "openLabel": "Open in Marketing: {title}"
+    }
+  },
   "canvas": {
     "readerTitle": "You read {project} as a reader",
     "meta": {
@@ -8649,15 +9499,14 @@
       "sent": "Sent by the agent",
       "tool": "From a tool's result",
       "outputs": "Output folder",
-      "attached": "Attached to the message"
+      "attached": "Attached to a message"
     },
     "strip": {
       "question": "Files of this question",
       "message": "Files of this message",
       "notice": "Files of this notice",
       "calls": "Files of these calls",
-      "recorded": "Files the hub recorded",
-      "attached": "Files attached to this message"
+      "recorded": "Files the hub recorded"
     },
     "viewer": {
       "kind": {
@@ -9021,5 +9870,203 @@
       "srs_reviewer": "An SRS reviewer",
       "chat_member": "A member of the chat"
     }
+  },
+  "browser": {
+    "metaTitle": "Browser identities of {project}",
+    "title": "Browser identities",
+    "new": "New",
+    "ownerProject": "Project identity",
+    "ownerMember": "Owned by {login}",
+    "neverSaved": "Not saved yet",
+    "none": "Never",
+    "heldBy": "Run #{id}",
+    "status": {
+      "needs_login": "Needs login",
+      "disabled": "Disabled"
+    },
+    "fact": {
+      "domains": "Domains",
+      "worker": "Worker",
+      "version": "Version",
+      "lastSaved": "Last saved",
+      "lastUsed": "Last used",
+      "heldBy": "Held by"
+    },
+    "action": {
+      "login": "Log in",
+      "move": "Move",
+      "disable": "Disable",
+      "enable": "Enable",
+      "delete": "Delete"
+    },
+    "empty": {
+      "title": "No browser identities yet",
+      "description": "An identity keeps a signed-in browser profile on one worker. Create one, then log in through a live browser."
+    },
+    "form": {
+      "newTitle": "New browser identity",
+      "newDescription": "A profile that keeps the cookies of some sites. You sign in once, in a browser you see; runs reuse it.",
+      "name": "Name",
+      "nameHint": "Lower case letters, digits, dots, dashes and underscores.",
+      "nameInvalid": "Use lower case letters, digits, dots, dashes and underscores, starting with a letter or digit.",
+      "domains": "Domains",
+      "domainsHint": "The sites whose cookies it keeps, separated by commas. Their subdomains count.",
+      "domainsRequired": "Name at least one domain.",
+      "loginUrl": "Login URL",
+      "loginUrlHint": "Optional. The page the login session opens. Default: the first domain's home page.",
+      "loginUrlInvalid": "Enter an http or https address.",
+      "worker": "Worker",
+      "workerPick": "Pick a worker",
+      "workersLoading": "Loading workers",
+      "ownWorkers": "Your workers",
+      "sharedWorkers": "Shared workers",
+      "sharedWorker": "{name} (shared by {owner})",
+      "workerHint": "The profile stays on this worker. Only workers with a browser installed are listed.",
+      "noWorkers": "No worker has a browser. Run `evo-agents worker browser install` on one and restart its daemon.",
+      "workerRequired": "Pick a worker.",
+      "owner": "Owner",
+      "ownerMember": "Me",
+      "ownerProject": "The project (admins)",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating"
+    },
+    "move": {
+      "title": "Move {name}",
+      "description": "Log in again on another worker. The identity moves there after you save; it stays on {worker} until then.",
+      "required": "Pick a worker.",
+      "cancel": "Cancel",
+      "start": "Start login session",
+      "starting": "Starting"
+    },
+    "confirm": {
+      "cancel": "Cancel",
+      "delete": {
+        "title": "Delete {name}?",
+        "description": "Its saved profile is removed from the hub. Runs that use it will no longer find it. This cannot be undone.",
+        "confirm": "Delete identity",
+        "pending": "Deleting"
+      },
+      "disable": {
+        "title": "Disable {name}?",
+        "description": "Runs cannot use it while it is disabled. Its profile is kept, and you can enable it again.",
+        "confirm": "Disable identity",
+        "pending": "Disabling"
+      }
+    },
+    "toast": {
+      "created": "Created {name}",
+      "createdNext": "Log in to save its first profile.",
+      "deleted": "Deleted {name}",
+      "disabled": "Disabled {name}",
+      "enabled": "Enabled {name}"
+    },
+    "error": {
+      "conflict": "A run holds this identity, it has a login session waiting, or it is disabled. Try again when that ends.",
+      "exists": "You already have an identity with that name in this project."
+    },
+    "ownerAgent": "Agent {handle}",
+    "ownerAgentDefault": "Agent {handle} (default)"
+  },
+  "sharing": {
+    "title": "Shared with other members",
+    "description": "Members you share with may use a credential in their runs on the projects you pick, within the limits you set. Its value never leaves the hub: a run gets it for its duration.",
+    "share": "Share",
+    "nothingToShare": "Only a credential bound to a project can be shared, and never a GitLab token for the hub.",
+    "empty": "Nothing is shared.",
+    "terms": {
+      "title": "Read this before you share it",
+      "ack": "I have read this and share it anyway, in my name."
+    },
+    "dialog": {
+      "title": "Share a credential",
+      "description": "Whom it is for, on which projects, and how far. Every field under Limits is optional.",
+      "credential": "Credential",
+      "grantee": "Share with",
+      "kind": {
+        "user": "One member",
+        "unit": "A unit and the units below it",
+        "all": "Every member"
+      },
+      "login": "Member",
+      "loginHint": "Their login on the hub.",
+      "unit": "Unit",
+      "unitHint": "The members whose primary seat is in it or below it.",
+      "unitPick": "Pick a unit",
+      "unitOption": "{name} ({slug})",
+      "loading": "Loading",
+      "noUnit": "The org chart has no live unit.",
+      "allHint": "Every member who holds writer on one of the projects you pick.",
+      "projects": "Projects",
+      "projectsHint": "Runs on these projects may take it; it is bound to them.",
+      "limits": "Limits",
+      "limitsHint": "Leave a field empty for no limit.",
+      "level": "Highest level",
+      "levelAny": "Any level",
+      "levelHint": "A run of a higher level does not take it.",
+      "budget": "Budget, USD",
+      "budgetHint": "Shared runs stop taking it once theirs cost this much.",
+      "ceiling": "Usage ceiling, %",
+      "ceilingHint": "Shared runs wait while the account's usage is at or above it.",
+      "maxRunning": "Runs at once",
+      "maxRunningHint": "The most shared runs that hold it at the same time.",
+      "expires": "Ends on",
+      "expiresHint": "At 00:00 UTC that day. Empty: it ends when you revoke it.",
+      "save": "Share",
+      "saving": "Sharing",
+      "cancel": "Cancel",
+      "done": "{name} is shared",
+      "doneText": "The next run it is for may take it.",
+      "conflict": "The hub did not share it.",
+      "termsNeeded": "The hub asks you to read its warning first: tick the box under it, then share.",
+      "problems": {
+        "required": "Fill this in.",
+        "pattern": "This is not in the form the hub takes.",
+        "range": "Enter a number from {min} to {max}.",
+        "whole": "Enter a whole number.",
+        "past": "Pick a day after today."
+      }
+    },
+    "list": {
+      "all": "every member",
+      "user": "{name}",
+      "unit": "unit {name}",
+      "to": "shared with",
+      "endsSoon": "Ends soon",
+      "projects": "Projects",
+      "level": "up to {level}",
+      "budget": "{usd} budget",
+      "ceiling": "{pct}% ceiling",
+      "running": "{count, plural, one {# run} other {# runs}} at once",
+      "noLimit": "no limit",
+      "ends": "ends <day></day>",
+      "revoke": "Revoke",
+      "revokeLabel": "Revoke share {id} of {name}"
+    },
+    "revoke": {
+      "title": "Revoke the share of {name}?",
+      "description": "No run takes it under this share any more, and the leases runs hold under it now end. This is recorded in the audit.",
+      "confirm": "Revoke",
+      "pending": "Revoking",
+      "cancel": "Cancel",
+      "done": "Share of {name} revoked",
+      "doneText": "No run takes it under this share any more.",
+      "gone": "This share is already revoked. The list was read again."
+    }
+  },
+  "attachments": {
+    "attach": "Attach files, at most {max}",
+    "list": "Files to send",
+    "drop": "Drop files to attach them",
+    "progress": "Uploading {name}",
+    "remove": "Remove {name}",
+    "retry": "Upload {name} again",
+    "failed": "Upload failed",
+    "failedBig": "Over {max}",
+    "failedNetwork": "Hub not reached",
+    "tooBig": "Not attached: {names}. A file is at most {max}.",
+    "tooMany": "A message carries at most {max} files: {names} not attached.",
+    "notReady": "A file did not upload: retry it or remove it, then send.",
+    "files": "Files of this message"
   }
 }
