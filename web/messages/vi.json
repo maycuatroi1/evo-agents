@@ -5870,7 +5870,8 @@
       "plugin_notice": "Thông báo từ một plugin",
       "browser_needs_login": "Một danh tính trình duyệt cần đăng nhập lại",
       "autonomy": "Việc hub đã làm theo mức tự chủ của bạn",
-      "worker_doctor": "Doctor của một worker được chia phát hiện mức high"
+      "worker_doctor": "Doctor của một worker được chia phát hiện mức high",
+      "curator_probe_report": "Báo cáo probe hằng tuần của Curator"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -6637,7 +6638,7 @@
         "scope": "Được làm gì",
         "review": "Review",
         "roles": "Vai trò",
-        "nightRuns": "Replay và lịch sử"
+        "nightRuns": "Replay, lịch sử và probe"
       },
       "groupHints": {
         "goals": "Mục tiêu của sản phẩm, quan trọng nhất trước.",
@@ -6646,7 +6647,7 @@
         "scope": "Plan được chạy, số quyết định mỗi ngày, thứ được merge và thứ không bao giờ đụng.",
         "review": "Review run hằng đêm: nhìn qua bao nhiêu lăng kính và đếm lùi bao xa.",
         "roles": "Runtime và model của Reviewer, Builder và Judge.",
-        "nightRuns": "Các run của đêm ngoài review: replay đo một thay đổi của skill, AGENTS.md hay CLAUDE.md trên lịch sử của chính dự án, và run lịch sử đọc các phiên bằng model rẻ."
+        "nightRuns": "Các run của đêm ngoài review: replay đo một thay đổi của skill, AGENTS.md hay CLAUDE.md trên lịch sử của chính dự án, run lịch sử đọc các phiên bằng model rẻ, và probe hằng tuần kiểm tra một sửa lỗi đã merge còn giữ được không."
       },
       "roles": {
         "reviewer": "Reviewer",
@@ -6684,7 +6685,10 @@
         "replayTasks": "Số tác vụ replay mỗi thay đổi",
         "replayBudget": "Ngân sách replay mỗi đêm, USD",
         "historyBudget": "Ngân sách run lịch sử, USD",
-        "historyModel": "Model của run lịch sử"
+        "historyModel": "Model của run lịch sử",
+        "probeK": "Số phiên probe mỗi nhánh",
+        "probeBudget": "Ngân sách probe mỗi tuần, USD",
+        "probeModels": "Model của probe"
       },
       "hints": {
         "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
@@ -6708,7 +6712,9 @@
         "replayTasks": "Số tác vụ giữ lại mà mỗi thay đổi được replay, từ {min} đến {max}. Cần 6 tác vụ thì replay mới có thể thắng.",
         "replayBudget": "Để trống: không chạy replay.",
         "historyBudget": "Để trống: số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm. 0: không chạy run lịch sử.",
-        "historyModel": "Để trống: model rẻ nhất mà worker trực báo cho runtime của Reviewer."
+        "historyModel": "Để trống: model rẻ nhất mà worker trực báo cho runtime của Reviewer.",
+        "probeK": "Số phiên của mỗi nhánh probe, trên mỗi model, từ {min} đến {max}.",
+        "probeBudget": "Để trống: không chạy probe. Tối đa {max} cho một tuần ISO, tách khỏi ngân sách đêm."
       },
       "placeholders": {
         "model": "mặc định của runtime",
@@ -6744,7 +6750,9 @@
       "replayBudgetNone": "Không có: không chạy replay",
       "historyBudgetDefault": "Số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm",
       "historyBudgetOff": "Không có: không chạy run lịch sử",
-      "historyModelDefault": "model rẻ nhất worker báo"
+      "historyModelDefault": "model rẻ nhất worker báo",
+      "probeBudgetNone": "Không có: không chạy probe",
+      "probeModelsBuilder": "Runtime và model của Builder"
     },
     "metaHistory": "Lịch sử của {project}",
     "metaGraph": "Sức khoẻ graph của {project}",
@@ -7184,6 +7192,81 @@
       "written": "Khi chấp nhận, hub đã viết <link>memory dùng chung #{id}, revision {revision}</link>.",
       "notWritten": "Chưa viết gì cho tới khi đề xuất được chấp nhận.",
       "merged": "Memory sau khi gộp"
+    },
+    "probes": {
+      "title": "Probe",
+      "sub": "{k} phiên mỗi nhánh trên mỗi model, tối đa {budget} một tuần",
+      "off": "Charter chưa cho probe ngân sách tuần nên không probe nào chạy.",
+      "unreadable": "Không đọc được báo cáo probe.",
+      "retry": "Thử lại",
+      "weeks": "Các tuần của báo cáo probe",
+      "thisWeek": "Tuần này",
+      "weekOf": "Tuần từ {day}",
+      "flagCount": "{count} kết quả có cờ",
+      "results": "{count, plural, =0 {Chưa có kết quả} other {# kết quả}}",
+      "statusCount": "{count} {status}",
+      "spent": "Đã tiêu {cost}",
+      "spentOf": "Đã tiêu {cost} trên {budget}",
+      "noResults": "Tuần này không có probe nào đến hạn: chưa thay đổi đã merge nào có probe đang chạy.",
+      "explain": "Mỗi probe giao tác vụ của nó cho một agent {k} lần khi luật của thay đổi còn nguyên và chừng ấy lần khi gỡ luật ra. Phiên thất bại là phiên lặp lại lỗi.",
+      "caption": "Các probe của tuần, có luật của thay đổi và không có",
+      "head": {
+        "probe": "Probe",
+        "model": "Model",
+        "on": "Có luật",
+        "off": "Không có luật",
+        "status": "Trạng thái"
+      },
+      "probeName": "Probe #{id}",
+      "ids": "probe #{probe}, thay đổi #{change}",
+      "runtimeModel": "Runtime tự chọn",
+      "failed": "{failed} trên {runs} thất bại",
+      "notRun": "Chưa chạy",
+      "recurrence": "tái phát {share}",
+      "previous": "Tuần trước: {status}",
+      "word": {
+        "holds": "giữ được",
+        "recurring": "tái phát",
+        "not_reproduced": "không tái hiện",
+        "stale": "lỗi thời",
+        "unmeasured": "chưa đo"
+      },
+      "openRun": "Mở lượt chạy probe #{id}",
+      "status": {
+        "recurring": "Tái phát",
+        "not_reproduced": "Không tái hiện",
+        "stale": "Lỗi thời",
+        "unmeasured": "Chưa đo"
+      },
+      "fixes": "Đề xuất sửa cho các probe tái phát",
+      "fixOf": "cho thay đổi #{change}",
+      "unprobed": "Thay đổi đã merge chưa có probe",
+      "more": "và {count} mục nữa"
+    },
+    "probe": {
+      "title": "Probe",
+      "sub": "Probe #{id} của thay đổi #{change}",
+      "subNoChange": "Probe #{id}; nó đo thay đổi mà việc chấp nhận đề xuất này tạo ra",
+      "repo": "Repo",
+      "commit": "Commit gốc",
+      "tip": "Đỉnh nhánh mặc định lúc viết probe",
+      "source": "Người viết",
+      "sources": {
+        "proposal": "Đề xuất này",
+        "review": "Một lượt review",
+        "admin": "Một admin"
+      },
+      "replaces": "Viết thay cho probe #{id}, probe không làm lỗi tái hiện hai tuần liền.",
+      "task": "Tác vụ",
+      "verify": "Verify",
+      "verifyHidden": "Chỉ admin của dự án đọc được verify: đó là đáp án, và không agent nào thấy nó.",
+      "weeks": "Các tuần",
+      "noWeeks": "Chưa tuần nào đo probe này.",
+      "waitsForChange": "Các tuần sẽ đo nó khi việc chấp nhận đề xuất này đã tạo ra một thay đổi và thay đổi đó đã merge.",
+      "fixes": "Đề xuất sửa",
+      "unreadable": "Không đọc được các tuần của probe.",
+      "retry": "Thử lại",
+      "fixOf": "Đề xuất này sửa luật của <link>thay đổi #{change}</link>, thay đổi có probe tái phát hai tuần liền."
     }
   },
   "releases": {

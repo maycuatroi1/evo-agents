@@ -300,3 +300,23 @@ export async function promotionNight(owner: Account, project: string, name: stri
   await reportState(live, night.runId, { state: "done" });
   return { night, handle, source, shared, proposal };
 }
+
+export type Probe = components["schemas"]["Probe"];
+
+/** A probe `owner` (an admin of `project`) adds to proposal `proposal` through the API, in the project's repo. */
+export async function addProbe(owner: Account, project: string, proposal: number, task: string, verify: string): Promise<Probe> {
+  const api = bearerClient(await machineToken(owner));
+  return call(api.POST("/v1/projects/{project}/curator/probes", { params: { path: { project } }, body: { repo: REPO, task, verify, proposal_id: proposal } }));
+}
+
+/** A week of a probe: how each session of its arm with the change's rule (`on`) and without it (`off`) went. */
+export type ProbeWeekSeed = { ago: number; on: boolean[]; off: boolean[] };
+
+/**
+ * The weekly probe runs of probe `probe` as the hub's job and the worker would leave them (hub_stack POST
+ * /probes/seed): its change merged two weeks ago, and a done run per week on each model of the charter's probes.
+ */
+export async function seedProbeWeeks(probe: number, weeks: ProbeWeekSeed[]): Promise<string[]> {
+  const { weeks: written } = await stack<{ weeks: string[] }>("/probes/seed", { probe_id: probe, weeks });
+  return written;
+}

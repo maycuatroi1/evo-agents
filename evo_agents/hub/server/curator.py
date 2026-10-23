@@ -39,7 +39,8 @@ review runs (``evo_agents.hub.server.collect``), else the night's history run on
 that waits for one, else the Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else the
 replay run of a change that waits for one (``evo_agents.hub.server.replays``), else, inside the window, a plan run of
 the charter's night_plans, as ``evo_agents.hub.curator`` says, audited as curator.dispatch with the owner as actor and
-no token. GET .../curator also names the last review run of the project, with how many findings and proposals it wrote,
+no token, else, when no plan of night_plans has work, the probe run of a probe and a model the week has not measured,
+within the charter's probes.budget_usd (``evo_agents.hub.server.probe_runs``). GET .../curator also names the last review run of the project, with how many findings and proposals it wrote,
 and its last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each
 agent session once at its largest total, as Claude Code reports a session's running total. The charter also names what
 the Curator's runs get of the owner's secrets (``git_secret``, ``env_secrets``): no other secret is leased to them.
@@ -82,7 +83,13 @@ from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.charter_settings import HistorySettings, ReplaySettings, ReviewSettings
+from evo_agents.hub.server.charter_settings import (
+    HistorySettings,
+    ProbeModel,
+    ProbeSettings,
+    ReplaySettings,
+    ReviewSettings,
+)
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, next_run_budget, night_figures, usage_cost
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -218,6 +225,7 @@ class CharterBody(BaseModel):
     review: ReviewSettings = Field(default_factory=ReviewSettings)
     replay: ReplaySettings = Field(default_factory=ReplaySettings)
     history: HistorySettings = Field(default_factory=HistorySettings)
+    probes: ProbeSettings = Field(default_factory=ProbeSettings)
     reviewer: Role = Field(default_factory=Role)
     builder: Role = Field(default_factory=Role)
     judge: Judge = Field(default_factory=Judge)
@@ -261,6 +269,8 @@ class CharterBody(BaseModel):
                 raise ValueError(
                     f"{name}.budget_usd is over night_budget_usd: a run never gets more than the night has"
                 )
+        if not self.probes.models:  # the probes run on the builder's runtime and model unless the charter names others
+            self.probes.models = [ProbeModel(runtime=self.builder.runtime, model=self.builder.model)]
         return self
 
 
@@ -1270,6 +1280,7 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     from evo_agents.hub.server.changes import queue_builder, queue_judge  # it queues runs through this module
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
     from evo_agents.hub.server.history import queue_history  # it queues runs through this module
+    from evo_agents.hub.server.probe_runs import queue_probe  # it queues runs through this module
     from evo_agents.hub.server.replays import queue_replay  # it queues runs through this module
 
     word, gate = await gate_of(conn, due, any_hour=True)
@@ -1290,6 +1301,8 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     night, worker, budget = gate.night, gate.worker, gate.budget
     plan, why = await _next_plan(conn, gate.access, due.body, worker)
     if plan is None:
+        if await queue_probe(conn, due, gate) is not None:  # the probes queue after every other kind of the night
+            return "probe"
         log.info("night shift has no plan to run", extra={"project": due.project, "why": why})
         return "no_plan"
     try:

@@ -138,7 +138,8 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 # plugin hands an agent type of its own; the replay of a past step (``hub.replay``); the night's reading of sessions and
 # runs (``hub.history``); a cut or a fix of a release cycle (``hub.releases``); a read-only question a core plugin asks
 # an agent type of its own (``hub.question_runs``); the login session of a browser identity, which a person drives in
-# the identity's Chromium with no agent (``hub.browser_login``). A session on a member's own machine, which no worker
+# the identity's Chromium with no agent (``hub.browser_login``); the weekly probe of a change of the Curator, k sessions
+# with its rule on and k with it off (``hub.probes``). A session on a member's own machine, which no worker
 # runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
 RUN_KINDS = (
     "step",
@@ -150,6 +151,7 @@ RUN_KINDS = (
     "task",
     "replay",
     "history",
+    "probe",
     "release",
     "question",
     "browser",
@@ -157,7 +159,8 @@ RUN_KINDS = (
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
-CURATOR_KINDS = ("review", "judge", "replay", "history")  # the kinds only the night shift queues, and the Builder
+# the kinds only the night shift queues, and the Builder
+CURATOR_KINDS = ("review", "judge", "replay", "history", "probe")
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
@@ -336,7 +339,10 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # autonomy: a gate of the hub acted for a run whose class is notify, told to the run's principal
 # run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
 # sends to the run's owner (``server.output_notices``)
+# curator_probe_report: the weekly report of a project's probes, on Monday at the charter's brief_at, to the owner of its
+# night shift's schedule (``server.probe_report``)
 OUTPUT_NOTICE = "run_outputs"
+PROBE_REPORT_NOTICE = "curator_probe_report"
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -359,6 +365,7 @@ NOTICE_KINDS = (
     AUTONOMY_DECISION_CATEGORY,
     "worker_doctor",  # the doctor of a worker narrowed to units found something high (``server.worker_doctor``)
     "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser_logins``)
+    PROBE_REPORT_NOTICE,
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it

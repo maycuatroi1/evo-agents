@@ -131,12 +131,15 @@ async def read_tail(proc, tail: bytearray) -> None:
         del tail[:-OUTPUT_TAIL]
 
 
-async def run_untrusted(run: Run, command: str, cwd: Path) -> tuple[int, str]:
+async def run_untrusted(
+    run: Run, command: str, cwd: Path, *, extra_env: dict[str, str] | None = None
+) -> tuple[int, str]:
     """(exit code, the end of its output) of ``command``, code the worker does not trust (``untrusted``): in ``cwd``,
-    on the standard input of ``/bin/sh -s``, in a session of its own, with an environment that leads to no credential,
-    and every process it left killed once it ends; Stopped when the run is asked to stop or runs out of time first."""
+    on the standard input of ``/bin/sh -s``, in a session of its own, with an environment that leads to no credential
+    (plus ``extra_env``, which names none), and every process it left killed once it ends; Stopped when the run is
+    asked to stop or runs out of time first."""
     marker = untrusted.new_marker()
-    env = untrusted.scrubbed_env(run.daemon.env, credentials.held_values())
+    env = {**untrusted.scrubbed_env(run.daemon.env, credentials.held_values()), **(extra_env or {})}
     proc = await untrusted.start(command, cwd=cwd, env=env, marker=marker)
     tail = bytearray()
     reader = asyncio.create_task(read_tail(proc, tail))

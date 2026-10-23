@@ -14,7 +14,7 @@ import { LIMITS, RUNTIMES } from "./vocab";
 /**
  * The parts the charter's form is built of (charter-form.tsx): a field with its label, hint and problem, a group of
  * fields as a card, a role's runtime and model, and the group of the night's own runs beside the review, the replays
- * of the Curator's changes and the history run.
+ * of the Curator's changes, the history run and the weekly probes.
  */
 
 export const fieldId = (base: string, field: CharterField) => `${base}-${field}`;
@@ -155,7 +155,8 @@ export function RoleFields({
 
 /**
  * The night's own runs beside the review: how many holdout tasks each change of a skill or an AGENTS.md is replayed
- * on and what a night's replays may cost (none without a cap), and what the history run may cost and on which model.
+ * on and what a night's replays may cost (none without a cap), what the history run may cost and on which model, and
+ * the sessions of each arm of a probe and what a week's probes may cost (none without a cap).
  */
 export function NightRunsGroup({
   base,
@@ -194,6 +195,14 @@ export function NightRunsGroup({
             className="font-mono"
             data-testid="charter-history-model"
           />
+        )}
+      </Field>
+      <Field base={base} field="probeK" label={t("fields.probeK")} hint={t("hints.probeK", LIMITS.probeK)} errors={errors}>
+        {(props) => <Input {...props} type="number" inputMode="numeric" value={form.probeK} onChange={(event) => set("probeK", event.target.value)} data-testid="charter-probe-k" />}
+      </Field>
+      <Field base={base} field="probeBudget" label={t("fields.probeBudget")} hint={t("hints.probeBudget", { max: LIMITS.probeBudgetUsd })} errors={errors}>
+        {(props) => (
+          <Input {...props} type="number" inputMode="decimal" min={0} step="0.01" value={form.probeBudget} onChange={(event) => set("probeBudget", event.target.value)} data-testid="charter-probe-budget" />
         )}
       </Field>
     </Group>

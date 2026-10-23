@@ -22,13 +22,13 @@ import { Ago } from "@/components/workers/ago";
 import { workerHref } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { cn } from "@/lib/utils";
 
 import { useLensText } from "./badges";
 import { CuratorHeader, CuratorTabs } from "./curator-header";
 import { useCuratorRights, useCuratorViewer } from "./hooks";
 import { budgetShare, nightOutcome, proposalSearch, NO_PROPOSAL_FILTERS } from "./model";
 import { Fact, Facts, useDay, useMoney } from "./parts";
+import { ProbeReport } from "./probe-report";
 import { type CuratorStatus, curatorHref, curatorStatusQuery, type NightList, type NightSummary, nightsQuery } from "./queries";
 
 /** The CLI command that writes a charter, for whoever reads the empty state without the admin role. */
@@ -406,9 +406,8 @@ function NoCharter({ project }: { project: string }) {
 }
 
 /**
- * A project's Curator: where its night shift stands (the pill, Pause or Resume), tonight's runs and cost against the
- * charter's caps, what waits for an answer, the last review run, the schedule, and the nights before, each with its
- * runs, cost and review. Read every 10 seconds while a run of the night shift is in flight, every minute otherwise.
+ * A project's Curator: its night shift (Pause or Resume), tonight's runs and cost against the caps, what waits, the last
+ * review, the schedule, the weekly probe report and the nights; read every 10 s while a run is in flight, else each minute.
  */
 export function CuratorPage({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
   const status = useHubQuery(curatorStatusQuery(browserApi, project), initialError, { live: true });
@@ -423,10 +422,11 @@ export function CuratorPage({ project, initialError }: { project: string; initia
           ) : (
             <>
               <NightStrip project={project} status={found} />
-              <div className={cn("grid items-start gap-4 lg:grid-cols-2")}>
+              <div className="grid items-start gap-4 lg:grid-cols-2">
                 <ScheduleCard project={project} status={found} />
                 <LastReviewCard project={project} status={found} />
               </div>
+              <ProbeReport project={project} />
               <Nights project={project} status={found} />
             </>
           )}

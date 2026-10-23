@@ -45,6 +45,7 @@ AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose", "put")
 AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention", "chat read")
 AGENT_COMMANDS += ("triage rerun", "triage plan", "triage invite")
 AGENT_COMMANDS += ("playbook add", "playbook helpful", "playbook harmful", "playbook retire")  # a review run's, too
+AGENT_COMMANDS += ("probe add",)  # a review run's probe of a merged change
 AGENT_COMMANDS += ("repo open",)  # a chat run's agent opens a repo of its project
 AGENT_COMMANDS += ("output",)  # any run's agent sends files to the run's outputs
 AGENT_COMMANDS += ("backup",)  # any run's agent records a backup before it deletes data (floor S2)

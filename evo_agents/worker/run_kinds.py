@@ -46,6 +46,12 @@ def kind_refusal(run_id: int, kind: str, kinds: tuple[str, ...], command: str) -
             f"leave your work in the directory and end your turn; the worker runs the step's verify, not "
             f"`evo-agents worker {command}`, which only the agent of {kinds_of(kinds)} uses"
         )
+    if kind == "probe":
+        return (
+            f"run {run_id} is a probe run, which does one task and reports to no plan: leave your work in the "
+            f"directory and end your turn; the worker checks it, not `evo-agents worker {command}`, which only the "
+            f"agent of {kinds_of(kinds)} uses"
+        )
     if kind == "release":
         return (
             f"run {run_id} is a release run, whose agent uses no command: it commits on the run's branch and writes "

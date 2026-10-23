@@ -879,7 +879,9 @@ Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) need
 [A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`, and a
 replay run (kind `replay`, see [A replay run on the machine](#a-replay-run-on-the-machine)) a checkout of each of its
 repos and `replay` in `run_kinds`, and a history run (kind `history`, see
-[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. None of
+[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`, and a
+probe run (kind `probe`, see [A probe run on the machine](#a-probe-run-on-the-machine)) a checkout of each of its
+repos and `probe` in `run_kinds`. None of
 those checkouts is asked of a daemon whose last heartbeat listed `clones_checkouts` in `features`: it clones each repo
 of the run it has no checkout of before the run goes on ([Repos a run clones](#repos-a-run-clones)), so it takes a run
 whatever checkouts it has, even none. The
@@ -933,7 +935,7 @@ it holds:
   "free_slots": 1,
   "runs": [12],
   "agent_version": "0.3.0",
-  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task", "replay", "history"],
+  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "probe"],
   "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs",
                "chat_decisions", "lazy_chat_repos", "kg_sync", "update_now", "agent_home"],
   "agent_commit": "<40 or 64 hex>",
@@ -2305,7 +2307,7 @@ refused, and the run fails with `push_conflict`.
 ### Runs of the night shift
 
 The night shift of a project's charter (`docs/curator.md`) queues its runs on the charter's worker on duty, as that
-worker's owner, headless and with approval `auto`: the night's review run and history run, judge runs, replay runs and
+worker's owner, headless and with approval `auto`: the night's review run and history run, judge runs, replay runs, probe runs and
 Builders of the Curator, and plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon
 enforces (`budget` in the claim, `evo_agents.hub.curator`):
 
@@ -2327,7 +2329,7 @@ from the web only passes over every run of the night shift (`dispatched_via` `sc
 
 A plan run of `night_plans` is a plan run of its owner's own plan: it gets the leases any plan run of its owner gets
 and pushes as its plan says (see [A plan run on the machine](#a-plan-run-on-the-machine)). Only a review run, a judge
-run, a replay run, a history run and a plan run of a plan the Curator made are runs of the Curator, which the sections
+run, a replay run, a history run, a probe run and a plan run of a plan the Curator made are runs of the Curator, which the sections
 below and [The Curator's runs on the machine](#the-curators-runs-on-the-machine) describe.
 
 ### Keeping the graph fresh
@@ -2470,6 +2472,49 @@ added up, pushing nothing (`gitops.check_push` refuses every push of a replay ru
 cleanup of runs older than 7 days. The watchdog of the Curator's runs compares no protected path for it, only its caps:
 its repositories are its own.
 
+### A probe run on the machine
+
+A probe run (kind `probe`) measures one probe of a change of the Curator on one runtime and model: k new agent
+sessions with the change's rule on (arm `on`) and k with it off (arm `off`), to tell whether the rule still keeps
+the mistake it was made for from coming back (`docs/curator.md`, Probes; `docs/hub.md`, "The Curator's probes"). Only
+a daemon with `probe` in its heartbeat's `run_kinds` gets one. Its claim names the probe (its repo, base commit, task,
+verify, k and week, and when it was made), the change (its repo, merge commit or head, and default branch), and hands
+the daemon the run's own key, which only the run's object holds and which it sends with
+`POST /v1/worker/runs/{id}/probe` (`X-Evo-Probe-Key`). The daemon takes its leases as for a replay run, and its
+preflight looks for the program of the probe's verify on the PATH that command runs with. It fetches the checkouts of
+the probe's repo and of the change's, with no hook or fsmonitor of either, and reads:
+
+- the base commit: the probe's own, else the commit of the default branch's first-parent line that was its tip when
+  the probe was made;
+- the tip of origin's default branch of the change's repo, which arm `on` runs with;
+- a commit whose tree is that tip less the change's diff (its merge commit against its first parent, else its head
+  against its merge base), over the files a probe arm places, applied in reverse in an index of its own under the
+  run's directory (`scratch/`), which arm `off` runs with. The files are the harness files a replay places (AGENTS.md,
+  CLAUDE.md, a skill's files) and, on claude-code, the repo's `.claude/settings.json` and `.claude/hooks/`.
+
+When the change places no such file, or its diff no longer comes off the tip, the daemon posts the probe as stale,
+with why, and the run ends `done` without an agent.
+
+Each session then gets a directory of its own under the run's (`on-1/`, `off-1/`, `on-2/`, ...; the arms take turns),
+laid out as a replay arm's: a new repository of the probe's repo at the base commit, the harness files of the change
+as the arm's commit has them (committed on top in that repository when the change is in that repo, else written in a
+folder named as the change's repo), each skill under `.claude/skills/`, and on claude-code the repo's
+`.claude/settings.json` and `.claude/hooks/` under `.claude/` of the directory, where Claude Code loads them. The agent
+starts there in a new session on the probe's task alone, after one line that names its repo's folder
+(`probes.probe_prompt`), with `1/2k` of the run's cost cap and agent time from where the run stands, and none of the
+hub's MCP tools; `evo-agents worker step`, `plan`, `ask` and the others refuse inside it. It never sees the verify.
+
+When its turn is over, or is cut short, which the session notes as `agent_error`, the daemon writes the trace of the
+session to `traces/<arm>-<i>.json` under the run's directory, outside every session's directory and read-only (mode
+0444): `{"commands": [...], "files": [...]}`, the commands the agent ran (at most 200) and the files of the repository
+it changed (at most 500). It runs the probe's verify in the session's repository as code it does not trust, as a judge
+run runs its checks, with `EVO_PROBE_TRACE` naming the trace file, and posts the session: `passed` when the verify
+exited 0, its exit code, the session's cost, turns and agent time, and the runtime and the model the session said it
+ran on. The run's events carry the verify's exit code and time alone, never its command or output, since the agent of
+a later run reads a run's events. The run ends `done` with every session's usage, pushing nothing
+(`gitops.check_push` refuses every push of a probe run); its directory goes with the cleanup of runs older than 7
+days. A run that ends before every session posted is queued again by the hub, two runs in all.
+
 ### A history run on the machine
 
 A history run (kind `history`) is the night's reading of the project's sessions and runs with a cheap model, which
@@ -2555,8 +2600,8 @@ session, whose next run pushes the commit again.
 
 ### The Curator's runs on the machine
 
-A run whose claim names `curator` (a review run, a judge run, a replay run, a history run, or a Builder: a plan run of
-a plan the Curator made) is watched. After each heartbeat the daemon lists what changed in each of its worktrees since
+A run whose claim names `curator` (a review run, a judge run, a replay run, a history run, a probe run, or a Builder:
+a plan run of a plan the Curator made) is watched. After each heartbeat the daemon lists what changed in each of its worktrees since
 it started (committed, staged, changed and untracked files; `.evo-run/` left out, and the other paths under `RUN_COMMIT_EXCLUDES` while no
 commit holds them, since no commit of the run will) and compares it with the charter's protected paths, and the
 run's agent time and cost (the session's running cost as the agent's usage events say it) with its caps: a protected
@@ -2586,7 +2631,7 @@ Claude Code's `mcp_servers` and the `mcp_servers` of a Codex thread gain `evo-hu
 worktree is never imported), with the run's `EVO_RUN_ID`, `EVO_WORKER_HOME` and `EVO_RUN_PROJECT`, so it speaks with
 the worker's token and `X-Evo-Run` and needs no `hub login`. It is left out when the session would have one already
 (the evo-hub plugin on and installed in Claude Code's settings, or a server `evo-hub` in `.claude.json` or the codex
-config), when the run's agent profile allows no such server, for a replay run and a history run, whose agents call none
+config), when the run's agent profile allows no such server, for a replay run, a history run and a probe run, whose agents call none
 of the hub's tools, and where the agent runs in a container. The agent of a review run changes the project's playbook
 of the Curator with `evo-agents worker playbook add|helpful|harmful|retire` (`docs/hub.md`, "The Curator's memory"),
 which refuses outside a review run of this worker.
