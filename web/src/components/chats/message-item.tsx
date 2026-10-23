@@ -1,16 +1,18 @@
 "use client";
 
-import { MessageSquareReply, Reply } from "lucide-react";
+import { BookOpen, MessageSquareReply, Reply } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import type { ReactNode, Ref } from "react";
+import { type ReactNode, type Ref, useContext } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
 import { OutputStrip } from "@/components/data/output-strip";
 import { linkedFiles } from "@/lib/attachments";
 import { Button } from "@/components/ui/button";
 import { type Chat, type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
+import { baseName } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
+import { docKey, messageDocs, OpenDocContext } from "./doc-model";
 import { AuthorAvatar } from "./faces";
 import type { Quote } from "./line-model";
 import { MessageHead, ReplyQuote, ThreadSummary } from "./message-parts";
@@ -133,6 +135,7 @@ export function MessageItem(props: Props) {
         ) : null}
         <OutputStrip outputs={attached} label={tAttach("files")} className={cn(mine && "justify-end")} testId="message-attachments" />
         <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
+        <DocButtons message={message} className={cn(mine && "justify-end")} />
         <MessageLinks message={message} chat={chat} />
         <MessageProgress progress={message.progress} />
         {under?.(message)}
@@ -163,5 +166,25 @@ export function MessageItem(props: Props) {
         ) : null}
       </div>
     </li>
+  );
+}
+
+/** A button for each Markdown document of the message that opens it beside the chat, where the page has the panel. */
+function DocButtons({ message, className }: { message: GroupMessage; className?: string }) {
+  const t = useTranslations("chats.doc");
+  const openDoc = useContext(OpenDocContext);
+  const byKey = new Map<string, string>();
+  for (const file of messageDocs(message)) if (!byKey.has(docKey(file.name))) byKey.set(docKey(file.name), baseName(file.name));
+  const names = [...byKey.values()];
+  if (!openDoc || names.length === 0) return null;
+  return (
+    <div className={cn("flex flex-wrap gap-1.5", className)} data-testid="message-docs">
+      {names.map((name) => (
+        <Button key={name} type="button" variant="outline" size="sm" className="h-7 max-w-full text-xs" onClick={() => openDoc(name)} data-testid="doc-open">
+          <BookOpen aria-hidden="true" />
+          <span className="truncate">{t("open", { name })}</span>
+        </Button>
+      ))}
+    </div>
   );
 }

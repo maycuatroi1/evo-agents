@@ -24,6 +24,8 @@ import { type Chat, type ChatPage, chatsHref, type ChatSummary, type GroupMessag
 
 import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
+import { OpenDocContext } from "./doc-model";
+import { DocPanel } from "./doc-panel";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
 import { preview, type Quote } from "./line-model";
@@ -39,6 +41,8 @@ const MembersSheet = dynamic(() => import("./members-sheet").then((module) => mo
 const CARD = "flex min-h-0 flex-col overflow-hidden rounded-md border bg-card shadow-raised";
 /** Tailwind's 2xl (96rem, 1536 px): from there the thread is a column beside the chat, below it a sheet. */
 const THREAD_COLUMN_QUERY = "(min-width: 96rem)";
+/** Tailwind's lg (64rem): from there a document is a column beside the chat, below it a sheet. */
+const DOC_COLUMN_QUERY = "(min-width: 64rem)";
 
 /**
  * What the page under src/app puts under a message, a hook of the live feed and whether the chat has ended: the chat
@@ -49,7 +53,9 @@ const useNothingUnder: UseUnder = () => undefined;
 
 /**
  * A chat's page (web/DESIGN.md, Chats): its head, its messages, live, and the composer; a thread beside it from 2xl
- * (beside the sidebar and the list, a third column needs that much) or in a sheet below; its members in a sheet. `?thread=ID` opens a thread, and `?message=ID` (where a notice links)
+ * (beside the sidebar and the list, a third column needs that much) or in a sheet below; its members in a sheet. A
+ * Markdown document of a message opens beside the chat from lg and in a sheet below (doc-panel.tsx); while it is
+ * a column, a thread opens in its sheet. `?thread=ID` opens a thread, and `?message=ID` (where a notice links)
  * shows that message marked, in its thread when it is a reply of a group chat or older than the page read.
  * `?compose=1` (where an agent's avatar and its Chat button lead) focuses the composer, then leaves the address. In a
  * direct chat Reply answers a message from the chat's own composer, in its thread, so the agent's session goes on.
@@ -78,6 +84,7 @@ function numberParam(value: string | null): number | null {
 
 function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }) {
   const t = useTranslations("chats.view");
+  const tDoc = useTranslations("chats.doc");
   const queryClient = useQueryClient();
   const params = useSearchParams();
   const me = useMe();
@@ -107,6 +114,19 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   const [highlight, setHighlight] = useState<number | null>(() => numberParam(params.get("message")));
   const [members, setMembers] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
+  // The Markdown document read beside the chat (doc-panel.tsx), by its name, and what opened it: the composer stays in
+  // reach, and Close gives the focus back.
+  const [doc, setDoc] = useState<string | null>(null);
+  const docWide = useMediaQuery(DOC_COLUMN_QUERY);
+  const docOpener = useRef<HTMLElement | null>(null);
+  const openDoc = useCallback((name: string) => {
+    docOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDoc(name);
+  }, []);
+  const closeDoc = () => {
+    setDoc(null);
+    docOpener.current?.focus();
+  };
 
   // A link to one message: a reply of a group chat opens its thread (a direct chat's sits in the line); a message older
   // than the page's opens in its thread, or as a thread of its own.
@@ -169,6 +189,8 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   const under = useUnder(live.feed, ended);
   const direct = chat.kind === "direct";
   const agentName = chat.agents[0]?.name ?? chat.title;
+  // An open document takes the column beside the chat: the thread opens in its sheet meanwhile.
+  const threadColumn = wide && doc === null;
   const panel =
     thread !== null ? (
       <ThreadPanel
@@ -185,11 +207,17 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
         onReact={onReact}
         reacting={reacting}
         under={under}
-        className={wide ? `${CARD} w-[26rem] shrink-0` : "h-full"}
+        className={threadColumn ? `${CARD} w-[26rem] shrink-0` : "h-full"}
       />
     ) : null;
 
+  const docPanel =
+    doc !== null ? (
+      <DocPanel key={doc} feed={live.feed} name={doc} me={me} onClose={closeDoc} className={docWide ? `${CARD} w-[min(44rem,48%)] shrink-0` : "h-full"} />
+    ) : null;
+
   return (
+    <OpenDocContext.Provider value={openDoc}>
     <div className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`}>
         <FileDropFrame className="flex min-h-0 flex-1 flex-col" data-testid="chat-drop">
@@ -239,8 +267,9 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
           )}
         </FileDropFrame>
       </section>
-      {wide ? panel : null}
-      {!wide ? (
+      {docWide ? docPanel : null}
+      {threadColumn ? panel : null}
+      {!threadColumn ? (
         <Sheet open={thread !== null} onOpenChange={(open) => (open ? undefined : closeThread())}>
           <SheetContent side="right" showCloseButton={false} className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg" data-testid="chat-thread-sheet">
             <SheetTitle className="sr-only">{t("threadSheet")}</SheetTitle>
@@ -249,8 +278,30 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
           </SheetContent>
         </Sheet>
       ) : null}
+      {!docWide ? (
+        <Sheet open={doc !== null} onOpenChange={(open) => (open ? undefined : closeDoc())}>
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg"
+            onCloseAutoFocus={(event) => {
+              // The sheet traps the focus until it has closed: only then can the button that opened it take it back.
+              if (docOpener.current?.isConnected) {
+                event.preventDefault();
+                docOpener.current.focus();
+              }
+            }}
+            data-testid="chat-doc-sheet"
+          >
+            <SheetTitle className="sr-only">{tDoc("sheet")}</SheetTitle>
+            <SheetDescription className="sr-only">{tDoc("sheetBody", { name: doc ?? "", title: chat.title })}</SheetDescription>
+            <InFrame>{docPanel}</InFrame>
+          </SheetContent>
+        </Sheet>
+      ) : null}
       <MembersSheet chat={chat} me={me} open={members} onOpenChange={setMembers} />
     </div>
+    </OpenDocContext.Provider>
   );
 }
 
