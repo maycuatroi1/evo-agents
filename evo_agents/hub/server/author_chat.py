@@ -295,10 +295,12 @@ async def finish(request: Request, project: ProjectName, run_id: RunId, user: Cu
     async with request.app.state.engine.begin() as conn:
         access, row = await owned_run(conn, user, project, run_id, "end the chat of")
         state, kind = row[2], row[11]
-        if kind != "author":
+        if kind not in ("author", "browser"):
             article = "an" if kind[:1] in "aeiou" else "a"
             raise HTTPException(
-                409, f"run {run_id} is {article} {kind} run: only an author run has a chat to end; cancel it instead"
+                409,
+                f"run {run_id} is {article} {kind} run: only an author run has a chat to end, and a login session "
+                "its Save; cancel it instead",
             )
         if state in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is {state}: its chat is over")

@@ -72,6 +72,7 @@ class Identity:
     domains: tuple[str, ...]
     version: int  # the version of its profile the run started from
     chromium_version: str | None  # of the Chromium that saved it
+    login_url: str | None = None  # the page its login session opens
     archive: bytes | None = None  # its profile, until it is unpacked
     saving: bool = True  # whether its profile goes back to the hub as the run ends
     cookies: list[dict] = field(default_factory=list)  # of its domains, for an identity after the first
@@ -196,6 +197,12 @@ class Profiles:
         self.installed: Installed | None = None
         self.unpacked = False  # whether the first identity's profile is where the run's Chromium starts
         self.saved = False
+        self.sent: list[int] = []  # the identities whose profile the hub took
+
+    @property
+    def login_url(self) -> str | None:
+        """The page a login session opens: the first identity's login URL."""
+        return self.identities[0].login_url if self.identities else None
 
     @property
     def hub(self):
@@ -229,6 +236,7 @@ class Profiles:
                 domains=tuple(answer.get("domains") or ()),
                 version=int(answer["version"]),
                 chromium_version=answer.get("chromium_version"),
+                login_url=answer.get("login_url") or None,
                 archive=base64.b64decode(profile, validate=True) if profile else None,
             )
         except (HubProblem, KeyError, TypeError, ValueError, binascii.Error) as exc:
@@ -367,6 +375,7 @@ class Profiles:
         except (HubProblem, OSError) as exc:
             self._not_saved([identity], str(exc))
             return
+        self.sent.append(identity.id)
         log.info(
             "browser profile saved",
             extra={

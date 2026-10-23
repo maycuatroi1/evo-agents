@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import aliased
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import browser_login, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server import audit
@@ -74,6 +74,11 @@ class BrowserIdentityCreate(BaseModel):
     owner: Literal[OWNERS] = Field(
         "member", description="member: yours alone (the writer role); project: the admins', usable by every writer"
     )
+    login_url: str | None = Field(
+        None,
+        max_length=browser_login.MAX_URL_CHARS,
+        description="the page a login session opens, an http or https URL; null: the home page of the first domain",
+    )
 
 
 class BrowserIdentity(BaseModel):
@@ -83,6 +88,7 @@ class BrowserIdentity(BaseModel):
     owner: Literal[OWNERS]
     owner_login: str | None = Field(description="the member who owns it; null for the project's")
     domains: list[str]
+    login_url: str | None = Field(description="the page its login session opens; null: its first domain's home page")
     worker: str
     worker_owner: str = Field(description="the login of the worker's owner")
     status: Literal[STATUSES]
@@ -135,6 +141,7 @@ def _view(row, project: str, user: Principal, access: ProjectAccess) -> BrowserI
         owner=row.owner_kind,
         owner_login=row.owner_login,
         domains=list(row.domains),
+        login_url=row.login_url,
         worker=row.worker_name,
         worker_owner=row.worker_owner_login,
         status=row.status,
@@ -244,6 +251,8 @@ async def create_browser_identity(
     admin. It is logged in later, on its worker."""
     b = tables.browser_identities
     domains = list(dict.fromkeys(body.domains))
+    if body.login_url is not None and not browser_login.valid_url(body.login_url):
+        raise HTTPException(422, "login_url is an http or https URL with a host; nothing was created")
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _may_create(access, body.owner)
@@ -255,6 +264,7 @@ async def create_browser_identity(
             "owner_id": user.user_id if body.owner == "member" else None,
             "name": body.name,
             "domains": domains,
+            "login_url": body.login_url,
             "worker_id": worker_id,
             "created_by": user.user_id,
         }

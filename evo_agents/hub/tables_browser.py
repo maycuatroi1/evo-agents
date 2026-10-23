@@ -68,6 +68,7 @@ def browser_tables(metadata: MetaData) -> Table:
         Column("name", Text, nullable=False),
         Column("domains", ARRAY(Text), nullable=False),
         Column("worker_id", BigInteger, nullable=False),
+        Column("login_url", Text),  # the page a login session opens; null: the home page of the first domain (0108)
         Column("status", Text, nullable=False, server_default="active"),
         Column("version", Integer, nullable=False, server_default="0"),
         Column("held_by_run", BigInteger),

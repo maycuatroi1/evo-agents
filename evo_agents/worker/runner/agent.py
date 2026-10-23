@@ -437,6 +437,8 @@ class Agent:
         browser = self.browser
         if browser is None or self.run.daemon.hard_stop.is_set():
             return
+        if getattr(self.run.kind, "saves_browser", True) is False:  # a login session cancelled or out of time
+            return
         try:
             await browser.save()
         except Exception:
