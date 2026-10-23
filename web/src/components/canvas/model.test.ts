@@ -26,6 +26,7 @@ const CONTENT: CanvasContent = {
   archived: false,
   use_cases: ["UC ORD-1"],
   signal_keys: ["checkout.conversion"],
+  problems: [],
 };
 
 describe("the cells of the canvas", () => {

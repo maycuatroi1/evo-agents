@@ -71,6 +71,7 @@ import {
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
 import { decidePath, goalsPath, itemPath as loopItemPath, loopPath, seedLoop, seedLoopProject } from "./support/loop";
+import { problemsPath, seedProblems } from "./support/problems";
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
@@ -1711,6 +1712,23 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "goals");
       await open(page, goalsPath(project, "G-1"));
       await expect(page.locator("#main").getByTestId("goal-items-table")).toBeVisible();
+    },
+  },
+  {
+    name: "the problems, a problem's page and its close dialog",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedProblems(me, project);
+      await open(page, problemsPath(project));
+      await expect(page.locator("#main").getByTestId("problems-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "problems");
+      await open(page, problemsPath(project, "P-1"));
+      await expect(page.locator("#main").getByTestId("problem-metric-strip")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("problem-loop").getByTestId("chain-item").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "a problem's page");
+      await page.locator("#main").getByTestId("problem-close").click();
+      await expect(page.getByTestId("problem-close-dialog")).toBeVisible();
     },
   },
   {

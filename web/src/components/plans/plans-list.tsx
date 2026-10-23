@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { Identifier, NAME_LINK } from "@/components/data/identifier";
+import { ProblemChips } from "@/components/data/problem-chips";
 import { SearchField } from "@/components/data/search-field";
 import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
 import { activePlanRun, planRunPhase } from "@/components/runs/model";
@@ -31,7 +32,7 @@ import { planHref } from "./links";
 import { ReadOnlyNotice } from "./plan-header";
 import { CompactProgress } from "./progress";
 
-const NARROW_HIDDEN = { revision: "hidden md:table-cell", updated: "hidden lg:table-cell" };
+const NARROW_HIDDEN = { problems: "hidden lg:table-cell", revision: "hidden md:table-cell", updated: "hidden lg:table-cell" };
 
 /** The project's active runs, as the summary query reads them: which plans have a plan run, or runs of their steps. */
 type Activity = { runs: Run[]; loaded: boolean };
@@ -125,6 +126,15 @@ function PlansTable({
           );
         },
       }),
+      helper.accessor((row) => (row.problems ?? []).join(" "), {
+        id: "problems",
+        header: () => t("columns.problems"),
+        enableSorting: false,
+        cell: (info) => {
+          const codes = info.row.original.problems ?? [];
+          return codes.length === 0 ? <span className="text-fg-subtle">-</span> : <ProblemChips project={project} codes={codes} />;
+        },
+      }),
       helper.accessor((row) => percent(row.steps_done, row.steps_total), {
         id: "progress",
         header: () => t("columns.progress"),
@@ -168,7 +178,8 @@ function PlansTable({
       // On a phone: the plan, its active plan run, and its id with the steps done. Run plan is on the plan's page.
       mobile={(plan) => {
         const planRun = activePlanRun(activity.runs, plan.plan_id);
-        const progress = tProgress("doneOfTotal", { done: plan.steps_done, total: plan.steps_total });
+        const steps = tProgress("doneOfTotal", { done: plan.steps_done, total: plan.steps_total });
+        const progress = plan.problems?.length ? t("mobileProblems", { progress: steps, problems: plan.problems.join(", ") }) : steps;
         return {
           title: plan.title ?? plan.plan_id,
           titleText: plan.title ?? plan.plan_id,

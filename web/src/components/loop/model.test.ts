@@ -84,6 +84,8 @@ describe("work items", () => {
 
   it("are named by what they are about, or by their kind alone", () => {
     expect(subjectOf(item(1, { kind: "brainstorm", goal: "G-3" }))).toBe("G-3");
+    expect(subjectOf(item(1, { kind: "discover", claim: { canvas: "northwind", code: "CL-4" } }))).toBe("CL-4");
+    expect(subjectOf(item(1, { kind: "discover", goal: "G-2" }))).toBe("G-2");
     expect(subjectOf(item(1, { kind: "use_case", claim: { canvas: "northwind", code: "CL-2" } }))).toBe("CL-2");
     expect(subjectOf(item(1, { kind: "build", use_case: { document: "demo-shop", code: "UC ORD-1", version: 1 } }))).toBe("UC ORD-1");
     expect(subjectOf(item(1, { kind: "deliver", plan: "northwind-one-tap" }))).toBe("northwind-one-tap");
