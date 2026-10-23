@@ -42,6 +42,9 @@ def test_hub_canvas_commands_are_in_the_contract():
         assert printed[f"hub canvas {verb}"]["json"]["schema"] == "CanvasProposal"
     assert printed["hub canvas proposal list"]["json"]["kind"] == "array"
     assert printed["hub canvas brainstorm"]["json"]["schema"] == "CanvasBrainstorm"
+    assert printed["hub canvas baseline list"]["json"]["schema"] == "CanvasBaselineSummary"
+    for verb in ("baseline show", "baseline open", "baseline decide"):
+        assert printed[f"hub canvas {verb}"]["json"]["schema"] == "CanvasBaseline"
     options = {o["flags"][0]: o for o in printed["hub canvas edit"]["options"]}
     assert options["--status"]["choices"] == ["assumption", "testing", "validated", "invalidated", "retired"]
     assert options["--project"]["required"] and not options["--base-rev"]["required"]
