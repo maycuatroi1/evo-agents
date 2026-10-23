@@ -26,6 +26,7 @@
   prints its worktree's path (``chat_cli``).
 - ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
+- ``probe add``: a review run's agent's probe of a merged change that has none (``probe_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -60,8 +61,25 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import backup_cli, chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
-from evo_agents.worker.agent_input import attest, decision_option, evidence_items, plan_file, promotion_file, read_text
+from evo_agents.worker import (
+    backup_cli,
+    chat_cli,
+    output_cli,
+    playbook_cli,
+    probe_cli,
+    projects_cli,
+    step_verify,
+    triage_cli,
+)
+from evo_agents.worker.agent_input import (
+    attest,
+    decision_option,
+    evidence_items,
+    plan_file,
+    probe_file,
+    promotion_file,
+    read_text,
+)
 from evo_agents.worker.browser import register_browser
 from evo_agents.worker.home import (
     NotJoined,
@@ -487,6 +505,7 @@ MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
 # a review run's on the playbook, and of any run's outputs
 AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
 AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output, backup_cli.register_backup)
+AGENT_PARSERS += (probe_cli.register_probe,)  # a review run's probe of a merged change
 
 
 @dataclass
@@ -809,6 +828,8 @@ def cmd_propose(args) -> int:
         text = read_text(args.summary_file, "summary", MAX_BODY_BYTES)
         if text is not None:
             body["summary"] = text
+    if args.probe_file:
+        body["probe"] = probe_file(args.probe_file)
     workspaces = _workspaces(agent)
 
     async def work(hub) -> dict:
@@ -942,6 +963,11 @@ def _register_review(wsub) -> None:
         "--evidence", action="append", metavar="SPEC", help="evidence of its own, as finding takes it; repeat it"
     )
     propose.add_argument("--summary-file", help="markdown: the problem, the change, what waiting costs (- for stdin)")
+    propose.add_argument(
+        "--probe-file",
+        help="the probe, YAML or JSON: repo, commit, task and verify; required when the evidence cites a correction "
+        "and a path is an AGENTS.md, a CLAUDE.md, a skill or the repo's .claude settings or hooks",
+    )
     propose.set_defaults(func=cmd_propose)
 
 

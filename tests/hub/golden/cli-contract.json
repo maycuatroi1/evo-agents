@@ -4351,6 +4351,7 @@
           "review",
           "replay",
           "history",
+          "probes",
           "reviewer",
           "builder",
           "judge",
@@ -4415,6 +4416,7 @@
           "review",
           "replay",
           "history",
+          "probes",
           "reviewer",
           "builder",
           "judge",
@@ -5127,6 +5129,283 @@
         "schema": "PlaybookView"
       }
     },
+    "hub curator probe add": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--change"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--proposal"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--commit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--task"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--task-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--verify"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "proposal_id",
+          "change_id",
+          "repo",
+          "commit",
+          "task",
+          "verify",
+          "state",
+          "source",
+          "created_by",
+          "created_run_id",
+          "retired_at",
+          "retired_note",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Probe"
+      }
+    },
+    "hub curator probe list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--change"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--proposal"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "active",
+            "retired"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "probes",
+          "total"
+        ],
+        "schema": "ProbeList"
+      }
+    },
+    "hub curator probe retire": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "proposal_id",
+          "change_id",
+          "repo",
+          "commit",
+          "task",
+          "verify",
+          "state",
+          "source",
+          "created_by",
+          "created_run_id",
+          "retired_at",
+          "retired_note",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Probe"
+      }
+    },
+    "hub curator probe show": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "proposal_id",
+          "change_id",
+          "repo",
+          "commit",
+          "task",
+          "verify",
+          "state",
+          "source",
+          "created_by",
+          "created_run_id",
+          "retired_at",
+          "retired_note",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Probe"
+      }
+    },
     "hub curator proposal accept": {
       "positionals": [
         {
@@ -5191,7 +5470,8 @@
           "plan",
           "promotion",
           "note",
-          "change"
+          "change",
+          "probe"
         ],
         "schema": "Proposal"
       }
@@ -5270,7 +5550,8 @@
           "plan",
           "promotion",
           "note",
-          "change"
+          "change",
+          "probe"
         ],
         "schema": "Proposal"
       }
@@ -5506,7 +5787,8 @@
           "plan",
           "promotion",
           "note",
-          "change"
+          "change",
+          "probe"
         ],
         "schema": "Proposal"
       }
@@ -5567,7 +5849,8 @@
           "plan",
           "promotion",
           "note",
-          "change"
+          "change",
+          "probe"
         ],
         "schema": "Proposal"
       }
@@ -16349,6 +16632,60 @@
       ],
       "json": null
     },
+    "worker probe add": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--change"
+          ],
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--commit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--task"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--task-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--verify"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker propose": {
       "positionals": [],
       "options": [
@@ -16460,6 +16797,14 @@
         {
           "flags": [
             "--summary-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--probe-file"
           ],
           "value": "string",
           "required": false,
@@ -16755,7 +17100,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.39.1"
+      "version": "0.39.3"
     },
     "paths": {
       "/v1/health": {
@@ -39785,6 +40130,665 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/PlaybookEntry"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/probes": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "List Probes",
+          "description": "The project's probes the caller may read, newest first.",
+          "operationId": "list_probes_v1_projects__project__curator_probes_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "change",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the probes of this change",
+                "title": "Change"
+              },
+              "description": "the probes of this change"
+            },
+            {
+              "name": "proposal",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the probes of this proposal",
+                "title": "Proposal"
+              },
+              "description": "the probes of this proposal"
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "active",
+                      "retired"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "active or retired; both by default",
+                "title": "State"
+              },
+              "description": "active or retired; both by default"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProbeList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Add Probe",
+          "description": "Add a probe to a change or a proposal of the project; its admins alone may.",
+          "operationId": "add_probe_v1_projects__project__curator_probes_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeAdd"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Probe"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/probes/{probe_id}": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Probe",
+          "operationId": "show_probe_v1_projects__project__curator_probes__probe_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "probe_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Probe Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Probe"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Edit Probe",
+          "description": "Change the repo, commit, task or verify of an active probe; the project's admins alone may.",
+          "operationId": "edit_probe_v1_projects__project__curator_probes__probe_id__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "probe_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Probe Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Probe"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/probes/{probe_id}/retire": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Retire Probe",
+          "description": "Retire a probe: no probe run takes it from then on; the project's admins alone may.",
+          "operationId": "retire_probe_v1_projects__project__curator_probes__probe_id__retire_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "probe_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Probe Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeRetire"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Probe"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/probes": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Probe",
+          "description": "A probe from the agent of the review run this worker holds, for a merged change that has none.",
+          "operationId": "record_probe_v1_worker_runs__run_id__probes_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewProbe"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Probe"
                   }
                 }
               }
@@ -75397,6 +76401,9 @@
             "history": {
               "$ref": "#/components/schemas/HistorySettings"
             },
+            "probes": {
+              "$ref": "#/components/schemas/ProbeSettings"
+            },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
             },
@@ -75637,6 +76644,9 @@
             },
             "history": {
               "$ref": "#/components/schemas/HistorySettings"
+            },
+            "probes": {
+              "$ref": "#/components/schemas/ProbeSettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -94734,6 +95744,461 @@
           ],
           "title": "PrincipalCost"
         },
+        "Probe": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id",
+              "description": "the proposal it came with, if any"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id",
+              "description": "the change it probes; null until accepting its proposal made one"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "commit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit",
+              "description": "the base commit; null: the tip of the default branch when it was made"
+            },
+            "task": {
+              "type": "string",
+              "title": "Task"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify",
+              "description": "the answer key: the project's admins alone read it, null for the others"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "active",
+                "retired"
+              ],
+              "title": "State"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "proposal",
+                "review",
+                "admin"
+              ],
+              "title": "Source",
+              "description": "who wrote it: its proposal, a review run or an admin"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created Run Id"
+            },
+            "retired_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Retired At"
+            },
+            "retired_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Retired Note"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "proposal_id",
+            "change_id",
+            "repo",
+            "commit",
+            "task",
+            "verify",
+            "state",
+            "source",
+            "created_by",
+            "created_run_id",
+            "retired_at",
+            "retired_note",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "Probe"
+        },
+        "ProbeAdd": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\x00-\\x1f\\x7f/:][^\\x00-\\x1f\\x7f:]{0,199}$",
+              "title": "Repo",
+              "description": "the repo of the project the task runs in"
+            },
+            "commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit",
+              "description": "the base commit; none: the tip of the repo's default branch when the probe is made"
+            },
+            "task": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Task",
+              "description": "the task text the agent of a probe run is given, 16 KiB"
+            },
+            "verify": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Verify",
+              "description": "one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "repo",
+            "task",
+            "verify"
+          ],
+          "title": "ProbeAdd",
+          "description": "A probe an admin adds: to a change, or to a proposal (whose change, once accepting it made one, takes it)."
+        },
+        "ProbeEdit": {
+          "properties": {
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^[^\\x00-\\x1f\\x7f/:][^\\x00-\\x1f\\x7f:]{0,199}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit"
+            },
+            "task": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ProbeEdit",
+          "description": "What an admin changes of a probe: any of its repo, commit, task and verify, at least one."
+        },
+        "ProbeIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\x00-\\x1f\\x7f/:][^\\x00-\\x1f\\x7f:]{0,199}$",
+              "title": "Repo",
+              "description": "the repo of the project the task runs in"
+            },
+            "commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit",
+              "description": "the base commit; none: the tip of the repo's default branch when the probe is made"
+            },
+            "task": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Task",
+              "description": "the task text the agent of a probe run is given, 16 KiB"
+            },
+            "verify": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Verify",
+              "description": "one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "repo",
+            "task",
+            "verify"
+          ],
+          "title": "ProbeIn",
+          "description": "A probe: the task an agent is given, from a base commit of a repo, and the verify that says it did not repeat\nthe mistake."
+        },
+        "ProbeList": {
+          "properties": {
+            "probes": {
+              "items": {
+                "$ref": "#/components/schemas/Probe"
+              },
+              "type": "array",
+              "title": "Probes",
+              "description": "newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total"
+            }
+          },
+          "type": "object",
+          "required": [
+            "probes",
+            "total"
+          ],
+          "title": "ProbeList"
+        },
+        "ProbeModel": {
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "default": "claude-code"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "as the runtime names it; null: the runtime's own choice"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ProbeModel",
+          "description": "A runtime and model the arms of a probe run on."
+        },
+        "ProbeRetire": {
+          "properties": {
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why it is retired"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ProbeRetire"
+        },
+        "ProbeSettings": {
+          "properties": {
+            "k": {
+              "type": "integer",
+              "maximum": 10.0,
+              "minimum": 1.0,
+              "title": "K",
+              "description": "arms of each probe, on each model",
+              "default": 3
+            },
+            "models": {
+              "items": {
+                "$ref": "#/components/schemas/ProbeModel"
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "Models",
+              "description": "the runtimes and models the arms run on, each once; empty: the charter's builder"
+            },
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 7000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the most the probe runs of an ISO week in the charter's time zone cost; null: no probes run"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ProbeSettings",
+          "description": "How the probes of the Curator's changes run (``evo_agents.hub.probes``): how many arms of each probe, on which\nmodels, and the most they cost in an ISO week of the charter's time zone."
+        },
         "Problem": {
           "properties": {
             "path": {
@@ -96210,6 +97675,17 @@
                 }
               ],
               "description": "what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it waits; null before, for tier 3, and when the caller may not read its plan"
+            },
+            "probe": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Probe"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "its active probe, if any; its verify is null unless the caller is an admin of the project"
             }
           },
           "type": "object",
@@ -96444,6 +97920,17 @@
                 }
               ],
               "description": "kind memory: in place of a plan"
+            },
+            "probe": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProbeIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place"
             }
           },
           "type": "object",
@@ -99743,6 +101230,60 @@
             "items"
           ],
           "title": "Results"
+        },
+        "ReviewProbe": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\x00-\\x1f\\x7f/:][^\\x00-\\x1f\\x7f:]{0,199}$",
+              "title": "Repo",
+              "description": "the repo of the project the task runs in"
+            },
+            "commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit",
+              "description": "the base commit; none: the tip of the repo's default branch when the probe is made"
+            },
+            "task": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Task",
+              "description": "the task text the agent of a probe run is given, 16 KiB"
+            },
+            "verify": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Verify",
+              "description": "one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command"
+            },
+            "change_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Change Id"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "repo",
+            "task",
+            "verify",
+            "change_id"
+          ],
+          "title": "ReviewProbe",
+          "description": "A probe the agent of a review run adds to a merged change that has none."
         },
         "ReviewRunSummary": {
           "properties": {

@@ -325,3 +325,47 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
         Index("curator_playbook_deltas_entry_idx", "entry_id", "id"),
     )
     return entries, deltas
+
+
+def probe_tables(metadata: MetaData) -> Table:
+    """curator_probes (0130), added to ``metadata``: a probe of a proposal, then of its change."""
+    return Table(
+        "curator_probes",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("proposal_id", BigInteger),
+        Column("change_id", BigInteger),
+        Column("repo", Text, nullable=False),
+        Column("base_sha", Text),  # None: the tip of the repo's default branch when the probe was made
+        Column("task", Text, nullable=False),
+        Column("verify", Text, nullable=False),
+        Column("state", Text, nullable=False, server_default="active"),
+        Column("source", Text, nullable=False),
+        Column("label", JSONB, nullable=False),
+        Column("created_by", BigInteger),
+        Column("created_run_id", BigInteger),
+        Column("updated_by", BigInteger),
+        _when("retired_at"),
+        Column("retired_note", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_probes_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_probes_proposal_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_probes_change_id_fkey"
+        ),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name="curator_probes_created_by_fkey"),
+        ForeignKeyConstraint(
+            ["created_run_id"], ["runs.id"], ondelete="SET NULL", name="curator_probes_created_run_id_fkey"
+        ),
+        ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name="curator_probes_updated_by_fkey"),
+        PrimaryKeyConstraint("id", name="curator_probes_pkey"),
+        Index("curator_probes_project_idx", "project_id", "id"),
+        Index("curator_probes_change_idx", "change_id"),
+        Index("curator_probes_proposal_idx", "proposal_id"),
+    )

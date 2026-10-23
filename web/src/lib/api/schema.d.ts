@@ -4156,6 +4156,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Probes
+         * @description The project's probes the caller may read, newest first.
+         */
+        get: operations["list_probes_v1_projects__project__curator_probes_get"];
+        put?: never;
+        /**
+         * Add Probe
+         * @description Add a probe to a change or a proposal of the project; its admins alone may.
+         */
+        post: operations["add_probe_v1_projects__project__curator_probes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/probes/{probe_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Probe */
+        get: operations["show_probe_v1_projects__project__curator_probes__probe_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Probe
+         * @description Change the repo, commit, task or verify of an active probe; the project's admins alone may.
+         */
+        patch: operations["edit_probe_v1_projects__project__curator_probes__probe_id__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/probes/{probe_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Probe
+         * @description Retire a probe: no probe run takes it from then on; the project's admins alone may.
+         */
+        post: operations["retire_probe_v1_projects__project__curator_probes__probe_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Probe
+         * @description A probe from the agent of the review run this worker holds, for a merged change that has none.
+         */
+        post: operations["record_probe_v1_worker_runs__run_id__probes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/org": {
         parameters: {
             query?: never;
@@ -12630,6 +12715,7 @@ export interface components {
             review?: components["schemas"]["ReviewSettings"];
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
+            probes?: components["schemas"]["ProbeSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -12760,6 +12846,7 @@ export interface components {
             review?: components["schemas"]["ReviewSettings"];
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
+            probes?: components["schemas"]["ProbeSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -21137,6 +21224,195 @@ export interface components {
              */
             cost_month_usd: number;
         };
+        /** Probe */
+        Probe: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Proposal Id
+             * @description the proposal it came with, if any
+             */
+            proposal_id: number | null;
+            /**
+             * Change Id
+             * @description the change it probes; null until accepting its proposal made one
+             */
+            change_id: number | null;
+            /** Repo */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; null: the tip of the default branch when it was made
+             */
+            commit: string | null;
+            /** Task */
+            task: string;
+            /**
+             * Verify
+             * @description the answer key: the project's admins alone read it, null for the others
+             */
+            verify: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "retired";
+            /**
+             * Source
+             * @description who wrote it: its proposal, a review run or an admin
+             * @enum {string}
+             */
+            source: "proposal" | "review" | "admin";
+            /** Created By */
+            created_by: string | null;
+            /** Created Run Id */
+            created_run_id: number | null;
+            /** Retired At */
+            retired_at: string | null;
+            /** Retired Note */
+            retired_note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProbeAdd
+         * @description A probe an admin adds: to a change, or to a proposal (whose change, once accepting it made one, takes it).
+         */
+        ProbeAdd: {
+            /**
+             * Repo
+             * @description the repo of the project the task runs in
+             */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; none: the tip of the repo's default branch when the probe is made
+             */
+            commit?: string | null;
+            /**
+             * Task
+             * @description the task text the agent of a probe run is given, 16 KiB
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command
+             */
+            verify: string;
+            /** Change Id */
+            change_id?: number | null;
+            /** Proposal Id */
+            proposal_id?: number | null;
+        };
+        /**
+         * ProbeEdit
+         * @description What an admin changes of a probe: any of its repo, commit, task and verify, at least one.
+         */
+        ProbeEdit: {
+            /** Repo */
+            repo?: string | null;
+            /** Commit */
+            commit?: string | null;
+            /** Task */
+            task?: string | null;
+            /** Verify */
+            verify?: string | null;
+        };
+        /**
+         * ProbeIn
+         * @description A probe: the task an agent is given, from a base commit of a repo, and the verify that says it did not repeat
+         *     the mistake.
+         */
+        ProbeIn: {
+            /**
+             * Repo
+             * @description the repo of the project the task runs in
+             */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; none: the tip of the repo's default branch when the probe is made
+             */
+            commit?: string | null;
+            /**
+             * Task
+             * @description the task text the agent of a probe run is given, 16 KiB
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command
+             */
+            verify: string;
+        };
+        /** ProbeList */
+        ProbeList: {
+            /**
+             * Probes
+             * @description newest first
+             */
+            probes: components["schemas"]["Probe"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ProbeModel
+         * @description A runtime and model the arms of a probe run on.
+         */
+        ProbeModel: {
+            /**
+             * Runtime
+             * @default claude-code
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description as the runtime names it; null: the runtime's own choice
+             */
+            model?: string | null;
+        };
+        /** ProbeRetire */
+        ProbeRetire: {
+            /**
+             * Note
+             * @description why it is retired
+             */
+            note?: string | null;
+        };
+        /**
+         * ProbeSettings
+         * @description How the probes of the Curator's changes run (``evo_agents.hub.probes``): how many arms of each probe, on which
+         *     models, and the most they cost in an ISO week of the charter's time zone.
+         */
+        ProbeSettings: {
+            /**
+             * K
+             * @description arms of each probe, on each model
+             * @default 3
+             */
+            k: number;
+            /**
+             * Models
+             * @description the runtimes and models the arms run on, each once; empty: the charter's builder
+             */
+            models?: components["schemas"]["ProbeModel"][];
+            /**
+             * Budget Usd
+             * @description the most the probe runs of an ISO week in the charter's time zone cost; null: no probes run
+             */
+            budget_usd?: number | null;
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -21776,6 +22052,8 @@ export interface components {
             note: string | null;
             /** @description what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it waits; null before, for tier 3, and when the caller may not read its plan */
             change?: components["schemas"]["Change"] | null;
+            /** @description its active probe, if any; its verify is null unless the caller is an admin of the project */
+            probe?: components["schemas"]["Probe"] | null;
         };
         /** ProposalAnswer */
         ProposalAnswer: {
@@ -21855,6 +22133,8 @@ export interface components {
             } | null;
             /** @description kind memory: in place of a plan */
             promotion?: components["schemas"]["PromotionIn"] | null;
+            /** @description a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place */
+            probe?: components["schemas"]["ProbeIn"] | null;
         };
         /** ProposalList */
         ProposalList: {
@@ -23163,6 +23443,34 @@ export interface components {
         Results: {
             /** Items */
             items: components["schemas"]["Found"][];
+        };
+        /**
+         * ReviewProbe
+         * @description A probe the agent of a review run adds to a merged change that has none.
+         */
+        ReviewProbe: {
+            /**
+             * Repo
+             * @description the repo of the project the task runs in
+             */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; none: the tip of the repo's default branch when the probe is made
+             */
+            commit?: string | null;
+            /**
+             * Task
+             * @description the task text the agent of a probe run is given, 16 KiB
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command
+             */
+            verify: string;
+            /** Change Id */
+            change_id: number;
         };
         /**
          * ReviewRunSummary
@@ -45179,6 +45487,421 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaybookEntry"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_probes_v1_projects__project__curator_probes_get: {
+        parameters: {
+            query?: {
+                /** @description the probes of this change */
+                change?: number | null;
+                /** @description the probes of this proposal */
+                proposal?: number | null;
+                /** @description active or retired; both by default */
+                state?: ("active" | "retired") | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_probe_v1_projects__project__curator_probes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_probe_v1_projects__project__curator_probes__probe_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                probe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_probe_v1_projects__project__curator_probes__probe_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                probe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    retire_probe_v1_projects__project__curator_probes__probe_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                probe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeRetire"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    record_probe_v1_worker_runs__run_id__probes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewProbe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
                 };
             };
             /** @description Unauthorized */
