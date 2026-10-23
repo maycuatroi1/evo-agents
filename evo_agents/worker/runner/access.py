@@ -113,15 +113,16 @@ async def check(
     *,
     path: str | None,
     pushes: Collection[str] = (),
-    verify: Collection[str] = (),
+    verify: Collection[str | tuple[str | None, str]] = (),
     hidden: list[str] | None = None,
     fetched: Collection[str] = (),
 ) -> None:
     """The preflight of the run (``preflight``): each of ``repos`` has an origin in the project and one git reads with
     what the run holds, and pushes to for those of ``pushes``; each program ``verify`` and ``hidden`` (a judge run's
-    hidden checks) call is on ``path``. The origins are asked several at a time (``parallel.each``), each problem in
-    the order of ``repos``; those of ``fetched`` are not asked, the fetch of their worktrees reads them. RunFailed with
-    every problem found, the cause of the first: the agent does not start."""
+    hidden checks) call is on ``path``, a verify being a command or a (step key, command) pair whose problem names the
+    step. The origins are asked several at a time (``parallel.each``), each problem in the order of ``repos``; those
+    of ``fetched`` are not asked, the fetch of their worktrees reads them. RunFailed with every problem found, the
+    cause of the first: the agent does not start."""
     names = repo_names(repos)
     problems: list[preflight.Problem] = []
     unlisted = run.credentials.unlisted
