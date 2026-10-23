@@ -332,7 +332,9 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict)
     pr = tables.proposals
     row = (
         await conn.execute(
-            select(pr.c.kind, pr.c.tier, pr.c.tier_reasons).where(pr.c.id == change.proposal_id).with_for_update()
+            select(pr.c.kind, pr.c.tier, pr.c.tier_reasons, pr.c.fix_of)
+            .where(pr.c.id == change.proposal_id)
+            .with_for_update()
         )
     ).one()
     protected = [item for item in charter.get("protected_paths") or [] if isinstance(item, str)]
@@ -344,11 +346,12 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict)
             list(facts.impacted),
             unknown=facts.unknown,
             knowledge=_knowledge_others(facts.knowledge) if row.kind == tiers.KNOWLEDGE_KIND else None,
+            fix_of=row.fix_of,
         )
     except ValueError:
         found = tiers.Tier(3, [f"kind {row.kind} is not a kind of change: tier 3"])
     if found.tier <= row.tier:
-        return await _replayed(conn, change, row.kind, max(row.tier, change.tier), facts.paths)
+        return await _replayed(conn, change, row.kind, max(row.tier, change.tier), facts.paths, fix=row.fix_of)
     kept = list(row.tier_reasons or [])
     for reason in found.reasons[1:]:
         if reason not in kept:
@@ -359,7 +362,7 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict)
         "curator change raised",
         extra={"change_id": change.id, "proposal_id": change.proposal_id, "tier": found.tier, "was": row.tier},
     )
-    return await _replayed(conn, change, row.kind, found.tier, facts.paths)
+    return await _replayed(conn, change, row.kind, found.tier, facts.paths, fix=row.fix_of)
 
 
 # Replays that won
@@ -379,10 +382,10 @@ async def replay_verdict(conn: AsyncConnection, change_id: int, head_sha: str | 
     return {**replay.verdict(rows, head_sha), "replays": len(rows)}
 
 
-async def _replayed(conn: AsyncConnection, change, kind: str, tier: int, paths) -> int:
+async def _replayed(conn: AsyncConnection, change, kind: str, tier: int, paths, *, fix: int | None = None) -> int:
     """The tier the change merges with, its rules giving it ``tier`` and its diff touching ``paths``
-    (``tiers.replay_tier``)."""
-    if tier in (0, 3) or kind not in tiers.REPLAY_KINDS:
+    (``tiers.replay_tier``); a fix proposal's (``fix``, the change it fixes) keeps ``tier``."""
+    if fix is not None or tier in (0, 3) or kind not in tiers.REPLAY_KINDS:
         return tier
     harness = replay.harness_only(path for _, path in named_paths(change.repo, list(paths)))
     if harness is None:
@@ -397,11 +400,12 @@ async def _replayed(conn: AsyncConnection, change, kind: str, tier: int, paths) 
 
 async def merge_tier(conn: AsyncConnection, change) -> tuple[int, str]:
     """(the tier the job takes judged ``change`` at before it reads GitHub again, why it waits for its owner): its
-    proposal's tier, or 0 when the change's replays won at its head, its files then read again (``retier``)."""
+    proposal's tier, or 0 when the change's replays won at its head, its files then read again (``retier``); a fix
+    proposal's never 0 by its replays."""
     pr = tables.proposals
-    row = (await conn.execute(select(pr.c.kind, pr.c.tier).where(pr.c.id == change.proposal_id))).one()
+    row = (await conn.execute(select(pr.c.kind, pr.c.tier, pr.c.fix_of).where(pr.c.id == change.proposal_id))).one()
     why = f"tier {row.tier} waits for its owner to merge it"
-    if row.tier in (0, 3) or row.kind not in tiers.REPLAY_KINDS:
+    if row.fix_of is not None or row.tier in (0, 3) or row.kind not in tiers.REPLAY_KINDS:
         return row.tier, why
     found = await replay_verdict(conn, change.id, change.head_sha)
     if found["won"]:

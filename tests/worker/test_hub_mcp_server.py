@@ -42,7 +42,7 @@ def test_a_curator_run_on_claude_code_gets_the_hubs_mcp_server_and_another_run_d
     for role in ("builder", "judge"):
         run = {"curator": {"role": role}, "kind": "plan" if role == "builder" else "judge"}
         assert _options(_claude(tmp_path, _samples, env=env, **run)).mcp_servers == {"evo-hub": SERVER}
-    for role in ("replay", "history"):  # their agents call none of the hub's tools
+    for role in ("replay", "history", "probe"):  # their agents call none of the hub's tools
         assert _options(_claude(tmp_path, _samples, env=env, curator={"role": role})).mcp_servers == {}
     assert _options(_claude(tmp_path, _samples, env=env)).mcp_servers == {}, "a member's run: as before"
 

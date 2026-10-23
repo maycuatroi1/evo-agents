@@ -64,11 +64,13 @@ class RunKind(Protocol):
         """Leave the plan's branches once the run is over, so they can be checked out elsewhere."""
 
 
-def _own_keys(curator: dict | None) -> tuple[str | None, str | None, str | None]:
-    """The judge, replay and history keys of a run of the Curator, taken out of its spec (None for another run)."""
+def _own_keys(curator: dict | None) -> tuple[str | None, str | None, str | None, str | None]:
+    """The judge, replay, history and probe keys of a run of the Curator, taken out of its spec (None for another
+    run)."""
     if curator is None:
-        return None, None, None
-    return tuple(curator.pop(f"{kind}_key", None) for kind in ("judge", "replay", "history"))  # type: ignore[return-value]
+        return None, None, None, None
+    kinds = ("judge", "replay", "history", "probe")
+    return tuple(curator.pop(f"{kind}_key", None) for kind in kinds)  # type: ignore[return-value]
 
 
 class Run:
@@ -109,7 +111,7 @@ class Run:
         self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
         # A judge run's, a replay run's and a history run's own key: in this object alone, out of the spec its adapter
         # and records see.
-        self.judge_key, self.replay_key, self.history_key = _own_keys(self.curator)
+        self.judge_key, self.replay_key, self.history_key, self.probe_key = _own_keys(self.curator)
         self.listeners: list = []  # what a kind counts of its agent's events: each called with (kind, body)
         self.unsupported_noted: set[str] = set()
         self._background: set[asyncio.Task] = set()

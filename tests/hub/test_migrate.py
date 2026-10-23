@@ -135,6 +135,8 @@ TABLES |= pg.BROWSER_TABLES  # migration 0117
 TABLES |= pg.CRM_TABLES  # migration 0124
 TABLES |= pg.MARKETING_TABLES  # migration 0125
 TABLES |= pg.GROWTH_TABLES  # migration 0127
+TABLES |= pg.PROBE_TABLES  # migration 0130
+TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -216,8 +218,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_sixty_six_tables(hub_db):
-    assert len(TABLES) == 166  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_sixty_eight_tables(hub_db):
+    assert len(TABLES) == 168  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2975,3 +2977,126 @@ def test_0126_marketing_browser_adds_the_queue_states_and_the_session_and_going_
         assert [row.state for row in found] == ["draft", "draft"]
         assert all("browser adapter" in row.reason for row in found)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0126") :]
+
+
+def test_0130_curator_probes_keep_a_task_and_a_verify_and_going_back_drops_the_table(hub_db):
+    move_to(hub_db, "0129")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0130")
+    t = hub_tables
+    label = {"level": "internal"}
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, _author_run(ids))
+        proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "harness", "kind": "docs"}
+        proposal |= {
+            "title": "Say where the tests live",
+            "summary": "s",
+            "paths": [],
+            "tier": 1,
+            "tier_reasons": ["a docs change"],
+        }
+        proposal |= {
+            "evidence": [{"text": "e"}],
+            "evidence_count": 1,
+            "draft": {},
+            "fingerprint": "f" * 64,
+            "label": label,
+        }
+        proposal_id = one(conn, insert(t.proposals).values(proposal).returning(t.proposals.c.id))
+        probe = {"project_id": ids["project"], "proposal_id": proposal_id, "repo": "demo", "task": "Add a test"}
+        probe |= {"verify": "pytest -q tests/test_x.py", "source": "proposal", "label": label}
+        probe_id = one(conn, insert(t.curator_probes).values(probe).returning(t.curator_probes.c.id))
+        assert one(conn, select(t.curator_probes.c.state).where(t.curator_probes.c.id == probe_id)) == "active"
+        assert one(conn, select(t.curator_probes.c.base_sha)) is None  # the tip of the default branch
+        for bad in (
+            {**probe, "state": "paused"},
+            {**probe, "source": "someone"},
+            {**probe, "verify": ""},
+            {**probe, "verify": "x" * 2001},
+            {**probe, "task": ""},
+            {**probe, "base_sha": "main"},
+            {**probe, "proposal_id": None},  # a probe belongs to a proposal or a change
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.curator_probes).values(bad))
+    with live.connect(hub_db) as conn:  # a proposal takes its probe with it
+        conn.execute(delete(t.proposals).where(t.proposals.c.id == proposal_id))
+        assert one(conn, select(func.count()).select_from(t.curator_probes)) == 0
+    move_to(hub_db, "0129", down=True)
+    assert "curator_probes" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0130") :]
+
+
+def test_0132_notices_take_the_weekly_probe_report_and_going_back_deletes_those_notices(hub_db):
+    move_to(hub_db, "0131")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    n = hub_tables.notifications
+    notice = {"user_id": ids["user"], "kind": "notice", "title": "Probe report", "project_id": ids["project"]}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(n).values({**notice, "notice_kind": "curator_probe_report"}))
+    move_to(hub_db, "0132")
+    with live.connect(hub_db) as conn:
+        for kind in ("curator_probe_report", "browser_needs_login", "release"):
+            conn.execute(insert(n).values({**notice, "notice_kind": kind}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(n).values({**notice, "notice_kind": "curator_probe_weekly"}))
+    # Going back deletes the reports and keeps the other kinds.
+    move_to(hub_db, "0131", down=True)
+    assert query(hub_db, select(n.c.notice_kind).order_by(n.c.id)) == [("browser_needs_login",), ("release",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n).where(n.c.notice_kind.in_(("browser_needs_login", "release"))))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0132") :]
+
+
+def test_0133_fix_proposals_one_open_per_change_findings_and_replacement_probes_name_theirs(hub_db):
+    move_to(hub_db, "0132")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0133")
+    t = hub_tables
+    label = {"level": "internal"}
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, _author_run(ids))
+        proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "corrections", "kind": "docs"}
+        proposal |= {"title": "Say where the tests live", "paths": [], "tier": 1, "tier_reasons": ["docs"]}
+        proposal |= {"evidence": [], "evidence_count": 1, "draft": {}, "fingerprint": "f" * 64, "label": label}
+        merged = one(conn, insert(t.proposals).values(proposal).returning(t.proposals.c.id))
+        change = {"project_id": ids["project"], "proposal_id": merged, "tier": 1, "state": "open"}
+        change_id = one(conn, insert(t.curator_changes).values(change).returning(t.curator_changes.c.id))
+        fix = {**proposal, "title": "Turn the rule into a hook", "fix_of": change_id}
+        first = one(conn, insert(t.proposals).values(fix).returning(t.proposals.c.id))
+        with pytest.raises(errors.UniqueViolation):  # one open fix proposal per change
+            conn.execute(insert(t.proposals).values({**fix, "title": "Add a check"}))
+    with live.connect(hub_db) as conn:
+        answered = {"state": "rejected", "answered_by": ids["user"], "answered_at": func.now()}
+        conn.execute(update(t.proposals).values(answered).where(t.proposals.c.id == first))
+        conn.execute(insert(t.proposals).values(fix))  # once the first is answered, another may open
+        finding = {"project_id": ids["project"], "run_id": run_id, "lens": "corrections", "severity": "medium"}
+        finding |= {
+            "title": "No hook can check it",
+            "evidence": [{"kind": "probe"}],
+            "label": label,
+            "fix_of": change_id,
+        }
+        conn.execute(insert(t.findings).values(finding))
+        probe = {"project_id": ids["project"], "change_id": change_id, "repo": "demo", "task": "Add a test"}
+        probe |= {"verify": "pytest -q tests/test_x.py", "source": "review", "label": label}
+        old = one(conn, insert(t.curator_probes).values({**probe, "state": "retired"}).returning(t.curator_probes.c.id))
+        conn.execute(insert(t.curator_probes).values({**probe, "replaces": old}))
+        assert one(conn, select(func.count()).where(t.curator_probes.c.replaces == old)) == 1
+    move_to(hub_db, "0132", down=True)
+    assert "fix_of" not in columns(hub_db, "proposals") and "fix_of" not in columns(hub_db, "findings")
+    assert "replaces" not in columns(hub_db, "curator_probes")
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.findings))
+        conn.execute(delete(t.proposals))
+        conn.execute(delete(t.runs).where(t.runs.c.id == run_id))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0133") :]

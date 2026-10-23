@@ -50,6 +50,7 @@ export const NOTICE_KINDS = [
   "plugin_notice",
   "autonomy",
   "worker_doctor",
+  "curator_probe_report",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

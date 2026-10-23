@@ -350,8 +350,9 @@ async def curator_policy(
     conn: AsyncConnection, project_id: int, kind: str, plan_id: str | None
 ) -> CuratorPolicy | None:
     """The policy of a run of ``kind`` on ``plan_id`` when it is a run of the Curator (a review run, a judge run, a
-    replay run, a history run, or any run of a Curator's plan); None for any other run."""
-    role = {"review": "reviewer", "judge": "judge", "replay": "replay", "history": "history"}.get(kind, "builder")
+    replay run, a history run, a probe run, or any run of a Curator's plan); None for any other run."""
+    roles = {"review": "reviewer", "judge": "judge", "replay": "replay", "history": "history", "probe": "probe"}
+    role = roles.get(kind, "builder")
     change = None if kind == "review" else await change_of_plan(conn, project_id, plan_id)
     if change is None and (role == "builder" or (role == "judge" and not plan_id)):  # no plan: the merge queue's
         return None
@@ -369,8 +370,10 @@ async def curator_policy(
 async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | None:
     """What the claim of run ``view`` (a ``runs.Run``) tells its worker of the Curator: its role, the charter's
     protected paths its watchdog compares the worktree with, and for a Builder, a Judge or a replay the change, its
-    branch and forge, for a Judge and a replay the change's head, and for a replay its task and its own key
-    (``replays.replay_claim``). None for any other run."""
+    branch and forge, for a Judge, a replay and a probe the change's head, for a replay its task and its own key
+    (``replays.replay_claim``), and for a probe run its probe and its own key (``probe_runs.probe_claim``). None for
+    any other run."""
+    from evo_agents.hub.server.probe_runs import probe_claim  # it reads the changes of this module
     from evo_agents.hub.server.replays import replay_claim  # it reads the changes of this module
 
     policy = await curator_policy(conn, project_id, view.kind, view.plan_id or None)
@@ -386,13 +389,15 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
             branch=change.branch,
             forge=change.forge,
             base_branch=change.base_branch,
-            head_sha=change.head_sha if policy.role in ("judge", "replay") else None,
+            head_sha=change.head_sha if policy.role in ("judge", "replay", "probe") else None,
             pr_url=change.pr_url,
         )
         if policy.role == "judge" and change.state == "judging" and change.judge_run_id == view.id:
             found["judge_key"] = await issue_judge_key(conn, change.id)
         if policy.role == "replay":
             found.update(await replay_claim(conn, change, view.id))
+        if policy.role == "probe":
+            found.update(await probe_claim(conn, change, view.id))
     return found
 
 

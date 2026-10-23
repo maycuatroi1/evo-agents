@@ -23,7 +23,9 @@ and the owner alone makes the change. ``tier_of`` computes it from these:
 - for kind ``kg_source`` (KNOWLEDGE_KIND), knowledge.yaml at a repo's root (KNOWLEDGE_PATHS) is not code: tier 0 while
   the pull request's diff, read key by key (``knowledge``, from ``evo_agents.hub.knowledge_diff``), edits nothing but
   SOURCE_KEYS of git and harness sources the file has; anything else it changes there, or a file the hub could not
-  read at both ends, makes it at least tier 1, as knowledge.yaml is under any other kind.
+  read at both ends, makes it at least tier 1, as knowledge.yaml is under any other kind;
+- a fix proposal (``fix_of``: the merged change whose probe recurred on one model two weekly reports in a row,
+  ``evo_agents.hub.server.probe_fixes``) is at least tier 1 (FIX_TIER), whatever its kind says: the owner merges it.
 
 The tier is the highest of them, and ``Tier.reasons`` says which rule gave each raise, in words for the owner. The hub
 computes it for a proposal from its paths, then again from the paths its pull request really changes, which only ever
@@ -32,8 +34,8 @@ raises it (``evo_agents.hub.server.change_tiers``); a protected path stays tier 
 One rule lowers the tier a change merges with, never its proposal's (``replay_tier``): a change of a kind of
 REPLAY_KINDS whose pull request edits a harness alone (the files of one skill, AGENTS.md and CLAUDE.md files:
 ``evo_agents.hub.replay.harness_only``) and whose replays on the project's holdout tasks won (``replay.verdict``) is
-tier 0, whatever its kind, its code paths or the graph gave it, unless a rule made it tier 3. Without replays that won,
-or with any other file in its diff, it keeps the tier these rules give.
+tier 0, whatever its kind, its code paths or the graph gave it, unless a rule made it tier 3 or it is a fix proposal.
+Without replays that won, or with any other file in its diff, it keeps the tier these rules give.
 
 A protected glob is matched against the path within its repo (``.github/workflows/**`` protects that directory of every
 repo of the project); a glob written ``repo:glob`` protects that repo's paths alone. ``*`` matches within one
@@ -124,6 +126,7 @@ SOURCE_KEYS = ("ref", "fetch", "refresh", "include", "exclude", "allow")  # what
 SOURCE_CONNECTORS = ("git", "harness")  # of the sources it may edit
 SHOWN_CHANGES = 3  # of what a knowledge.yaml change does besides SOURCE_KEYS, named in a reason
 REPLAY_KINDS = ("docs", "skill", "global_config")  # the kinds whose change replays that won make tier 0
+FIX_TIER = 1  # the lowest tier of a fix proposal: the hub never merges one alone
 MAX_PATHS = 100  # paths one proposal names
 MAX_PATH_CHARS = 500
 PATH = re.compile(r"^[^\x00-\x1f\x7f\\]+$")
@@ -272,12 +275,13 @@ def tier_of(
     *,
     unknown: Mapping[tuple[str, str], str] | None = None,
     knowledge: Mapping[tuple[str, str], Sequence[str] | None] | None = None,
+    fix_of: int | None = None,
 ) -> Tier:
     """The tier of a change of ``kind`` to ``paths`` ((repo, path) each), under the charter's ``protected`` globs,
     whose edits reach ``impacted`` ((repo, path) each, from the knowledge graph); ``unknown`` says, of a path, why the
     graph cannot tell what it reaches, and ``knowledge``, of a knowledge.yaml the pull request changes, what it changes
-    besides SOURCE_KEYS (None: it could not be read), None before the diff is known. See the module's docstring.
-    ValueError for a kind not in CHANGE_KINDS."""
+    besides SOURCE_KEYS (None: it could not be read), None before the diff is known; ``fix_of``, the change a fix
+    proposal fixes. See the module's docstring. ValueError for a kind not in CHANGE_KINDS."""
     if kind not in CHANGE_KINDS:
         raise ValueError(f"{kind!r} is not a kind of change; the kinds are {', '.join(CHANGE_KINDS)}")
     tier, what = CHANGE_KINDS[kind]
@@ -303,15 +307,20 @@ def tier_of(
             raise_to(
                 3, f"the change reaches {repo}:{path} in the knowledge graph, which is protected ({found}): tier 3"
             )
+    if fix_of is not None:
+        raise_to(
+            FIX_TIER,
+            f"it fixes the rule of change #{fix_of}, whose probe recurred two weeks in a row: at least tier {FIX_TIER}",
+        )
     return Tier(tier, reasons)
 
 
-def replay_tier(kind: str, found: Tier, *, harness: str | None, won: str | None) -> Tier:
+def replay_tier(kind: str, found: Tier, *, harness: str | None, won: str | None, fix: bool = False) -> Tier:
     """The tier a change of ``kind`` merges with, the rules having given it ``found``: tier 0 when its pull request
     edits ``harness`` alone (what it edits, ``replay.harness_only``; None when it edits more) and its replays won
-    (``won``, why; None when they did not), its kind is one of REPLAY_KINDS and no rule made it tier 3; ``found``
-    otherwise."""
-    if found.tier in (0, 3) or kind not in REPLAY_KINDS or not harness or not won:
+    (``won``, why; None when they did not), its kind is one of REPLAY_KINDS, no rule made it tier 3 and it is no fix
+    proposal (``fix``); ``found`` otherwise."""
+    if fix or found.tier in (0, 3) or kind not in REPLAY_KINDS or not harness or not won:
         return found
     return Tier(
         0, [*found.reasons, f"it edits {harness} alone and its replays on the holdout tasks won ({won}): tier 0"]
