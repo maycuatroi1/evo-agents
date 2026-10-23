@@ -12,7 +12,7 @@ from datetime import date
 from sqlalchemy import Numeric, Text, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import curator, runs, tables
 
 QUEUED_OR_HELD = ("queued", *runs.HELD_STATES)  # a schedule queues its next run once none of its runs is in these
 
@@ -66,3 +66,17 @@ async def kind_cost(conn: AsyncConnection, schedule_id: int, night: date, kind: 
     per_session = select(func.max(usage_cost(r.c.usage)).label("cost")).where(*of_night).group_by(session).subquery()
     cost = (await conn.execute(select(func.coalesce(func.sum(per_session.c.cost), 0)))).scalar_one()
     return float(cost or 0)
+
+
+def next_run_budget(charter: dict, figures: NightFigures) -> dict | None:
+    """The caps of the next run of the night, or None when the night has less than MIN_RUN_USD left."""
+    left = charter["night_budget_usd"] - figures.cost_usd
+    if charter.get("run_budget_usd") is not None:
+        left = min(left, charter["run_budget_usd"])
+    if left < curator.MIN_RUN_USD:
+        return None
+    return {
+        "max_usd": round(left, 4),
+        "max_turns": charter["run_max_turns"],
+        "max_seconds": charter["run_minutes"] * 60,
+    }

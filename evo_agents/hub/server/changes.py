@@ -326,8 +326,8 @@ async def refuse_manual_dispatch(conn: AsyncConnection, project_id: int, plan_id
     if await change_of_plan(conn, project_id, plan_id) is not None:
         raise HTTPException(
             409,
-            f"plan {plan_id} is the Curator's: the night shift of the project's charter runs it itself, at any hour, "
-            "within a minute once its worker on duty is free, on its own branch; nothing was dispatched",
+            f"plan {plan_id} is the Curator's: the night shift runs it itself, at any hour; POST .../curator/plans/"
+            f"{plan_id}/build (Run plan on its page) queues its Builder at once; nothing was dispatched",
         )
 
 
@@ -593,14 +593,14 @@ async def _builder_queued(conn: AsyncConnection, due, gate, change, run_id: int)
     log.info("curator builder queued", extra={"project": due.project, "run_id": run_id, "change_id": change.id})
 
 
-async def queue_builder(conn: AsyncConnection, due, gate, *, curator_app: bool) -> int | None:
-    """Queue the Builder of the oldest planned change of the project the night shift may build now; its run's id, or
-    None (see the module's docstring). Each planned change it passes over before that keeps why as its reason
-    (``_waits``). ``curator_app``: whether this hub has the Curator's App. Called under the schedule's row lock."""
+async def queue_builder(conn: AsyncConnection, due, gate, *, curator_app: bool, only: int | None = None) -> int | None:
+    """Queue the Builder of the oldest planned change of the project the night shift may build now, or of change
+    ``only`` alone (``build_now``); its run's id, or None (see the module's docstring). Each planned change it passes
+    over keeps why as its reason (``_waits``). ``curator_app``: whether this hub has the Curator's App. Called under the
+    schedule's row lock."""
     c = tables.curator_changes
-    planned = (
-        await conn.execute(select(c).where(c.c.project_id == due.project_id, c.c.state == "planned").order_by(c.c.id))
-    ).all()
+    query = select(c).where(c.c.project_id == due.project_id, c.c.state == "planned")
+    planned = (await conn.execute((query.where(c.c.id == only) if only else query).order_by(c.c.id))).all()
     if not planned:
         return None
     builder = due.body.get("builder") or {}

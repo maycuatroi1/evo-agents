@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("sqlalchemy")
+
 from evo_agents.core_plugins.marketing import adapters, gate, judge, registry
 from evo_agents.core_plugins.marketing.adapters.base import AdapterError, Content, HttpResponse
 from evo_agents.hub.contract import commands
