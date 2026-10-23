@@ -35,8 +35,11 @@ export type BoardKind = BoardItem["kind"];
 
 /** `loop.model.STATES`, in the order a work item moves through them. */
 export const ITEM_STATES = ["queued", "running", "watching", "waiting_human", "done", "cancelled"] as const satisfies readonly ItemState[];
-/** `loop.model.KINDS`, in the order of a chain: the business cycle, then the development cycle. */
-export const ITEM_KINDS = ["brainstorm", "use_case", "build", "deliver"] as const satisfies readonly ItemKind[];
+/**
+ * `loop.model.KINDS`, in the order of a chain: the business cycle (a brainstorm toward a goal, a discover of a problem's
+ * claim, a use case of a solution's), then the development cycle.
+ */
+export const ITEM_KINDS = ["brainstorm", "discover", "use_case", "build", "deliver"] as const satisfies readonly ItemKind[];
 /** `board_items.GROUPS`: the three gates, then what the Loop's chain waits on. */
 export const BOARD_GROUPS = ["goal", "canvas", "policy", "exception", "srs"] as const satisfies readonly BoardGroup[];
 /** `items.DEFAULT_ITEMS`: the newest work items one read of the Loop page lists. */
@@ -67,6 +70,8 @@ export type ItemsFilter = {
   goal: string | null;
   /** Only the work items not done or cancelled. */
   open: boolean;
+  /** Only the work items that go from this problem (P-<number>): a problem's page. */
+  problem?: string | null;
 };
 
 export const loopKeys = {
@@ -103,6 +108,7 @@ export const loopItemsQuery = (api: ApiSource, project: string, filter: ItemsFil
               ...(filter.kind ? { kind: filter.kind } : {}),
               ...(filter.goal ? { goal: filter.goal } : {}),
               ...(filter.open ? { open: true } : {}),
+              ...(filter.problem ? { problem: filter.problem } : {}),
             },
           },
           signal,

@@ -276,9 +276,11 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
 | Merge queue, a merge request merging or merged; its Policy; its Figures | `GitMerge`; `SlidersHorizontal`; `ChartNoAxesColumn` |
 | A repo's breaker armed, tripped, Reset; an audit sample, Faulty; approve a PROD release; revert a merge; rolling back | `Power`, `PowerOff`, `Power`; `SearchCheck`, `Bug`; `Rocket`; `Undo2`; `Rewind` |
+| Problems, a project's problems (its menu item) and a problem; New problem, Edit, Close problem, Reopen | `Bandage`; `Plus`, `PencilLine`, `CircleCheck`, `RotateCcw` |
+| A problem's status: open, solved, dropped; its metric's figure over the window, its latest signal, its signals | `CircleDot`, `CircleCheck`, `CircleMinus`; `ChartLine`, `Hash`, `RadioTower` |
 | Goals, a goal; the Loop of a project, its work items; Decisions, a project's decision board | `Goal`; `IterationCw`; `Signpost` |
-| A work item: brainstorm, use case, build, deliver; queued, watching, waiting for a person (running is the live dot, done and cancelled as a run's) | `Telescope`, `Route`, `FilePen`, `Truck`; `Clock`, `Binoculars`, `MessageSquare` |
-| A chain's stages: goal, claim, use case, task, plan, merge requests, release; a stage reached, not yet, not visible to the reader | `Goal`, `Table`, `Route`, `Kanban`, `ListChecks`, `GitMerge`, `PackageCheck`; `CircleCheck`, `CircleDashed`, `Lock` |
+| A work item: brainstorm, discover, use case, build, deliver; queued, watching, waiting for a person (running is the live dot, done and cancelled as a run's) | `Telescope`, `ScanSearch`, `Route`, `FilePen`, `Truck`; `Clock`, `Binoculars`, `MessageSquare` |
+| A chain's stages: problem, goal, claim, use case, task, plan, merge requests, release; a stage reached, not yet, not visible to the reader | `Bandage`, `Goal`, `Table`, `Route`, `Kanban`, `ListChecks`, `GitMerge`, `PackageCheck`; `CircleCheck`, `CircleDashed`, `Lock` |
 | On the Decisions page: the month's goal review, a goal past its deadline, a breaker tripped, an author's question, a merge held, an SRS settle chat | `CalendarCheck`, `CalendarX`, `PowerOff`, `MessageCircle`, `Lock`, `MessagesSquare` |
 | Lean Canvas, a project's canvases (its menu item); a claim's status: assumption, testing, validated, invalidated, retired | `Table`; `CircleDashed`, `FlaskConical`, `CircleCheck`, `CircleX`, `Archive` |
 | A baseline: waiting for review (and Ask for review now), approved, expired; its frozen snapshot; a proposal waiting | `ClipboardCheck`, `CircleCheck`, `TimerOff`; `Lock`; `Lightbulb` |
@@ -1717,8 +1719,9 @@ Shared pieces built on them:
 - `components/canvas`, the native pages of the core plugin canvas (plan living-lean-canvas; docs/canvas-plugin.md), under
   `app/(app)/p/[project]/x/canvas/` with a layout that calls `requirePlugin("canvas", project, "canvases")`: Lean Canvas
   in the menu (`Table`) is the manifest's page `canvases`; a canvas, a claim and a baseline are pages below it. Its
-  words are the `canvas` namespace of both message files. A claim's status is a pill drawn here (`badges.tsx`), not in
-  `STATUS_LOOKS`: assumption neutral, testing violet (being checked), validated green, invalidated red, retired outline;
+  words are the `canvas` namespace of both message files. A claim's status is a pill of its own
+  (`components/status/claim-status.tsx`, which a problem's page shows too), not in `STATUS_LOOKS`: assumption neutral,
+  testing violet (being checked), validated green, invalidated red, retired outline;
   amber stays for what needs a person (a baseline waiting for review, a test card past its deadline). The canvases
   (`/canvases`) are one `DataCard` table: name over slug, claims, their statuses as one bar of segments (an image named
   by its counts), who made it, when it changed; New canvas (a dialog: product name, a slug made from it, description)
@@ -1760,6 +1763,29 @@ Shared pieces built on them:
   at each signal (Recharts, loaded on demand), and every series, numbers and feedback alike, is a table of its values,
   the newest first, with when, the tenant and who sent it. It shows values and their series over time and analyses
   nothing.
+- `components/loop`, a project's Problems (`/p/{project}/problems` and `/problems/{code}`, in the sidebar's project
+  group before Goals, `Bandage`; plan problem-oriented-hub): what hurts, before any solution, which goals, claims and
+  plans point back to and the Loop goes from. Its words are the `problems` namespace; the reads are
+  `lib/problem-queries.ts`, since the plans, goal and claim pages name problems too. The list is one `DataCard` table:
+  the rank, the code chip and the statement opening the problem over who it hurts, its metric in mono, its status, its
+  owner and when it changed; the open problems come first and each status by rank, and a facet of the statuses with
+  their counts filters it (`?status=`). A problem (`/problems/P-3`) heads with its code before the h1, its status (open
+  neutral, solved green, dropped an outline: a problem is watched, never a state that needs someone), and a writer's
+  Close problem (or Reopen) and Edit; a closed one says how and why under the head, in a success banner when solved.
+  The main column holds what hurts (who, when, how they cope today), the metric (its key, aggregate, window and tenant,
+  then a `MetricStrip` of the figure over the window as the hub sums a goal's metric up, with a sparkline of the values,
+  the latest signal and the signals counted, all from the key's signals the member reads), the goals that answer it,
+  the claims that link it grouped by canvas with each one's cell and status, the plans that name it with their state
+  and steps done (a `Meter`), and the Loop's chains that go from it (`ChainList`); a 22 rem column holds its details
+  (owner, rank, revision, why it closed, the revision's note) and its history, newest first, with what each revision
+  changed. A writer adds a problem (New problem: a dialog of what hurts, who, when, how they cope today, an optional
+  metric of a key of kind number, rank, owner and a note), which takes the project's next code read again just before
+  the write and creates only (`if_revision` 0); edits one whole at the revision the page read, keeping its status; closes
+  one as solved or dropped with a reason; and reopens one. A 409 says another writer wrote it since, and the form then
+  holds their revision. Readers see a note that they only read, and no control that writes. Elsewhere a problem is a
+  chip of its code (`components/data/problem-chips.tsx`) that opens it, named by its statement for a screen reader and in
+  its tooltip: in a column of the plans list (codes in the meta line on a phone), beside a plan's revision, beside a
+  goal's code and in its details, and in a claim's links. A chain's rail starts from the problem its goal answers.
 - `components/crm`, the core plugin crm's Contacts (`/p/{project}/x/crm/contacts`, its page `contacts` in the sidebar's
   plugin group; `/x/crm` leads there), only where the project enabled crm. Its words are the `crm` namespace. The
   pipeline is a row of five toggle buttons (All, then lead, invited, activated, retained, each with its count,

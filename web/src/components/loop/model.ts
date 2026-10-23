@@ -11,6 +11,7 @@ import {
   type LucideIcon,
   MessageSquare,
   Route,
+  ScanSearch,
   Telescope,
   TimerOff,
   Truck,
@@ -50,6 +51,7 @@ export const STATE_LOOKS: Record<ItemState, StatusLook> = {
 /** One icon per kind of work item (web/DESIGN.md, Iconography). */
 export const KIND_ICONS: Record<ItemKind, LucideIcon> = {
   brainstorm: Telescope,
+  discover: ScanSearch,
   use_case: Route,
   build: FilePen,
   deliver: Truck,
@@ -159,11 +161,16 @@ export function chainsOf(items: readonly LoopItem[]): Chain[] {
   return chains.sort((a, b) => b.updated - a.updated || b.root - a.root);
 }
 
-/** What a work item is about, as its title names it: the goal of a brainstorm, the claim of a use case, the use case of a build, the plan of a deliver. */
+/**
+ * What a work item is about, as its title names it: the goal of a brainstorm, the claim of a discover (a problem's claim
+ * whose test card it runs) and of a use case, the use case of a build, the plan of a deliver.
+ */
 export function subjectOf(item: Pick<LoopItem, "kind" | "goal" | "claim" | "use_case" | "plan">): string | null {
   switch (item.kind) {
     case "brainstorm":
       return item.goal;
+    case "discover":
+      return item.claim?.code ?? item.goal;
     case "use_case":
       return item.claim?.code ?? item.use_case?.document ?? null;
     case "build":

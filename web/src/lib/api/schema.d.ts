@@ -4716,8 +4716,8 @@ export interface paths {
         /**
          * Answer Proposal
          * @description Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
-         *     it could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the
-         *     others.
+         *     it could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one
+         *     of a problem, an admin of the project the others.
          */
         post: operations["answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post"];
         delete?: never;
@@ -8775,6 +8775,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/problems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Problems
+         * @description The project's problems as they are now, by rank, then by code.
+         */
+        get: operations["list_problems_v1_projects__project__problems_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/problems/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Problem
+         * @description One problem of the project, at its newest revision or at ``revision``, with the goals that answer it now.
+         */
+        get: operations["show_problem_v1_projects__project__problems__ref__get"];
+        /**
+         * Write Problem
+         * @description Write a problem whole as its next revision, made when the project has none of code ``ref``; a writer of the
+         *     project may.
+         */
+        put: operations["write_problem_v1_projects__project__problems__ref__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/problems/{ref}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Problem Revisions
+         * @description Every revision of a problem, the newest first, each with the fields whose value it changed.
+         */
+        get: operations["problem_revisions_v1_projects__project__problems__ref__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/problems/{ref}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Problem
+         * @description Close a problem as solved or dropped, for a reason, as its next revision; a writer of the project may.
+         */
+        post: operations["close_problem_v1_projects__project__problems__ref__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/loop": {
         parameters: {
             query?: never;
@@ -11138,10 +11223,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "goal";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal";
             /**
              * Target
-             * @description layer (features), plugin and agent (plugin_config), agent (agent), goal (goal: its code, which the hub picks for a new one); nothing for policy
+             * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy
              */
             target: {
                 [key: string]: string;
@@ -11170,7 +11255,7 @@ export interface components {
              * @description who may decide it
              * @enum {string}
              */
-            approver: "hub_admin" | "project_admin";
+            approver: "hub_admin" | "project_writer" | "project_admin";
             /**
              * Proposed By
              * @description the member the run proposed for: the admin who asked @builder, or the owner of the Curator's night shift for a proposal of its review run
@@ -11557,6 +11642,11 @@ export interface components {
              * @description the keys of the project's signals that measure it, as declared in its registry: the whole list, [] for none
              */
             signal_keys?: string[] | null;
+            /**
+             * Problems
+             * @description the codes of the problems of the project it answers, as P-3, each open or solved when a change adds it: the whole list, [] for none
+             */
+            problems?: string[] | null;
         };
         /**
          * CanvasClaim
@@ -11605,6 +11695,11 @@ export interface components {
              * @description the keys of the project's signals it links, sorted
              */
             signal_keys: string[];
+            /**
+             * Problems
+             * @description the codes (P-<number>) of the problems of the project it answers, by number
+             */
+            problems: string[];
             /**
              * Rev
              * @description the rev it is at: an edit names it as base_rev
@@ -11687,6 +11782,11 @@ export interface components {
              */
             signal_keys: string[];
             /**
+             * Problems
+             * @description the codes (P-<number>) of the problems of the project it answers, by number
+             */
+            problems: string[];
+            /**
              * Rev
              * @description the rev it is at: an edit names it as base_rev
              */
@@ -11768,6 +11868,11 @@ export interface components {
              * @description the keys of the project's signals it links, sorted
              */
             signal_keys: string[];
+            /**
+             * Problems
+             * @description the codes (P-<number>) of the problems of the project it answers, by number
+             */
+            problems: string[];
         };
         /**
          * CanvasDetail
@@ -12014,6 +12119,11 @@ export interface components {
              * @description the keys of the project's signals it links, sorted
              */
             signal_keys: string[];
+            /**
+             * Problems
+             * @description the codes (P-<number>) of the problems of the project it answers, by number
+             */
+            problems: string[];
             /** Code */
             code: string;
             /** Rev */
@@ -17182,6 +17292,24 @@ export interface components {
              */
             goal: string | null;
         };
+        /** LoopChainProblem */
+        LoopChainProblem: {
+            /**
+             * Code
+             * @description P-<number>
+             */
+            code: string;
+            /**
+             * Statement
+             * @description its statement now, on one line
+             */
+            statement: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "solved" | "dropped";
+        };
         /** LoopChainRun */
         LoopChainRun: {
             /**
@@ -17201,6 +17329,8 @@ export interface components {
          * @description The path of a chain from its goal to its release.
          */
         LoopChainStages: {
+            /** @description the problem the chain goes from, as it stands now; null for none */
+            problem?: components["schemas"]["LoopChainProblem"] | null;
             goal: components["schemas"]["LoopChainGoal"] | null;
             /**
              * Proposals
@@ -17311,7 +17441,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "brainstorm" | "use_case" | "build" | "deliver";
+            kind: "brainstorm" | "use_case" | "build" | "deliver" | "discover";
             /**
              * Cycle
              * @enum {string}
@@ -17354,6 +17484,11 @@ export interface components {
              * @description the code of its goal
              */
             goal: string | null;
+            /**
+             * Problem
+             * @description the code (P-<number>) of the problem it goes from: the one its goal answered when it was made
+             */
+            problem?: string | null;
             claim: components["schemas"]["LoopClaimRef"] | null;
             use_case: components["schemas"]["LoopUseCaseRef"] | null;
             /**
@@ -20201,6 +20336,11 @@ export interface components {
             updated_at: string;
             /** Updated By */
             updated_by: string;
+            /**
+             * Problems
+             * @description the codes (P-<number>) of the problems of the project its body names
+             */
+            problems?: string[];
         };
         /**
          * PlaybookDelta
@@ -21880,6 +22020,135 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * ProblemClaim
+         * @description A claim of a canvas of the project that links the problem: not archived, in a canvas that is not.
+         */
+        ProblemClaim: {
+            /**
+             * Canvas
+             * @description the canvas's slug
+             */
+            canvas: string;
+            /**
+             * Canvas Name
+             * @description the product's name
+             */
+            canvas_name: string;
+            /**
+             * Code
+             * @description CL-<number>
+             */
+            code: string;
+            /** Cell */
+            cell: string;
+            /** Status */
+            status: string;
+            /** Confidence */
+            confidence: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * ProblemGoal
+         * @description A goal of the project whose newest revision answers the problem.
+         */
+        ProblemGoal: {
+            /**
+             * Code
+             * @description G-<number>
+             */
+            code: string;
+            /** Revision */
+            revision: number;
+            /** Statement */
+            statement: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+        };
+        /**
+         * ProblemMetric
+         * @description How much a problem hurts: a key of the project's signals summed up over a window, as a goal's metric is, with
+         *     no target.
+         */
+        ProblemMetric: {
+            /**
+             * Key
+             * @description a key of kind number of the project's registry of signals
+             */
+            key: string;
+            /**
+             * Aggregate
+             * @enum {string}
+             */
+            aggregate: "last" | "mean" | "sum" | "count" | "p50" | "p90";
+            /**
+             * Window Days
+             * @description null: 90
+             */
+            window_days?: number | null;
+            /**
+             * Tenant
+             * @description one tenant's alone
+             */
+            tenant?: string | null;
+        };
+        /**
+         * ProblemPlan
+         * @description A plan of the project whose body names the problem in its problems.
+         */
+        ProblemPlan: {
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "active" | "completed";
+            /** Title */
+            title: string | null;
+            /**
+             * Status
+             * @description the status the plan's body gives, if any
+             */
+            status: string | null;
+            /** Revision */
+            revision: number;
+            /** Steps Total */
+            steps_total: number;
+            /**
+             * Steps Done
+             * @description its steps done or descoped
+             */
+            steps_done: number;
+        };
+        /** ProblemRevision */
+        ProblemRevision: {
+            /** Revision */
+            revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "solved" | "dropped";
+            /** Note */
+            note: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description the fields whose value differs from the revision before
+             */
+            changed: string[];
+        };
         /** ProgramCount */
         ProgramCount: {
             /**
@@ -22017,6 +22286,11 @@ export interface components {
              */
             canvas: string | null;
             /**
+             * Problem
+             * @description the code (P-<number>) of the problem of the project it answers; null: none
+             */
+            problem: string | null;
+            /**
              * Rank
              * @description its place among the project's goals, 1 first
              */
@@ -22083,6 +22357,11 @@ export interface components {
              */
             canvas?: string | null;
             /**
+             * Problem
+             * @description the code (P-<number>) of a problem of the project that is not dropped; null: none
+             */
+            problem?: string | null;
+            /**
              * Rank
              * @description null: kept, or after the project's other goals for a new one
              */
@@ -22143,6 +22422,11 @@ export interface components {
              * @description the slug of the canvas whose product it drives
              */
             canvas: string | null;
+            /**
+             * Problem
+             * @description the code (P-<number>) of the problem of the project it answers; null: none
+             */
+            problem: string | null;
             /**
              * Rank
              * @description its place among the project's goals, 1 first
@@ -22310,6 +22594,315 @@ export interface components {
             granted_by: string | null;
             /** Granted At */
             granted_at: string | null;
+        };
+        /**
+         * ProjectProblem
+         * @description A problem of a project at one revision.
+         */
+        ProjectProblem: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description P-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Statement
+             * @description what hurts, before any solution
+             */
+            statement: string;
+            /**
+             * Who
+             * @description who is hurt
+             */
+            who: string;
+            /**
+             * When
+             * @description when it happens
+             */
+            when: string;
+            /**
+             * Workaround
+             * @description how they cope today
+             */
+            workaround: string;
+            /** @description null: no metric */
+            metric: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description its place among the project's problems, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "solved" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was solved or dropped; null while it is open
+             */
+            close_reason: string | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ProjectProblemClose */
+        ProjectProblemClose: {
+            /**
+             * Status
+             * @description solved or dropped
+             * @enum {string}
+             */
+            status: "solved" | "dropped";
+            /**
+             * Reason
+             * @description why
+             */
+            reason: string;
+            /**
+             * Note
+             * @description for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the problem is at this revision now
+             */
+            if_revision?: number | null;
+        };
+        /** ProjectProblemShown */
+        ProjectProblemShown: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description P-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Statement
+             * @description what hurts, before any solution
+             */
+            statement: string;
+            /**
+             * Who
+             * @description who is hurt
+             */
+            who: string;
+            /**
+             * When
+             * @description when it happens
+             */
+            when: string;
+            /**
+             * Workaround
+             * @description how they cope today
+             */
+            workaround: string;
+            /** @description null: no metric */
+            metric: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description its place among the project's problems, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "solved" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was solved or dropped; null while it is open
+             */
+            close_reason: string | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Goals
+             * @description the goals whose newest revision answers it, by code
+             */
+            goals: components["schemas"]["ProblemGoal"][];
+            /**
+             * Claims
+             * @description the claims that link it, by canvas and code: those the member sees
+             */
+            claims: components["schemas"]["ProblemClaim"][];
+            /**
+             * Plans
+             * @description the plans that name it, by plan id: those the member sees
+             */
+            plans: components["schemas"]["ProblemPlan"][];
+        };
+        /**
+         * ProjectProblemWrite
+         * @description The next revision of a problem: the whole of it, as its writer wants it.
+         */
+        ProjectProblemWrite: {
+            /**
+             * Statement
+             * @description what hurts
+             */
+            statement: string;
+            /**
+             * Who
+             * @description who is hurt
+             */
+            who: string;
+            /**
+             * When
+             * @description when it happens
+             */
+            when: string;
+            /**
+             * Workaround
+             * @description how they cope today
+             */
+            workaround: string;
+            metric?: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description null: kept, or after the project's open problems for a new one
+             */
+            rank?: number | null;
+            /**
+             * Owner
+             * @description a member with the writer role or above; null: kept, or the writer for a new problem
+             */
+            owner?: string | null;
+            /**
+             * Status
+             * @default open
+             * @enum {string}
+             */
+            status: "open" | "solved" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was solved or dropped, for a closed problem and only for one
+             */
+            close_reason?: string | null;
+            /**
+             * Note
+             * @description why, for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the problem is at this revision now; 0: new only
+             */
+            if_revision?: number | null;
+        };
+        /** ProjectProblemWritten */
+        ProjectProblemWritten: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description P-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Statement
+             * @description what hurts, before any solution
+             */
+            statement: string;
+            /**
+             * Who
+             * @description who is hurt
+             */
+            who: string;
+            /**
+             * When
+             * @description when it happens
+             */
+            when: string;
+            /**
+             * Workaround
+             * @description how they cope today
+             */
+            workaround: string;
+            /** @description null: no metric */
+            metric: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description its place among the project's problems, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "solved" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was solved or dropped; null while it is open
+             */
+            close_reason: string | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description false when the newest revision is this problem already: nothing was written
+             */
+            changed: boolean;
         };
         /** ProjectPruned */
         ProjectPruned: {
@@ -64062,6 +64655,336 @@ export interface operations {
             };
         };
     };
+    list_problems_v1_projects__project__problems_get: {
+        parameters: {
+            query?: {
+                /** @description those of this status alone */
+                status?: ("open" | "solved" | "dropped") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectProblem"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_problem_v1_projects__project__problems__ref__get: {
+        parameters: {
+            query?: {
+                /** @description an older revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description P-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectProblemShown"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_problem_v1_projects__project__problems__ref__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description P-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectProblemWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectProblemWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    problem_revisions_v1_projects__project__problems__ref__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description P-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_problem_v1_projects__project__problems__ref__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description P-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectProblemClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectProblemWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     show_loop_v1_projects__project__loop_get: {
         parameters: {
             query?: never;
@@ -64191,12 +65114,14 @@ export interface operations {
         parameters: {
             query?: {
                 state?: ("queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled") | null;
-                kind?: ("brainstorm" | "use_case" | "build" | "deliver") | null;
+                kind?: ("brainstorm" | "use_case" | "build" | "deliver" | "discover") | null;
                 /** @description a goal's code or alias */
                 goal?: string | null;
                 /** @description only the work items not done or cancelled */
                 open?: boolean;
                 limit?: number;
+                /** @description a problem's code: the work items that go from it */
+                problem?: string | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;

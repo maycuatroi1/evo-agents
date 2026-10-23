@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, CircleDashed, GitMerge, Goal, Kanban, ListChecks, Lock, type LucideIcon, PackageCheck, Route as RouteIcon, Table } from "lucide-react";
+import { Bandage, CircleCheck, CircleDashed, GitMerge, Goal, Kanban, ListChecks, Lock, type LucideIcon, PackageCheck, Route as RouteIcon, Table } from "lucide-react";
 import type { Route } from "next";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -9,10 +9,12 @@ import { Identifier, RunRef } from "@/components/data/identifier";
 import { srsItemHref, taskHref } from "@/lib/core-plugin-links";
 import { goalsHref, type LoopChainStages } from "@/lib/loop-queries";
 import { mergeRequestHref } from "@/lib/merge-queue";
+import { problemsHref } from "@/lib/problem-links";
 import { cn } from "@/lib/utils";
 
-export type StageId = "goal" | "claim" | "use_case" | "task" | "plan" | "merges" | "release";
+export type StageId = "problem" | "goal" | "claim" | "use_case" | "task" | "plan" | "merges" | "release";
 const STAGE_ICONS: Record<StageId, LucideIcon> = {
+  problem: Bandage,
   goal: Goal,
   claim: Table,
   use_case: RouteIcon,
@@ -21,7 +23,7 @@ const STAGE_ICONS: Record<StageId, LucideIcon> = {
   merges: GitMerge,
   release: PackageCheck,
 };
-const STAGES: readonly StageId[] = ["goal", "claim", "use_case", "task", "plan", "merges", "release"];
+const STAGES: readonly StageId[] = ["problem", "goal", "claim", "use_case", "task", "plan", "merges", "release"];
 
 function base(project: string): string {
   return `/p/${encodeURIComponent(project)}`;
@@ -35,6 +37,7 @@ function useStages(project: string, stages: LoopChainStages): Record<StageId, Sh
   const claimStatus = useTranslations("canvas.status");
   const versionState = useTranslations("srs.versionState");
   const mergeState = useTranslations("mergeQueue.state");
+  const problemStatus = useTranslations("problems.status");
   const format = useFormatter();
   const hidden = new Set<string>(stages.hidden);
   const none = (stage: string): Shown => ({ reached: false, hidden: hidden.has(stage) });
@@ -42,8 +45,15 @@ function useStages(project: string, stages: LoopChainStages): Record<StageId, Sh
   const claimWord = (key: string) => (claimStatus.has(key as never) ? claimStatus(key as never) : key);
   const versionWord = (key: string | null) => (key === null ? "" : versionState.has(key as never) ? versionState(key as never) : key);
   const mergeWord = (key: string) => (mergeState.has(key as never) ? mergeState(key as never) : key);
-  const { goal, claim, use_case: useCase, task, plan, merges } = stages;
+  const { problem, goal, claim, use_case: useCase, task, plan, merges } = stages;
   return {
+    problem: problem
+      ? {
+          reached: true,
+          value: <Identifier value={problem.code} href={problemsHref(project, problem.code)} testId="chain-problem" />,
+          detail: problem.status === "open" ? problem.statement : t("problemDetail", { statement: problem.statement, status: problemStatus(problem.status) }),
+        }
+      : none("problem"),
     goal: goal ? { reached: true, value: <Identifier value={goal.code} href={goalsHref(project, goal.code)} />, detail: goal.statement } : none("goal"),
     claim: claim
       ? {
@@ -92,10 +102,11 @@ function useStages(project: string, stages: LoopChainStages): Record<StageId, Sh
 }
 
 /**
- * The stages of a chain from its goal to its release, in one container: the goal, the claim (or the claims a brainstorm
- * proposed), the use case, the frame task, the plan, the merge requests and the release, each with its object and how
- * it stands, "Not yet" while the chain has not come that far, and "Not visible to you" for what the reader may not
- * read. The cells share each row out: all seven in one on a wide screen, two to a row on a phone.
+ * The stages of a chain from the problem its goal answers to its release, in one container: the problem, the goal, the
+ * claim (or the claims a brainstorm proposed), the use case, the frame task, the plan, the merge requests and the
+ * release, each with its object and how it stands, "Not yet" while the chain has not come that far (or its goal answers
+ * no problem), and "Not visible to you" for what the reader may not read. The cells share each row out: all eight in
+ * one on a wide screen, two to a row on a phone.
  */
 export function ChainRail({ project, stages }: { project: string; stages: LoopChainStages }) {
   const t = useTranslations("loop.chain");

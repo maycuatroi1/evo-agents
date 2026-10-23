@@ -1,13 +1,10 @@
 "use client";
 
 import {
-  Archive,
   Ban,
   Bot,
   CircleCheck,
-  CircleDashed,
   CircleHelp,
-  CircleX,
   ClipboardCheck,
   FileText,
   FlaskConical,
@@ -32,26 +29,14 @@ import { Identifier, Tag } from "@/components/data/identifier";
 import { type StatusLook, StatusPill, type StatusPillProps } from "@/components/status/status-badge";
 import { cn } from "@/lib/utils";
 
-import type { BaselineStatus, CanvasProvenance, ClaimStatus, Confidence, Direction, EvidenceKind, Verdict } from "./api";
+import type { BaselineStatus, CanvasProvenance, Confidence, Direction, EvidenceKind, Verdict } from "./api";
 
 /**
- * The canvas pages' pills and tags. Only these pages show a claim's status, so its looks live here rather than in
- * `STATUS_LOOKS` (web/DESIGN.md, components/canvas): an assumption is neutral, testing is being checked (violet), a
- * validated claim is green, an invalidated one red, a retired one an outline. Amber is kept for what needs a person: a
- * baseline that waits for review, a test card past its deadline.
+ * The canvas pages' pills and tags. A claim's status is drawn by `components/status/claim-status.tsx`, which a problem's
+ * page shows too (web/DESIGN.md, components/canvas); amber is kept for what needs a person: a baseline that waits for
+ * review, a test card past its deadline.
  */
-export const STATUS_LOOKS = {
-  assumption: { tone: "neutral", icon: CircleDashed },
-  testing: { tone: "review", icon: FlaskConical },
-  validated: { tone: "success", icon: CircleCheck },
-  invalidated: { tone: "danger", icon: CircleX },
-  retired: { tone: "outline", icon: Archive },
-} as const satisfies Record<ClaimStatus, StatusLook>;
-
-export function ClaimStatusBadge({ status, ...props }: StatusPillProps & { status: ClaimStatus }) {
-  const t = useTranslations("canvas.status");
-  return <StatusPill look={STATUS_LOOKS[status]} label={t(status)} data-status={status} data-testid="claim-status" {...props} />;
-}
+export { CLAIM_STATUS_LOOKS as STATUS_LOOKS, ClaimStatusBadge } from "@/components/status/claim-status";
 
 const BASELINE_LOOKS = {
   proposed: { tone: "attention", icon: ClipboardCheck },

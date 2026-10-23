@@ -93,7 +93,8 @@ function CopyButton({ value, label, target }: { value: string; label: string; ta
  * A name in a mono chip: a worker, branch, revision, session or hash. `href` makes it a link (text colour, brand on
  * hover); `externalHref` makes it a link out of the hub instead (a branch or a commit on its forge), opened in a new
  * tab without an opener or a referrer and named by `linkLabel` ("7c1e9a2 (opens in a new tab)"); only http and https
- * addresses are taken. `copy` adds a button that copies `value`, named by `copyLabel` ("Copy branch name") or
+ * addresses are taken; `linkLabel` also names a link on the hub, when its value alone would not say what it opens
+ * ("P-3: Shops lose a sale at checkout"). `copy` adds a button that copies `value`, named by `copyLabel` ("Copy branch name") or
  * "Copy <value>". `children` is what shows when it differs from `value`, such as a short hash; `title` then carries
  * the whole value.
  */
@@ -143,6 +144,7 @@ export function Identifier({
     <Link
       ref={text as RefObject<HTMLAnchorElement | null>}
       href={href}
+      aria-label={linkLabel}
       title={title}
       className={cn(CHIP, "text-foreground transition-colors hover:text-brand", className)}
       data-testid={testId}

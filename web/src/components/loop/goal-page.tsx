@@ -10,6 +10,7 @@ import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { FacetGroup } from "@/components/data/facet-group";
 import { Fact, Facts } from "@/components/data/facts";
 import { Identifier } from "@/components/data/identifier";
+import { ProblemChips } from "@/components/data/problem-chips";
 import { When } from "@/components/data/when";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -78,6 +79,9 @@ function FactsCard({ project, goal }: { project: string; goal: ProjectGoal }) {
         </h2>
       </div>
       <Facts>
+        <Fact label={t("problem")} testId="goal-problem">
+          {goal.problem ? <ProblemChips project={project} codes={[goal.problem]} detail /> : t("noProblem")}
+        </Fact>
         <Fact label={t("deadline")}>{goal.deadline ?? t("noDeadline")}</Fact>
         <Fact label={t("owner")}>{goal.owner}</Fact>
         <Fact label={t("canvas")}>{goal.canvas ? <Identifier value={goal.canvas} href={canvasHref(project, goal.canvas)} /> : t("noCanvas")}</Fact>
@@ -131,8 +135,8 @@ function GoalItems({ project, goal }: { project: string; goal: ProjectGoal }) {
 }
 
 /**
- * One goal (/p/{project}/goals/{code}), for any member with a grant on the project: its statement and status, its
- * metric now against its target, what else its revision says, and its work items by state. An admin writes it with
+ * One goal (/p/{project}/goals/{code}), for any member with a grant on the project: its statement and status, the
+ * problem it answers, its metric now against its target, what else its revision says, and its work items by state. An admin writes it with
  * `evo-agents hub goal set`; this page only reads.
  */
 export function GoalPage({ project, code, initialError }: { project: string; code: string; initialError: ApiErrorInfo | null }) {
@@ -148,7 +152,12 @@ export function GoalPage({ project, code, initialError }: { project: string; cod
           <PageHeader
             title={goal.statement}
             status={<GoalStatusBadge goal={goal} size="lg" />}
-            tags={<Identifier value={goal.code} testId="goal-code" />}
+            tags={
+              <>
+                <Identifier value={goal.code} testId="goal-code" />
+                {goal.problem ? <ProblemChips project={project} codes={[goal.problem]} marked testId="goal-problems" /> : null}
+              </>
+            }
             sub={
               <Link href={goalsHref(project)} className="inline-flex items-center gap-1 text-brand hover:text-brand-hover">
                 <Goal className="size-3.5" aria-hidden="true" />

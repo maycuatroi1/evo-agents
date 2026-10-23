@@ -90,11 +90,12 @@ test("an admin reads the Loop by state and by chain, opens a chain, resets the b
   await expect(claim.getByTestId("chain-item")).toHaveCount(7);
   await expect(claim.locator(`[data-testid="chain-item"][data-item-id="${seeded.items.deliver}"]`)).toHaveAttribute("data-depth", "2");
 
-  // A chain from the goal to the release.
+  // A chain from the goal to the release; G-1 answers no problem, so the chain's first stage is not reached.
   await claim.locator(`[data-testid="chain-item"][data-item-id="${seeded.items.build}"]`).getByTestId("chain-item-link").click();
   await expect(page).toHaveURL(new RegExp(`${itemPath(project, seeded.items.build)}$`));
   const rail = main(page).getByTestId("chain-rail");
-  await expect(rail.getByTestId("chain-stage")).toHaveCount(7);
+  await expect(rail.getByTestId("chain-stage")).toHaveCount(8);
+  await expect(rail.locator('[data-stage="problem"]')).toHaveAttribute("data-reached", "false");
   for (const stage of ["goal", "claim", "use_case", "task", "plan", "merges", "release"]) {
     await expect(rail.locator(`[data-stage="${stage}"]`)).toHaveAttribute("data-reached", "true");
   }
