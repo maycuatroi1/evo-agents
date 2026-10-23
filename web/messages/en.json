@@ -7208,7 +7208,7 @@
       "spent": "{cost} spent",
       "spentOf": "{cost} of {budget} spent",
       "noResults": "No probe was due this week: no merged change has an active probe yet.",
-      "explain": "Each probe gives an agent its task {k, plural, one {once} other {# times}} with the change's rule in place and as often with the rule taken off. A failed session repeated the mistake.",
+      "explain": "Each probe gives an agent its task {k, plural, one {# time} other {# times}} with the change's rule in place and as often with the rule taken off. A failed session repeated the mistake.",
       "caption": "The week's probes, with the change's rule and without it",
       "head": {
         "probe": "Probe",
