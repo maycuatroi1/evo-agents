@@ -36,14 +36,20 @@ def register_browser(wsub) -> None:
     installer.set_defaults(func=worker_command(cmd_install))
     login = commands.add_parser(
         "login",
-        help="inside a run with a browser: ask the person who dispatched it to sign in on a browser identity, then end "
-        "your turn; the answer Done saves the profile, and a run of one step fails with the identity needs_login",
+        help="with NAME: sign a browser identity in on this machine, in a Chromium window, no run; inside a run with a "
+        "browser, with --identity --url --reason: ask the person who dispatched it to sign in, then end your turn "
+        "(the answer Done saves the profile, and a run of one step fails with the identity needs_login)",
     )
+    login.add_argument("name", nargs="?", metavar="NAME", help="the identity to sign in on this machine (made if new)")
+    login.add_argument("--project", metavar="NAME", help="with NAME: the project of the identity")
+    login.add_argument("--owner", choices=("member", "project", "agent"), default="member", help="with NAME: whose")
+    login.add_argument("--agent", metavar="HANDLE", help="with NAME and --owner agent: the agent profile's handle")
     login.add_argument(
-        "--identity", required=True, metavar="NAME", help="the name or id of a browser identity of the run"
+        "--domain", action="append", default=[], metavar="HOST", help="with NAME: a site it keeps; needed for a new one"
     )
-    login.add_argument("--url", required=True, metavar="URL", help="the page to sign in at (http or https)")
-    login.add_argument("--reason", required=True, metavar="TEXT", help="why the run needs the session, in a sentence")
+    login.add_argument("--identity", metavar="NAME", help="in a run: the name or id of a browser identity of the run")
+    login.add_argument("--url", metavar="URL", help="the page to sign in at (http or https)")
+    login.add_argument("--reason", metavar="TEXT", help="in a run: why it needs the session, in a sentence")
     login.set_defaults(func=worker_command(cmd_login))
     state = commands.add_parser(
         "state",
@@ -87,8 +93,39 @@ def _browser_run(command: str):
     return agent_run(command, tuple(kind for kind in RUN_KINDS if kind != browser_login.KIND))
 
 
+def cmd_local_login(args) -> int:
+    from evo_agents.worker.browser import local_login
+
+    if args.identity or args.reason:
+        raise WorkerStateError("NAME signs in on this machine; --identity and --reason belong to a run's login")
+    if not args.project:
+        raise WorkerStateError("--project NAME says the project of the identity")
+    if (args.owner == "agent") != (args.agent is not None):
+        raise WorkerStateError("--owner agent goes with --agent HANDLE, and --agent with --owner agent")
+    ask: dict = {
+        "project": args.project,
+        "name": args.name,
+        "owner": args.owner,
+        "domains": [domain.strip().lower() for domain in args.domain],
+    }
+    if args.agent:
+        ask["agent"] = args.agent
+    if args.url:
+        if not browser_login.valid_url(args.url):
+            raise WorkerStateError("--url is an http or https address with a host")
+        ask["login_url"] = args.url
+    answer = asyncio.run(local_login.login(WorkerHome(), ask))
+    print(f"Saved version {answer.get('version')} of browser identity {args.name}: its runs start logged in.")
+    return 0
+
+
 def cmd_login(args) -> int:
     from evo_agents.worker.cli import with_hub
+
+    if getattr(args, "name", None):
+        return cmd_local_login(args)
+    if not (args.identity and args.url and args.reason):
+        raise WorkerStateError("give NAME (sign in here) or --identity, --url and --reason (ask from inside a run)")
 
     agent = _browser_run("login")
     if not browser_login.valid_url(args.url):

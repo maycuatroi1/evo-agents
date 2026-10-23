@@ -280,6 +280,25 @@ class WorkerHub:
         answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/browser-login", body)
         return answer if isinstance(answer, dict) else {}
 
+    async def local_browser_login(self, body: dict) -> dict:
+        """Open a login of a browser identity on this worker's own machine, with no run (``browser_local``): the
+        identity (made when ``body`` says how) and its profile, as ``browser_profile`` answers, with ``project``."""
+        answer = await self.call("POST", "/v1/worker/browser-identities/login", body, timeout=UPLOAD_TIMEOUT)
+        return answer if isinstance(answer, dict) else {}
+
+    async def save_local_browser_profile(
+        self, identity_id: int, archive: bytes, *, base_version: int, chromium_version: str | None
+    ) -> dict:
+        """Send the profile ``archive`` a local login made as the version after ``base_version``; ``{identity_id,
+        version}``."""
+        query = f"base_version={int(base_version)}"
+        if chromium_version:
+            query += f"&chromium_version={quote(chromium_version, safe='')}"
+        path = f"/v1/worker/browser-identities/{int(identity_id)}/profile?{query}"
+        headers = {"Content-Type": "application/octet-stream"}
+        answer = await self.call("PUT", path, archive, timeout=UPLOAD_TIMEOUT, headers=headers)
+        return answer if isinstance(answer, dict) else {}
+
     async def rate_limit(self, run_id: int, body: dict) -> dict:
         """Say what the agent's CLI said of the account behind a lease of the run (``evo_agents.worker.runner.limits``):
         ``{action, secret_id, failovers, ...}``; an older hub without the route answers 404 (Refused)."""
