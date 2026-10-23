@@ -270,7 +270,8 @@
     "mergeQueue": "Hàng đợi merge",
     "mergeQueueFigures": "Số liệu",
     "mergeQueuePolicy": "Policy",
-    "org": "Sơ đồ tổ chức"
+    "org": "Sơ đồ tổ chức",
+    "browser": "Trình duyệt"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -4422,7 +4423,8 @@
           "log": "Log thô",
           "terminal": "Terminal",
           "chat": "Chat",
-          "outputs": "Output"
+          "outputs": "Output",
+          "browser": "Trình duyệt"
         },
         "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
         "connect": "Kết nối terminal",
@@ -4467,6 +4469,58 @@
         "hint": "Phím bạn gõ đi tới TUI của agent trên {worker}. Nhấn Esc rồi Tab để rời terminal.",
         "size": "{cols} × {rows}",
         "sizeLabel": "Kích thước terminal: {cols} cột, {rows} dòng"
+      },
+      "browser": {
+        "label": "Trình duyệt của run #{id}",
+        "labelTab": "Trình duyệt của run #{id}: {title}",
+        "keys": "Phím và chữ gửi tới trình duyệt",
+        "address": "Địa chỉ",
+        "back": "Lùi lại",
+        "forward": "Tiến tới",
+        "reload": "Tải lại",
+        "tabs": "Các tab của trình duyệt",
+        "takeControl": "Tiếp quản",
+        "takingControl": "Đang tiếp quản",
+        "handBack": "Trả lại cho agent",
+        "handingBack": "Đang trả lại",
+        "asked": "Agent dừng ở cuối lượt, rồi trình duyệt là của bạn.",
+        "keyboard": "Bàn phím",
+        "hint": {
+          "agent": "Agent đang điều khiển trình duyệt này. Tiếp quản để tự dùng.",
+          "human": "Bạn đang điều khiển trình duyệt này. Nhấn Esc rồi Tab để rời nó.",
+          "watch": "Agent đang điều khiển trình duyệt này.",
+          "login": "Đăng nhập xong, nhấn Lưu để giữ hồ sơ. Hủy run để không giữ gì."
+        },
+        "waiting": "Đang chờ trình duyệt trên {worker}.",
+        "connecting": "Đang kết nối tới trình duyệt.",
+        "notOpen": "Run #{id} đang ở trạng thái {state}. Trình duyệt chỉ chạy khi một worker đang giữ run.",
+        "retrying": "Mất kết nối tới hub. Đang thử lại.",
+        "workerGone": "{worker} đã ngắt đầu trình duyệt của nó. Hình sẽ quay lại khi worker kết nối lại.",
+        "notice": "Trình duyệt báo: {notice}",
+        "reconnect": "Kết nối lại",
+        "viewHere": "Xem ở đây",
+        "signIn": "Đăng nhập lại",
+        "tooOld": "Bạn đăng nhập cách đây {hours} giờ. Trình duyệt chỉ mở với lần đăng nhập chưa quá 12 giờ: hãy đăng nhập lại rồi quay về run này.",
+        "hubSays": "Hub báo: {reason}",
+        "end": {
+          "closed": "Bạn đã đóng phần xem trình duyệt.",
+          "ended": "Phần xem trình duyệt đã kết thúc: {worker} đã đóng đầu của nó.",
+          "shutdown": "Hub khởi động lại và đã đóng phần xem trình duyệt. Hãy kết nối lại.",
+          "protocol": "Hub đóng phần xem trình duyệt vì một message nó không nhận.",
+          "lost": "Mất kết nối tới hub. Hãy kết nối lại.",
+          "unavailable": "Hub không kiểm tra được yêu cầu vì database không trả lời. Thử lại sau ít phút.",
+          "signIn": "Hub yêu cầu bạn đăng nhập lại trước khi cho xem trình duyệt.",
+          "forbidden": "Hub từ chối cho xem trình duyệt này.",
+          "timeout": "Phần xem trình duyệt đã đóng: không hoạt động 15 phút, hoặc đã mở đủ 4 giờ.",
+          "busy": "Trình duyệt này đang mở ở một cửa sổ hoặc tab khác. Chọn Xem ở đây để mở lại tại trang này.",
+          "upgrade": "{worker} dùng một phiên bản khác của worker protocol: hãy nâng cấp evo-agents trên máy đó."
+        },
+        "save": "Lưu",
+        "saving": "Đang lưu",
+        "saveFailed": "Không lưu được phiên đăng nhập của run #{id}",
+        "done": "Xong, tôi đã đăng nhập",
+        "doneSending": "Đang gửi",
+        "doneFailed": "Không gửi được \"Xong\" cho run #{id}"
       },
       "composer": {
         "label": "Nhắn cho agent",
@@ -4779,6 +4833,7 @@
       },
       "chatSub": "Một lượt của @{agent} trong group chat, bước chuyền {hop}. <chatLink>Mở tin mà run trả lời</chatLink>.",
       "taskSub": "Một task plugin giao cho @{agent}: một lượt trên nhánh {branch}, hub mở nhánh này thành draft pull request.",
+      "browserSub": "Một phiên đăng nhập trình duyệt: {title}. Người dùng đăng nhập identity; Lưu sẽ giữ profile của nó.",
       "header": {
         "back": "Plan {plan}",
         "step": "Bước {key}: {title}",
@@ -4813,7 +4868,8 @@
         "open": "Mở toàn bộ trace",
         "openEmpty": "Mở trace",
         "back": "Quay lại run #{id}",
-        "openChat": "Mở chat"
+        "openChat": "Mở chat",
+        "openBrowser": "Mở trình duyệt"
       },
       "detailsToggle": "Chi tiết",
       "local": {
@@ -5116,6 +5172,17 @@
       "accountPlaceholder": "Lọc theo email tài khoản",
       "accountClear": "Xóa bộ lọc tài khoản",
       "accountHint": "Tài khoản Claude của một phiên local"
+    },
+    "browser": {
+      "label": "Trình duyệt",
+      "info": "Chromium cho các run, do worker khởi động. Với một danh tính, trình duyệt khởi động sẵn trạng thái đăng nhập; danh tính của dự án mọi thành viên đều dùng được.",
+      "none": "Không dùng trình duyệt",
+      "bare": "Chromium, không đăng nhập",
+      "identity": "{name} ({owner})",
+      "status": {
+        "needs_login": "cần đăng nhập",
+        "disabled": "đã tắt"
+      }
     }
   },
   "insights": {
@@ -5739,6 +5806,7 @@
       "triage": "Run lỗi",
       "release": "Phát hành",
       "loop": "Loop",
+      "login": "Đăng nhập",
       "autonomy": "Mức tự chủ"
     },
     "noticeKind": {
@@ -5763,6 +5831,7 @@
       "goal_review": "Rà goal của tháng",
       "loop_brief": "Bản tin sáng của Loop",
       "plugin_notice": "Thông báo từ một plugin",
+      "browser_needs_login": "Một danh tính trình duyệt cần đăng nhập lại",
       "autonomy": "Việc hub đã làm theo mức tự chủ của bạn",
       "worker_doctor": "Doctor của một worker được chia phát hiện mức high"
     },
@@ -5790,7 +5859,8 @@
       "answerProposalLabel": "Trả lời đề xuất #{id}",
       "viewProposalLabel": "Xem đề xuất #{id}",
       "openProposal": "Mở đề xuất #{id}",
-      "openTriage": "Mở thread xử lý lỗi"
+      "openTriage": "Mở thread xử lý lỗi",
+      "openLogin": "Đăng nhập"
     },
     "sheet": {
       "title": "Quyết định #{id}",
@@ -9562,6 +9632,103 @@
       "srs_reviewer": "Người duyệt SRS",
       "chat_member": "Thành viên của chat"
     }
+  },
+  "browser": {
+    "metaTitle": "Danh tính trình duyệt của {project}",
+    "title": "Danh tính trình duyệt",
+    "new": "Tạo mới",
+    "ownerProject": "Danh tính của dự án",
+    "ownerMember": "Của {login}",
+    "neverSaved": "Chưa lưu",
+    "none": "Chưa bao giờ",
+    "heldBy": "Run #{id}",
+    "status": {
+      "needs_login": "Cần đăng nhập",
+      "disabled": "Đã tắt"
+    },
+    "fact": {
+      "domains": "Tên miền",
+      "worker": "Worker",
+      "version": "Phiên bản",
+      "lastSaved": "Lưu lần cuối",
+      "lastUsed": "Dùng lần cuối",
+      "heldBy": "Đang được giữ bởi"
+    },
+    "action": {
+      "login": "Đăng nhập",
+      "move": "Chuyển",
+      "disable": "Tắt",
+      "enable": "Bật",
+      "delete": "Xóa"
+    },
+    "empty": {
+      "title": "Chưa có danh tính trình duyệt",
+      "description": "Một danh tính giữ hồ sơ trình duyệt đã đăng nhập trên một worker. Tạo một danh tính, rồi đăng nhập qua trình duyệt trực tiếp."
+    },
+    "form": {
+      "newTitle": "Danh tính trình duyệt mới",
+      "newDescription": "Một hồ sơ giữ cookie của vài trang web. Bạn đăng nhập một lần trong trình duyệt bạn nhìn thấy; các run dùng lại hồ sơ đó.",
+      "name": "Tên",
+      "nameHint": "Chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới.",
+      "nameInvalid": "Dùng chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới, bắt đầu bằng chữ hoặc số.",
+      "domains": "Tên miền",
+      "domainsHint": "Các trang web có cookie được giữ, cách nhau bằng dấu phẩy. Tên miền con cũng được tính.",
+      "domainsRequired": "Nhập ít nhất một tên miền.",
+      "loginUrl": "URL đăng nhập",
+      "loginUrlHint": "Không bắt buộc. Trang mà phiên đăng nhập mở. Mặc định: trang chủ của tên miền đầu tiên.",
+      "loginUrlInvalid": "Nhập địa chỉ http hoặc https.",
+      "worker": "Worker",
+      "workerPick": "Chọn một worker",
+      "workersLoading": "Đang tải worker",
+      "ownWorkers": "Worker của bạn",
+      "sharedWorkers": "Worker dùng chung",
+      "sharedWorker": "{name} (do {owner} chia sẻ)",
+      "workerHint": "Hồ sơ nằm lại trên worker này. Chỉ hiện các worker đã cài trình duyệt.",
+      "noWorkers": "Chưa có worker nào có trình duyệt. Chạy `evo-agents worker browser install` trên một worker rồi khởi động lại daemon của nó.",
+      "workerRequired": "Chọn một worker.",
+      "owner": "Chủ sở hữu",
+      "ownerMember": "Tôi",
+      "ownerProject": "Dự án (quản trị viên)",
+      "cancel": "Hủy",
+      "create": "Tạo",
+      "creating": "Đang tạo"
+    },
+    "move": {
+      "title": "Chuyển {name}",
+      "description": "Đăng nhập lại trên worker khác. Danh tính chuyển sang đó sau khi bạn lưu; trước đó nó vẫn ở {worker}.",
+      "required": "Chọn một worker.",
+      "cancel": "Hủy",
+      "start": "Bắt đầu phiên đăng nhập",
+      "starting": "Đang bắt đầu"
+    },
+    "confirm": {
+      "cancel": "Hủy",
+      "delete": {
+        "title": "Xóa {name}?",
+        "description": "Hồ sơ đã lưu bị xóa khỏi hub. Các run dùng nó sẽ không tìm thấy nó nữa. Không thể hoàn tác.",
+        "confirm": "Xóa danh tính",
+        "pending": "Đang xóa"
+      },
+      "disable": {
+        "title": "Tắt {name}?",
+        "description": "Các run không dùng được nó khi nó bị tắt. Hồ sơ vẫn được giữ và bạn có thể bật lại.",
+        "confirm": "Tắt danh tính",
+        "pending": "Đang tắt"
+      }
+    },
+    "toast": {
+      "created": "Đã tạo {name}",
+      "createdNext": "Hãy đăng nhập để lưu hồ sơ đầu tiên.",
+      "deleted": "Đã xóa {name}",
+      "disabled": "Đã tắt {name}",
+      "enabled": "Đã bật {name}"
+    },
+    "error": {
+      "conflict": "Một run đang giữ danh tính này, hoặc đang có phiên đăng nhập chờ, hoặc nó đã bị tắt. Thử lại khi việc đó kết thúc.",
+      "exists": "Bạn đã có một danh tính cùng tên trong dự án này."
+    },
+    "ownerAgent": "Agent {handle}",
+    "ownerAgentDefault": "Agent {handle} (mặc định)"
   },
   "sharing": {
     "title": "Chia sẻ với member khác",

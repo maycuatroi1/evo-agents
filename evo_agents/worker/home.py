@@ -11,6 +11,7 @@
   runs/<run>/run.json           what the daemon knows of a run: its worktree, branch, base, when it ended
   runs/<run>/events.jsonl       every event of the run, uploaded as its log when it ends
   runs/<run>/decisions.jsonl    the decisions a plan run's agent asked (``evo-agents worker ask``), one id a line
+  runs/<run>/browser-logins.jsonl  the logins a run's agent asked (``evo-agents worker browser login``): decision, identity
   runs/<run>/pushes.jsonl       the commits ``evo-agents worker step`` of a plan run pushed to a default branch, one
                                 push a line, which a later replay onto that branch never puts back (``gitops.Replay``)
   runs/<run>/push_conflict.json the side branch ``evo-agents worker step`` pushed a plan run's commits to instead of its
@@ -97,6 +98,11 @@ class WorkerConfig:
         if not isinstance(config.projects, list) or not all(isinstance(p, str) for p in config.projects):
             raise ValueError("config.json has no list of projects")
         return config
+
+
+def dir_bytes(path: Path) -> int:
+    """The bytes of the files directly in directory ``path``; 0 when it is not one."""
+    return sum(item.stat().st_size for item in path.iterdir() if item.is_file()) if path.is_dir() else 0
 
 
 def revoked_exit(env: Mapping[str, str]) -> int:
@@ -210,6 +216,11 @@ class WorkerHome:
     def decisions_path(self, run_id: int) -> Path:
         """Where ``evo-agents worker ask`` notes each decision a plan run's agent asked, for the daemon to wait on."""
         return self.run_dir(run_id) / "decisions.jsonl"
+
+    def browser_logins_path(self, run_id: int) -> Path:
+        """Where ``evo-agents worker browser login`` notes each login its agent asked, for the daemon to save the
+        profile when the answer is Done (``browser.logins``)."""
+        return self.run_dir(run_id) / "browser-logins.jsonl"
 
     def pushes_path(self, run_id: int) -> Path:
         """Where ``evo-agents worker step`` notes each commit a plan run pushed to a default branch."""

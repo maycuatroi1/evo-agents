@@ -319,7 +319,7 @@ export function NotificationItem({
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}
-          {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice") ? (
+          {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice" || notification.notice_kind === "browser_needs_login") ? (
             <Link
               href={target}
               onClick={() => {
@@ -328,7 +328,7 @@ export function NotificationItem({
               className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline max-md:min-h-11"
               data-testid="notification-link"
             >
-              {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : t("openBaseline")}
+              {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : notification.notice_kind === "browser_needs_login" ? t("openLogin") : t("openBaseline")}
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}

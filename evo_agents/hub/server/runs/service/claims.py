@@ -49,7 +49,7 @@ from evo_agents.hub.server.runs.models import (
     RunSpec,
     available,
 )
-from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.profiles import (
     claim_clause,
     own_home,
@@ -179,6 +179,7 @@ def _claimable(
     task_runs: bool = False,
     question_runs: bool = False,
     release_runs: bool = False,
+    browser_runs: bool = False,
     step_sessions: bool = False,
     clones: bool = False,
     steady: bool = True,
@@ -199,7 +200,8 @@ def _claimable(
     needs a daemon that says it runs chat runs (``chat_runs``). A task run needs a checkout of one of its repos when it
     has any, a daemon that says it runs task runs (``task_runs``) and, when its agent type names workers, to be one of
     them; a question run likewise, with a daemon that says it runs question runs (``question_runs``). A release run needs a checkout of its one repo and a daemon that says it runs release runs
-    (``release_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``).
+    (``release_runs``). A login session (kind browser) has no repo and needs a daemon that says it runs them
+    (``browser_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``).
     A worker whose daemon clones the repos it lacks (``clones``, runs.CLONES_CHECKOUTS) needs no checkout of any of
     them: those checkout rules hold only for an older one. A worker set to take runs dispatched from the web
     only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes only the runs
@@ -238,7 +240,7 @@ def _claimable(
                 (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "release")), every_repo),
                 (r.c.kind == "author", harness),
                 (
-                    r.c.kind == "chat",
+                    r.c.kind.in_(("chat", "browser")),
                     true(),
                 ),  # pinned to the worker the hub picked, which works without a repo it lacks
                 (
@@ -255,7 +257,7 @@ def _claimable(
     if not step_sessions:
         query = query.where(r.c.session_per_step.is_(False))
     said = {"review": review_runs, "judge": judge_runs, "replay": replay_runs, "history": history_runs}
-    said |= {"author": author_runs, "chat": chat_runs, "release": release_runs}
+    said |= {"author": author_runs, "chat": chat_runs, "release": release_runs, "browser": browser_runs}
     left_out = [kind for kind, runs_it in said.items() if not runs_it]  # the kinds its daemon does not say it runs
     if left_out:
         query = query.where(r.c.kind.not_in(left_out))
@@ -456,11 +458,15 @@ async def _claim_once(
             task_runs="task" in (kinds or ()),
             question_runs="question" in (kinds or ()),
             release_runs="release" in (kinds or ()),
+            browser_runs="browser" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             clones=clones,
             steady=is_steady,
             shared=shared,
-            profile_gate=claim_clause(name, labels, runtimes, features, offered, environments, plugins),
+            profile_gate=and_(
+                claim_clause(name, labels, runtimes, features, offered, environments, plugins),
+                browsers.claim_gate(worker_id, features),
+            ),
         )
         row = (await conn.execute(query)).one_or_none()
         if row is None:
@@ -689,6 +695,8 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     if view.kind in OWN_PROMPTS:
         prompt = await _own_prompt(conn, view, features)
         title = view.title
+    elif view.kind == "browser":  # a person drives its Chromium: no agent, so no prompt
+        prompt, title = "", view.title
     elif view.kind == "author":
         skill = await author_skill(conn)
         repos = [repo.model_dump() for repo in view.repos or []]
@@ -754,6 +762,8 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         curator=await _curator_spec(conn, project_id, view),
         verify=verify,
         session_per_step=view.session_per_step,
+        browser=view.browser,
+        browser_identities=view.browser_identities,
         profile=await run_profile(conn, run_id),
         own_home=await own_home(conn, run_id),
         origin=await run_origin(conn, run_id),

@@ -56,6 +56,7 @@ class Inbox:
                         if isinstance(message_id, int) and message_id <= self.delivered_upto:
                             last = message_id  # in the prompt the agent started on already
                             continue
+                        await agent.login_answered([message])
                         await adapter.send(await self.text_of(message))
                         last = message_id
                         self.handed([message])

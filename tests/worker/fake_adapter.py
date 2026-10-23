@@ -71,6 +71,7 @@ import sys
 import uuid
 from pathlib import Path
 
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import Adapter, AgentEvent, AgentFinished, Detection, Outcome
 from evo_agents.worker.interactive import Tui
 
@@ -249,6 +250,8 @@ class FakeAdapter(Adapter):
     runtime = "claude-code"
     binary = "claude"
     interactive = True
+    pack_kinds = packs.KINDS  # a run with a browser carries the browser agent pack
+    pack_transports = packs.TRANSPORTS
     starts: dict[int, int] = {}  # run id -> the starts of its agent in this process
 
     @classmethod

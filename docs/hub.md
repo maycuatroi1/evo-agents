@@ -3080,3 +3080,10 @@ local variable and goes through the same masking.
 
 **Upgrades.** Set `EVO_HUB_VERSION` to the new release, pull, and recreate the services; the api migrates on start.
 Take a backup first when the release notes mention a migration.
+
+## Hub browser identity
+
+`/v1/projects/{p}/browser-identities` lists, creates and deletes the identities of a project (owner `member`, `project` or
+`agent`), `POST .../{id}/default` sets the default identity of an agent profile, and `POST .../{id}/login` queues a login
+session. A worker's owner signs one in without a run through `POST /v1/worker/browser-identities/login` and
+`PUT /v1/worker/browser-identities/{id}/profile`. See [docs/browser.md](browser.md).

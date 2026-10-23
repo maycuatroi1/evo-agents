@@ -14,8 +14,14 @@ default profile, which allows everything. A rerun keeps the profile of the run i
 
 ``--runtime`` on ``dispatch`` and ``plan`` takes any (the claiming worker picks a runtime of the core it has), a
 runtime of the core, or ``<plugin>/<name>``, a runtime a plugin enabled on the project declares (``docs/plugins.md``,
-section Runtimes); the hub refuses one the project does not register. Standard library only, like the rest of the
-client.
+section Runtimes); the hub refuses one the project does not register.
+
+``--browser`` on ``dispatch``, ``plan`` and ``rerun`` gives the run's agent a Chromium of its own on its worker, which
+the worker starts before the agent's first turn and closes when the run ends there: only a worker that ran
+``evo-agents worker browser install`` takes it. ``--identity NAME`` on ``dispatch`` and ``plan``, once for each, opens
+that Chromium with browser identities (``evo-agents hub browser identity list``), which implies ``--browser``: the run
+goes to the worker that holds them and waits while another run uses one. A rerun keeps the browser of the run it
+reruns, and its identities. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -89,6 +95,34 @@ def account_option(parser, help_text: str = ACCOUNT_HELP, *, agent: bool = True)
         parser.add_argument("--agent", metavar="HANDLE", help=AGENT_HELP)
 
 
+BROWSER_HELP = (
+    "give the agent a Chromium of its own on its worker, whose DevTools endpoint it reads in EVO_BROWSER_CDP; only a "
+    "worker that ran `evo-agents worker browser install` takes the run"
+)
+
+
+IDENTITY_HELP = (
+    "open the run's Chromium logged in as this browser identity of yours, else of the project's (`evo-agents hub "
+    "browser identity list`); once for each, the first one's profile with the others' cookies; implies --browser"
+)
+
+
+def browser_option(parser, *, identities: bool = False) -> None:
+    """``--browser``: the run's agent gets a Chromium of its own; with ``identities``, ``--identity`` too."""
+    parser.add_argument("--browser", action="store_true", help=BROWSER_HELP)
+    if identities:
+        parser.add_argument("--identity", metavar="NAME", action="append", dest="identities", help=IDENTITY_HELP)
+
+
+def browser_body(args) -> dict:
+    """What a dispatch, a plan run or a rerun sends of ``--browser`` and ``--identity``: only when asked, so an older
+    hub takes the rest."""
+    body = {"browser": True} if getattr(args, "browser", False) else {}
+    if getattr(args, "identities", None):
+        body["identities"] = list(args.identities)
+    return body
+
+
 def usage_error(text: str) -> int:
     """Say on stderr what is wrong with the options; the exit status of a usage error."""
     print(f"error: {text}", file=sys.stderr)
@@ -109,15 +143,17 @@ def rerun_options(parser) -> None:
         action="store_true",
         help="let the rules of your policy pick the account, not keep the one picked by hand for the run rerun",
     )
+    browser_option(parser)
 
 
 def rerun_body(args) -> dict | None:
     """The body of a rerun: none when it keeps everything, so an older hub, which takes none, still takes it."""
+    body = browser_body(args)
     if getattr(args, "account", None):
-        return {"account": args.account}
-    if getattr(args, "account_by_rule", False):
-        return {"account_by_rule": True}
-    return None
+        body["account"] = args.account
+    elif getattr(args, "account_by_rule", False):
+        body["account_by_rule"] = True
+    return body or None
 
 
 def dispatch_options(dispatch) -> None:
@@ -138,6 +174,7 @@ def dispatch_options(dispatch) -> None:
         "the worker runs again exits 0",
     )
     dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
+    browser_option(dispatch, identities=True)
 
 
 def list_options(listed) -> None:
@@ -195,6 +232,7 @@ def plan_options(plan, with_model) -> None:
         help="start a new agent session for each step, its prompt the step's with the handoff of the plan, rather "
         "than one session for every step; a worker takes it once its daemon says it runs one",
     )
+    browser_option(plan, identities=True)
     account_option(plan)
 
 

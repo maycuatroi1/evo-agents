@@ -14,8 +14,10 @@ open, or when none was asked for), update_outcome how (``runs.UPDATE_NOW_OUTCOME
 daemon said. The columns of 0108 keep the newest report of its daemon's doctor (``evo_agents.hub.server.worker_doctor``):
 doctor_at, when the hub took it; doctor_high and doctor_medium, its findings of each severity; doctor_findings, the
 findings (code, severity, detail). hub_nightly (0065) is one row, the commit the tag nightly pointed to when the hub last read it and when
-that was (``evo_agents.hub.nightly``), absent until the hub first read it. worker_projects lists the projects a worker
-takes runs of; worker_pairings holds the pairing codes a member creates for a machine to join with.
+that was (``evo_agents.hub.nightly``), absent until the hub first read it. browser (0119) is what its last heartbeat
+said of the Chromium its daemon starts for a run (``evo_agents.worker.browser``), NULL when it said nothing of one.
+worker_projects lists the projects a worker takes runs of; worker_pairings holds the pairing codes a member creates
+for a machine to join with.
 """
 
 from __future__ import annotations
@@ -92,6 +94,7 @@ def workers_table(metadata: MetaData) -> Table:
         _when("update_ended_at"),  # 0065
         Column("update_outcome", Text),  # 0065
         Column("update_reason", Text),  # 0065
+        Column("browser", JSONB),  # 0119
         _when("doctor_at"),  # 0108
         Column("doctor_high", SmallInteger),  # 0108
         Column("doctor_medium", SmallInteger),  # 0108

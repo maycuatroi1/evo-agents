@@ -31,6 +31,12 @@ over a real PTY, whose line discipline echoes what is typed and whose program an
 and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says how it went. POST /sessions/age
 {login, hours} makes that member's web sessions that many hours older, for the 12-hour limit of the terminal.
 
+The browser view spec needs the worker's end of a run's live browser: POST /browser/worker {run_id, token} connects it
+the way the daemon's broker does (``fake_browser.FakeBrowser``: the worker's token and protocol header), with two tabs
+whose screens are stills of one colour and a mode that follows the run's state; GET /browser/worker/<run_id> says what
+it got (the views, the ACKs and every event the page sent), and POST /browser/worker/end {run_id, how} drops its end
+(``drop``), connects it again (``resume``) or closes the run's browser (``close``).
+
 The Insights specs need runs that ended on earlier days: POST /runs/backdate {run_id, days, seconds} moves an ended run
 ``days`` whole UTC days back, every time of it alike, and with ``seconds`` makes it start that long before it ended.
 
@@ -114,6 +120,7 @@ ROOT = Path(__file__).resolve().parents[2]  # the evo-agents checkout this web/ 
 sys.path.insert(0, str(ROOT))
 
 from demo.stack import Demo  # noqa: E402
+from fake_browser import FakeBrowser  # noqa: E402
 from fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
 from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
 from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
@@ -706,6 +713,7 @@ def control_server(
     telegram: FakeTelegram,
 ) -> ThreadingHTTPServer:
     terminals: dict[int, FakeTerminal] = {}
+    browsers: dict[int, FakeBrowser] = {}
     updates = iter(range(1, 1_000_000))
     demo = Demo(seeder, dsn, STATE_DIR / "demo")
 
@@ -726,6 +734,9 @@ def control_server(
             elif self.path.startswith("/terminal/worker/") and self.path.rsplit("/", 1)[1].isdigit():
                 terminal = terminals.get(int(self.path.rsplit("/", 1)[1]))
                 self._reply(200, terminal.state) if terminal else self._reply(404, {"error": "no fake terminal"})
+            elif self.path.startswith("/browser/worker/") and self.path.rsplit("/", 1)[1].isdigit():
+                browser = browsers.get(int(self.path.rsplit("/", 1)[1]))
+                self._reply(200, browser.state) if browser else self._reply(404, {"error": "no fake browser"})
             else:
                 self._reply(404, {"error": "not found"})
 
@@ -752,6 +763,19 @@ def control_server(
                 terminals[terminal.run_id] = terminal
                 terminal.start()
                 self._reply(200, {"started": True})
+            elif self.path == "/browser/worker":
+                browser = FakeBrowser(api_url, int(body["run_id"]), str(body["token"]), dsn)
+                browsers[browser.run_id] = browser
+                browser.start()
+                self._reply(200, {"started": True})
+            elif self.path == "/browser/worker/end":
+                browser = browsers.get(int(body["run_id"]))
+                how = {"drop": browser.drop, "resume": browser.resume, "close": browser.close} if browser else {}
+                if str(body.get("how")) in how:
+                    how[str(body["how"])]()
+                    self._reply(200, {"done": True})
+                else:
+                    self._reply(404, {"error": "no fake browser, or how is not drop, resume or close"})
             elif self.path == "/sessions/age":
                 self._reply(200, age_sessions(dsn, body))
             elif self.path == "/runs/backdate":

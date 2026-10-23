@@ -241,6 +241,9 @@ def _register_client_commands(hsub) -> None:
     register_org(hsub)
     register_autonomy(hsub)
 
+    from evo_agents.hub.cli_browser import register_browser
+
+    register_browser(hsub)
     from evo_agents.hub.cli_stop import register_stop
 
     register_stop(hsub)
