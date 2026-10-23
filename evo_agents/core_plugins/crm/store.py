@@ -8,7 +8,7 @@ of a contact, so a thing read twice is stored once. Deleting a contact deletes i
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -215,8 +215,9 @@ async def delete_contact(
     found = await contact(conn, project_id, login, lock=True)
     if found is None:
         return None
-    t = tables.crm_touchpoints
+    t, sent = tables.crm_touchpoints, tables.crm_invites_sent
     held = await conn.scalar(select(func.count()).where(t.c.contact_id == found.id))
+    await conn.execute(delete(sent).where(sent.c.project_id == project_id, sent.c.login == found.login))
     await conn.execute(delete(tables.crm_contacts).where(tables.crm_contacts.c.id == found.id))
     await conn.execute(
         insert(tables.crm_deletions).values(
@@ -224,6 +225,41 @@ async def delete_contact(
         )
     )
     return found.id, held
+
+
+# Invite links @community made
+
+
+async def requested(conn: AsyncConnection, project_id: int, login: str, ref: str) -> bool:
+    """Whether contact ``login`` asked for an invite with the request ``ref`` (an invite_request touchpoint)."""
+    c, t = tables.crm_contacts.c, tables.crm_touchpoints.c
+    found = await conn.scalar(
+        select(t.id)
+        .join_from(tables.crm_touchpoints, tables.crm_contacts, c.id == t.contact_id)
+        .where(c.project_id == project_id, c.login == login.lower(), t.kind == "invite_request", t.ref == ref)
+        .limit(1)
+    )
+    return found is not None
+
+
+async def sent_for(conn: AsyncConnection, project_id: int, ref: str) -> bool:
+    s = tables.crm_invites_sent.c
+    return await conn.scalar(select(s.id).where(s.project_id == project_id, s.ref == ref)) is not None
+
+
+async def sent_this_week(conn: AsyncConnection, project_id: int) -> int:
+    """How many invite links @community made in the project in the last 7 days."""
+    s = tables.crm_invites_sent.c
+    since = func.now() - timedelta(days=7)
+    return int(await conn.scalar(select(func.count()).where(s.project_id == project_id, s.sent_at > since)) or 0)
+
+
+async def add_sent(conn: AsyncConnection, project_id: int, ref: str, login: str, invite_id: int, run_id: int) -> None:
+    await conn.execute(
+        insert(tables.crm_invites_sent).values(
+            project_id=project_id, ref=ref, login=login.lower(), invite_id=invite_id, run_id=run_id
+        )
+    )
 
 
 # Cursors

@@ -42,6 +42,7 @@ class Config:
     budget_usd: float = registry.DEFAULT_BUDGET_USD
     dry_run_hours: float = registry.DEFAULT_DRY_RUN_HOURS
     rules: dict = field(default_factory=dict)  # channel -> the fields of its rules the project changes
+    replies_per_day: int = registry.DEFAULT_REPLIES_PER_DAY  # reply work items the Loop makes in 24 hours
     tokens: dict = field(default_factory=dict, repr=False)  # channel -> credential; hidden from repr
     sessions: dict = field(default_factory=dict, repr=False)  # channel -> login session of the browser; hidden
 
@@ -69,6 +70,7 @@ async def config(conn: AsyncConnection, hub_config: HubConfig | None, project: s
         budget_usd=_number(values.get("budget_usd"), registry.DEFAULT_BUDGET_USD),
         dry_run_hours=_number(values.get("dry_run_hours"), registry.DEFAULT_DRY_RUN_HOURS),
         rules=rules if isinstance(rules, dict) else {},
+        replies_per_day=int(_number(values.get("replies_per_day"), registry.DEFAULT_REPLIES_PER_DAY)),
         tokens=tokens,
         sessions=sessions,
     )

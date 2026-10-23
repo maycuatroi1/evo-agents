@@ -48,6 +48,9 @@ class Touch:
     updated_at: datetime
 
 
+GITHUB_KINDS = ("invite_request", "issue", "pull_request", "discussion")
+
+
 class Fetcher(Protocol):
     async def issues(self, repo: str, since: datetime | None) -> list[dict]:
         """The issues and pull requests of ``repo`` updated at or after ``since``, oldest update first."""
@@ -155,6 +158,18 @@ class HttpFetcher:
         data = ((response.json().get("data") or {}).get("repository") or {}).get("discussions") or {}
         nodes = [node for node in data.get("nodes") or [] if isinstance(node, dict)]
         return [node for node in nodes if since is None or _time(node["updatedAt"]) >= since]
+
+    async def account_created(self, login: str) -> datetime | None:
+        """When the GitHub account ``login`` was made (``GET /users/{login}``), None when GitHub has no such user."""
+        import httpx
+
+        async with httpx.AsyncClient(base_url=API, headers=self._headers(), timeout=TIMEOUT) as client:
+            response = await client.get(f"/users/{login}")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        created = response.json().get("created_at")
+        return _time(created) if isinstance(created, str) else None
 
 
 def default_fetcher() -> Fetcher:

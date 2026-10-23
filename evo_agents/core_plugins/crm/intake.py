@@ -9,23 +9,28 @@ contacts.
 Each source is read from its cursor (``crm_cursors``) on: the newest time it had read last pass. A contact made
 earlier is found again by its login and gets nothing twice (a touchpoint is one row per kind and reference); one
 that was deleted is not made again by what lies before the cursor, only by something new it does after.
+
+A new touchpoint from GitHub (an invite request, an issue, a pull request or a discussion) of the last 7 days records
+the event ``plugin.crm.touch``: the Loop's rule ``growth`` (``loop``) gives @community its work from it.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.crm import github, rules, store
-from evo_agents.hub import tables
+from evo_agents.hub import hub_events, tables
 
 log = logging.getLogger(__name__)
 
 HUB, GITHUB = "hub", "github"  # the sources of crm_cursors
+TOUCH = hub_events.own_kind(store.PLUGIN, "touch")  # what the rule growth of the Loop reads (``loop``)
+FRESH = timedelta(days=7)  # a touch older than this when first read wakes no agent: history is not answered
 
 
 @dataclass(frozen=True)
@@ -84,9 +89,11 @@ async def apply(conn: AsyncConnection, project_id: int, label: dict, touches: li
             continue
         contact_id, made = await store.ensure_contact(conn, project_id, login, touch.kind, label, touch.at)
         done["contacts"] += made
-        done["touchpoints"] += await store.add_touchpoint(
-            conn, contact_id, touch.kind, touch.ref, touch.at, url=touch.url
-        )
+        new = await store.add_touchpoint(conn, contact_id, touch.kind, touch.ref, touch.at, url=touch.url)
+        done["touchpoints"] += new
+        if new and touch.kind in github.GITHUB_KINDS and touch.at >= datetime.now(UTC) - FRESH:
+            payload = {"v": 1, "contact_id": contact_id, "kind": touch.kind, "ref": touch.ref, "url": touch.url}
+            await hub_events.record(conn, TOUCH, project_id, payload)  # no login: a deleted contact leaves none
     return done
 
 

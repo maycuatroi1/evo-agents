@@ -45,6 +45,8 @@ class GitHub(_Base):
         if repo.count("/") != 1:
             raise AdapterError("missing", "github: the account has no target owner/name")
         headers = _bearer(token, **{"X-GitHub-Api-Version": "2022-11-28"})
+        if content.reply_to:
+            return await self._reply(repo, content, headers)
         if discussion:
             return await self._discussion(content, discussion, headers)
         tag = content.title or "release"
@@ -72,6 +74,66 @@ class GitHub(_Base):
         if not found:
             raise AdapterError("rejected", "github: the discussion was not created")
         return Published(str(found.get("url", "")), str(found.get("id", "")))
+
+    async def _reply(self, repo: str, content: Content, headers: dict) -> Published:
+        """A comment under an issue or a pull request (``issue#<n>``, ``pr#<n>``), or under a discussion
+        (``discussion#<n>``, or the node id of a discussion or of a comment to answer in its thread)."""
+        kind, _, number = (content.reply_to or "").partition("#")
+        if kind in ("issue", "pr") and number.isdigit():
+            body = await self.call(
+                HttpRequest(
+                    "POST", f"{self.API}/repos/{repo}/issues/{number}/comments", headers, {"body": content.body}
+                )
+            )
+            return Published(str(body.get("html_url", "")), str(body.get("id", "")))
+        if kind == "discussion" and number.isdigit():
+            owner, _, name = repo.partition("/")
+            query = "query($o:String!,$n:String!,$d:Int!){repository(owner:$o,name:$n){discussion(number:$d){id}}}"
+            variables = {"o": owner, "n": name, "d": int(number)}
+            found = await self.call(
+                HttpRequest("POST", f"{self.API}/graphql", headers, {"query": query, "variables": variables})
+            )
+            node = (((found.get("data") or {}).get("repository") or {}).get("discussion") or {}).get("id")
+            if not node:
+                raise AdapterError("rejected", "github: no such discussion to answer")
+            return await self._comment(str(node), None, content.body, headers)
+        discussion, _, comment = (content.reply_to or "").partition(":")
+        return await self._comment(discussion, comment or None, content.body, headers)
+
+    async def _comment(self, discussion: str, comment: str | None, text: str, headers: dict) -> Published:
+        query = (
+            "mutation($d:ID!,$b:String!,$r:ID){addDiscussionComment(input:{discussionId:$d,body:$b,replyToId:$r})"
+            "{comment{id url}}}"
+        )
+        variables = {"d": discussion, "b": text, "r": comment}
+        body = await self.call(
+            HttpRequest("POST", f"{self.API}/graphql", headers, {"query": query, "variables": variables})
+        )
+        found = ((body.get("data") or {}).get("addDiscussionComment") or {}).get("comment") or {}
+        if not found:
+            raise AdapterError("rejected", "github: the comment was not made")
+        return Published(str(found.get("url", "")), str(found.get("id", "")))
+
+    async def replies(self, external_id: str, token: str) -> list[dict]:
+        """The comments under a discussion the account started (its node id); a release has none to read."""
+        if not external_id.startswith("D_"):
+            return []
+        query = "query($d:ID!){node(id:$d){... on Discussion{comments(last:50){nodes{id url body author{login}}}}}}"
+        headers = _bearer(token, **{"X-GitHub-Api-Version": "2022-11-28"})
+        body = await self.call(
+            HttpRequest("POST", f"{self.API}/graphql", headers, {"query": query, "variables": {"d": external_id}})
+        )
+        nodes = (((body.get("data") or {}).get("node") or {}).get("comments") or {}).get("nodes") or []
+        return [
+            {
+                "external_id": f"{external_id}:{node.get('id')}",
+                "author": (node.get("author") or {}).get("login"),
+                "url": node.get("url"),
+                "body": str(node.get("body") or ""),
+            }
+            for node in nodes
+            if isinstance(node, dict) and node.get("id")
+        ]
 
 
 class X(_Base):
@@ -163,6 +225,23 @@ class Reddit(_Base):
             "comments": float(found.get("num_comments", 0)),
             "removed": removed,
         }
+
+    async def replies(self, external_id: str, token: str) -> list[dict]:
+        """The top comments under a post of the account (its fullname ``t3_...``), each by its fullname."""
+        headers = _bearer(token, **{"User-Agent": "evo-agents-marketing/1"})
+        url = f"https://oauth.reddit.com/comments/{external_id.removeprefix('t3_')}?depth=1&limit=50"
+        body = await self.call(HttpRequest("GET", url, headers))
+        listings = body.get("items") if isinstance(body.get("items"), list) else []
+        comments = ((listings[1] if len(listings) > 1 else {}).get("data") or {}).get("children") or []
+        found = []
+        for child in (child for child in comments if isinstance(child, dict)):
+            data = child.get("data") or {}
+            if child.get("kind") == "t1" and data.get("name") and data.get("body"):
+                url = f"https://www.reddit.com{data['permalink']}" if data.get("permalink") else None
+                found.append(
+                    {"external_id": data["name"], "author": data.get("author"), "url": url, "body": data["body"]}
+                )
+        return found
 
 
 class FacebookPage(_Base):

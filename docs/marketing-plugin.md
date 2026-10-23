@@ -100,6 +100,31 @@ project numbers `marketing.posts_week`, `marketing.breaker_open`, `marketing.spe
 `marketing.judge_pass_rate`. A signal key must be declared by an admin first; an undeclared one is counted in `rejected`.
 Posts are not label-gated: reading posts and the deny-list needs a writer, channels and status a reader.
 
+## @marketer and the Loop
+
+The plugin contributes the agent type `@marketer`, the tools `marketing__propose`, `marketing__draft` and
+`marketing__personal`, and the Loop rule `growth` (plan autonomous-oss-growth, criterion a16). Only a run of `@marketer`
+(or `@community` of the plugin crm) calls the tools, as the member the type runs as, who needs the writer role.
+
+- A claim of the Channels or Customer segments cell that an approved baseline moves to testing makes a `growth_idea`
+  task: a plan of posts from the claim's test card. Each post names its claim (`CL-<n>`), a Signal key and its time
+  (`scheduled_at`).
+- A post scheduled for later stays `proposed` and nothing decides it. When its time comes and the kill switch is off,
+  the rule makes a `growth_publish` job. The job releases the post, and the job `advance` takes it through the gate.
+- A post that went out makes a `growth_review` job. It is done when the post's +7d numbers are kept, or 8 days after it
+  went out, and the numbers go in its detail.
+- The job reads the replies under the project accounts' posts of the last 7 days (Reddit comments, GitHub Discussion
+  comments). Each new one makes a `growth_draft` task, at most `replies_per_day` in 24 hours (10 by default). The
+  account's own replies are skipped, and a personal account's posts are never read.
+- `marketing__personal` takes content for a member's personal channel. If its owner made a `facebook_profile` or
+  `tiktok` account autonomous, the post goes through the gate; otherwise it is kept as a draft. Either way the tool
+  returns a proposal for the hub project `omelet-blog`, which the agent sends with `chat_message` to the group chat
+  `growth-proposals`.
+- Language: English on github, hackernews, reddit, x and linkedin; Vietnamese on viblo, facebook_page,
+  facebook_profile and tiktok.
+
+No agent changes a channel's mode, the kill switch, a Goal or the Policy, and none approves a baseline.
+
 ## Commands
 
 ```

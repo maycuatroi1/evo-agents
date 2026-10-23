@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Path, Query, Request, Response
 from sqlalchemy import select
 
-from evo_agents.core_plugins.marketing import breaker, browser, budget, flow, registry, settings, store
+from evo_agents.core_plugins.marketing import breaker, browser, budget, campaign, flow, registry, settings, store
 from evo_agents.core_plugins.marketing.models import (
     MarketingBrowserClaim,
     MarketingBrowserJob,
@@ -110,6 +110,9 @@ def _post(row) -> MarketingPost:
         dry_run=row.dry_run,
         created_at=row.created_at,
         posted_at=row.posted_at,
+        claim_id=row.claim_id,
+        signal_key=row.signal_key,
+        scheduled_at=row.scheduled_at,
     )
 
 
@@ -367,24 +370,6 @@ async def show_post(request: Request, project: ProjectName, post_id: PostId, use
     return await _answer(request, work)
 
 
-def _values(access: ProjectAccess, user, body: MarketingPostIn, row) -> dict:
-    if body.kind == "reply" and not body.reply_to:
-        raise store.MarketingError(422, "a reply names what it answers (reply_to)")
-    return {
-        "project_id": access.project_id,
-        "channel_id": row.id,
-        "channel": row.channel,
-        "account": row.account,
-        "kind": body.kind,
-        "reply_to": body.reply_to,
-        "body": body.body,
-        "links": body.links,
-        "sources": [s.model_dump() for s in body.sources],
-        "run_id": body.run_id,
-        "proposed_by": user.user_id,
-    }
-
-
 @router.post("/{project}/posts", status_code=201, response_model=MarketingPost)
 async def propose_post(request: Request, project: ProjectName, body: MarketingPostIn, user: CurrentUser):
     """Propose a post to the gate: it is checked in order and goes out when every layer passes, with no human. A post
@@ -398,9 +383,9 @@ async def propose_post(request: Request, project: ProjectName, body: MarketingPo
         refused = flow.personal_guard(row, body.kind)
         if refused:
             raise store.MarketingError(403, refused)
-        post_id = await store.add_post(conn, **_values(access, user, body, row))
+        values = await campaign.values_of(conn, access.project_id, user.user_id, body, row)
         cfg = await settings.config(conn, request.app.state.config, project)
-        await flow.decide(conn, _runtime(request), cfg, project, access.project_id, post_id)
+        post_id = await campaign.submit(conn, _runtime(request), cfg, project, access.project_id, values)
         return _post(await store.post(conn, post_id))
 
     return await _answer(request, work)
@@ -415,7 +400,8 @@ async def save_draft(request: Request, project: ProjectName, body: MarketingPost
         access = await project_access(conn, user, project)
         store.writer(access, "saving a draft")
         row = await _found(conn, access, body.channel_id)
-        values = _values(access, user, body, row)
+        values = await campaign.values_of(conn, access.project_id, user.user_id, body, row)
+        values = {**values, "scheduled_at": None}
         post_id = await store.add_post(conn, **values, state="draft", reason="saved as a draft: a person posts it")
         await _audit(conn, user, access, "marketing.post.draft", f"post:{post_id}")
         return _post(await store.post(conn, post_id))

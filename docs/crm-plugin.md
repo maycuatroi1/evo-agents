@@ -102,6 +102,28 @@ evo-agents hub crm delete dung --project evo-agents --yes
 The knowledge graph of the project gets one document of kind `doc` for each contact (source `contacts`): its login,
 its source and its stage, with the label of the row. No touchpoint, note, time or link reaches the graph.
 
+## @community and the Loop
+
+The plugin contributes the agent type `@community`, the tool `crm__invite` and the Loop rule `growth` (plan
+autonomous-oss-growth, criterion a16). When the job `intake` stores a new GitHub touchpoint from the last 7 days, it
+records the event `plugin.crm.touch` with the contact's number and no login. The rule turns that event into work:
+
+- An invite request (an issue whose title starts with `invite:`) makes a `growth_invite` task: answer in the issue and,
+  when `crm__invite` makes a link, post it there.
+- An outsider's new issue, pull request or discussion makes a `growth_draft` task: the first reply, through the gate of
+  the plugin marketing (`marketing__propose`, kind reply).
+
+`crm__invite` makes a join link only for a run of `@community`, and only if all of these hold:
+
+- the login asked with that request;
+- no link was made for the request before;
+- the project made fewer than `invite_links_per_week` links in the last 7 days (3 by default);
+- the GitHub account is at least `invite_min_github_age_days` old (30 by default).
+
+The link gives the reader role at the lowest level of the project's ladder and lasts 7 days. Only that login can accept
+it. It is made in the name of the member the type runs as, with the audit row `invite.create`. Apart from a hub admin,
+`@community` is the only maker of invite links.
+
 ## Privacy
 
 [Unverified] The plugin is built for the Vietnamese Personal Data Protection Law, Luật 91/2025/QH15; this page is not

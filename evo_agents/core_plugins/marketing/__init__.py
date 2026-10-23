@@ -22,6 +22,12 @@ expired session stops the channel. The numbers of a post go to Signal at +24h an
 ``/v1/x/marketing/<project>`` (``server``, ``models``) and ``evo-agents hub marketing channels|posts|pause|resume|kill``
 are their client. A project that does not enable the plugin writes nothing and answers 404 on its routes. The package
 imports no other core plugin (import-linter contract ``marketing-plugin-own-package``).
+
+On the Loop (criterion a16; ``loop``, ``campaign``, ``replies``, ``tools``) the agent type @marketer turns a claim of
+the Channels or Customer segments cell that goes to testing into a plan of posts, each tied to its claim and a Signal
+key and posted at its time through the gate; a post that went out is measured, and a reply under a project account's
+post is answered within ``replies_per_day``. Content for a member's personal channel becomes a proposal for the hub
+project omelet-blog.
 """
 
 SERVER = "evo_agents.core_plugins.marketing.server"
@@ -29,6 +35,9 @@ JOB = "evo_agents.core_plugins.marketing.job"
 ADVANCE_JOB = "advance"
 ADVANCE_CRON = "*/5 * * * *"  # every 5 minutes, UTC
 JUDGE = "marketing-judge"  # judge.AGENT_TYPE
+MARKETER = "marketer"
+LOOP = "evo_agents.core_plugins.marketing.loop"
+TOOLS = "evo_agents.core_plugins.marketing.tools"
 
 JUDGE_INSTRUCTIONS = """# @marketing-judge
 
@@ -42,6 +51,74 @@ anything. You are asked a question that holds the draft, its channel and its lin
 
 Answer with one JSON object and nothing else, for example {"truth": 5, "brand": 4, "voice": 4, "privacy": 5}. A draft
 passes when every axis is 4 or more. When you doubt an axis, score it 3 or less."""
+
+MARKETER_INSTRUCTIONS = """# @marketer
+
+You write the posts of an open-source project and take them through the posting gate. You never post by hand: every
+post goes through a tool, and the gate decides.
+
+## Tools
+
+- marketing__propose: a post or a reply through the gate. Give the claim it tests (CL-<n>), one Signal key and, for
+  a post that goes out later, scheduled_at.
+- marketing__draft: a draft a person posts. Use it when the gate is not the right place, for example a launch.
+- marketing__personal: content for a member's personal channel. Send the proposal it gives back with chat_message
+  to the group chat growth-proposals of hub project omelet-blog, as it is.
+
+## Rules
+
+- Language: English on github, hackernews, reddit, x and linkedin. Vietnamese on viblo, facebook_page,
+  facebook_profile and tiktok.
+- Every claim in a post has a source: the docs, a release or the changelog. Link it.
+- Explain down to the mechanism: what the code does, step by step, and the numbers you measured, with the span.
+- Write plainly. No hype, no superlatives, no call to share or follow, no emoji, no filler opening or closing line.
+- Never reply from a personal account. Reply only from the project's accounts.
+- You do not approve a baseline, and you do not change a Goal, the Policy or a channel's mode. When one of them
+  should change, say so in your answer and stop.
+- Post nothing that names a person who did not agree, a private message or someone's personal data.
+
+## Proposals for omelet-blog
+
+Follow dinh-vi.md of omelet-blog: one mechanism per post, measured numbers, Vietnamese. Fill each line of the
+proposal: Đề xuất bài (the topic), Lý do (the Signal, its value and span), Kênh đích, Nguồn dùng được, Hạn.
+"""
+
+POST = {
+    "channel_id": {"type": "integer", "description": "the account to post on (from the task's list)"},
+    "body": {"type": "string", "description": "the text of the post"},
+    "kind": {"type": "string", "enum": ["post", "reply"], "default": "post"},
+    "reply_to": {"type": "string", "description": "for a reply: what it answers (issue#N, pr#N, discussion#N, a id)"},
+    "links": {"type": "array", "items": {"type": "string"}},
+    "sources": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {"quote": {"type": "string"}, "url": {"type": "string"}},
+            "required": ["quote", "url"],
+        },
+    },
+    "claim": {"type": "string", "description": "the canvas claim the post tests, CL-<n>"},
+    "signal_key": {"type": "string", "description": "the Signal key the post's numbers count toward"},
+}
+PROPOSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        **POST,
+        "scheduled_at": {"type": "string", "format": "date-time", "description": "when it goes out; now if unset"},
+    },
+    "required": ["channel_id", "body"],
+}
+DRAFT_SCHEMA = {"type": "object", "properties": POST, "required": ["channel_id", "body"]}
+PERSONAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        **POST,
+        "topic": {"type": "string", "description": "Chủ đề: the subject of the post, in Vietnamese"},
+        "reason": {"type": "string", "description": "Lý do: the Signal, its value and the span it was measured over"},
+        "deadline": {"type": "string", "description": "Hạn: the date the post is still timely until"},
+    },
+    "required": ["channel_id", "body", "topic", "reason", "deadline"],
+}
 
 SECRET = {"type": "string", "x-secret": True}
 CONFIG = {
@@ -61,6 +138,14 @@ CONFIG = {
             "type": "number",
             "minimum": 0,
             "default": 72,
+        },
+        "replies_per_day": {
+            "title": "Replies a day",
+            "description": "How many replies under the project accounts' posts the Loop gives @marketer to answer in "
+            "24 hours.",
+            "type": "integer",
+            "minimum": 0,
+            "default": 10,
         },
         "rules": {
             "title": "Rules of a channel",
@@ -100,6 +185,7 @@ TABLES = (
     ("marketing_denylist", "The terms, domains and people no post may name"),
     ("marketing_state", "The kill switch of a project"),
     ("marketing_metrics", "The numbers of a post at +24h and +7d"),
+    ("marketing_replies", "What someone answered under a post of a project account, once each"),
 )
 
 MANIFEST = {
@@ -138,6 +224,59 @@ MANIFEST = {
                     "description": "Scores one draft post from 0 to 5 on four axes; changes nothing.",
                     "instructions": JUDGE_INSTRUCTIONS,
                 },
+            },
+            {
+                "name": MARKETER,
+                "title": "Marketer",
+                "description": "Turns a claim in testing into a plan of posts through the gate, answers replies on "
+                "the project's accounts and proposes posts for members' personal channels.",
+                "mentioned_by": "admin",
+                "profile": {
+                    "handle": MARKETER,
+                    "name": "Marketer",
+                    "description": "Writes the project's posts and takes them through the posting gate.",
+                    "instructions": MARKETER_INSTRUCTIONS,
+                },
+            },
+        ],
+        "mcp_tools": [
+            {
+                "name": "propose",
+                "title": "Propose a post through the gate",
+                "description": "Take a post or a reply on a project account through the posting gate, now or at "
+                "scheduled_at, tied to a canvas claim and a Signal key. Only a run of @marketer or @community calls it.",
+                "python": f"{TOOLS}:propose",
+                "input_schema": PROPOSE_SCHEMA,
+            },
+            {
+                "name": "draft",
+                "title": "Save a draft a person posts",
+                "description": "Keep a draft that goes through no gate and posts nothing.",
+                "python": f"{TOOLS}:draft",
+                "input_schema": DRAFT_SCHEMA,
+            },
+            {
+                "name": "personal",
+                "title": "Propose content for a member's personal channel",
+                "description": "Through the gate when its owner made the account autonomous on facebook_profile or "
+                "tiktok, a draft otherwise; answers the proposal to send to omelet-blog.",
+                "python": f"{TOOLS}:personal",
+                "input_schema": PERSONAL_SCHEMA,
+            },
+        ],
+        "loop_rules": [
+            {
+                "name": "growth",
+                "python": f"{LOOP}:growth",
+                "on": ["canvas.baseline"],
+                "emits": [],
+                "schedule": True,
+                "kinds": [
+                    {"kind": "growth_idea", "run": "task", "agent_type": MARKETER},
+                    {"kind": "growth_draft", "run": "task", "agent_type": MARKETER},
+                    {"kind": "growth_publish", "run": "job"},
+                    {"kind": "growth_review", "run": "job"},
+                ],
             }
         ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
