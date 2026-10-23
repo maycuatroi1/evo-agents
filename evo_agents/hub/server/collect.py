@@ -530,6 +530,7 @@ class Gate:
     budget: dict
     access: ProjectAccess
     worker: Pinned
+    inside: bool = True  # inside the window; outside it, the gate is for the Curator's changes alone (shift_hours)
 
 
 def _review_budget(charter: dict, budget: dict) -> dict | None:

@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import curator, ledger, review, tables, tiers
 from evo_agents.hub.server import audit, change_tiers, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
+from evo_agents.hub.server.shift_hours import cancel_queued
 
 log = logging.getLogger(__name__)
 
@@ -361,7 +362,6 @@ async def check_circuit(conn: AsyncConnection, due, night: date, since: datetime
 
 
 async def trip(conn: AsyncConnection, due, night: date, reason: str, which: list[str], count: int, most: int) -> None:
-    from evo_agents.hub.server.curator import _cancel_queued
     from evo_agents.hub.server.notifications import notify
 
     s = tables.schedules
@@ -373,7 +373,7 @@ async def trip(conn: AsyncConnection, due, night: date, reason: str, which: list
     )
     rows = paused.all()
     ids = [row.id for row in rows]
-    cancelled = await _cancel_queued(conn, ids, reason) if ids else []
+    cancelled = await cancel_queued(conn, ids, reason) if ids else []
     run_ids = [int(item.split(":")[1]) for item in which if item.startswith("run:")]
     reverts = [int(item.split(":")[1]) for item in which if item.startswith("revert:")]
     for owner_id in sorted({row.owner_id for row in rows}):
