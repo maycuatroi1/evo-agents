@@ -23,7 +23,6 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.hub.contract import commands
-from evo_agents.hub.server.web_auth import return_path
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_run_cli import as_json, ok, write_credentials
@@ -113,6 +112,9 @@ def test_hub_admin_invite_create_checks_its_kind_before_asking_the_hub(monkeypat
     ],
 )
 def test_the_invite_return_path_is_one_relative_path_of_the_hub(value, taken):
+    pytest.importorskip("fastapi")
+    from evo_agents.hub.server.web_auth import return_path
+
     assert return_path(value) == (value if taken else None)
 
 
