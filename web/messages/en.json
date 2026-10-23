@@ -4047,11 +4047,22 @@
         "parkedLong": "Parked",
         "reviewLong": "Review"
       },
+      "curatorBuild": {
+        "title": "Run the Curator's Builder now?",
+        "body": "The hub queues the Builder of <plan>{id}</plan> at once, beside the night shift's other runs instead of after them.",
+        "rules": "It is still the night shift's Builder: on its worker on duty, as the night shift's owner, on the plan's own branch, with the charter's runtime and caps.",
+        "confirm": "Run Builder now",
+        "pending": "Queueing…",
+        "cancel": "Cancel",
+        "conflict": "The hub did not queue the Builder.",
+        "forbidden": "Running a plan of this project needs the writer role.",
+        "notFound": "This plan is not one of the Curator's plans, or you cannot read it.",
+        "hubSays": "The hub says: {message}"
+      },
       "lock": {
         "loading": "Checking the plan's runs…",
         "planRun": "Plan run #{id} is {state}.",
         "stepRun": "Run #{id} of step {step} is {state}; a plan run waits until it ends.",
-        "curator": "The Curator's plan: the night shift runs it itself, at any hour.",
         "noPending": "No step is pending."
       },
       "model": {

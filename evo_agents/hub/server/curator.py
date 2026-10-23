@@ -84,7 +84,7 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.charter_settings import HistorySettings, ReplaySettings, ReviewSettings
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, night_figures, usage_cost
+from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, next_run_budget, night_figures, usage_cost
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import ModelName
@@ -1147,20 +1147,6 @@ async def _next_plan(conn: AsyncConnection, access: ProjectAccess, charter: dict
     return None, "; ".join(skipped) or "the charter names no plan"
 
 
-def _budget(charter: dict, figures: NightFigures) -> dict | None:
-    """The caps of the next run, or None when the night has less than MIN_RUN_USD left."""
-    left = charter["night_budget_usd"] - figures.cost_usd
-    if charter.get("run_budget_usd") is not None:
-        left = min(left, charter["run_budget_usd"])
-    if left < curator.MIN_RUN_USD:
-        return None
-    return {
-        "max_usd": round(left, 4),
-        "max_turns": charter["run_max_turns"],
-        "max_seconds": charter["run_minutes"] * 60,
-    }
-
-
 async def _queue(conn: AsyncConnection, due, night: date, worker: Pinned, plan, budget: dict) -> int:
     """Queue the plan run of ``plan`` (held, repos) for schedule ``due`` and ``night``, pinned to ``worker``, with
     ``budget``; its id. The insert's IntegrityError goes on to the caller, whose transaction stays usable."""
@@ -1216,11 +1202,12 @@ async def _writer_access(conn: AsyncConnection, due) -> ProjectAccess | None:
     return access
 
 
-async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False, any_hour: bool = False):
+async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=False, beside=False):
     """(word, gate) for schedule ``due`` now, in the caller's transaction, under the schedule's row lock it takes: a
     ``collect.Gate`` when the night shift may queue a run now, else None and the word for the job's summary. Paused,
     the schedule's queued runs are cancelled; outside its window, those of the night alone (``shift_hours``), and with
-    ``any_hour`` (the job hub.fire_schedules) the gate is for the Curator's changes, ``inside`` false. With
+    ``any_hour`` (the job hub.fire_schedules) the gate is for the Curator's changes, ``inside`` false; ``beside``
+    (``build_now``) opens it though another run of the schedule is in flight. With
     ``figures_first`` (the job curator.collect), the night's figures are counted as soon as the window is open, before
     a run of the schedule held now ends."""
     from evo_agents.hub.server.collect import Gate, ensure_figures  # it queues runs through this module
@@ -1240,10 +1227,9 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False, an
         return ("cancelled" if cancelled else "paused"), None
     if not inside:
         why = f"the night shift of {due.project} is outside its window"
-        if await cancel_queued(conn, [due.id], why, changes_too=False):
-            return "cancelled", None
-        if not any_hour or not await changes_waiting(conn, due.project_id):
-            return "outside", None
+        cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
+        if (cancelled and not beside) or not any_hour or not await changes_waiting(conn, due.project_id):
+            return ("cancelled" if cancelled else "outside"), None
     access = None
     if figures_first:
         access = await _writer_access(conn, due)
@@ -1252,11 +1238,11 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False, an
         async with conn.begin_nested():
             await ensure_figures(conn, due, night, access)
     figures = await night_figures(conn, due.id, night)
-    if figures.active_run_id is not None:
+    if figures.active_run_id is not None and not beside:
         return "busy", None
     if figures.runs >= due.body["max_runs_per_night"]:
         return "max_runs", None
-    budget = _budget(due.body, figures)
+    budget = next_run_budget(due.body, figures)
     if budget is None:
         return "spent", None
     access = access or await _writer_access(conn, due)
@@ -1267,6 +1253,16 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False, an
         log.info("night shift waits for its worker", extra={"project": due.project, "why": why})
         return "worker", None
     return "", Gate(night=night, figures=figures, budget=budget, access=access, worker=worker, inside=inside)
+
+
+async def project_gate(conn: AsyncConnection, project_id: int):
+    """(the project's night_shift schedule, the word, the gate) for a Builder a member asks for now: ``gate_of`` at
+    any hour and beside the schedule's other runs; (None, "none", None) for a project without one."""
+    due = (await conn.execute(_due(None).where(tables.schedules.c.project_id == project_id))).one_or_none()
+    if due is None:
+        return None, "none", None
+    word, gate = await gate_of(conn, due, any_hour=True, beside=True)
+    return due, word, gate
 
 
 async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
