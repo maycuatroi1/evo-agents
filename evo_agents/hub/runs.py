@@ -683,13 +683,14 @@ def verify_of(step) -> list[str]:
     return [verify.strip()] if isinstance(verify, str) and verify.strip() else []
 
 
-def open_verify(body: dict) -> list[str]:
-    """The verify commands of every step of the plan ``body`` not done yet, in plan order: what a plan run's worker
-    checks before its agent starts."""
-    found: list[str] = []
-    for step in _steps(body):
+def open_verify(body: dict) -> list[tuple[str, str]]:
+    """(step key, verify command) of every step of the plan ``body`` not done yet, in plan order, each command once:
+    what a plan run's worker checks before its agent starts, naming the step a problem comes from."""
+    found: list[tuple[str, str]] = []
+    for index, step in enumerate(_steps(body)):
         if isinstance(step, dict) and step.get("status") != "done":
-            found += [command for command in verify_of(step) if command not in found]
+            key = step_key(step, index)
+            found += [(key, command) for command in verify_of(step) if all(command != had for _, had in found)]
     return found
 
 

@@ -31,7 +31,7 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
-from evo_agents.hub import author
+from evo_agents.hub import author, runs
 from evo_agents.hub.judge import programs
 from evo_agents.worker import preflight
 from evo_agents.worker.runner import access, parallel
@@ -55,6 +55,9 @@ from tests.worker.test_plan_runs import (
 )
 
 MISSING = "no-such-tool-7f3a"  # a program no PATH has
+# The verify behind runs 42-45 of 2026-10-15: a check, then the plan author's notes in Vietnamese, which the shell
+# would read as the programs kiểm and hai.
+PROSE = "test -f a.txt && (kiểm tra thủ công) && (hai run)"
 RUN_9 = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
 
 
@@ -92,6 +95,19 @@ def test_preflight_reads_the_programs_a_verify_command_calls(command, found):
     assert programs(command) == found
 
 
+def test_preflight_takes_the_verify_of_each_open_step_once_with_its_key():
+    body = {
+        "steps": [
+            {"id": 1, "verify": "make a", "status": "done"},
+            {"id": 4, "verify": " make b ", "status": "pending"},
+            {"order": 7, "verify": "make b"},
+            {"verify": "make c", "status": "in_progress"},
+            {"id": "x"},
+        ]
+    }
+    assert runs.open_verify(body) == [("4", "make b"), ("3", "make c")]
+
+
 def test_preflight_looks_for_each_program_on_the_runs_path(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -113,6 +129,44 @@ def test_preflight_looks_for_each_program_on_the_runs_path(tmp_path):
     (hidden,) = preflight.hidden_problems(["true", f"{MISSING} secret-flag"], path)
     assert hidden.message == "hidden check 2 of 2 calls a program that is not on this worker's PATH"
     assert MISSING not in hidden.message and "secret-flag" not in hidden.message
+
+
+def test_preflight_says_a_prose_verify_is_not_a_command_instead_of_blaming_the_path():
+    (problem,) = preflight.verify_problems([("4", PROSE)], os.defpath)
+    assert problem.cause == "missing_tool"
+    assert problem.message == (
+        f"step 4: verify command `{PROSE}` is not runnable as a shell command: it runs `kiểm` as a program, and that "
+        "is not a command name; it also runs `hai`, which this worker does not have: rewrite the verify as a command"
+    )
+    assert "PATH" not in problem.message
+    (short,) = preflight.verify_problems(["test a = b && (thủ công) && (hai run)"], os.defpath)
+    assert "`thủ`" in short.message and "`hai`" in short.message and "PATH" not in short.message
+    (quote,) = preflight.verify_problems([("2", "check that it's done")], os.defpath)
+    assert quote.message.startswith("step 2: verify command `check that it's done` is not runnable as a shell command")
+    assert "a quote is left open" in quote.message
+
+
+def test_preflight_still_blames_the_path_for_a_plausible_program_that_is_absent(tmp_path):
+    tool = tmp_path / "lint-imports"
+    tool.write_text("#!/bin/sh\n", encoding="utf-8")  # there, but not executable
+    problems = preflight.verify_problems(
+        [("1", f"{MISSING} && ruff check ."), ("3", f"{tool} --strict")], f"{tmp_path}{os.pathsep}/no/bin"
+    )
+    assert [problem.message for problem in problems] == [
+        f"step 1: verify command `{MISSING} && ruff check .` calls {MISSING}, which is not on this worker's PATH",
+        "step 1: verify command `no-such-tool-7f3a && ruff check .` calls ruff, which is not on this worker's PATH",
+        f"step 3: verify command `{tool} --strict` calls {tool}, which is not on this worker's PATH",
+    ]
+    assert {problem.cause for problem in problems} == {"missing_tool"}
+
+
+def test_preflight_tells_each_verify_of_a_plan_by_what_is_wrong_with_it():
+    problems = preflight.verify_problems([("4", PROSE), ("5", f"{MISSING} --check"), ("6", "true")], os.defpath)
+    assert [problem.cause for problem in problems] == ["missing_tool", "missing_tool"]
+    prose, missing = (problem.message for problem in problems)
+    assert prose.startswith("step 4: ") and "not runnable as a shell command" in prose and "PATH" not in prose
+    assert "`kiểm`" in prose and "`hai`" in prose
+    assert missing == f"step 5: verify command `{MISSING} --check` calls {MISSING}, which is not on this worker's PATH"
 
 
 @pytest.mark.parametrize(
@@ -171,11 +225,12 @@ def test_preflight_a_step_run_whose_verify_calls_a_missing_tool_fails_before_its
     run = stopped(hub, run_id, machine)
     assert run["failure_cause"] == "missing_tool"
     assert run["error"] == (
-        f"preflight: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}, which is not on "
-        "this worker's PATH; the agent did not start"
+        f"preflight: step 1: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}, which is not "
+        "on this worker's PATH; the agent did not start"
     )
     texts = hub.texts(run_id)
-    assert f"Preflight: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}" in " ".join(texts)
+    said = f"Preflight: step 1: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}"
+    assert said in " ".join(texts)
     assert machine.origin_rev("alpha", "refs/heads/feat/alpha") is None, "nothing was pushed"
 
 
@@ -198,9 +253,29 @@ def test_preflight_a_plan_run_names_every_repo_without_origin_and_every_missing_
     assert run["failure_cause"] == "origin", "the cause of the first problem"
     error = run["error"]
     assert error.startswith("preflight: project demo lists no origin for beta, so no credential is leased for it")
-    assert f"verify command `{MISSING} lint && git status` calls {MISSING}" in error
+    assert f"step 2: verify command `{MISSING} lint && git status` calls {MISSING}" in error
     notes = [event["body"] for event in hub.runs[run_id]["events"] if event["kind"] == "system"]
     assert [note.get("cause") for note in notes if note["text"].startswith("Preflight: ")] == ["origin", "missing_tool"]
+
+
+def test_preflight_a_plan_run_names_the_step_whose_verify_is_not_a_command(machine):  # noqa: F811
+    body = plan_body()
+    body["steps"][1]["id"] = 4
+    body["steps"][1]["verify"] = PROSE
+    found = {}
+
+    async def run_it(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(body))
+        assert await hub.wait_state(run_id, "done", "failed") == "failed", hub.texts(run_id)
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, run_it, plan=body)
+    hub, run_id = found["hub"], found["run"]
+    run = stopped(hub, run_id, machine)
+    assert run["failure_cause"] == "missing_tool"
+    assert run["error"].startswith("preflight: step 4: verify command `")
+    assert "is not runnable as a shell command" in run["error"] and "PATH" not in run["error"]
 
 
 def test_preflight_a_review_run_of_a_repo_without_origin_fails_with_that_cause(machine):  # noqa: F811

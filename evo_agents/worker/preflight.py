@@ -13,9 +13,11 @@ first, before its agent starts, and the hub queues no next attempt of a failed r
   a branch no run pushes to push, which sends nothing. Only a refusal for want of a credential (``refused``) fails the
   run; a remote that does not answer, or any other trouble, is the fetch's to report. An origin that is a path on this
   machine takes no credential and is not asked.
-- ``missing_tool``: a program a verify command calls (``evo_agents.hub.judge.programs``) is not on the run's PATH. A
-  judge run checks the project's hidden checks the same way, and names a hidden check by its place alone, never its
-  command or its program.
+- ``missing_tool``: a program a verify command calls (``evo_agents.hub.judge.programs``) is not on the run's PATH, or
+  the verify is not runnable as a shell command at all (``evo_agents.hub.verify_words.shell_problem``: a quote left
+  open, or prose whose words are no command names), which says so and lists those words instead of blaming the PATH.
+  Each message names the step the verify belongs to when the run knows it. A judge run checks the project's hidden
+  checks the same way, and names a hidden check by its place alone, never its command or its program.
 - ``environment``: the run's claim names a plugin's environment, a container, that this worker cannot run the agent
   in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does
   not take (``evo_agents.worker.environments.Container.preflight``, which ``runner.access`` asks).
@@ -32,6 +34,7 @@ from pathlib import Path
 
 from evo_agents.hub.credentials import normalize_origin
 from evo_agents.hub.judge import programs
+from evo_agents.hub.verify_words import COMMAND_NAME, shell_problem
 from evo_agents.worker import gitops
 
 PROBE_TIMEOUT = 60.0  # seconds git has to answer one question to a remote
@@ -104,16 +107,34 @@ def missing_programs(commands: Iterable[str], path: str | None) -> list[tuple[st
     return found
 
 
-def verify_problems(commands: Iterable[str], path: str | None, *, what: str = "verify command") -> list[Problem]:
-    """A ``missing_tool`` problem for each program of ``commands`` not on ``path``, naming the program and the
-    command."""
-    return [
-        Problem(
-            "missing_tool",
-            f"{what} `{_cut(command, 200)}` calls {program}, which is not on this worker's PATH",
-        )
-        for program, command in missing_programs(commands, path)
-    ]
+def verify_problems(
+    commands: Iterable[str | tuple[str | None, str]], path: str | None, *, what: str = "verify command"
+) -> list[Problem]:
+    """A ``missing_tool`` problem for each verify of ``commands``, a command or a (step key, command) pair, that is not
+    runnable as a shell command (``shell_problem``), naming the words that are no programs and any program it also
+    calls that ``path`` lacks; then one for each program of the others not on ``path``, each program once. Each names
+    the command, after "step <key>: " when its step is known."""
+    found: list[Problem] = []
+    seen: set[str] = set()
+    for item in commands:
+        key, command = item if isinstance(item, tuple) else (None, item)
+        where = f"step {key}: " if key not in (None, "") else ""
+        said = f"{where}{what} `{_cut(command, 200)}`"
+        missing = [program for program, _ in missing_programs([command], path)]
+        unrunnable = shell_problem(command)
+        if unrunnable is not None:
+            message = f"{said} is not runnable as a shell command: it {unrunnable}"
+            absent = [program for program in missing if COMMAND_NAME.fullmatch(program.rsplit("/", 1)[-1])]
+            if absent:
+                named = ", ".join(f"`{program}`" for program in absent)
+                message += f"; it also runs {named}, which this worker does not have"
+            found.append(Problem("missing_tool", f"{message}: rewrite the verify as a command"))
+            continue
+        for program in missing:
+            if program not in seen:
+                seen.add(program)
+                found.append(Problem("missing_tool", f"{said} calls {program}, which is not on this worker's PATH"))
+    return found
 
 
 def hidden_problems(checks: list[str], path: str | None) -> list[Problem]:

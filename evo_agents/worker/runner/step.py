@@ -106,9 +106,12 @@ class StepRun:
             usage=run.outcome.usage if run.outcome else None,
         )
 
-    def claimed_verify(self) -> list[str]:
-        """The verify of a run of one step as its claim names it (``RunSpec.verify``); none from an older hub."""
-        return [item for item in self.run.spec.get("verify") or [] if isinstance(item, str) and item.strip()]
+    def claimed_verify(self) -> list[tuple[str | None, str]]:
+        """(step key, command) of the verify of a run of one step as its claim names it (``RunSpec.verify``); none
+        from an older hub."""
+        key = self.run.spec.get("step_key")
+        key = None if key is None else str(key)
+        return [(key, item) for item in self.run.spec.get("verify") or [] if isinstance(item, str) and item.strip()]
 
     async def prepare(self, checkout: Path) -> None:
         """The run's worktree of ``checkout``, the checkout of its repo, on the plan's branch."""
