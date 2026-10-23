@@ -2110,6 +2110,30 @@
         },
         {
           "flags": [
+            "--class"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--environment"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -2125,9 +2149,126 @@
           "revision",
           "level",
           "previous",
-          "note"
+          "note",
+          "classes",
+          "environments",
+          "workers"
         ],
         "schema": "CeilingWritten"
+      }
+    },
+    "hub autonomy set": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5"
+          ]
+        },
+        {
+          "flags": [
+            "--class"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--reset"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "login",
+          "revision",
+          "level",
+          "previous",
+          "classes"
+        ],
+        "schema": "PrefWritten"
+      }
+    },
+    "hub autonomy show": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "principal",
+          "project",
+          "agent",
+          "level",
+          "classes",
+          "environments",
+          "workers"
+        ],
+        "schema": "AutonomyView"
       }
     },
     "hub canvas brainstorm": {
@@ -5079,6 +5220,7 @@
           "recommended",
           "state",
           "owner",
+          "asked_of",
           "answer_option",
           "answer_text",
           "answered_by",
@@ -5214,6 +5356,7 @@
           "recommended",
           "state",
           "owner",
+          "asked_of",
           "answer_option",
           "answer_text",
           "answered_by",
@@ -9600,7 +9743,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -9771,7 +9916,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -9875,7 +10022,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -10196,7 +10345,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -10300,7 +10451,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -10404,7 +10557,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -10864,7 +11019,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -10984,7 +11141,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -11146,7 +11305,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -11250,7 +11411,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -11288,6 +11451,7 @@
           "env_var",
           "url_prefix",
           "username",
+          "environment",
           "projects",
           "workers",
           "expires_at",
@@ -11345,6 +11509,17 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--environment"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "test"
+          ]
         },
         {
           "flags": [
@@ -13528,6 +13703,76 @@
         "schema": "SrsVersion"
       }
     },
+    "hub stop": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--lift"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "scope",
+          "target",
+          "reason",
+          "stopped_by",
+          "stopped_at",
+          "lifted_by",
+          "lifted_at",
+          "runs",
+          "leases",
+          "told"
+        ],
+        "schema": "StopView"
+      }
+    },
     "hub task block": {
       "positionals": [
         {
@@ -14389,6 +14634,9 @@
             "spend_money",
             "architecture",
             "scope",
+            "merge",
+            "credential",
+            "access",
             "triage"
           ]
         },
@@ -14439,6 +14687,44 @@
           "value": "string",
           "required": false,
           "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker backup": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--target"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--location"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--made-at"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--restore"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -15312,7 +15598,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.36.2"
+      "version": "0.37.0"
     },
     "paths": {
       "/v1/health": {
@@ -38972,6 +39258,582 @@
           }
         }
       },
+      "/v1/autonomy": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Show Autonomy",
+          "description": "The effective autonomy of a person, alone or running an agent profile on a repo, with the source of each mode.",
+          "operationId": "show_autonomy_v1_autonomy_get",
+          "parameters": [
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Login"
+              }
+            },
+            {
+              "name": "project",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Project"
+              }
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Agent"
+              }
+            },
+            {
+              "name": "repo",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Repo"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/autonomy/prefs": {
+        "put": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Set Pref",
+          "description": "The next revision of the caller's own preference; one above their ceilings is stored, the ceilings still\ndecide.",
+          "operationId": "set_pref_v1_autonomy_prefs_put",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrefSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PrefWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/stops": {
+        "post": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Stop Autonomy",
+          "description": "Stop the runs of a person, a unit or the hub, and hold new ones until the stop is lifted.",
+          "operationId": "stop_autonomy_v1_autonomy_stops_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StopView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/stops/lift": {
+        "post": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Lift Stop",
+          "description": "Lift the stop that holds for a person, a unit or the hub.",
+          "operationId": "lift_stop_v1_autonomy_stops_lift_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StopView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/stops/preview": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Preview Stop",
+          "description": "How many runs and people a stop of that scope would cover now, and whether one holds already.",
+          "operationId": "preview_stop_v1_autonomy_stops_preview_get",
+          "parameters": [
+            {
+              "name": "scope",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "enum": [
+                  "login",
+                  "unit",
+                  "all"
+                ],
+                "type": "string",
+                "title": "Scope"
+              }
+            },
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Login"
+              }
+            },
+            {
+              "name": "unit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 63
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Unit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StopPreview"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/autonomy/settings": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Show Settings",
+          "description": "The caller's own autonomy, preference, ceiling, stop and 30-day figures, for the web's settings page.",
+          "operationId": "show_settings_v1_autonomy_settings_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomySettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/org": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Show Org Autonomy",
+          "description": "Every seat's effective mode of each class, and the stops that hold, for the web's org page.",
+          "operationId": "show_org_autonomy_v1_autonomy_org_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgAutonomy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/org/workers": {
         "get": {
           "tags": [
@@ -49023,6 +49885,176 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/RateLimitAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/backups": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Backup",
+          "description": "Record a backup the run's agent made, as the module says.",
+          "operationId": "record_backup_v1_worker_runs__run_id__backups_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BackupOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/autonomy-acts": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Autonomy Act",
+          "description": "The mode of the class of a command the run's agent is about to run, and whether its decision is answered; the\nprincipal told when the mode is notify, as the module says.",
+          "operationId": "autonomy_act_v1_worker_runs__run_id__autonomy_acts_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyActIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyActOut"
                   }
                 }
               }
@@ -63428,6 +64460,119 @@
           ],
           "title": "AuthoredPlan"
         },
+        "AutonomyActIn": {
+          "properties": {
+            "klass": {
+              "type": "string",
+              "enum": [
+                "K5",
+                "K6",
+                "K8",
+                "K9",
+                "K10",
+                "K12"
+              ],
+              "title": "Klass",
+              "description": "the class of the command"
+            },
+            "what": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "What",
+              "description": "the command, cut, never a credential's value"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "for a class in ask: the decision of the run, of the class's category, that the agent asked first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "klass",
+            "what"
+          ],
+          "title": "AutonomyActIn"
+        },
+        "AutonomyActOut": {
+          "properties": {
+            "mode": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "deny",
+                    "ask",
+                    "notify",
+                    "auto"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode",
+              "description": "the class's mode for the run's principal now, the stricter of its snapshot and the value now; null for a run without a snapshot"
+            },
+            "told": {
+              "type": "boolean",
+              "title": "Told",
+              "description": "whether the hub told the principal (mode notify)"
+            },
+            "answered": {
+              "type": "boolean",
+              "title": "Answered",
+              "description": "whether decision_id is a decision of the run, of the class, answered"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "told",
+            "answered"
+          ],
+          "title": "AutonomyActOut"
+        },
+        "AutonomyClass": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "the source that sets the mode: pref:<login>, seat:<id>, unit:<slug>, policy:<project>/<repo>, profile:<handle>, credential_share or instance"
+            },
+            "detail": {
+              "type": "string",
+              "title": "Detail",
+              "description": "how that source sets it, with the condition the mode acts under"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "source",
+            "detail"
+          ],
+          "title": "AutonomyClass"
+        },
         "AutonomyPolicy": {
           "properties": {
             "project": {
@@ -63499,6 +64644,224 @@
           ],
           "title": "AutonomyPolicy",
           "description": "One revision of a project's autonomy policy."
+        },
+        "AutonomySettings": {
+          "properties": {
+            "principal": {
+              "type": "string",
+              "title": "Principal"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level"
+            },
+            "level_source": {
+              "type": "string",
+              "title": "Level Source"
+            },
+            "revision": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision",
+              "description": "the preference's newest revision; null when none was set"
+            },
+            "pref_level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pref Level"
+            },
+            "pref_classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Pref Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "ceiling": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Ceiling",
+              "description": "the lowest level the sources other than the preference set"
+            },
+            "ceiling_source": {
+              "type": "string",
+              "title": "Ceiling Source"
+            },
+            "ceiling_detail": {
+              "type": "string",
+              "title": "Ceiling Detail",
+              "description": "what that source is, in words"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/SettingsClass"
+              },
+              "type": "object",
+              "title": "Classes"
+            },
+            "stop": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HeldStop"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the stop that holds the caller; null when none does"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days",
+              "default": 30
+            }
+          },
+          "type": "object",
+          "required": [
+            "principal",
+            "level",
+            "level_source",
+            "revision",
+            "pref_level",
+            "pref_classes",
+            "ceiling",
+            "ceiling_source",
+            "ceiling_detail",
+            "classes",
+            "stop"
+          ],
+          "title": "AutonomySettings",
+          "description": "The caller's own autonomy: the effective level and classes, the preference, the ceiling over it, the stop that\nholds them and the figures of each class."
+        },
+        "AutonomyView": {
+          "properties": {
+            "principal": {
+              "type": "string",
+              "title": "Principal",
+              "description": "the login of the person whose autonomy it is"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile it runs as; null for the person alone"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level",
+              "description": "the lowest level the sources set"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/AutonomyClass"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "K1 to K12, each its effective mode"
+            },
+            "environments": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environments",
+              "description": "the environments allowed; null: no limit"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers",
+              "description": "the workers allowed; null: no limit"
+            }
+          },
+          "type": "object",
+          "required": [
+            "principal",
+            "project",
+            "agent",
+            "level",
+            "classes",
+            "environments",
+            "workers"
+          ],
+          "title": "AutonomyView"
         },
         "AvatarUpload": {
           "properties": {
@@ -63640,6 +65003,82 @@
             "reported_at"
           ],
           "title": "BackendStatus"
+        },
+        "BackupIn": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Target",
+              "description": "what was backed up: a database, a table, a bucket"
+            },
+            "location": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Location",
+              "description": "where the backup is: a path, a URL, a snapshot id"
+            },
+            "made_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Made At",
+              "description": "when it was made, with its time zone; now when absent"
+            },
+            "restore": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Restore",
+              "description": "the command that restores it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "target",
+            "location"
+          ],
+          "title": "BackupIn"
+        },
+        "BackupOut": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "the run event that records the backup"
+            },
+            "made_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Made At"
+            },
+            "fresh": {
+              "type": "boolean",
+              "title": "Fresh",
+              "description": "made within the last 24 hours: it opens the floor S2 of K9"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "made_at",
+            "fresh"
+          ],
+          "title": "BackupOut"
         },
         "Blob": {
           "properties": {
@@ -67710,6 +69149,35 @@
                 }
               ],
               "title": "Note"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "maxProperties": 12,
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "environments": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Environments",
+              "description": "the environments it allows; empty: no limit"
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Workers",
+              "description": "the workers it allows; empty: no limit"
             }
           },
           "additionalProperties": false,
@@ -67781,6 +69249,30 @@
                 }
               ],
               "title": "Note"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "environments": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Environments",
+              "description": "the environments it allows; empty: no limit"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it allows; empty: no limit"
             }
           },
           "type": "object",
@@ -67790,7 +69282,10 @@
             "revision",
             "level",
             "previous",
-            "note"
+            "note",
+            "classes",
+            "environments",
+            "workers"
           ],
           "title": "CeilingWritten"
         },
@@ -70026,6 +71521,69 @@
           "title": "ClaimedBudget",
           "description": "A run's caps as its worker gets them, with what it spent already when it goes on from a parked run."
         },
+        "ClassFigures": {
+          "properties": {
+            "refused": {
+              "type": "integer",
+              "title": "Refused",
+              "description": "the acts a gate or the worker's hook refused (autonomy.decided result=refused)"
+            },
+            "asked": {
+              "type": "integer",
+              "title": "Asked",
+              "description": "the acts a gate held for an answer (result=asked)"
+            },
+            "decisions": {
+              "type": "integer",
+              "title": "Decisions",
+              "description": "the decisions asked in the class's categories"
+            },
+            "merged": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged",
+              "description": "K5: the merges of the person's runs"
+            },
+            "reverted": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reverted",
+              "description": "K5: those of them the hub reverted"
+            },
+            "rolled_back": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rolled Back",
+              "description": "K6: those of them PROD was rolled back from"
+            }
+          },
+          "type": "object",
+          "required": [
+            "refused",
+            "asked",
+            "decisions"
+          ],
+          "title": "ClassFigures",
+          "description": "What the hub saw of one class over the last FIGURE_DAYS days for the person's runs."
+        },
         "Clearance": {
           "properties": {
             "level": {
@@ -70975,10 +72533,14 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "question",
                 "triage",
                 "release",
-                "loop"
+                "loop",
+                "autonomy"
               ],
               "title": "Category"
             },
@@ -71030,7 +72592,12 @@
             "owner": {
               "type": "string",
               "title": "Owner",
-              "description": "the login of the run's owner, the one member who may answer"
+              "description": "the login of the run's owner"
+            },
+            "asked_of": {
+              "type": "string",
+              "title": "Asked Of",
+              "description": "the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0115"
             },
             "answer_option": {
               "anyOf": [
@@ -71131,6 +72698,7 @@
             "recommended",
             "state",
             "owner",
+            "asked_of",
             "answer_option",
             "answer_text",
             "answered_by",
@@ -71153,6 +72721,9 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "triage"
               ],
               "title": "Category",
@@ -74167,6 +75738,78 @@
             "session_ids"
           ],
           "title": "HeldRequest"
+        },
+        "HeldStop": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "login",
+                "unit",
+                "all"
+              ],
+              "title": "Scope"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "login:<login>, unit:<slug> or all"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login"
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit",
+              "description": "the unit's slug, for a stop of a unit"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "stopped_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Stopped At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "scope",
+            "target",
+            "login",
+            "unit",
+            "reason",
+            "stopped_at"
+          ],
+          "title": "HeldStop"
         },
         "HeldTranscript": {
           "properties": {
@@ -77223,6 +78866,9 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "question"
               ],
               "title": "Category",
@@ -80401,6 +82047,7 @@
                     "goal_review",
                     "loop_brief",
                     "plugin_notice",
+                    "autonomy",
                     "worker_doctor"
                   ]
                 },
@@ -80774,6 +82421,31 @@
             "label"
           ],
           "title": "OptionIn"
+        },
+        "OrgAutonomy": {
+          "properties": {
+            "seats": {
+              "items": {
+                "$ref": "#/components/schemas/SeatClasses"
+              },
+              "type": "array",
+              "title": "Seats"
+            },
+            "stops": {
+              "items": {
+                "$ref": "#/components/schemas/HeldStop"
+              },
+              "type": "array",
+              "title": "Stops"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seats",
+            "stops"
+          ],
+          "title": "OrgAutonomy",
+          "description": "Every seat's effective mode of each class (its ceiling, its units' and the instance's) and the stops that\nhold."
         },
         "OrgChartView": {
           "properties": {
@@ -81798,10 +83470,14 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "question",
                 "triage",
                 "release",
-                "loop"
+                "loop",
+                "autonomy"
               ],
               "title": "Category"
             },
@@ -85610,6 +87286,108 @@
             "changed"
           ],
           "title": "PolicyWritten"
+        },
+        "PrefSet": {
+          "properties": {
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "maxProperties": 12,
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "reset": {
+              "type": "boolean",
+              "title": "Reset",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "PrefSet",
+          "description": "The next revision of the caller's own preference: a level, class overrides merged onto those before, or a reset\nthat drops them (to A5 without a level)."
+        },
+        "PrefWritten": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level"
+            },
+            "previous": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Previous",
+              "description": "the level of the revision before; null for the first"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "revision",
+            "level",
+            "previous",
+            "classes"
+          ],
+          "title": "PrefWritten"
         },
         "PrincipalCost": {
           "properties": {
@@ -91763,6 +93541,29 @@
               ],
               "title": "Last Activity At",
               "description": "the last time a local run's session said anything; null for any other run"
+            },
+            "principal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal",
+              "description": "the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null for a local run and one queued before the hub knew principals"
+            },
+            "autonomy": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunAutonomy"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the autonomy it acts under; null where principal is"
             }
           },
           "type": "object",
@@ -91942,6 +93743,144 @@
           ],
           "title": "RunAccountEvent"
         },
+        "RunAutonomy": {
+          "properties": {
+            "level": {
+              "type": "string",
+              "title": "Level",
+              "description": "the lowest level of the sources, A0 to A5"
+            },
+            "level_source": {
+              "type": "string",
+              "title": "Level Source",
+              "description": "the source that sets that level"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/RunAutonomyClass"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "K1 to K12, each its mode"
+            },
+            "environments": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environments",
+              "description": "the environments it may run in; null: no limit"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers",
+              "description": "the workers (names, lowered) that may take it; null: any"
+            },
+            "restricted": {
+              "type": "boolean",
+              "title": "Restricted",
+              "description": "whether a class is below auto, so only a daemon that applies the modes takes it",
+              "default": false
+            },
+            "also": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Also",
+              "description": "logins besides the principal whose autonomy bounds it"
+            },
+            "taken_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Taken At",
+              "description": "when the hub took it"
+            },
+            "tightened_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tightened At",
+              "description": "when a gate last made it stricter; null: never"
+            }
+          },
+          "type": "object",
+          "required": [
+            "level",
+            "level_source",
+            "classes",
+            "taken_at"
+          ],
+          "title": "RunAutonomy",
+          "description": "The autonomy a run acts under: its principal's effective autonomy as the hub took it when it queued the run,\nmade stricter by every gate that found it lower since (``run_autonomy.recheck``)."
+        },
+        "RunAutonomyClass": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "the source that sets the mode, as GET /v1/autonomy names it"
+            },
+            "detail": {
+              "type": "string",
+              "title": "Detail",
+              "description": "how that source sets it"
+            },
+            "condition": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Condition",
+              "description": "the condition the mode acts under; null for none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "source",
+            "detail"
+          ],
+          "title": "RunAutonomyClass",
+          "description": "One class of a run's autonomy snapshot (plan autonomy-levels): its mode, the source that set it and how."
+        },
         "RunBlobCommit": {
           "properties": {
             "upload_ids": {
@@ -92066,6 +94005,65 @@
           "type": "object",
           "title": "RunBudget",
           "description": "The caps of a run the night shift queued (``evo_agents.hub.curator``)."
+        },
+        "RunCard": {
+          "properties": {
+            "card": {
+              "type": "string",
+              "title": "Card",
+              "description": "the card's text, first in the run's prompt"
+            },
+            "modes": {
+              "additionalProperties": {
+                "type": "string",
+                "enum": [
+                  "deny",
+                  "ask",
+                  "notify",
+                  "auto"
+                ]
+              },
+              "type": "object",
+              "title": "Modes",
+              "description": "K1 to K12, the mode each acts in for the agent: an ask a project policy sets shows as auto"
+            },
+            "categories": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Categories",
+              "description": "the categories of decision its agent may ask"
+            },
+            "sources": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Sources",
+              "description": "K1 to K12, what set the mode of each: a ceiling, a preference, a policy"
+            },
+            "principal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal",
+              "description": "the login of the run's principal, which its commits name in the trailer Evo-Principal"
+            }
+          },
+          "type": "object",
+          "required": [
+            "card",
+            "modes",
+            "categories"
+          ],
+          "title": "RunCard",
+          "description": "The autonomy card of a run (plan autonomy-levels, ``autonomy_card.card``): what its prompt opens with, built\nfrom the run's snapshot and its principal when the worker claims it."
         },
         "RunChat": {
           "properties": {
@@ -93743,6 +95741,17 @@
               ],
               "description": "a release run's cycle, mode and start commit; null for any other run"
             },
+            "autonomy": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunCard"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the autonomy card its prompt opens with; null for a run without a snapshot of autonomy"
+            },
             "attachments": {
               "items": {
                 "$ref": "#/components/schemas/Attachment"
@@ -94609,6 +96618,52 @@
           "title": "SeatAdd",
           "description": "A seat for a person (login) or for an agent profile (agent and project)."
         },
+        "SeatClass": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "source"
+          ],
+          "title": "SeatClass"
+        },
+        "SeatClasses": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/SeatClass"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "K1 to K12, the effective mode of the seat and its units"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "classes"
+          ],
+          "title": "SeatClasses"
+        },
         "SeatEdit": {
           "properties": {
             "role": {
@@ -94746,6 +96801,18 @@
               "title": "Username",
               "description": "kind git: the user git sends with it"
             },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "kind env: the environment it is labelled for (test)"
+            },
             "projects": {
               "items": {
                 "type": "string"
@@ -94864,6 +96931,19 @@
               "title": "Username",
               "description": "kind git only: the user git sends with the value; oauth2 when left out"
             },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "test"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is leased the env secrets labelled test alone (docs/autonomy.md)"
+            },
             "projects": {
               "items": {
                 "type": "string",
@@ -94977,6 +97057,18 @@
               ],
               "title": "Username",
               "description": "kind git: the user git sends with it"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "kind env: the environment it is labelled for (test)"
             },
             "projects": {
               "items": {
@@ -95496,6 +97588,112 @@
             "transcripts"
           ],
           "title": "SessionTranscripts"
+        },
+        "SettingsClass": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "what the class covers, in words"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode",
+              "description": "the effective mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "the source that sets it, as AutonomyClass.source"
+            },
+            "detail": {
+              "type": "string",
+              "title": "Detail"
+            },
+            "modes": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "deny",
+                  "ask",
+                  "notify",
+                  "auto"
+                ]
+              },
+              "type": "array",
+              "title": "Modes",
+              "description": "the modes the class takes, the strictest first"
+            },
+            "ceiling": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Ceiling",
+              "description": "the loosest mode the sources other than the preference allow"
+            },
+            "ceiling_source": {
+              "type": "string",
+              "title": "Ceiling Source"
+            },
+            "pref": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "deny",
+                    "ask",
+                    "notify",
+                    "auto"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pref",
+              "description": "the mode the preference sets; null without a preference"
+            },
+            "lowered": {
+              "type": "boolean",
+              "title": "Lowered",
+              "description": "the effective mode is stricter than the preference sets"
+            },
+            "figures": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ClassFigures"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null for a class no gate records"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "mode",
+            "source",
+            "detail",
+            "modes",
+            "ceiling",
+            "ceiling_source",
+            "pref",
+            "lowered",
+            "figures"
+          ],
+          "title": "SettingsClass"
         },
         "SettingsLayer": {
           "properties": {
@@ -99998,6 +102196,206 @@
             "written"
           ],
           "title": "StepWritten"
+        },
+        "StopPreview": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "title": "Target"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "the runs it would cancel or ask to stop"
+            },
+            "people": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "People",
+              "description": "the people it covers; null for the whole hub"
+            },
+            "holds": {
+              "type": "boolean",
+              "title": "Holds",
+              "description": "a stop of that scope holds already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "target",
+            "runs",
+            "people",
+            "holds"
+          ],
+          "title": "StopPreview",
+          "description": "What a stop of that scope would do now, once the caller may write it."
+        },
+        "StopSet": {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "login",
+                "unit",
+                "all"
+              ],
+              "title": "Scope",
+              "description": "login: a person; unit: a unit and below; all: the hub"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the person, for login"
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit",
+              "description": "the unit's slug, for unit"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why; a lift takes none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scope"
+          ],
+          "title": "StopSet",
+          "description": "What to stop, or lift the stop of: a person, a unit and those below it, or the whole hub."
+        },
+        "StopView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "login",
+                "unit",
+                "all"
+              ],
+              "title": "Scope"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "login:<login>, unit:<slug> or all"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "stopped_by": {
+              "type": "string",
+              "title": "Stopped By",
+              "description": "the login of who stopped"
+            },
+            "stopped_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Stopped At"
+            },
+            "lifted_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lifted By",
+              "description": "the login of who lifted it; null while it holds"
+            },
+            "lifted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lifted At"
+            },
+            "runs": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "the runs this call cancelled or asked to stop; empty for a lift"
+            },
+            "leases": {
+              "type": "integer",
+              "title": "Leases",
+              "description": "how many leases this call ended",
+              "default": 0
+            },
+            "told": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Told",
+              "description": "the logins told"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "scope",
+            "target",
+            "reason",
+            "stopped_by",
+            "stopped_at",
+            "lifted_by",
+            "lifted_at"
+          ],
+          "title": "StopView",
+          "description": "A stop of autonomy, as written or lifted."
         },
         "StorageCounts": {
           "properties": {

@@ -25,6 +25,8 @@ Claude Code 2.1.296 through claude-agent-sdk 0.2.165:
   allowlist, unless the owner's settings widen it (merged as well).
 - a PreToolUse hook, which Claude Code consults for subagents too and under bypassPermissions, refuses a call of a
   tool of an MCP server, of a skill or of a subagent on a model the profile leaves out (``claude_call_refusal``).
+  The hook of autonomy (``evo_agents.worker.autonomy_hook``) runs beside it in every run with a snapshot of autonomy,
+  under a profile or not.
 - instructions: after the adapter's own note in ``--append-system-prompt`` (``with_instructions``).
 
 opencode 1.18.34:
@@ -322,21 +324,30 @@ def claude_call_refusal(profile: Profile, name: str, tool_input) -> str | None:
     return None
 
 
-def claude_hooks(profile: Profile | None) -> dict | None:
-    """The ``hooks`` of the session: a PreToolUse hook that refuses what ``claude_call_refusal`` refuses; None when the
-    profile limits no tool, skill or model."""
-    if profile is None or not any(profile.allowed(axis) is not None for axis in ("tool", "skill", "model")):
+def claude_hooks(profile: Profile | None, autonomy=None) -> dict | None:
+    """The ``hooks`` of the session: a PreToolUse hook that refuses what ``claude_call_refusal`` refuses, and beside it
+    the hook of autonomy of a run with a snapshot, ``autonomy`` (``autonomy_hook.Gate``, ``RunContext.autonomy``);
+    None when the profile limits no tool, skill or model and the run has no snapshot."""
+    hooks = []
+    if autonomy is not None:
+        from evo_agents.worker.autonomy_hook import claude_hook
+
+        hooks.append(claude_hook(autonomy))
+    if profile is not None and any(profile.allowed(axis) is not None for axis in ("tool", "skill", "model")):
+
+        async def gate(data, tool_use_id, context) -> dict:
+            why = claude_call_refusal(profile, str(data.get("tool_name") or ""), data.get("tool_input"))
+            if why is None:
+                return {}
+            decision = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why}
+            return {"hookSpecificOutput": decision}
+
+        hooks.insert(0, gate)
+    if not hooks:
         return None
     from claude_agent_sdk import HookMatcher
 
-    async def gate(data, tool_use_id, context) -> dict:
-        why = claude_call_refusal(profile, str(data.get("tool_name") or ""), data.get("tool_input"))
-        if why is None:
-            return {}
-        decision = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why}
-        return {"hookSpecificOutput": decision}
-
-    return {"PreToolUse": [HookMatcher(matcher=None, hooks=[gate])]}
+    return {"PreToolUse": [HookMatcher(matcher=None, hooks=hooks)]}
 
 
 def claude_extra_servers(profile: Profile | None, status) -> list[str]:

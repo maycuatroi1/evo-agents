@@ -55,7 +55,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
-from evo_agents.hub.server import audit, kg_scrub, org_store
+from evo_agents.hub.server import audit, kg_scrub, org_store, route_autonomy
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -335,7 +335,10 @@ upsert_grant = _upsert_grant  # ... and give a grant as a hub admin's does
 
 
 @router.put(
-    "/projects/{project}/grants/{login}", response_model=Grant, responses={**MISSING, 422: {"model": ErrorBody}}
+    "/projects/{project}/grants/{login}",
+    response_model=Grant,
+    responses={**MISSING, 422: {"model": ErrorBody}},
+    dependencies=[route_autonomy.K12],
 )
 async def grant(request: Request, body: GrantRequest, project: ProjectName, login: Login, user: AdminUser) -> Grant:
     """Give ``login`` a role on ``project``, or change the one it has."""
@@ -384,7 +387,13 @@ async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
         await credentials.revoke_tokens(state.engine, state.sealer, credentials.revoker(state), run_id=run_id)
 
 
-@router.delete("/projects/{project}/grants/{login}", status_code=204, response_class=Response, responses=MISSING)
+@router.delete(
+    "/projects/{project}/grants/{login}",
+    status_code=204,
+    response_class=Response,
+    responses=MISSING,
+    dependencies=[route_autonomy.K12],
+)
 async def revoke(request: Request, project: ProjectName, login: Login, user: AdminUser) -> Response:
     """Take away the role ``login`` has on ``project``."""
     async with request.app.state.engine.begin() as conn:

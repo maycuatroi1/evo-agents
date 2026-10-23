@@ -245,7 +245,8 @@ class PlanRun:
         folders = {name: workspace.worktree.name for name, workspace in self.directory.workspaces.items()}
         if all(name == folder for name, folder in folders.items()) and self.run.spec.get("prompt"):
             return self.run.spec["prompt"]
-        return runs.build_plan_prompt(self.plan_body(), self.run.spec.get("repos") or [], folders)
+        autonomy = self.run.spec.get("autonomy")  # the card of the run's autonomy, from a hub that sends one
+        return runs.build_plan_prompt(self.plan_body(), self.run.spec.get("repos") or [], folders, autonomy)
 
     # The end
 

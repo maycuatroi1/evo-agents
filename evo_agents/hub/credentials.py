@@ -39,6 +39,10 @@ from urllib.parse import urlsplit
 
 SECRET_KINDS = ("env", "git", "forge")  # a variable of the agent's environment, what git asks for, or the hub's own
 LEASED_KINDS = ("env", "git")  # the kinds a run is leased; a forge secret never leaves the hub (FORGE_KIND)
+# The environment an env secret is labelled for (secrets.environment, schema 0114): a run whose K7 is
+# auto:test_secrets is leased those labelled test (evo_agents.hub.server.lease_autonomy)
+TEST_ENVIRONMENT = "test"
+SECRET_ENVIRONMENTS = (TEST_ENVIRONMENT,)
 FORGE_KIND = "forge"  # a GitLab token only the hub's process opens, to drive merge requests (server/forge.py)
 PROVIDERS = ("secret", "github-app")  # a member's secret, or an installation token the hub's GitHub App makes
 

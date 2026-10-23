@@ -21,7 +21,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import Boolean, column, func, select, table
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import autonomy_card, runs, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.runs.service import views as run_views
 from tests.hub.live import sql
@@ -391,8 +391,10 @@ def test_a_plan_run_is_claimed_only_by_a_worker_with_a_checkout_of_every_repo(cl
     current = held_plan(client, hub["owner"])
     assert spec["plan"] == {"revision": revision + 1, "body": current["body"]}
     prompt = spec["prompt"]
-    assert prompt == runs.build_plan_prompt(current["body"], REPOS)
-    assert prompt.startswith(f"You are running the plan {PLAN} from the evo-agents hub, as one plan run on a worker")
+    assert prompt == runs.build_plan_prompt(current["body"], REPOS, autonomy=spec["autonomy"])  # its card opens it
+    assert autonomy_card.without_card(prompt).startswith(
+        f"You are running the plan {PLAN} from the evo-agents hub, as one plan run on a worker"
+    )
     assert "- evo-agents: branch feat/plan-runs, worktree evo-agents" in prompt
     assert "- agent-skills: branch main, worktree agent-skills" in prompt
     assert "# Steps not done yet: 3 of 5" in prompt
@@ -538,7 +540,8 @@ def test_a_plan_run_with_a_session_per_step_goes_only_to_a_daemon_that_says_it_r
     assert spec["id"] == solo["id"] and spec["session_per_step"] is False
     spec = claim(client, new)
     assert spec["id"] == run["id"] and spec["session_per_step"] is True
-    assert spec["prompt"] == runs.build_plan_prompt(held_plan(client, hub["owner"])["body"], REPOS)
+    body = held_plan(client, hub["owner"])["body"]
+    assert spec["prompt"] == runs.build_plan_prompt(body, REPOS, autonomy=spec["autonomy"])  # its card opens it
     shown = client.get(f"/v1/projects/{PROJECT}/runs/{run['id']}", headers=hub["reader"]).json()
     assert shown["session_per_step"] is True
     with_features(client, new, [])

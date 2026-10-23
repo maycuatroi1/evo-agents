@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.server import run_autonomy
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
@@ -324,7 +325,8 @@ def claim_clause(
     the worker axis, one of its ``runtimes`` of the core on the runtime axis, or for a run of a plugin's runtime one
     of its ``plugin_runtimes``, host or one of the plugins' ``environments`` it takes on the environment axis, a
     daemon that applies profiles (``features``) when the profile needs one, and one that builds agent packs when it
-    attaches some, each of a plugin of ``plugins``, those its owner accepted. Always for a run without a profile."""
+    attaches some, each of a plugin of ``plugins``, those its owner accepted. Always for a run without a profile. And,
+    for a run with an autonomy snapshot, the workers, environments and daemon it allows (``run_autonomy.claim_clause``)."""
     r = tables.runs
     v, permissions = _rules()
     names = [name.lower(), *(profiles.LABEL_PREFIX + label.lower() for label in labels or ())]
@@ -349,7 +351,8 @@ def claim_clause(
         conditions.append(func.coalesce(v.c.body["instructions"].astext, "") == "")
     if runs.AGENT_HOME not in (features or ()):
         conditions.append(_default_or_not_claude(permissions, runtimes))
-    return or_(r.c.profile_id.is_(None), exists().where(*conditions))
+    held = run_autonomy.claim_clause(name, runtimes, features, environments, runtime_rule())
+    return and_(or_(r.c.profile_id.is_(None), exists().where(*conditions)), held)
 
 
 CLAUDE = "claude-code"

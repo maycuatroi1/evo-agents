@@ -345,6 +345,9 @@ def test_decisions_and_notices_the_plan_names():
         "spend_money",
         "architecture",
         "scope",
+        "merge",
+        "credential",
+        "access",
     )
     assert set(runs.DECISION_CATEGORY_TEXT) == set(runs.DECISION_CATEGORIES)
     assert all(text and "\n" not in text for text in runs.DECISION_CATEGORY_TEXT.values())
@@ -368,6 +371,7 @@ def test_decisions_and_notices_the_plan_names():
         "goal_review",
         "loop_brief",
         "plugin_notice",
+        "autonomy",
         "worker_doctor",
     )
     assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)

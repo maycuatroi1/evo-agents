@@ -81,7 +81,16 @@ def asked(monkeypatch):
 
 def test_set_takes_no_value_on_its_command_line():
     flags = {option["flags"][0] for option in commands()["hub secret set"]["options"]}
-    assert flags == {"--kind", "--env-var", "--url-prefix", "--username", "--project", "--worker", "--expires"}
+    assert flags == {
+        "--kind",
+        "--env-var",
+        "--url-prefix",
+        "--username",
+        "--environment",
+        "--project",
+        "--worker",
+        "--expires",
+    }
     positionals = [entry["name"] for entry in commands()["hub secret set"]["positionals"]]
     assert positionals == ["name"]
     for argv in (["--value", "x"], ["--secret", "x"], ["extra-word"]):

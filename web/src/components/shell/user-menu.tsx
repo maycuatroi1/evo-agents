@@ -1,7 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronsUpDown, Keyboard, Languages, Loader2, LogOut, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
+import { ChevronsUpDown, Keyboard, Languages, Loader2, LogOut, Monitor, Moon, ShieldCheck, Sun, TriangleAlert } from "lucide-react";
+import type { Route } from "next";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
@@ -35,6 +37,9 @@ import { initials } from "@/lib/utils";
 import { SWITCH_CLASS, useSelectedProject } from "./project-switcher";
 import { roleLabelKey } from "./role-badge";
 import { ShortcutKeys, useOpenShortcuts } from "./shortcuts";
+
+/** The viewer's own autonomy settings (the page lives in components/autonomy, which the shell may not import). */
+const AUTONOMY_HREF = "/settings/autonomy" as Route;
 
 const YEAR = 60 * 60 * 24 * 365;
 
@@ -185,6 +190,12 @@ export function UserMenu() {
                   </DropdownMenuRadioGroup>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              <DropdownMenuItem asChild data-testid="user-menu-autonomy">
+                <Link href={AUTONOMY_HREF}>
+                  <ShieldCheck aria-hidden="true" />
+                  {t("autonomy")}
+                </Link>
+              </DropdownMenuItem>
               {openShortcuts ? (
                 <DropdownMenuItem
                   onSelect={() => {

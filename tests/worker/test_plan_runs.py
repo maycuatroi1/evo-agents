@@ -1137,6 +1137,7 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
             "update_now",
             "merge_judge",
             "clones_checkouts",
+            "autonomy",
             "agent_home",
             "doctor_report",
         ]

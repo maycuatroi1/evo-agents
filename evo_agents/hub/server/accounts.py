@@ -52,7 +52,7 @@ from evo_agents.hub.accounts import (
     account_state,
 )
 from evo_agents.hub.credentials import SECRET_NAME
-from evo_agents.hub.server import audit, org_store
+from evo_agents.hub.server import audit, org_store, route_autonomy
 from evo_agents.hub.server.account_choice import RELOGIN_REASON
 from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, PrincipalCost, account_figures, figured
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
@@ -74,7 +74,9 @@ OwnerLogin = Annotated[
 ]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
-router = APIRouter(prefix="/v1", tags=["accounts"], responses={401: {"model": ErrorBody}})
+router = APIRouter(
+    prefix="/v1", tags=["accounts"], dependencies=[route_autonomy.K8], responses={401: {"model": ErrorBody}}
+)
 
 
 # Models

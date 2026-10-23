@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { createAgentByApi } from "./support/agents";
+import { ceilingOver } from "./support/autonomy";
 import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -239,6 +240,14 @@ test("the org chart never scrolls sideways at 375, 768, 1024 and 1440 px", async
   const deep = await unitByApi(LONG.slice(0, 40), middle);
   await seatByApi({ unit: deep, role: "member", login: me.login, ends_on: "2099-12-31" });
   await noSidewaysScroll(page, WIDTHS, [{ path: "/org", ready: shown("org-tree") }]);
+});
+
+test("the autonomy settings never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(60_000);
+  const me = await member([{ role: "reader", maxLevel: "internal" }]);
+  // A ceiling on a unit with a long unbroken slug, which every dimmed level and class names as its source.
+  await ceilingOver(me.login, "A1", LONG.slice(0, 40));
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/settings/autonomy", ready: shown("autonomy-classes") }]);
 });
 
 for (const width of WIDTHS) {

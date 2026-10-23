@@ -642,7 +642,8 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     helpers = [value for key, value in entries if key == f"credential.{https}.helper"]
     assert helpers[0] == "" and helpers[1].endswith(f" worker git-credential --run {run_id}"), entries
     assert (f"url.{https}.insteadOf", world.origins[REPO]) in entries
-    assert {key for key, _ in entries} == {
+    # core.hooksPath names the hooks of the run's trailers Evo-Principal and Evo-Agent (autonomy-levels)
+    assert {key for key, _ in entries} - {"core.hooksPath"} == {
         f"credential.{https}.helper",
         f"credential.{https}.useHttpPath",
         f"url.{https}.insteadOf",

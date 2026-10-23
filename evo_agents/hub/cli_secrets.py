@@ -65,7 +65,14 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.credentials import FORGE_KIND, MAX_SECRET_BYTES, SECRET_KINDS, SECRET_NAME, env_name_refusal
+from evo_agents.hub.credentials import (
+    FORGE_KIND,
+    MAX_SECRET_BYTES,
+    SECRET_ENVIRONMENTS,
+    SECRET_KINDS,
+    SECRET_NAME,
+    env_name_refusal,
+)
 from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
@@ -77,6 +84,7 @@ SECRET_KEYS = (
     "env_var",
     "url_prefix",
     "username",
+    "environment",
     "projects",
     "workers",
     "expires_at",
@@ -119,6 +127,7 @@ def expires_at(day: str) -> str:
 
 def target(args) -> dict:
     """The fields of the secret's kind from ``args``; Refused for a flag of the other kind or one missing."""
+    environment = getattr(args, "environment", None)
     if args.kind == "env":
         if args.url_prefix is not None or args.username is not None:
             raise Refused("--url-prefix and --username belong to --kind git, not env")
@@ -127,9 +136,10 @@ def target(args) -> dict:
         refusal = env_name_refusal(args.env_var)
         if refusal is not None:
             raise Refused(f"--env-var {refusal}")
-        return {"env_var": args.env_var}
-    if args.env_var is not None:
-        raise Refused(f"--env-var belongs to --kind env, not {args.kind}")
+        return {"env_var": args.env_var, **({"environment": environment} if environment is not None else {})}
+    for flag, given in (("--env-var", args.env_var), ("--environment", environment)):
+        if given is not None:
+            raise Refused(f"{flag} belongs to --kind env, not {args.kind}")
     if args.url_prefix is None:
         raise Refused(f"--kind {args.kind} needs --url-prefix, the https prefix of the origins it answers for")
     if args.kind == FORGE_KIND:
@@ -183,7 +193,8 @@ def check_value(kind: str, value: str) -> None:
 
 def _target_text(secret: dict) -> str:
     if secret["kind"] == "env":
-        return secret["env_var"] or "-"
+        labelled = f" ({secret['environment']})" if secret.get("environment") else ""
+        return (secret["env_var"] or "-") + labelled
     if secret["kind"] == FORGE_KIND:
         return secret["url_prefix"] or "-"
     return f"{secret['url_prefix']} as {secret['username']}"
@@ -290,6 +301,12 @@ def register_secrets(hsub) -> None:
         "https://gitlab.example.org/group",
     )
     put.add_argument("--username", metavar="USER", help="kind git: the user git sends with the value (default oauth2)")
+    put.add_argument(
+        "--environment",
+        choices=SECRET_ENVIRONMENTS,
+        help="kind env: the environment it is for; a run whose principal's K7 is auto:test_secrets gets only the env "
+        "secrets labelled test",
+    )
     put.add_argument(
         "--project",
         required=True,

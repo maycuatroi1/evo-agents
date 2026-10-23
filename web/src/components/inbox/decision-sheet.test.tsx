@@ -52,6 +52,7 @@ const DECISION: Decision = {
   recommended: "deploy",
   state: "open",
   owner: "octo",
+  asked_of: "octo",
   answer_option: null,
   answer_text: null,
   answered_by: null,

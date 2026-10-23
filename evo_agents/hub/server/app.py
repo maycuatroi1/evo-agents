@@ -306,6 +306,9 @@ def create_app(config: HubConfig) -> FastAPI:
         app.include_router(routes)
 
     from evo_agents.hub.server import (
+        autonomy_page,
+        autonomy_routes,
+        autonomy_stops,
         changes,
         earlier,
         history,
@@ -340,6 +343,9 @@ def create_app(config: HubConfig) -> FastAPI:
         playbook.router,
         playbook.worker_router,
         org.router,  # the org chart (plan org-chart)
+        autonomy_routes.router,  # the autonomy levels (plan autonomy-levels)
+        autonomy_stops.router,  # and their stop S4
+        autonomy_page.router,  # what the web's autonomy pages read
         worker_shares.router,  # shared workers narrowed to units (plan credential-sharing)
         worker_doctor.worker_router,  # the doctor reports of workers, which narrowing to units needs
     ):
@@ -391,6 +397,7 @@ def create_app(config: HubConfig) -> FastAPI:
         signals,
         task_dispatch,
         triage_actions,
+        worker_autonomy,
     )
     from evo_agents.hub.server.sealing import Sealer
 
@@ -402,6 +409,7 @@ def create_app(config: HubConfig) -> FastAPI:
         accounts.router,
         account_views.router,
         rate_limits.worker_router,
+        worker_autonomy.worker_router,
         agent_profiles.router,
         agent_accounts.router,
         agent_account_views.router,

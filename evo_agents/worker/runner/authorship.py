@@ -9,14 +9,46 @@ daemon makes of what the agent left (``push.commit``) carries the trailer ``Co-a
 GIT_AUTHOR_EMAIL in its environment (``author_env``). Any other run under the project's default profile, a run without
 a profile and a run whose claim has none of this commit as before: no author, no trailer, no variable. The daemon never
 rewrites a commit that is already there.
+
+Every commit of a run with a principal or an agent (plan autonomy-levels, criterion a10) also carries the trailers
+``Evo-Principal: <login>`` (the principal of the claim's autonomy card) and ``Evo-Agent: <handle>`` (the claim's
+profile), never a runtime or a model (``run_trailers``): the daemon's commit in its message, the agent's own commits
+through the ``commit-msg`` hook of a directory of hooks the run's git configuration names (``trailer_hooks``). That hook
+adds them only to a commit of a checkout under the run's work tree, and every hook of the directory then runs the
+checkout's own one, as git would have.
 """
 
 from __future__ import annotations
 
+import re
+import shlex
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 NOREPLY = "users.noreply.github.com"
+PRINCIPAL_TRAILER, AGENT_TRAILER = "Evo-Principal", "Evo-Agent"
+_UNSAFE = re.compile(r"[^A-Za-z0-9._@-]")  # a login or a handle keeps to these; anything else is dropped
+# The client hooks git runs; each one of the run's directory runs the checkout's own hook of that name.
+HOOK_NAMES = (
+    "applypatch-msg",
+    "pre-applypatch",
+    "post-applypatch",
+    "pre-commit",
+    "pre-merge-commit",
+    "prepare-commit-msg",
+    "commit-msg",
+    "post-commit",
+    "pre-rebase",
+    "post-checkout",
+    "post-merge",
+    "pre-push",
+    "pre-auto-gc",
+    "post-rewrite",
+    "reference-transaction",
+    "push-to-checkout",
+    "post-index-change",
+)
 
 
 @dataclass(frozen=True)
@@ -77,11 +109,65 @@ def co_author_trailer(spec: dict) -> str | None:
     return f"Co-authored-by: {login} <{local}@{NOREPLY}>"
 
 
+def _clean(value) -> str:
+    return _UNSAFE.sub("", str(value or ""))
+
+
+def run_trailers(spec: dict) -> list[str]:
+    """``Evo-Principal: <login>`` and ``Evo-Agent: <handle>`` of the run of claim ``spec``, each when the claim names
+    it: the principal of its autonomy card, the handle of its profile."""
+    card = spec.get("autonomy") if isinstance(spec.get("autonomy"), dict) else {}
+    profile = spec.get("profile") if isinstance(spec.get("profile"), dict) else {}
+    principal, agent = _clean(card.get("principal")), _clean(profile.get("handle"))
+    found = [f"{PRINCIPAL_TRAILER}: {principal}"] if principal else []
+    return found + ([f"{AGENT_TRAILER}: {agent}"] if agent else [])
+
+
 def commit_message(spec: dict, subject: str) -> str:
-    """The message of the daemon's commit of the run of claim ``spec``: ``subject``, and the co-author trailer after a
-    blank line when the run has one."""
+    """The message of the daemon's commit of the run of claim ``spec``: ``subject``, and after a blank line the
+    co-author trailer when the run has one and its trailers ``Evo-Principal`` and ``Evo-Agent``."""
     trailer = co_author_trailer(spec)
-    return f"{subject}\n\n{trailer}" if trailer else subject
+    trailers = ([trailer] if trailer else []) + run_trailers(spec)
+    return subject + ("\n\n" + "\n".join(trailers) if trailers else "")
+
+
+def hook_script(trailers: list[str], root: Path) -> str:
+    """The text of each hook of the run's directory: in ``commit-msg`` of a checkout under ``root``, add ``trailers``
+    (once each); then run the checkout's own hook of the same name, from its own configuration."""
+    added = " ".join(f"--trailer {shlex.quote(line)}" for line in trailers)
+    under = shlex.quote(str(root)) + "/*"
+    return f"""#!/bin/sh
+# The git hooks of an evo-agents run: a commit of its own checkouts names its principal and agent.
+name=${{0##*/}}
+top=$(git rev-parse --show-toplevel 2>/dev/null) || top=
+if [ "$name" = commit-msg ] && [ -n "$top" ]; then
+  case "$(cd "$top" && pwd -P)/" in
+    {under}) git interpret-trailers --in-place --if-exists addIfDifferent {added} "$1" || : ;;
+  esac
+fi
+own=$(GIT_CONFIG_COUNT=0 git rev-parse --git-path hooks 2>/dev/null) || exit 0
+here=$(cd "${{0%/*}}" && pwd -P)
+case "$own" in /*) ;; *) own="$(pwd -P)/$own" ;; esac
+[ "$(cd "$own" 2>/dev/null && pwd -P)" = "$here" ] && exit 0
+[ -x "$own/$name" ] && exec "$own/$name" "$@"
+exit 0
+"""
+
+
+def trailer_hooks(spec: dict, directory: Path, root: Path) -> Path | None:
+    """Write the directory of hooks of the run of claim ``spec`` at ``directory`` for the checkouts under ``root``,
+    its work tree; the directory, for ``core.hooksPath`` of the agent's git, or None for a run without trailers."""
+    trailers = run_trailers(spec)
+    if not trailers:
+        return None
+    directory.mkdir(parents=True, exist_ok=True)
+    text = hook_script(trailers, Path(root).resolve())
+    for name in HOOK_NAMES:
+        path = directory / name
+        if not path.exists() or path.read_text() != text:
+            path.write_text(text)
+        path.chmod(0o755)
+    return directory
 
 
 def author_env(spec: dict, hub_url: str) -> dict[str, str]:

@@ -21,7 +21,7 @@ from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_configs import check_run_layer
@@ -233,14 +233,18 @@ async def _refuse_without_origin(
         )
 
 
-async def insert_run(conn: AsyncConnection, values: dict) -> int:
+async def insert_run(conn: AsyncConnection, values: dict, who: run_autonomy.For | None = None) -> int:
     """Insert a run with the column ``values`` in a savepoint and return its id; values that name no agent profile
-    take the project's default. When the database refuses the row, the savepoint is rolled back and the IntegrityError,
-    with the psycopg error that says why in ``orig``, goes on to the caller, whose transaction stays usable."""
+    take the project's default, and every run its principal and autonomy snapshot (``run_autonomy.stamp``, ``who``
+    the principal when its kind does not say it). When the database refuses the row, the savepoint is rolled back and the IntegrityError,
+    with the psycopg error that says why in ``orig``, goes on to the caller, whose transaction stays usable. A stop of
+    autonomy that holds the run's principal refuses it, ``autonomy_hold.Stopped``, a 403, before anything is written."""
     r = tables.runs
     if "profile_id" not in values:
         default = await ensure_default(conn, values["project_id"])
         values = {**values, "profile_id": default.id, "profile_version": default.version}
+    values = await run_autonomy.stamp(conn, values, who)
+    await autonomy_hold.hold(conn, values.get("principal_id"))
     async with conn.begin_nested():
         return (await conn.execute(insert(r).values(**values).returning(r.c.id))).scalar_one()
 

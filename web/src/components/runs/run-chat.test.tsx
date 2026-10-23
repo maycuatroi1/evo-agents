@@ -86,6 +86,7 @@ const ASKED: Decision = {
   recommended: "plan",
   state: "open",
   owner: "octo",
+  asked_of: "octo",
   answer_option: null,
   answer_text: null,
   answered_by: null,
