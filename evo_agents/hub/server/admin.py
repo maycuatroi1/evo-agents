@@ -330,6 +330,10 @@ def _upsert_grant(user_id: int, project_id: int, role: str, max_level: str, gran
     ).returning((column("xmax") == 0).label("created"))
 
 
+project_ladder = _project  # the invite links (evo_agents.hub.server.invites) check a project and its ladder alike
+upsert_grant = _upsert_grant  # ... and give a grant as a hub admin's does
+
+
 @router.put(
     "/projects/{project}/grants/{login}",
     response_model=Grant,

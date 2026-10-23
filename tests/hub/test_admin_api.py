@@ -69,7 +69,7 @@ def grant_path(project: str, login: str) -> str:
 
 def admin_routes() -> list[tuple[str, str]]:
     """Every operation under /v1/admin in the API contract, with its path parameters filled in."""
-    filled = {"{project}": "demo", "{login}": "someone", "{token_id}": "1"}
+    filled = {"{project}": "demo", "{login}": "someone", "{token_id}": "1", "{invite_id}": "1"}
     routes = []
     for path, operations in document()["paths"].items():
         if path.startswith("/v1/admin/"):

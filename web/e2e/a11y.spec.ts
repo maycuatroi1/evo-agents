@@ -2128,6 +2128,24 @@ const PAGES: Entry[] = [
       await expect(page.frameLocator('[data-testid="plugin-frame"]').locator("#runs")).toHaveText(/^allowed/);
     },
   },
+  {
+    name: "invite page as the login it is for, then accepted with its Get started list",
+    open: async ({ page, me, hidden }) => {
+      const created = await new HubAdmin().invite({
+        kind: "join",
+        project: hidden,
+        role: "writer",
+        max_level: "internal",
+        for_login: me.login,
+        days: 7,
+      });
+      await page.goto(`/invite/${created.token}`);
+      await expect(page.getByTestId("invite-summary")).toHaveAttribute("data-state", "for-viewer");
+      await expectNoSeriousViolations(page, "invite page for its login");
+      await page.getByTestId("invite-accept").click();
+      await expect(page.getByTestId("invite-get-started")).toBeVisible();
+    },
+  },
 ];
 
 /** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
@@ -2135,6 +2153,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
   {
     name: "org chart as a hub admin, with Unplaced and the add-seat form with errors",
     open: async (page) => {
+      test.setTimeout(60_000); // two axe passes, which went past 30 s on a loaded machine
       const slug = await unitByApi("a11y-org");
       await page.goto("/org");
       await expect(page.locator("#main").getByTestId("org-unplaced")).toBeVisible();
@@ -2286,6 +2305,27 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
       await expect(page.getByTestId("plugin-upgrade-dialog")).toBeVisible();
     },
   },
+  {
+    name: "admin invite links with a link of each kind, the new-link form, then the link made",
+    open: async (page) => {
+      const hub = new HubAdmin();
+      const project = uniqueName("a11y-invites");
+      await hub.registerProject(project);
+      await hub.invite({ kind: "join", project, role: "reader", max_level: "public", for_login: newAccount("a11y-invitee").login, days: 7 });
+      await hub.invite({ kind: "register", days: 1 });
+      await page.goto("/admin/invites");
+      await expect(page.locator("#main").getByTestId("invites-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "admin invite links");
+      await page.getByTestId("invite-open").click();
+      const dialog = page.getByTestId("invite-dialog");
+      await dialog.getByTestId("invite-kind-join").click();
+      await expect(dialog.getByTestId("invite-project")).toBeVisible();
+      await expectNoSeriousViolations(page, "new invite link form");
+      await dialog.getByTestId("invite-kind-register").click();
+      await dialog.getByTestId("invite-create").click();
+      await expect(dialog.getByTestId("invite-created")).toBeVisible();
+    },
+  },
 ];
 
 for (const scheme of ["light", "dark"] as const) {
@@ -2300,6 +2340,26 @@ for (const scheme of ["light", "dark"] as const) {
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
         await expectNoSeriousViolations(page, `/login (${scheme})`);
+      });
+
+      for (const path of ["/", "/about"]) {
+        test(`product page at ${path} has no serious axe violation (${scheme})`, async ({ page }) => {
+          await page.goto(path);
+          await expect(page.getByTestId("product-page")).toBeVisible();
+          await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
+          await expectNoSeriousViolations(page, `product page at ${path} (${scheme})`);
+        });
+      }
+
+      test(`invite page of a visitor has no serious axe violation (${scheme})`, async ({ page, admin }) => {
+        test.skip(isDeployed, "makes an invite link on the local stack");
+        const project = uniqueName("a11y-invite");
+        await admin.registerProject(project);
+        const created = await admin.invite({ kind: "join", project, role: "writer", max_level: "internal", days: 7 });
+        await page.goto(`/invite/${created.token}`);
+        await expect(page.getByTestId("invite-sign-in")).toBeVisible();
+        await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
+        await expectNoSeriousViolations(page, `invite page signed out (${scheme})`);
       });
     });
 

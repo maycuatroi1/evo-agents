@@ -1,5 +1,5 @@
 """The API of the plugin pm as Pydantic models: the daily report and one member's view of it. Every model is named
-``Pm...`` in the hub's OpenAPI document. The keys of ``PmDaily`` are the contract meridai-harness reads.
+``Pm...`` in the hub's OpenAPI document. The keys of ``PmDaily`` are the contract a project's harness reads.
 """
 
 from __future__ import annotations

@@ -350,28 +350,31 @@ const ADMIN_PATHS = [
   `/admin/members/${ADMIN_ACCOUNT.login}`,
   "/admin/tokens",
   "/admin/audit",
+  "/admin/invites",
   "/admin/plugins",
   "/admin/branding",
   "/admin/features",
 ];
 
-test("admin pages hydrate without a console error or a page error", async ({ page, signInAs }) => {
-  await signInAs(ADMIN_ACCOUNT);
-  const problems: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") problems.push(`console: ${message.text()}`);
-  });
-  page.on("pageerror", (error) => problems.push(`page: ${error.message}`));
-  for (const width of [1440, 375]) {
+// One test per width, each with its own budget: both widths in one test passed 30 s on a loaded machine once the
+// invites tab joined ADMIN_PATHS.
+for (const width of [1440, 375]) {
+  test(`admin pages hydrate without a console error or a page error at ${width} px`, async ({ page, signInAs }) => {
+    await signInAs(ADMIN_ACCOUNT);
+    const problems: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") problems.push(`console: ${message.text()}`);
+    });
+    page.on("pageerror", (error) => problems.push(`page: ${error.message}`));
     await page.setViewportSize({ width, height: 900 });
     for (const path of ADMIN_PATHS) {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);
     }
-  }
-  expect(problems).toEqual([]);
-});
+    expect(problems).toEqual([]);
+  });
+}
 
 // One test per width, from a 375 px phone to a 1440 px desktop, each with its own budget: every admin page at all
 // four widths in one test passed 30 s in CI once the branding and features tabs joined ADMIN_PATHS.

@@ -176,7 +176,7 @@ default branch on GitLab no one may push to, and no env secret but its runtime's
 `auto:test_secrets`). A run without an autonomy snapshot, or at auto or notify, gets what follows unchanged. A lease
 that held anything back writes the audit row `autonomy.refused` with the class, the mode and the source; every K7
 decision at a lease also writes `autonomy.decided` (the floor S1). An env secret carries an environment label
-(`secrets.environment`, schema 0112): none, or `test` with `hub secret set --environment test`; `hub secret list`
+(`secrets.environment`, schema 0114): none, or `test` with `hub secret set --environment test`; `hub secret list`
 shows it.
 
 `evo_agents/hub/server/credentials.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
@@ -641,7 +641,7 @@ it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` h
 #### Leasing under a share
 
 A run's principal is the person it acts for (`runs.principal_id`, `docs/autonomy.md`), the member who dispatched it
-for a run queued before schema 0111; each lease records it (`credential_leases.principal_id`, migration 0106). A share
+for a run queued before schema 0113; each lease records it (`credential_leases.principal_id`, migration 0106). A share
 covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
 principal, a live unit holding the principal's live primary seat or a unit above it, or everyone. The shared secret
 must still be bound to the project; a run of the Curator and a release run never take one

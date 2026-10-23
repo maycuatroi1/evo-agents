@@ -18,12 +18,12 @@ context: >
   lệnh kg bind ghi trong step 8 của kg-prototype chưa tồn tại. (2) Tầng khẳng định còn hở: MCP server chỉ có
   5 trên 9 tool (thiếu kg_path, kg_impact); evo_agents/kg/schema.py có validate_ontology nhưng không nơi nào
   gọi, dù knowledge.schema.json đã có khoá ontology; kho chưa có partial unique index cho Symbol; frontmatter
-  id: chưa được coi là nơi định nghĩa nên 734 node Requirement SRS.<hex> của evo-lms không có cạnh defines;
+  id: chưa được coi là nơi định nghĩa nên 734 node Requirement SRS.<hex> của fabrikam-lms không có cạnh defines;
   graph chưa có node thư mục, nguyên nhân chính của mention treo ở kb-docs của northwind; harness validate chưa
   lint quy ước ở mục 4.6; khoá refresh có trong schema nhưng không lệnh nào đọc; chưa có bản kiểm toán
   JSONL. (3) Plugin chỉ có hook SessionStart. Corpus đã có khoá theo nguồn (corpus.lock) và bảng runs, nên
-  sync theo lịch không chạy chồng lên sync tay. CI Harness Validate của evo-lms ghim evo-agents theo commit
-  1447e3f, và mọi thay đổi schema tới evo-lms qua một lần nâng ghim có review.
+  sync theo lịch không chạy chồng lên sync tay. CI Harness Validate của fabrikam-lms ghim evo-agents theo commit
+  1447e3f, và mọi thay đổi schema tới fabrikam-lms qua một lần nâng ghim có review.
 
 acceptance:
   - criterion: >
@@ -42,22 +42,22 @@ acceptance:
       "symbol:kb-service:src/kb_service/mcp_adapter/asgi.py::Router" --project northwind phải liệt kê
       build_router (cạnh calls, status resolved) và file asgi.py
   - criterion: >
-      build --verify khớp hash trên ba dự án northwind, evo-lms, evo-agents sau khi kho lên schema 2; kho
+      build --verify khớp hash trên ba dự án northwind, fabrikam-lms, evo-agents sau khi kho lên schema 2; kho
       schema 1 được dựng lại từ nhật ký thay vì báo lỗi; hai Symbol trùng khoá (repo, path, qualname) làm
       build thất bại và in cả hai nguồn.
     verify: >
       pytest tests/kg -k "pg_key or schema_upgrade"; evo-agents kg build --verify --project northwind;
-      evo-agents kg build --verify --project evo-lms; evo-agents kg build --verify --project evo-agents
+      evo-agents kg build --verify --project fabrikam-lms; evo-agents kg build --verify --project evo-agents
   - criterion: >
-      Trên evo-lms, mỗi tài liệu có frontmatter id: khớp một mẫu trong identifiers sinh đúng một cạnh defines
+      Trên fabrikam-lms, mỗi tài liệu có frontmatter id: khớp một mẫu trong identifiers sinh đúng một cạnh defines
       tới node mã tương ứng; số node Requirement không có defines giảm từ 734 và con số mới nằm trong báo cáo.
       Trên northwind, link tới thư mục phân giải về node Directory và số mention treo của nguồn kb-docs giảm so
       với lượt đo của kg-prototype.
-    verify: evo-agents kg status --project evo-lms --json; evo-agents kg status --project northwind --json; báo cáo trong reports/
+    verify: evo-agents kg status --project fabrikam-lms --json; evo-agents kg status --project northwind --json; báo cáo trong reports/
   - criterion: >
       evo-agents harness validate kiểm ontology.yaml mà knowledge.yaml trỏ tới và in cảnh báo lint quy ước
-      định danh; ba harness evo-agents-harness, northwind-harness, evo-lms-harness vẫn 0 lỗi.
-    verify: evo-agents harness validate ~/github/evo-agents-harness ~/github/northwind-harness ~/github/evo-lms-harness
+      định danh; ba harness evo-agents-harness, northwind-harness, fabrikam-lms-harness vẫn 0 lỗi.
+    verify: evo-agents harness validate ~/github/evo-agents-harness ~/github/northwind-harness ~/github/fabrikam-lms-harness
   - criterion: >
       LaunchAgent của evo-agents đã nạp trên máy này, chạy `kg sync --due --all --build` mỗi giờ; trong vòng
       hai giờ sau khi cài, audit.jsonl của northwind có bản ghi từ lượt chạy theo lịch, và kg status không còn
@@ -76,8 +76,8 @@ acceptance:
   - criterion: Bộ eval của plugin qua bốn ca, gồm ca mới gọi kg_impact trước khi sửa một symbol.
     verify: claude plugin eval plugins/evo-kg --runs 3 --model claude-sonnet-5-5
   - criterion: >
-      CI evo-agents xanh trên ubuntu và macos; Harness Validate của evo-lms xanh với ghim evo-ak==0.1.0.
-    verify: gh run list --repo maycuatroi1/evo-agents --limit 3; gh run list --repo maycuatroi1/evo-lms-harness --workflow harness-validate.yaml --limit 3
+      CI evo-agents xanh trên ubuntu và macos; Harness Validate của fabrikam-lms xanh với ghim evo-ak==0.1.0.
+    verify: gh run list --repo maycuatroi1/evo-agents --limit 3; gh run list --repo maycuatroi1/fabrikam-lms-harness --workflow harness-validate.yaml --limit 3
 
 non_goals:
   - Tầng đề xuất bằng LLM (chặng đề xuất, kg propose, memo LLM, phép thử P2).
@@ -98,8 +98,8 @@ references:
     where: reports/Thiết kế khung knowledge graph.md, mục 2 đến 5, 6.4, 6.5
   - what: Kết quả và lệch của prototype, việc nên làm tiếp
     where: reports/Prototype khung knowledge graph trên northwind.md, mục "Lệch so với thiết kế" và "Việc nên làm tiếp"
-  - what: 734 Requirement không có defines, kg bind không tồn tại, ghim CI của evo-lms
-    where: reports/Khung knowledge graph trên evo-lms.md, mục "Mã SRS chưa có nơi định nghĩa" và "Phát hiện ngoài phạm vi"
+  - what: 734 Requirement không có defines, kg bind không tồn tại, ghim CI của fabrikam-lms
+    where: reports/Khung knowledge graph trên fabrikam-lms.md, mục "Mã SRS chưa có nơi định nghĩa" và "Phát hiện ngoài phạm vi"
   - what: Plan đã đóng của giai đoạn 3
     where: plans/completed/kg-prototype.yaml
   - what: MCP tool hiện có, trần kết quả, thứ hạng status
@@ -118,8 +118,8 @@ references:
     where: evo-agents evo_agents/kg/sync.py (sync_source, _record_run), evo_agents/kg/corpus.py (lock, runs)
   - what: Hook PreToolUse có additionalContext và trường if theo cú pháp quyền; tên tool MCP của plugin là mcp__plugin_<plugin>_<server>__<tool>; stdin của PostToolUse cho tool MCP chưa có tài liệu
     where: https://code.claude.com/docs/en/hooks.md, https://code.claude.com/docs/en/plugins/components.md (tra ngày 2026-10-03)
-  - what: Ghim evo-agents trong CI của evo-lms
-    where: evo-lms-harness .github/workflows/harness-validate.yaml, bước "Install evo-agents"
+  - what: Ghim evo-agents trong CI của fabrikam-lms
+    where: fabrikam-lms-harness .github/workflows/harness-validate.yaml, bước "Install evo-agents"
 
 repos:
   - repo: evo-agents
@@ -143,7 +143,7 @@ repos:
     scope: >
       knowledge.yaml: refresh cho các nguồn chưa có. Làm trong worktree ~/github/northwind-harness-assertion vì
       checkout chính có thay đổi chưa commit của phiên khác.
-  - repo: evo-lms-harness
+  - repo: fabrikam-lms-harness
     branch: kg-assertion-layer
     order: 3
     depends_on: [evo-agents]
@@ -152,11 +152,11 @@ repos:
     merged_at: '2026-10-03'
     scope: >
       knowledge.yaml: refresh cho 17 nguồn; harness-validate.yaml: ghim evo-ak==0.1.0. Làm trong worktree
-      ~/github/evo-lms-harness-assertion.
+      ~/github/fabrikam-lms-harness-assertion.
   - repo: evo-agents-harness
     branch: main
     order: 4
-    depends_on: [evo-agents, northwind-harness, evo-lms-harness]
+    depends_on: [evo-agents, northwind-harness, fabrikam-lms-harness]
     status: done
     done_at: '2026-10-03'
     scope: knowledge.yaml (refresh), cài đặt trên máy, báo cáo đo, CLUSTER.md, AGENTS.md, plan.
@@ -191,14 +191,14 @@ steps:
       dẫn tương đối theo thư mục của knowledge.yaml); file thiếu là lỗi. Kiểm thêm: kind của mỗi identifiers
       phải thuộc known_kinds của hub cộng ontology (lỗi). Pipeline nạp ontology qua Project và từ chối fact có
       kind ngoài known_kinds bằng một lỗi build có tên item. Harness không khai khoá ontology thì hành vi giữ
-      nguyên, nên ontology.yaml định dạng lms graph của evo-lms (không được knowledge.yaml trỏ tới) không bị
+      nguyên, nên ontology.yaml định dạng lms graph của fabrikam-lms (không được knowledge.yaml trỏ tới) không bị
       kiểm.
     depends_on: []
-    verify: pytest tests/harness tests/kg -k ontology -q; evo-agents harness validate ~/github/evo-lms-harness
+    verify: pytest tests/harness tests/kg -k ontology -q; evo-agents harness validate ~/github/fabrikam-lms-harness
     status: done
     done_at: '2026-10-03'
     evidence: >
-      evo-agents@ba65d01, merge vào kg-assertion-layer. Chạy lại: 11 test ontology xanh; validate evo-lms 82
+      evo-agents@ba65d01, merge vào kg-assertion-layer. Chạy lại: 11 test ontology xanh; validate fabrikam-lms 82
       file, northwind 32 file, evo-agents-harness 6 file, đều 0 lỗi và output -v giống bản 1447e3f; sau merge
       67 test xanh, ruff sạch. Lệch: kiểm kind của identifiers cũng chỉ chạy khi knowledge.yaml có khoá
       ontology, để harness không khai khoá giữ nguyên hành vi; validate_ontology từ chối thêm node_kinds hoặc
@@ -217,14 +217,14 @@ steps:
     depends_on: []
     verify: >
       pytest tests/kg -k "pg_key or schema_upgrade" -q; evo-agents kg build --verify --project northwind;
-      evo-agents kg build --verify --project evo-lms; evo-agents kg build --verify --project evo-agents
+      evo-agents kg build --verify --project fabrikam-lms; evo-agents kg build --verify --project evo-agents
     status: done
     done_at: '2026-10-03'
     evidence: >
       evo-agents@dc2a225, merge vào kg-assertion-layer ở evo-agents@98e4ca4 (gỡ xung đột import trong build.py
       với step 2). Chạy lại: 6 test pg_key và schema_upgrade xanh; trên bản sao kho (EVO_KG_HOME trong
       scratchpad, kho thật không đổi) build --verify khớp hash: northwind sha256:040c9179 (19.686 node, 32.476
-      cạnh), evo-lms sha256:ade79cae (43.854 node, 73.570 cạnh), evo-agents sha256:7ff71399; cả ba tự dựng lại
+      cạnh), fabrikam-lms sha256:ade79cae (43.854 node, 73.570 cạnh), evo-agents sha256:7ff71399; cả ba tự dựng lại
       từ schema 1 lên 2. Không có Symbol trùng khoá ở dự án nào, nên step 16 và 17 không cần sửa
       include/exclude. Sau merge 103 test xanh. Thêm: STRUCTURE_VERSION lên 3; serve, query và kg status báo
       kho schema 1 bằng lỗi rõ thay vì traceback; dựng lại do đổi schema làm build_id bắt đầu lại từ 1.
@@ -237,17 +237,17 @@ steps:
       Chặng cấu trúc đọc frontmatter YAML đầu file markdown; khoá id có giá trị khớp một mẫu trong identifiers
       sinh node mã (cùng id dạng <kind lower>:<mã> như Linker.scan) và cạnh defines từ Document, status parsed.
       kg status liệt kê mã có từ hai nơi defines trở lên, kèm gợi ý dùng derived_from (mục 4.6). Kiểm trên
-      evo-lms: số Requirement không có defines trước và sau.
+      fabrikam-lms: số Requirement không có defines trước và sau.
     depends_on: [3]
-    verify: pytest tests/kg -k frontmatter -q; evo-agents kg build --project evo-lms && evo-agents kg status --project evo-lms --json
+    verify: pytest tests/kg -k frontmatter -q; evo-agents kg build --project fabrikam-lms && evo-agents kg status --project fabrikam-lms --json
     status: done
     done_at: '2026-10-03'
     evidence: >
       evo-agents@1a15e12, merge vào kg-assertion-layer ở evo-agents@3c9152c (gỡ xung đột hằng số phiên bản với
       step 5; LINK_VERSION lên 7 vì cả hai nhánh cùng nâng 5 lên 6). Chạy lại: 20 test frontmatter xanh. Trên bản
-      sao kho evo-lms, Requirement không có defines 734/734 xuống 1/734 (mã còn lại chỉ được một plan step nhắc,
+      sao kho fabrikam-lms, Requirement không có defines 734/734 xuống 1/734 (mã còn lại chỉ được một plan step nhắc,
       không tài liệu nào mang nó ở frontmatter); 0 mã có từ hai nơi defines. Sau merge 153 test xanh; build
-      --verify khớp trên evo-lms sha256:f30c1d7c (45.562 node, 82.099 cạnh, có cả node Directory) và northwind
+      --verify khớp trên fabrikam-lms sha256:f30c1d7c (45.562 node, 82.099 cạnh, có cả node Directory) và northwind
       sha256:d0fb9d2a. Thêm: frontmatter có derived_from không defines; link stage bỏ cạnh mentions khi chính
       tài liệu đó đã defines mã.
     blocking: true
@@ -303,19 +303,19 @@ steps:
       trần thay vì repo@sha. Thêm khoá external vào harness.schema.json cho repo. Ghi số cảnh báo mới của ba
       harness vào note của step.
     depends_on: []
-    verify: pytest tests/harness -q; evo-agents harness validate ~/github/evo-agents-harness ~/github/northwind-harness ~/github/evo-lms-harness
+    verify: pytest tests/harness -q; evo-agents harness validate ~/github/evo-agents-harness ~/github/northwind-harness ~/github/fabrikam-lms-harness
     status: done
     done_at: '2026-10-03'
     evidence: >
       evo-agents@6a3071f, merge vào kg-assertion-layer ở evo-agents@6d2e8be (gỡ xung đột với step 2 ở
       _validate_file và test_harness.py). Chạy lại: 25 test harness xanh; validate ba harness 120 file, 0 lỗi,
       exit 0; sau merge 117 test xanh. Cảnh báo mới: evo-agents-harness 0 lên 20 (19 SHA trần, 1 source seam
-      không phải danh sách); northwind 54 lên 174 (39 [redacted] chưa khai, 81 SHA trần); evo-lms 707 lên 1.672
+      không phải danh sách); northwind 54 lên 174 (39 [redacted] chưa khai, 81 SHA trần); fabrikam-lms 707 lên 1.672
       (253 step có order thiếu id, 53 repo chưa khai, 48 source seam, 611 SHA trần). Lệch: khoá external đã có
       sẵn trong harness.schema.json từ 9203974 nên không đổi schema; tên repo của chính harness lấy theo tên
       thư mục gốc vì Harness.name là tên cụm; SHA trần chỉ tính 7 đến 12 hoặc 40 ký tự hex.
     blocking: false
-    note: Cảnh báo không làm đỏ CI của evo-lms vì cmd validate chỉ trả exit 1 khi có lỗi.
+    note: Cảnh báo không làm đỏ CI của fabrikam-lms vì cmd validate chỉ trả exit 1 khi có lỗi.
   - id: 8
     title: 'kg sync --due, --all và kg schedule'
     repo: evo-agents
@@ -518,24 +518,24 @@ steps:
       northwind-harness-kg về checkout chính.
     blocking: true
   - id: 17
-    title: 'refresh và ghim 0.1.0 cho evo-lms'
-    repo: evo-lms-harness
+    title: 'refresh và ghim 0.1.0 cho fabrikam-lms'
+    repo: fabrikam-lms-harness
     what: >
-      Trong worktree ~/github/evo-lms-harness-assertion (nhánh kg-assertion-layer từ origin/master): thêm
+      Trong worktree ~/github/fabrikam-lms-harness-assertion (nhánh kg-assertion-layer từ origin/master): thêm
       refresh: 1h cho 17 nguồn trong knowledge.yaml; đổi bước "Install evo-agents" của
       .github/workflows/harness-validate.yaml sang `python -m pip install "evo-ak==0.1.0"`. Sửa
       include/exclude nếu step 3 ghi nhận Symbol trùng khoá. Merge fast-forward vào master và push.
     depends_on: [8, 15]
-    verify: gh run list --repo maycuatroi1/evo-lms-harness --workflow harness-validate.yaml --limit 3
+    verify: gh run list --repo maycuatroi1/fabrikam-lms-harness --workflow harness-validate.yaml --limit 3
     status: done
     done_at: '2026-10-03'
     evidence: >
-      evo-lms-harness@daaa018 (worktree ~/github/evo-lms-harness-assertion, nhánh kg-assertion-layer), master
+      fabrikam-lms-harness@daaa018 (worktree ~/github/fabrikam-lms-harness-assertion, nhánh kg-assertion-layer), master
       fast-forward a1c1a89..daaa018 và push. refresh: 1h cho 17 nguồn; Harness Validate cài evo-ak==0.1.0 thay
       cho ghim commit 1447e3f. Run 37111174613 xanh: log có "Successfully installed evo-ak-0.1.0" và "81 file(s),
       0 with errors". Không cần sửa include/exclude (step 3 không thấy Symbol trùng khoá).
     blocking: true
-    note: Plan Database Sync của evo-lms đã đỏ từ trước (references của tenant-onboarding-existing-accounts); không tính là lỗi của step này.
+    note: Plan Database Sync của fabrikam-lms đã đỏ từ trước (references của tenant-onboarding-existing-accounts); không tính là lỗi của step này.
   - id: 18
     title: 'Cài đặt trên máy và LaunchAgent'
     repo: evo-agents-harness
@@ -555,11 +555,11 @@ steps:
       evo-ak 0.1.0 vào ~/.local/bin/evo-agents; marketplace maycuatroi1/evo-agents đã thêm, plugin evo-kg 0.1.0
       cài ở scope user và đã bật. kg schedule install nạp io.github.maycuatroi1.evo-agents.kg-sync (run interval
       3600 giây); kích chạy ngay bằng launchctl kickstart: 4 dự án, evo-dubbing không có nguồn đến hạn, evo-agents
-      2 nguồn, evo-lms 17 nguồn, northwind 5 nguồn, tất cả OK; cả ba kho thật tự dựng lại từ schema 1 lên 2; audit.jsonl
-      có dòng trigger schedule (evo-agents 3, evo-lms 18, northwind 6). Lượt đầu mất khoảng 32 phút vì launchd giới
+      2 nguồn, fabrikam-lms 17 nguồn, northwind 5 nguồn, tất cả OK; cả ba kho thật tự dựng lại từ schema 1 lên 2; audit.jsonl
+      có dòng trigger schedule (evo-agents 3, fabrikam-lms 18, northwind 6). Lượt đầu mất khoảng 32 phút vì launchd giới
       hạn CPU và I/O của job nền và memo phải tính lại hết. Phát hiện: cài không có extra graphify thì build lặng lẽ
       lùi về python-ast (northwind 3.242 Symbol thay vì 8.816); cài lại evo-ak[graphify]==0.1.0 rồi build tay: build
-      --verify khớp trên northwind sha256:d0edc269 (20.493 node, 36.423 cạnh), evo-lms sha256:fcfeeae6 (45.562 node,
+      --verify khớp trên northwind sha256:d0edc269 (20.493 node, 36.423 cạnh), fabrikam-lms sha256:fcfeeae6 (45.562 node,
       82.099 cạnh), evo-agents sha256:01fbfa2c. kg status northwind: các nguồn git và harness 2 phút tuổi.
     blocking: true
   - id: 19
@@ -567,7 +567,7 @@ steps:
     repo: evo-agents-harness
     what: >
       Đo trên ba dự án và ghi reports/Tầng khẳng định của khung knowledge graph.md: build --verify và hash,
-      thời gian sync và build, kích thước kho sau schema 2; Requirement không có defines trên evo-lms trước và
+      thời gian sync và build, kích thước kho sau schema 2; Requirement không có defines trên fabrikam-lms trước và
       sau; mention treo theo nguồn trên northwind trước và sau node Directory; số cảnh báo lint mới theo harness.
       Với hook gợi ý: trích ít nhất 50 mẫu Grep, Glob, rg từ transcript ~/.claude/projects/
       -Users-[redacted]-github-northwind-harness/*.jsonl, chạy qua đúng lệnh hook của plugin, ghi độ trễ p50
@@ -579,7 +579,7 @@ steps:
     done_at: '2026-10-03'
     evidence: >
       reports/Tầng khẳng định của khung knowledge graph.md (commit cùng lần đánh dấu step). kg status northwind: 20.493
-      node, 36.423 cạnh, mention 7.525/8.841 (85,1%), treo 1.030 (prototype 1.109), kb-docs 442 xuống 282; evo-lms
+      node, 36.423 cạnh, mention 7.525/8.841 (85,1%), treo 1.030 (prototype 1.109), kb-docs 442 xuống 282; fabrikam-lms
       Requirement thiếu defines 1/734 (kiểm lại bằng sqlite chỉ đọc). Lint: 1.869 cảnh báo, 0 lỗi trên ba harness.
       Hook gợi ý trên 232 lệnh grep thật của northwind (transcript không có Grep, Glob hay rg): p50 0,111 giây, p95
       0,124 giây; 23 gợi ý, 5 đúng, 8 một phần, 10 sai; EVO_KG_GREP_HINTS=0 tắt được. Phiên claude -p thật trong
@@ -592,7 +592,7 @@ steps:
     what: >
       CLUSTER.md: lệnh mới (kg bind, kg schedule, sync --due), cài từ PyPI thay cho đường dẫn venv, trạng thái
       giai đoạn 4, trỏ tới báo cáo mới. contracts.yaml: notes của knowledge-manifest-v1 ghi ontology được kiểm
-      và consumer evo-lms ghim theo phiên bản PyPI. Chạy verify của hai seam. Đánh dấu plan, chuyển sang
+      và consumer fabrikam-lms ghim theo phiên bản PyPI. Chạy verify của hai seam. Đánh dấu plan, chuyển sang
       plans/completed/ khi mọi repo đã merge. Nhắc người dùng rằng bản Notion không tự cập nhật.
     depends_on: [19]
     verify: evo harness show kg-assertion-layer; evo-agents harness validate ~/github/evo-agents-harness
@@ -602,7 +602,7 @@ steps:
       Commit đóng plan trong evo-agents-harness: CLUSTER.md có lệnh mới (kg bind, kg schedule, sync --due --all,
       kg query kg_impact), cách cài evo-ak[graphify] thay cho đường dẫn venv, trạng thái giai đoạn 4 và việc còn
       mở; AGENTS.md trỏ về plan đã xong; contracts.yaml: source của knowledge-manifest-v1 thành danh sách, notes
-      ghi ontology được kiểm và evo-lms ghim evo-ak==0.1.0. Verify seam: kg-protocol-v1 6/6 PASS từ checkout chính
+      ghi ontology được kiểm và fabrikam-lms ghim evo-ak==0.1.0. Verify seam: kg-protocol-v1 6/6 PASS từ checkout chính
       northwind bằng evo-agents 0.1.0; knowledge-manifest-v1 120 file, 0 lỗi. Plan chuyển sang plans/completed/.
       Báo cáo mới chưa có bản Notion.
     blocking: false
@@ -610,8 +610,8 @@ steps:
 seams_touched:
   - name: knowledge-manifest-v1
     owner: evo-agents
-    consumers: [northwind-harness, evo-agents-harness, evo-lms-harness]
-    verify: evo-agents harness validate ~/github/northwind-harness ~/github/evo-agents-harness ~/github/evo-lms-harness
+    consumers: [northwind-harness, evo-agents-harness, fabrikam-lms-harness]
+    verify: evo-agents harness validate ~/github/northwind-harness ~/github/evo-agents-harness ~/github/fabrikam-lms-harness
 
 risks:
   - risk: Phát hành nhầm một bản PyPI hỏng; số phiên bản đã đăng không dùng lại được.
@@ -640,15 +640,15 @@ risks:
     mitigation: >
       Plist khai PATH tường minh; lỗi đi vào schedule.log, audit.jsonl và exit code của kg status; step 18 chờ
       lượt chạy theo lịch đầu tiên và kiểm cả hai file.
-  - risk: Sửa northwind-harness hoặc evo-lms-harness đè lên thay đổi chưa commit của phiên khác.
+  - risk: Sửa northwind-harness hoặc fabrikam-lms-harness đè lên thay đổi chưa commit của phiên khác.
     mitigation: Làm trong worktree riêng; kiểm git status của checkout chính trước khi merge fast-forward.
 
 rollback: >
   evo-agents: revert commit merge của nhánh kg-assertion-layer trên main; bản 0.1.0 trên PyPI không xoá được,
   chỉ yank, và plugin quay về ghim bản cũ bằng một commit. Kho schema 2: xoá graph.sqlite của dự án rồi dựng
   lại bằng phiên bản cũ từ nhật ký, vì nhật ký và blob không đổi định dạng. LaunchAgent: `evo-agents kg
-  schedule uninstall` (launchctl bootout rồi xoá plist). northwind-harness và evo-lms-harness: revert commit
-  knowledge.yaml; evo-lms đưa ghim CI về commit 1447e3f. Không có thao tác nào sửa corpus đã có.
+  schedule uninstall` (launchctl bootout rồi xoá plist). northwind-harness và fabrikam-lms-harness: revert commit
+  knowledge.yaml; fabrikam-lms đưa ghim CI về commit 1447e3f. Không có thao tác nào sửa corpus đã có.
 
 assumptions:
   - uv và uvx có ở ~/.local/bin (kiểm 2026-10-03).
@@ -713,7 +713,7 @@ open_questions:
     blocking: false
     note: >
       Người dùng quyết ngày 2026-10-03 sau khi đọc báo cáo step 19 (5/23 gợi ý đúng): giữ bật mặc định, sửa
-      cách xếp hạng rồi đo lại trên tập dev northwind và tập holdout evo-lms, evo-agents-harness. Làm trên nhánh
+      cách xếp hạng rồi đo lại trên tập dev northwind và tập holdout fabrikam-lms, evo-agents-harness. Làm trên nhánh
       hook-ranking của evo-agents.
   - issue: Câu 6 ở mục 7 của thiết kế (hook chặn kênh ra ngoài) dùng nhãn phiên mà step 10 ghi lại.
     status: open

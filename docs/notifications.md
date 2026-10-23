@@ -31,12 +31,12 @@ with the category to ask each in (`CLASS_CATEGORIES`: K5 `merge`, K6 `deploy`, K
 `live_migration`, K10 `external_send`, K11 `spend_money`, K12 `access`), and in notify; at A5 only the floors S2 and S3.
 A plan run's prompt then lists the categories its card leaves to ask, with `architecture` and `scope`, and says that
 merging, deploying and releasing are the agent's only when K5 and K6 are auto. A run without a snapshot (a local run,
-one queued before schema 0111) lists all of them but `deploy` and the three of schema 0113
+one queued before schema 0113) lists all of them but `deploy` and the three of schema 0115
 (`PROMPTED_DECISION_CATEGORIES`), as before. The route that takes a decision refuses any other category, and the agent
 decides everything else itself and writes each such choice, with why, into the evidence of its step on a line that
 starts with `Decision:`.
 
-A decision goes to one person, `asked_of` (schema 0113, `principals.asked_of`): for a run whose principal is an intern,
+A decision goes to one person, `asked_of` (schema 0115, `principals.asked_of`): for a run whose principal is an intern,
 the person their seat reports to, and once it has been open 24 hours the leads of their unit too (the hourly job
 hub.expire_seats tells them, once each, and each may then answer); for a run the hub makes on its own, the sponsor of
 its agent; for any other, the run's principal. An intern never answers a decision of their own run (403). The Inbox,
@@ -45,7 +45,7 @@ Telegram sends as it is, ends with "asked of <login>". A notice of a class in no
 person they report to when they are an intern.
 
 The hub asks decisions of its own too. A gate of autonomy whose class is in ask, before a merge (K5), a deploy or a
-release (K6), opens one of the category `autonomy` (schema 0112, `runs.AUTONOMY_DECISION_CATEGORY`) to the run's
+release (K6), opens one of the category `autonomy` (schema 0114, `runs.AUTONOMY_DECISION_CATEGORY`) to the run's
 principal, and acts once they approve; only that principal answers it (`docs/autonomy.md`).
 
 | Category | What it covers |

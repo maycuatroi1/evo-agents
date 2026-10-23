@@ -65,7 +65,7 @@ describe("workerView", () => {
 describe("filters", () => {
   const workers = [
     worker({ id: 1, name: "binh-mbp", held_runs: 1 }),
-    worker({ id: 2, name: "lab-ws-01", labels: ["linux", "gpu"], owner: "lab", projects: ["evo-lms"] }),
+    worker({ id: 2, name: "lab-ws-01", labels: ["linux", "gpu"], owner: "lab", projects: ["fabrikam-lms"] }),
     worker({ id: 3, name: "old-imac", status: "offline" }),
     worker({ id: 4, name: "gone", status: "revoked" }),
   ];
@@ -86,7 +86,7 @@ describe("filters", () => {
 
   it("matches every word against name, host, owner, labels and projects, ignoring case", () => {
     expect(matchesWorker(workers[1], "GPU lab")).toBe(true);
-    expect(matchesWorker(workers[1], "evo-lms")).toBe(true);
+    expect(matchesWorker(workers[1], "fabrikam-lms")).toBe(true);
     expect(matchesWorker(workers[1], "gpu windows")).toBe(false);
     expect(filterWorkers(workers, { status: null, q: "imac" }).map((w) => w.id)).toEqual([3]);
   });

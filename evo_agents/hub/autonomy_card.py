@@ -4,7 +4,7 @@ autonomy-levels, criterion a12).
 Categories (``DECISION_CATEGORIES``): each class of action that takes ask has its own (``CLASS_CATEGORIES``): K5
 ``merge``, K6 ``deploy``, K8 ``credential``, K9 ``delete_data`` and ``live_migration``, K10 ``external_send``, K11
 ``spend_money``, K12 ``access``; ``architecture`` and ``scope`` belong to no class, and every agent of a plan run may ask
-them. A run without a snapshot of autonomy (a local run, one queued before schema 0111) tells its agent the fixed list
+them. A run without a snapshot of autonomy (a local run, one queued before schema 0113) tells its agent the fixed list
 ``PROMPTED_DECISION_CATEGORIES`` instead, as before.
 
 The card (``card``): built by the hub from the run's snapshot (``runs.autonomy``) and its principal when the worker

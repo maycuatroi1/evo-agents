@@ -3,7 +3,7 @@ own (``own_secrets``) and those another member shared with them (``shared_secret
 ``credentials.lease_credentials`` and ``rate_limits``; and what the hub takes back when a share ends.
 
 The principal of a run is the member it acts for (runs.principal_id, ``run_autonomy``), the member who dispatched it
-for a run without one (a local run, one queued before schema 0111). Each lease records the principal it was made for
+for a run without one (a local run, one queued before schema 0113). Each lease records the principal it was made for
 (credential_leases.principal_id), so the cost of the runs that took an account splits by principal
 (``account_views``). A share's level is source 6 of the run's autonomy from the lease that lends it on
 (``run_autonomy.share_levels``).

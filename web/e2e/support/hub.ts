@@ -124,6 +124,12 @@ export class HubAdmin {
     );
   }
 
+  /** An invite link made as the hub admin: its row, with the token shown once and the link when the hub has a URL. */
+  async invite(body: components["schemas"]["InviteRequest"]): Promise<components["schemas"]["InviteCreated"]> {
+    const api = await this.api();
+    return call(api.POST("/v1/admin/invites", { body }));
+  }
+
   /** The retention of built graphs on one project, keeping the artifacts of its `keep` newest graphs. */
   async pruneKg(project: string, keep: number) {
     const api = await this.api();

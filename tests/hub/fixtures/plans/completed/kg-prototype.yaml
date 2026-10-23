@@ -79,7 +79,7 @@ steps:
     repo: evo-agents-harness
     what: >
       Tạo repo public evo-agents và harness riêng tư evo-agents-harness; chuyển báo cáo giai đoạn 1, 2,
-      sơ đồ kiến trúc và research_notes từ evo-lms-harness sang đây; viết CLUSTER.md, AGENTS.md và plan.
+      sơ đồ kiến trúc và research_notes từ fabrikam-lms-harness sang đây; viết CLUSTER.md, AGENTS.md và plan.
     depends_on: []
     verify: evo harness show kg-prototype
     status: done
@@ -87,7 +87,7 @@ steps:
     evidence: >
       evo-agents-harness d9da0d5 (private, github.com/maycuatroi1/evo-agents-harness); evo-agents ef59614
       (public, github.com/maycuatroi1/evo-agents). Bản sao báo cáo và research_notes trùng khớp với bản
-      gốc (diff -r) trước khi xoá khỏi evo-lms-harness.
+      gốc (diff -r) trước khi xoá khỏi fabrikam-lms-harness.
   - id: 2
     title: 'Khung package, CLI và CI'
     repo: evo-agents
@@ -112,7 +112,7 @@ steps:
     status: done
     done_at: '2026-10-02T11:15:00+07:00'
     evidence: >
-      evo-agents 9203974; 9 test xanh; validate evo-agents-harness 0 lỗi. Chạy trên evo-lms-harness: 114 file, 7 plan có lỗi kiểu (non_goals, assumptions là chuỗi thay vì danh sách), giữ nguyên vì đó là lỗi thật của dữ liệu.
+      evo-agents 9203974; 9 test xanh; validate evo-agents-harness 0 lỗi. Chạy trên fabrikam-lms-harness: 114 file, 7 plan có lỗi kiểu (non_goals, assumptions là chuỗi thay vì danh sách), giữ nguyên vì đó là lỗi thật của dữ liệu.
   - id: 4
     title: 'Giao thức kg/1 và bộ kiểm tuân thủ'
     repo: evo-agents
@@ -284,6 +284,6 @@ decisions:
     by: agent
     decision: >
       Câu 1, 3, 6, 7 ở mục 7 không chặn prototype và để mở: GitNexus không dùng trong evo-agents-harness;
-      kho evo-lms giữ PostgreSQL; hook chặn kênh ra ngoài nằm ngoài phạm vi; CI chạy Linux và macOS,
+      kho fabrikam-lms giữ PostgreSQL; hook chặn kênh ra ngoài nằm ngoài phạm vi; CI chạy Linux và macOS,
       Windows chưa kiểm.
     why: Phạm vi prototype ở mục 8 không đụng tới các phần này.

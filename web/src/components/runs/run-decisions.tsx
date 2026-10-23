@@ -93,7 +93,7 @@ export function RunDecisions({
         {first ? (
           <Link
             href={decisionHref(first.id)}
-            className="ml-auto inline-flex min-h-7 shrink-0 items-center gap-1.5 text-[13px] font-medium text-brand underline-offset-4 hover:text-brand-hover hover:underline"
+            className="ml-auto inline-flex min-h-7 shrink-0 items-center gap-1.5 text-[13px] font-medium text-brand underline-offset-4 hover:text-brand-hover hover:underline max-md:min-h-11"
             data-testid="run-decision-link"
           >
             <Inbox className="size-3.5" aria-hidden="true" />

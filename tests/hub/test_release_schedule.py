@@ -664,7 +664,7 @@ def test_the_rows_of_0067_hold_together_and_it_goes_down_to_0066_and_up_again(wo
     gone = select(*(func.to_regclass(f"public.{name}") for name in pg.RELEASE_TABLES))
     assert sql(db, gone) == [(None,) * len(pg.RELEASE_TABLES)]
     assert sql(db, select(func.count()).select_from(r).where(r.c.kind == "release")) == [(0,)]
-    at_0066 = {key: value for key, value in copy.items() if key not in ("principal_id", "autonomy")}  # of 0111
+    at_0066 = {key: value for key, value in copy.items() if key not in ("principal_id", "autonomy")}  # of 0113
     refused(db, errors.CheckViolation, insert(r).values(**{**at_0066, "state": "cancelled", "finished_at": func.now()}))
     move_to(db, "0067")
     assert sql(db, select(func.count()).select_from(s)) == [(0,)]
