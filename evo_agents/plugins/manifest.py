@@ -58,7 +58,7 @@ MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
 PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
-CORE_ONLY_POINTS = ("tables", "kg_sources")  # what only a core plugin contributes
+CORE_ONLY_POINTS = ("tables", "kg_sources", "loop_rules")  # what only a core plugin contributes
 # what a project enables a plugin for, besides its permissions, its config and its routes and runtimes of a project
 PROJECT_POINTS = (
     "mcp_tools",
@@ -69,10 +69,12 @@ PROJECT_POINTS = (
     "agent_types",
     "environments",
     "kg_sources",
+    "loop_rules",
 )
 # the keys of an agent type that name contributions of the plugin's own, and the point of each
 AGENT_TYPE_POINTS = {"packs": "agent_packs", "jobs": "jobs", "events": "events", "pages": "pages"}
 CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notification_channels.kind), never "web"
+MAX_LOOP_RULE_LISTS = {"on": 16, "emits": 16, "kinds": 8}  # the lists of a Loop rule
 MAX_COMMAND_ITEMS = 32  # the program and arguments of an ACP runtime's command
 MAX_RUNTIME_MODELS = 200  # the models an ACP runtime lists, as a worker's heartbeat bounds them
 MAX_RUNTIME_SECRETS = 20  # the variables an ACP runtime's agent needs
@@ -111,6 +113,7 @@ PERMISSION_TEXT = {
 CORE_ONLY_TEXT = {
     "tables": "only a core plugin owns tables, which the hub's migrations create",
     "kg_sources": "only a core plugin contributes a source of the knowledge graph, which the hub reads in its process",
+    "loop_rules": "only a core plugin adds rules to the Loop, which the hub calls in its process",
 }
 
 
@@ -243,6 +246,8 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return [f"{where}: table {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
     if core and point == "channels" and (not re.fullmatch(CHANNEL_KIND, item["name"]) or item["name"] == "web"):
         return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not web"]
+    if point == "loop_rules":
+        return _loop_rule_problems(where, item)
     if point == "pages":
         return _page_problems(where, item, core)
     if point == "runtimes":
@@ -250,6 +255,27 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
     if point == "environments":
         return _environment_problems(where, item)
     return []
+
+
+def _loop_rule_problems(where: str, item: dict) -> list[str]:
+    """What is wrong with Loop rule ``item``: it names a handler, reads an event or the clock, and each kind of work
+    item it makes once, a task with the agent type that takes it."""
+    found = []
+    if "python" not in item:
+        found.append(f"{where}.python: a Loop rule names the handler the hub calls, module:attribute")
+    if not item.get("on") and not item.get("schedule"):
+        found.append(f"{where}: a Loop rule reads at least one event (on) or the clock (schedule)")
+    for key, bound in MAX_LOOP_RULE_LISTS.items():
+        if len(item.get(key) or ()) > bound:
+            found.append(f"{where}.{key}: at most {bound} items")
+    kinds = [entry["kind"] for entry in item.get("kinds") or ()]
+    found += [f"{where}.kinds: {kind!r} is listed twice" for kind in sorted({k for k in kinds if kinds.count(k) > 1})]
+    for index, entry in enumerate(item.get("kinds") or ()):
+        if entry["run"] == "task" and "agent_type" not in entry:
+            found.append(f"{where}.kinds[{index}]: run task names the agent_type that takes the task")
+        if entry["run"] == "job" and "agent_type" in entry:
+            found.append(f"{where}.kinds[{index}]: run job has no agent_type")
+    return found
 
 
 def _agent_type_problems(contributes: dict) -> list[str]:
