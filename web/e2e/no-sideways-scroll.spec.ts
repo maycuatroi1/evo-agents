@@ -4,9 +4,11 @@ import { createAgentByApi } from "./support/agents";
 import { ceilingOver } from "./support/autonomy";
 import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
+import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
+import { decidePath } from "./support/loop";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { seatByApi, unitByApi } from "./support/org";
@@ -129,6 +131,22 @@ for (const width of WIDTHS) {
     const project = me.projects[0];
     await seedPm(me, project, { long: LONG });
     await noSidewaysScroll(page, [width], [{ path: pmPath(project), ready: shown("pm-report") }]);
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`Contacts, Marketing and the growth decisions never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "admin", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    await seedGrowth(me, project, { long: true, spent: 50 });
+    await noSidewaysScroll(page, [width], [
+      { path: contactsPath(project), ready: shown("crm-contacts") },
+      { path: contactPath(project, CONTACTS.longLead), ready: shown("crm-touchpoint") },
+      { path: marketingPath(project), ready: shown("marketing-channels") },
+      { path: marketingPath(project, "posts"), ready: shown("marketing-group-drafts") },
+      { path: marketingPath(project, "weekly"), ready: shown("weekly-report") },
+      { path: decidePath(project), ready: shown("decide-growth") },
+    ]);
   });
 }
 
