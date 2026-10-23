@@ -50,6 +50,7 @@ NOTICE_WORDS = {  # as the web's Inbox names them
     "goal_review": "The goals of a project wait for their monthly review",
     "loop_brief": "The Loop's morning brief",
     "plugin_notice": "A notice from a plugin",
+    "browser_needs_login": "A browser identity waits for a new login",
 }
 
 

@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, any_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import browser_login, runs, tables
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.models import Rerun
 from evo_agents.hub.server.security import Principal
@@ -46,10 +46,11 @@ def claim_gate(worker_id: int, features):
     )
     room = select(func.coalesce(w.c.browser["max"].as_integer(), 1)).where(w.c.id == worker_id).scalar_subquery()
     b = tables.browser_identities
+    elsewhere = and_(b.c.worker_id != worker_id, r.c.kind != browser_login.KIND)  # a Move's session opens it anew
     taken = exists().where(  # an identity of the run another run holds, or one this worker does not hold
         b.c.id == any_(r.c.browser_identities),
         b.c.deleted_at.is_(None),
-        or_(b.c.held_by_run.is_not(None), b.c.worker_id != worker_id),
+        or_(b.c.held_by_run.is_not(None), elsewhere),
     )
     return and_(or_(r.c.browser.is_(False), holding < room), ~taken)
 

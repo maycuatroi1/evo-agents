@@ -1815,6 +1815,14 @@
         },
         {
           "flags": [
+            "--login-url"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--project"
           ],
           "value": "string",
@@ -1839,6 +1847,7 @@
           "owner",
           "owner_login",
           "domains",
+          "login_url",
           "worker",
           "worker_owner",
           "status",
@@ -1904,6 +1913,7 @@
           "owner",
           "owner_login",
           "domains",
+          "login_url",
           "worker",
           "worker_owner",
           "status",
@@ -1917,6 +1927,138 @@
           "created_at",
           "can_manage",
           "deleted"
+        ],
+        "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity disable": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "owner",
+          "owner_login",
+          "domains",
+          "login_url",
+          "worker",
+          "worker_owner",
+          "status",
+          "version",
+          "size",
+          "chromium_version",
+          "held_by_run",
+          "last_saved_at",
+          "last_saved_by",
+          "last_used_at",
+          "created_at",
+          "can_manage"
+        ],
+        "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity enable": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "owner",
+          "owner_login",
+          "domains",
+          "login_url",
+          "worker",
+          "worker_owner",
+          "status",
+          "version",
+          "size",
+          "chromium_version",
+          "held_by_run",
+          "last_saved_at",
+          "last_saved_by",
+          "last_used_at",
+          "created_at",
+          "can_manage"
         ],
         "schema": "BrowserIdentity"
       }
@@ -1950,6 +2092,7 @@
           "owner",
           "owner_login",
           "domains",
+          "login_url",
           "worker",
           "worker_owner",
           "status",
@@ -1964,6 +2107,132 @@
           "can_manage"
         ],
         "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity login": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at",
+          "steady_wait",
+          "failure_cause",
+          "session_per_step",
+          "browser",
+          "browser_identities",
+          "profile",
+          "profile_id",
+          "profile_version",
+          "environment",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
+          "chat_id",
+          "chat_message_id",
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
+        ],
+        "schema": "Run"
       }
     },
     "hub canvas brainstorm": {
@@ -10204,6 +10473,7 @@
             "history",
             "release",
             "question",
+            "browser",
             "local"
           ]
         },
@@ -23098,6 +23368,7 @@
                       "history",
                       "release",
                       "question",
+                      "browser",
                       "local"
                     ],
                     "type": "string"
@@ -48727,6 +48998,304 @@
           }
         }
       },
+      "/v1/projects/{project}/browser-identities/{identity_id}/login": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Login Browser Identity",
+          "description": "Queue a login session of an identity: Chromium on its profile, on its worker, for at most 30 minutes, which you\nopen in the live view in human mode and end with Save (the profile is sealed, its version raised) or by cancelling\nit (nothing is saved). With ``worker`` it is a Move: the session runs there and the identity moves after Save.\n409 while another run holds the identity or a session of it waits, and for a disabled one.",
+          "operationId": "login_browser_identity_v1_projects__project__browser_identities__identity_id__login_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserLogin"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}/disable": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Disable Browser Identity",
+          "description": "Disable an identity: no run attaches it and its login session is refused until it is enabled; its profile is\nkept. Its member, or an admin for the project's; 409 while a run holds it.",
+          "operationId": "disable_browser_identity_v1_projects__project__browser_identities__identity_id__disable_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}/enable": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Enable Browser Identity",
+          "description": "Enable a disabled identity: active when it has a saved profile, else needs_login.",
+          "operationId": "enable_browser_identity_v1_projects__project__browser_identities__identity_id__enable_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/browser-profile": {
         "post": {
           "tags": [
@@ -62194,6 +62763,18 @@
               "type": "array",
               "title": "Domains"
             },
+            "login_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login Url",
+              "description": "the page its login session opens; null: its first domain's home page"
+            },
             "worker": {
               "type": "string",
               "title": "Worker"
@@ -62307,6 +62888,7 @@
             "owner",
             "owner_login",
             "domains",
+            "login_url",
             "worker",
             "worker_owner",
             "status",
@@ -62358,6 +62940,19 @@
               "title": "Owner",
               "description": "member: yours alone (the writer role); project: the admins', usable by every writer",
               "default": "member"
+            },
+            "login_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login Url",
+              "description": "the page a login session opens, an http or https URL; null: the home page of the first domain"
             }
           },
           "type": "object",
@@ -62390,6 +62985,24 @@
             "status"
           ],
           "title": "BrowserIdentityState"
+        },
+        "BrowserLogin": {
+          "properties": {
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "a Move: the name of the worker the identity should live on after the session saves (your own, or a shared one that serves the project and has the feature browser); null: the worker that holds it"
+            }
+          },
+          "type": "object",
+          "title": "BrowserLogin"
         },
         "BrowserNeedsLogin": {
           "properties": {
@@ -62479,7 +63092,12 @@
                 }
               ],
               "title": "Profile",
-              "description": "the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login"
+              "description": "the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null too for a login session on another worker than the identity's (a Move)"
+            },
+            "login_url": {
+              "type": "string",
+              "title": "Login Url",
+              "description": "the page a login session opens: the identity's, else its first domain's"
             }
           },
           "type": "object",
@@ -62490,7 +63108,8 @@
             "status",
             "version",
             "chromium_version",
-            "profile"
+            "profile",
+            "login_url"
           ],
           "title": "BrowserProfileLease"
         },
@@ -77997,7 +78616,8 @@
                     "loop_paused",
                     "goal_review",
                     "loop_brief",
-                    "plugin_notice"
+                    "plugin_notice",
+                    "browser_needs_login"
                   ]
                 },
                 {
@@ -79526,6 +80146,7 @@
                 "history",
                 "release",
                 "question",
+                "browser",
                 "local"
               ],
               "title": "Kind"
@@ -88574,6 +89195,7 @@
                 "history",
                 "release",
                 "question",
+                "browser",
                 "local"
               ],
               "title": "Kind",
@@ -90991,7 +91613,8 @@
                 "replay",
                 "history",
                 "release",
-                "question"
+                "question",
+                "browser"
               ],
               "title": "Kind"
             },

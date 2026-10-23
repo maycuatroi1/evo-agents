@@ -37,9 +37,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import browser_archive, runs, tables
+from evo_agents.hub import browser_archive, browser_login, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, browser_logins
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.browser_identities import STATUSES
 from evo_agents.hub.server.browser_profiles import (
@@ -110,8 +110,10 @@ class BrowserProfileLease(BaseModel):
     chromium_version: str | None = Field(description="the Chromium that saved it, as it said; null for none")
     profile: str | None = Field(
         description="the archive of the profile in base64: a gzipped tar of the profile directory without its "
-        "caches; null for one never saved, or one the hub could not open, which sets the identity needs_login"
+        "caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null "
+        "too for a login session on another worker than the identity's (a Move)"
     )
+    login_url: str = Field(description="the page a login session opens: the identity's, else its first domain's")
 
 
 class BrowserProfileSaved(BaseModel):
@@ -138,6 +140,14 @@ class _Found:
     project: str
     dispatched_by: int
     identity: object  # the identity's row
+    worker_id: int = 0  # the worker that holds the run
+    login: bool = False  # the run is a login session (``browser_login``)
+
+    @property
+    def moves(self) -> bool:
+        """A login session on another worker than the identity's: it starts on an empty profile and, saved, takes the
+        identity to its worker."""
+        return self.login and self.identity.worker_id != self.worker_id
 
 
 def _sealer(request: Request) -> Sealer:
@@ -154,7 +164,16 @@ async def _usable(conn: AsyncConnection, user: Principal, run_id: int, identity_
     worker_id = (await worker_of(conn, user))[0]
     r, p, g, b = tables.runs, tables.projects, tables.grants, tables.browser_identities
     query = (
-        select(r.c.worker_id, r.c.state, r.c.dispatched_by, r.c.project_id, r.c.browser_identities, p.c.name, g.c.role)
+        select(
+            r.c.worker_id,
+            r.c.state,
+            r.c.dispatched_by,
+            r.c.project_id,
+            r.c.browser_identities,
+            r.c.kind,
+            p.c.name,
+            g.c.role,
+        )
         .join(p, p.c.id == r.c.project_id)
         .outerjoin(g, (g.c.user_id == r.c.dispatched_by) & (g.c.project_id == r.c.project_id))
         .where(r.c.id == run_id)
@@ -171,7 +190,8 @@ async def _usable(conn: AsyncConnection, user: Principal, run_id: int, identity_
     identity = (await conn.execute(select(b).where(b.c.id == identity_id).with_for_update())).one_or_none()
     if identity is None or identity_id not in (run.browser_identities or ()) or identity.deleted_at is not None:
         raise HTTPException(404, f"run {run_id} has no browser identity {identity_id}, or it was deleted")
-    if identity.held_by_run != run_id or identity.worker_id != worker_id:
+    login = run.kind == browser_login.KIND  # a login session may take the identity to its worker
+    if identity.held_by_run != run_id or (identity.worker_id != worker_id and not login):
         raise HTTPException(
             409, f"run {run_id} does not hold browser identity {identity_id} on this worker: another run holds it"
         )
@@ -179,7 +199,7 @@ async def _usable(conn: AsyncConnection, user: Principal, run_id: int, identity_
         raise HTTPException(403, f"browser identity {identity_id} is another member's: run {run_id} may not open it")
     if identity.status == "disabled":
         raise HTTPException(403, f"browser identity {identity_id} is disabled: no run opens it")
-    return _Found(run_id, run.project_id, run.name, run.dispatched_by, identity)
+    return _Found(run_id, run.project_id, run.name, run.dispatched_by, identity, worker_id, login)
 
 
 async def _record(conn: AsyncConnection, user: Principal, found: _Found, action: str, extra: str = "") -> None:
@@ -204,6 +224,7 @@ async def _set_needs_login(conn: AsyncConnection, user: Principal, found: _Found
         "browser identity needs a new login",
         extra={"browser_identity": found.identity.id, "run_id": found.run_id, "cause": cause},
     )
+    await browser_logins.notify_needs_login(conn, found.identity, found.project)
     return "needs_login"
 
 
@@ -216,7 +237,7 @@ async def lease_browser_profile(
     async with engine.begin() as conn:
         found = await _usable(conn, user, run_id, body.identity_id)
         identity = found.identity
-        keys = None if identity.sha256 is None else (blob_store(request), _sealer(request))
+        keys = None if identity.sha256 is None or found.moves else (blob_store(request), _sealer(request))
         await _record(conn, user, found, audit.BROWSER_IDENTITY_LEASE, f" version={identity.version}")
     status, version, profile = identity.status, identity.version, None
     if keys is not None:
@@ -239,6 +260,7 @@ async def lease_browser_profile(
         version=version,
         chromium_version=identity.chromium_version,
         profile=profile,
+        login_url=identity.login_url or browser_login.default_url(identity.domains),
     )
 
 
@@ -286,6 +308,7 @@ async def save_browser_profile(
             actor_id=found.dispatched_by,
             token_id=user.token_id,
             run_id=run_id,
+            login_worker_id=found.worker_id if found.login else None,
         )
     except ProfileTooLarge:
         raise HTTPException(413, TOO_LARGE) from None

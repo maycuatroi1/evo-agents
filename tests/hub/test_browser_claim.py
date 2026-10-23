@@ -46,6 +46,7 @@ def browser_beat(client, worker: dict, report=REPORT, features=runs.WORKER_FEATU
         "runs": list(extra.get("runs_held", ())),
         "features": list(features),
         **({} if report is None else {"browser": report}),
+        **({"run_kinds": list(extra["run_kinds"])} if "run_kinds" in extra else {}),
     }
     return client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
 

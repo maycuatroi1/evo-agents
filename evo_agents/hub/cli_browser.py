@@ -1,4 +1,4 @@
-"""``evo-agents hub browser identity list|create|delete``: the browser identities of a project
+"""``evo-agents hub browser identity list|create|login|disable|enable|delete``: the browser identities of a project
 (``evo_agents.hub.server.browser_identities``), over /v1/projects/{p}/browser-identities.
 
 A browser identity is a Chromium profile kept logged in to some sites, which runs of the project use on the one worker
@@ -6,7 +6,10 @@ that holds it. ``list`` shows the project's identities and your own, with any gr
 makes one with no profile yet (version 0) for each ``--domain`` it keeps the cookies of, held by ``--worker`` (yours,
 or a shared one, serving the project): your own with the writer role, or the project's with ``--owner project`` as an
 admin. ``delete NAME`` deletes your identity of that name, or the project's (``--owner project``, as an admin); its
-keys go from the hub and its profiles from the blob store. Each command prints metadata only, never a cookie or a key;
+keys go from the hub and its profiles from the blob store. ``login NAME`` queues a login session (a run of kind
+browser): Chromium on the identity's profile, which you open in the live view of the run on the web, sign in through and
+Save; ``--worker`` moves the identity to another worker with it. ``disable`` and ``enable`` switch an identity off and
+on. Each command prints metadata only, never a cookie or a key;
 ``--json`` prints the hub's answer. Standard library only, like the rest of the client.
 """
 
@@ -18,6 +21,7 @@ from urllib.parse import quote
 from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
+from evo_agents.hub.run_cli_keys import RUN_KEYS
 
 EXIT_USAGE = 2
 OWNERS = ("member", "project")
@@ -29,6 +33,7 @@ IDENTITY_KEYS = (
     "owner",
     "owner_login",
     "domains",
+    "login_url",
     "worker",
     "worker_owner",
     "status",
@@ -93,6 +98,8 @@ def cmd_create(args) -> int:
         return _usage("a --domain is a host name such as github.com, never empty")
     project = project_of(args)
     body = {"name": args.name, "domains": domains, "worker": args.worker, "owner": args.owner}
+    if args.login_url:
+        body["login_url"] = args.login_url
     hub, _ = signed_in()
     created = hub.call("POST", _path(project), body)
     if args.json:
@@ -106,18 +113,71 @@ def cmd_create(args) -> int:
     return 0
 
 
-@client_command
-def cmd_delete(args) -> int:
-    project = project_of(args)
-    hub, _ = signed_in()
+def _named(hub, project: str, args) -> dict | None:
+    """The identity ``args.name`` names, or None after a usage error is printed."""
     named = [i for i in hub.call("GET", _path(project)) if i["name"] == args.name]
     if args.owner is not None:
         named = [i for i in named if i["owner"] == args.owner]
     if not named:
-        return _usage(f"project {project} has no browser identity {args.name} of yours or its own")
+        _usage(f"project {project} has no browser identity {args.name} of yours or its own")
+        return None
     if len(named) > 1:
-        return _usage(f"both you and project {project} have a browser identity {args.name}: pass --owner")
-    identity = named[0]
+        _usage(f"both you and project {project} have a browser identity {args.name}: pass --owner")
+        return None
+    return named[0]
+
+
+@client_command
+def cmd_login(args) -> int:
+    project = project_of(args)
+    hub, _ = signed_in()
+    identity = _named(hub, project, args)
+    if identity is None:
+        return EXIT_USAGE
+    run = hub.call("POST", f"{_path(project)}/{identity['id']}/login", {"worker": args.worker})
+    if args.json:
+        print_json(run)
+        return 0
+    print(
+        f"Queued login session run #{run['id']} of browser identity {identity['name']} in {project}. Open the run on "
+        "the web, sign in through its live view and press Save; cancelling the run saves nothing."
+    )
+    return 0
+
+
+def _switch(args, action: str, done: str) -> int:
+    project = project_of(args)
+    hub, _ = signed_in()
+    identity = _named(hub, project, args)
+    if identity is None:
+        return EXIT_USAGE
+    changed = hub.call("POST", f"{_path(project)}/{identity['id']}/{action}")
+    if args.json:
+        print_json(changed)
+        return 0
+    print(
+        f"Browser identity {changed['name']} (id {changed['id']}) of {project} is {done}: status {changed['status']}."
+    )
+    return 0
+
+
+@client_command
+def cmd_disable(args) -> int:
+    return _switch(args, "disable", "disabled")
+
+
+@client_command
+def cmd_enable(args) -> int:
+    return _switch(args, "enable", "enabled")
+
+
+@client_command
+def cmd_delete(args) -> int:
+    project = project_of(args)
+    hub, _ = signed_in()
+    identity = _named(hub, project, args)
+    if identity is None:
+        return EXIT_USAGE
     hub.call("DELETE", f"{_path(project)}/{identity['id']}")
     if args.json:
         print_json({**identity, "deleted": True})
@@ -155,9 +215,35 @@ def register_browser(hsub) -> None:
     create.add_argument(
         "--owner", choices=OWNERS, default="member", help="member: yours (default); project: an admin's for the project"
     )
+    create.add_argument(
+        "--login-url", metavar="URL", help="the page its login session opens; default: its first domain"
+    )
     create.add_argument("--project", help=PROJECT_HELP)
     json_option(create, returns_object(*IDENTITY_KEYS, schema="BrowserIdentity"))
     create.set_defaults(func=cmd_create)
+
+    login = isub.add_parser(
+        "login", help="queue a login session: Chromium on the identity's profile, to sign in through the live view"
+    )
+    login.add_argument("name", metavar="NAME", help="the identity's name")
+    login.add_argument("--worker", metavar="NAME", help="move the identity to this worker with the session")
+    login.add_argument("--owner", choices=OWNERS, help="whose identity, when you and the project both have the name")
+    login.add_argument("--project", help=PROJECT_HELP)
+    json_option(login, returns_object(*RUN_KEYS, schema="Run"))
+    login.set_defaults(func=cmd_login)
+
+    for action, helptext, func in (
+        ("disable", "disable a browser identity: no run attaches it", cmd_disable),
+        ("enable", "enable a disabled browser identity", cmd_enable),
+    ):
+        switched = isub.add_parser(action, help=helptext)
+        switched.add_argument("name", metavar="NAME", help="the identity's name")
+        switched.add_argument(
+            "--owner", choices=OWNERS, help="whose identity, when you and the project both have the name"
+        )
+        switched.add_argument("--project", help=PROJECT_HELP)
+        json_option(switched, returns_object(*IDENTITY_KEYS, schema="BrowserIdentity"))
+        switched.set_defaults(func=func)
 
     delete = isub.add_parser("delete", help="delete a browser identity: its keys and profiles go from the hub")
     delete.add_argument("name", metavar="NAME", help="the identity's name")

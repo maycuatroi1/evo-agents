@@ -133,9 +133,23 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
 # plugin hands an agent type of its own; the replay of a past step (``hub.replay``); the night's reading of sessions and
 # runs (``hub.history``); a cut or a fix of a release cycle (``hub.releases``); a read-only question a core plugin asks
-# an agent type of its own (``hub.question_runs``). A session on a member's own machine, which no worker runs, is
-# LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question")
+# an agent type of its own (``hub.question_runs``); the login session of a browser identity, which a person drives in
+# the identity's Chromium with no agent (``hub.browser_login``). A session on a member's own machine, which no worker
+# runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
+RUN_KINDS = (
+    "step",
+    "plan",
+    "review",
+    "judge",
+    "author",
+    "chat",
+    "task",
+    "replay",
+    "history",
+    "release",
+    "question",
+    "browser",
+)
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
@@ -345,6 +359,7 @@ NOTICE_KINDS = (
     "goal_review",
     "loop_brief",
     "plugin_notice",  # what an isolated plugin granted notifications:send sends (``server.plugin_notify``)
+    "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser_logins``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it

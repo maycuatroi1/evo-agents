@@ -150,10 +150,12 @@ async def save_profile(
     actor_id: int | None,
     token_id: int | None,
     run_id: int | None = None,
+    login_worker_id: int | None = None,
 ) -> int:
     """Seal ``archive`` as the version after ``base_version`` of identity ``identity_id`` and make it current; the
     new version. ``ProfileTooLarge``, or ``ProfileConflict`` when the identity is deleted, at another version, or not
-    held by ``run_id`` when one is given; the version it has stays."""
+    held by ``run_id`` when one is given; the version it has stays. A login session (``login_worker_id``, the worker it ran
+    on) also sets the identity active and on that worker."""
     version = base_version + 1
     profile = await asyncio.to_thread(seal_profile, sealer, identity_id, version, archive)
     await asyncio.to_thread(put_bytes, store, profile.sha256, profile.blob)
@@ -167,6 +169,8 @@ async def save_profile(
             shifted = {f"previous_{name}": b.c[name] for name in VERSION_COLUMNS}
             saved = {"version": version, "chromium_version": chromium_version, **_columns("", profile)}
             stamps = {"last_saved_at": func.now(), "last_saved_by": actor_id, "updated_at": func.now()}
+            if login_worker_id is not None:
+                stamps |= {"status": "active", "worker_id": login_worker_id}
             await conn.execute(update(b).values(**shifted, **saved, **stamps).where(b.c.id == identity_id))
             await _forget(conn, (row.previous_sha256, row.previous_size))
             target = f"{row.project} browser-identity:{identity_id} version={version}"

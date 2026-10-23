@@ -184,7 +184,7 @@ def unfit(
             "run with a session for each step, and would run every step in one session: upgrade it and restart its "
             "daemon, or dispatch the plan run without a session per step"
         )
-    if (kind in runs.CURATOR_KINDS or kind in ("author", "chat")) and kind not in worker.run_kinds:
+    if (kind in runs.CURATOR_KINDS or kind in ("author", "chat", "browser")) and kind not in worker.run_kinds:
         problems.append(
             f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not say it runs {kind} "
             "runs: upgrade it and restart its daemon"

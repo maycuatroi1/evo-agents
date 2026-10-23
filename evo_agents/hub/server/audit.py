@@ -116,6 +116,11 @@ BROWSER_IDENTITY_CREATE = "browser_identity.create"  # a member made one of thei
 BROWSER_IDENTITY_DELETE = "browser_identity.delete"  # its owner or an admin deleted it: its keys and blobs went
 BROWSER_IDENTITY_SAVE = "browser_identity.save"  # a new version of its profile was sealed; the one before the last went
 BROWSER_IDENTITY_LEASE = "browser_identity.lease"  # the worker of a run that holds it was handed its profile
+BROWSER_IDENTITY_LOGIN = (
+    "browser_identity.login"  # a login session of it was queued: "<project> browser-identity:<id> run:<id>"
+)
+BROWSER_IDENTITY_DISABLE = "browser_identity.disable"  # its member or an admin disabled it: no run attaches it
+BROWSER_IDENTITY_ENABLE = "browser_identity.enable"  # it was enabled again
 BROWSER_IDENTITY_NEEDS_LOGIN = "browser_identity.needs_login"  # its profile did not open: it waits for a new login
 # The live view of a run's browser (evo_agents.hub.server.browser_view), in the run's project and the name of who
 # dispatched it; the target names the run as above, then "start", or "end=<how>" with the screen frames and events
