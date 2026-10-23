@@ -113,12 +113,18 @@ async function workerCall(live: LiveWorker, path: string, body: unknown): Promis
   return response.json();
 }
 
-/** What a heartbeat may say beyond the default: the repos checked out, and the models Claude Code lists. */
-export type MachineReport = { repos?: string[]; models?: string[] | null };
+/**
+ * What a heartbeat may say beyond the default: the repos checked out, the models Claude Code lists, and whether the
+ * daemon starts a Chromium for a browser run (the feature browser, which a run dispatched with browser needs).
+ */
+export type MachineReport = { repos?: string[]; models?: string[] | null; browser?: boolean };
+
+/** The Chromium a daemon with the feature browser reports: headless, two at once. */
+const BROWSER_REPORT = { chromium: "153.0.8010.12", display: "headless", max: 2, sandbox: true };
 
 /**
  * The daemon's heartbeat: Claude Code available (listing `models` when given), a checkout of each repo in `repos` (the
- * plan's repo by default), the runs it holds.
+ * plan's repo by default), the Chromium it starts when `browser`, the runs it holds.
  */
 export async function workerHeartbeat(live: LiveWorker, runs: number[] = [], report: MachineReport = {}): Promise<void> {
   const repos = report.repos ?? [REPO];
@@ -130,6 +136,7 @@ export async function workerHeartbeat(live: LiveWorker, runs: number[] = [], rep
     checkouts: Object.fromEntries(repos.map((repo) => [`${live.project}/${repo}`, { path: `~/github/${repo}`, branch: "main" }])),
     free_slots: Math.max(live.worker.slots - runs.length, 0),
     runs,
+    ...(report.browser ? { features: ["browser"], browser: BROWSER_REPORT } : {}),
   });
 }
 
@@ -158,7 +165,7 @@ export async function dispatch(account: Account, project: string, steps: string[
   return call(
     api.POST("/v1/projects/{project}/runs", {
       params: { path: { project } },
-      body: { plan_id: RUN_PLAN, steps, runtime: "any", mode: "headless", approval: "review", timeout_min: 60, ...extra },
+      body: { plan_id: RUN_PLAN, steps, runtime: "any", mode: "headless", approval: "review", timeout_min: 60, browser: false, identities: [], ...extra },
     }),
   );
 }

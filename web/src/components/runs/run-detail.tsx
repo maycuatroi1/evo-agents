@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Globe } from "lucide-react";
 import type { Route } from "next";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -22,7 +22,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { chatHref } from "@/lib/chat-keys";
-import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { AgentTrace, type TraceContext, type TraceReveal } from "./agent-trace";
@@ -44,6 +43,8 @@ import { RunSide } from "./run-side";
 import { RunTasksPanel } from "./run-tasks-panel";
 import { RunTimeline } from "./run-timeline";
 import { TracePreview } from "./trace-preview";
+import { RunBrowserPanel } from "./run-browser-lazy";
+import { browserAccess, useLiveTab } from "./run-live-tabs";
 import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
 import { logSignal, useRunLog } from "./use-run-log";
@@ -59,8 +60,7 @@ const SUB_LINK = "rounded-xs text-brand underline decoration-brand/40 underline-
 
 /**
  * The Terminal tab, for the run's owner on a worker of theirs that allows the web terminal; null for anyone else. The
- * worker is read only for the run's owner (the API answers its owner and hub admins). Once offered, the tab stays while
- * the page is open, so a session that ended with the run still shows why.
+ * worker is read only for the run's owner (the API answers its owner and hub admins).
  */
 function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
   const ownsRun = viewer !== null && viewer.login === run.dispatched_by;
@@ -69,12 +69,7 @@ function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
     enabled: ownsRun && run.worker_id !== null,
     refetchInterval: false, // its owner and whether it allows the terminal are fixed when it registers
   });
-  const { data: me } = useQuery(whoamiQuery(browserApi));
-  const access = terminalAccess(run, viewer, worker);
-  const [offered, setOffered] = useState(false);
-  if (access?.open && !offered) setOffered(true);
-  if (access === null || !(access.open || offered)) return null;
-  return { open: access.open, sessionCreatedAt: me?.token.kind === "web" ? me.token.created_at : null };
+  return useLiveTab(terminalAccess(run, viewer, worker));
 }
 
 function RunPage({ run }: { run: Run }) {
@@ -84,8 +79,9 @@ function RunPage({ run }: { run: Run }) {
   const viewer = useRunViewer(run.project);
   const controls = runControls(run, viewer);
   const terminal = useRunTerminalTab(run, viewer);
+  const browser = useLiveTab(browserAccess(run, viewer)); // the Browser tab, for the dispatcher of a run with one
   const authoring = run.kind === "author";
-  const [sessionTab, setSessionTab] = useSessionTab(terminal !== null, authoring ? "chat" : "trace");
+  const [sessionTab, setSessionTab] = useSessionTab({ terminal: terminal !== null, browser: browser !== null }, authoring ? "chat" : "trace");
 
   const logId = useId();
   // A phone reads the run's head, the decision, a preview of the trace and the details, one under the other; the trace
@@ -279,6 +275,11 @@ function RunPage({ run }: { run: Run }) {
             ? (shown) => <RunTerminalPanel run={run} open={terminal.open} active={shown} sessionCreatedAt={terminal.sessionCreatedAt} fill />
             : null
         }
+        browser={
+          browser
+            ? (shown) => <RunBrowserPanel run={run} open={browser.open} active={shown} sessionCreatedAt={browser.sessionCreatedAt} controls={controls} fill={fill} />
+            : null
+        }
       />
     </div>
   );
@@ -332,10 +333,16 @@ function RunPage({ run }: { run: Run }) {
       {overview ? tasks : null}
       {overview ? <TracePreview events={log.events} active={active} loading={log.status === "connecting"} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}
       {overview ? <OutputsPreview state={outputs} onOpenAll={() => openScreen("outputs")} /> : null}
+      {overview && browser ? (
+        <Button type="button" variant="outline" className="self-start" onClick={() => openScreen("browser")} data-testid="run-open-browser">
+          <Globe aria-hidden="true" />
+          {tPreview("openBrowser")}
+        </Button>
+      ) : null}
       {overview && details ? <div id={detailsId}>{side}</div> : null}
       {overview ? null : (
         /* From xl, two regions that scroll on their own, side by side and as tall as each other once Details is open:
-           the session (an author run's Chat, Trace, Raw log, Terminal) filling the window down to its bottom gutter,
+           the session (an author run's Chat, Trace, Raw log, Terminal, Browser) filling the window down to its bottom gutter,
            and the side column (the decision a plan run waits on, the plan's steps, Details, Usage, the Result). From
            768 px to xl the side column comes first, its cards two by two. On a phone's trace screen, the session alone. */
         <div

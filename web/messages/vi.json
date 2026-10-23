@@ -3959,7 +3959,8 @@
           "log": "Log thô",
           "terminal": "Terminal",
           "chat": "Chat",
-          "outputs": "Output"
+          "outputs": "Output",
+          "browser": "Trình duyệt"
         },
         "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
         "connect": "Kết nối terminal",
@@ -4004,6 +4005,51 @@
         "hint": "Phím bạn gõ đi tới TUI của agent trên {worker}. Nhấn Esc rồi Tab để rời terminal.",
         "size": "{cols} × {rows}",
         "sizeLabel": "Kích thước terminal: {cols} cột, {rows} dòng"
+      },
+      "browser": {
+        "label": "Trình duyệt của run #{id}",
+        "labelTab": "Trình duyệt của run #{id}: {title}",
+        "keys": "Phím và chữ gửi tới trình duyệt",
+        "address": "Địa chỉ",
+        "back": "Lùi lại",
+        "forward": "Tiến tới",
+        "reload": "Tải lại",
+        "tabs": "Các tab của trình duyệt",
+        "takeControl": "Tiếp quản",
+        "takingControl": "Đang tiếp quản",
+        "handBack": "Trả lại cho agent",
+        "handingBack": "Đang trả lại",
+        "asked": "Agent dừng ở cuối lượt, rồi trình duyệt là của bạn.",
+        "keyboard": "Bàn phím",
+        "hint": {
+          "agent": "Agent đang điều khiển trình duyệt này. Tiếp quản để tự dùng.",
+          "human": "Bạn đang điều khiển trình duyệt này. Nhấn Esc rồi Tab để rời nó.",
+          "watch": "Agent đang điều khiển trình duyệt này."
+        },
+        "waiting": "Đang chờ trình duyệt trên {worker}.",
+        "connecting": "Đang kết nối tới trình duyệt.",
+        "notOpen": "Run #{id} đang ở trạng thái {state}. Trình duyệt chỉ chạy khi một worker đang giữ run.",
+        "retrying": "Mất kết nối tới hub. Đang thử lại.",
+        "workerGone": "{worker} đã ngắt đầu trình duyệt của nó. Hình sẽ quay lại khi worker kết nối lại.",
+        "notice": "Trình duyệt báo: {notice}",
+        "reconnect": "Kết nối lại",
+        "viewHere": "Xem ở đây",
+        "signIn": "Đăng nhập lại",
+        "tooOld": "Bạn đăng nhập cách đây {hours} giờ. Trình duyệt chỉ mở với lần đăng nhập chưa quá 12 giờ: hãy đăng nhập lại rồi quay về run này.",
+        "hubSays": "Hub báo: {reason}",
+        "end": {
+          "closed": "Bạn đã đóng phần xem trình duyệt.",
+          "ended": "Phần xem trình duyệt đã kết thúc: {worker} đã đóng đầu của nó.",
+          "shutdown": "Hub khởi động lại và đã đóng phần xem trình duyệt. Hãy kết nối lại.",
+          "protocol": "Hub đóng phần xem trình duyệt vì một message nó không nhận.",
+          "lost": "Mất kết nối tới hub. Hãy kết nối lại.",
+          "unavailable": "Hub không kiểm tra được yêu cầu vì database không trả lời. Thử lại sau ít phút.",
+          "signIn": "Hub yêu cầu bạn đăng nhập lại trước khi cho xem trình duyệt.",
+          "forbidden": "Hub từ chối cho xem trình duyệt này.",
+          "timeout": "Phần xem trình duyệt đã đóng: không hoạt động 15 phút, hoặc đã mở đủ 4 giờ.",
+          "busy": "Trình duyệt này đang mở ở một cửa sổ hoặc tab khác. Chọn Xem ở đây để mở lại tại trang này.",
+          "upgrade": "{worker} dùng một phiên bản khác của worker protocol: hãy nâng cấp evo-agents trên máy đó."
+        }
       },
       "composer": {
         "label": "Nhắn cho agent",
@@ -4349,7 +4395,8 @@
         "open": "Mở toàn bộ trace",
         "openEmpty": "Mở trace",
         "back": "Quay lại run #{id}",
-        "openChat": "Mở chat"
+        "openChat": "Mở chat",
+        "openBrowser": "Mở trình duyệt"
       },
       "detailsToggle": "Chi tiết",
       "local": {
