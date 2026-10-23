@@ -5,6 +5,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
+pytest.importorskip("sqlalchemy")
+
 from evo_agents.core_plugins.crm import github, rules
 from evo_agents.core_plugins.crm.rules import Facts
 

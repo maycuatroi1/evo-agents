@@ -9,6 +9,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
+pytest.importorskip("sqlalchemy")
+pytest.importorskip("psycopg")
+
 from psycopg import errors
 from sqlalchemy import insert, select
 
