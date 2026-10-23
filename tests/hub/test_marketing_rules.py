@@ -44,10 +44,15 @@ def publish(channel: str, content: Content, fake: Fake, token: str = "tok-test")
 # The registry
 
 
-def test_marketing_registry_names_the_nine_channels_and_the_kinds_each_takes():
+def test_marketing_registry_names_the_ten_channels_and_the_kinds_each_takes():
     assert set(registry.CATALOG) == {
         "github", "hackernews", "reddit", "x", "linkedin", "viblo", "facebook_page", "facebook_profile", "tiktok",
+        "facebook_group",
     }  # fmt: skip
+    with pytest.raises(registry.RegistryError):
+        registry.check_account("facebook_group", "project", None)
+    assert registry.check_account("facebook_group", "personal", None) == "browser"
+    assert not registry.may_be_autonomous("facebook_group", "personal")  # a member shares a group's draft by hand
     assert registry.check_account("github", "project", None) == "api"
     assert registry.check_account("viblo", "project", None) == "browser"
     with pytest.raises(registry.RegistryError):

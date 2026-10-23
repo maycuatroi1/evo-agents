@@ -1,13 +1,14 @@
 """The tools of the plugin marketing for its agents (criterion a16 of plan autonomous-oss-growth): ``marketing__propose``
 takes a post through the gate, at once or at its time; ``marketing__draft`` keeps a draft a person posts;
-``marketing__personal`` turns content for a member's personal channel into a proposal for the hub project omelet-blog.
+``marketing__personal`` turns content for a member's personal channel into a proposal for the hub project the plugin's config names
+in ``proposals_project`` (the project's blog).
 
 Only the agent of a run of @marketer (this plugin) or @community (plugin crm) in the project calls them, as the
 member the agent type runs as, who needs the writer role. No tool changes a channel's mode, the kill switch, a Goal or
 the Policy, and none approves a baseline: those are a person's. A personal account never replies, and posts only when
 its owner made it autonomous on facebook_profile or tiktok (``flow.personal_guard``); otherwise its text is a draft.
 
-The proposal for omelet-blog follows section 9 of the report "Tăng trưởng do agent chạy": the agent sends it with
+The proposal for the blog project follows section 9 of the report "Tăng trưởng do agent chạy": the agent sends it with
 ``chat_message`` to the group chat ``growth-proposals``, in Vietnamese, down to the mechanism and with measured numbers.
 """
 
@@ -32,7 +33,6 @@ from evo_agents.hub.server.security import MACHINE, Principal
 log = logging.getLogger(__name__)
 
 CALLERS = (("marketing", "marketer"), ("crm", "community"))  # (plugin, agent type) whose runs call the tools
-BLOG_PROJECT = "omelet-blog"
 BLOG_CHAT = "growth-proposals"
 RUNTIME: flow.Runtime | None = None  # the gate's runtime; None is the real Judge, transport and clock (tests set it)
 
@@ -157,7 +157,7 @@ async def draft(params: dict, context: CoreContext) -> dict:
 
 
 def blog_proposal(arguments: dict, channel: str, sources: list[str]) -> str:
-    """The proposal for omelet-blog in the shape of section 9 of the report, in Vietnamese."""
+    """The proposal for the blog project in the shape of section 9 of the report, in Vietnamese."""
     return "\n".join(
         [
             f"Đề xuất bài: {arguments.get('topic')}",
@@ -172,7 +172,7 @@ def blog_proposal(arguments: dict, channel: str, sources: list[str]) -> str:
 async def personal(params: dict, context: CoreContext) -> dict:
     """``marketing__personal``: content for a member's personal channel. It goes through the gate when its owner made
     the account autonomous on facebook_profile or tiktok, and is a draft otherwise; either way the answer holds the
-    proposal to send to omelet-blog."""
+    proposal to send to the blog project (config ``proposals_project``)."""
     arguments = params.get("arguments") or {}
 
     async def work(conn, who: Caller) -> str:
@@ -184,12 +184,15 @@ async def personal(params: dict, context: CoreContext) -> dict:
         done = await _draft(conn, who, body, row, refused) if refused else await _gate(conn, context, who, body, row)
         sources = [source.url for source in body.sources] + list(body.links)
         proposal = blog_proposal(arguments, f"{row.channel} {row.account}", sources)
+        blog = (await settings.config(conn, context.config, who.project)).proposals_project
+        if not blog:
+            return f"{done}\n\nNo blog project is set (config proposals_project); keep this proposal:\n\n{proposal}"
         return (
             f"{done}\n\nSend this proposal with chat_message to the group chat {BLOG_CHAT} of hub project "
-            f"{BLOG_PROJECT}, as it is:\n\n{proposal}"
+            f"{blog}, as it is:\n\n{proposal}"
         )
 
     return await _call(context, work)
 
 
-__all__ = ["BLOG_CHAT", "BLOG_PROJECT", "blog_proposal", "caller", "draft", "personal", "propose"]
+__all__ = ["BLOG_CHAT", "blog_proposal", "caller", "draft", "personal", "propose"]

@@ -162,3 +162,57 @@ class MarketingBrowserResultIn(BaseModel):
 class MarketingBrowserResult(BaseModel):
     state: str = Field(description="posted or failed")
     reason: str | None
+
+
+class MarketingGoalSignal(BaseModel):
+    code: str = Field(description="G-<n>")
+    statement: str
+    metric: str = Field(description="how the goal's metric reads")
+    value: float | None = Field(description="the metric's value now; none when no signal is in its window")
+    target: float | None
+    reached: bool | None = Field(description="whether the value meets the target; none without a value")
+
+
+class MarketingWeekPost(BaseModel):
+    id: int
+    channel: str
+    account: str
+    posted_url: str | None
+    posted_at: datetime | None
+    cost_usd: float
+
+
+class MarketingWeekBreaker(BaseModel):
+    channel_id: int
+    channel: str
+    account: str
+    reason: str | None
+    paused_at: datetime | None
+
+
+class MarketingWeekProposal(BaseModel):
+    id: int = Field(description="the post that holds the content for a member's personal channel")
+    channel: str
+    account: str
+    state: str
+    created_at: datetime
+
+
+class MarketingWeekly(BaseModel):
+    """The Growth section of the project's weekly bulletin: the 7 days up to ``until``."""
+
+    project: str
+    since: datetime
+    until: datetime
+    goals: list[MarketingGoalSignal] = Field(description="the active goals with a metric, against their target")
+    posted: list[MarketingWeekPost] = Field(description="the posts that went out in the week, dry runs excluded")
+    counts: dict[str, int] = Field(description="the posts proposed in the week, by where the gate left them")
+    breakers: list[MarketingWeekBreaker] = Field(description="the channels whose breaker is open now")
+    killed: bool
+    reason: str | None
+    budget: MarketingBudget
+    week_cost_usd: float = Field(description="what the posts of the week cost")
+    proposals: list[MarketingWeekProposal] = Field(
+        description="content for members' personal channels in the week: the proposals for the blog project"
+    )
+    proposals_project: str | None = Field(description="the hub project the proposals go to; none when not set")

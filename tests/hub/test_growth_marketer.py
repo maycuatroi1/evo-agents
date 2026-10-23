@@ -2,7 +2,7 @@
 on the hub with Postgres: a scheduled post waits until the Loop's publish work item releases it, then goes through the
 gate; the kill switch holds it; a post that went out is measured; a reply under a project account's post makes reply
 work within ``replies_per_day``, a personal account's never; the tools are @marketer's alone, refuse a personal account
-and turn content for a member's channel into a proposal for omelet-blog. The handler is called as the tick calls it; a
+and turn content for a member's channel into a proposal for the blog project its config names. The handler is called as the tick calls it; a
 fake transport stands for every platform."""
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def test_growth_marketer_manifest_declares_the_type_its_tools_and_the_loop_rule(
     text = marketer["profile"]["instructions"]
     for rule in ("Vietnamese on viblo, facebook_page", "Never reply from a personal account", "do not approve"):
         assert rule in text
-    assert "growth-proposals" in text and "omelet-blog" in text and "dinh-vi.md" in text
+    assert "growth-proposals" in text and "blog project" in text and "dinh-vi.md" in text
     assert {tool["name"] for tool in contributes["mcp_tools"]} == {"propose", "draft", "personal"}
     (rule,) = contributes["loop_rules"]
     assert rule["on"] == ["canvas.baseline"] and rule["schedule"] is True
@@ -213,7 +213,9 @@ def test_growth_marketer_tools_are_for_a_marketer_run_alone_and_tie_a_post_to_it
     assert row == (owner, run_id, "gh.stars")
 
 
-def test_growth_omelet_personal_content_is_a_draft_unless_autonomous_and_a_proposal_for_omelet_blog(mk):
+def test_growth_personal_content_is_a_draft_unless_autonomous_and_a_proposal_for_the_blog_project(mk):
+    from tests.hub.test_tasks_plugin import configure
+
     run_id = marketer_run(mk)
     mine = channel(mk, "tiktok", "alice", who="alice", kind="personal", mode="draft_only")
     arguments = {
@@ -227,10 +229,13 @@ def test_growth_omelet_personal_content_is_a_draft_unless_autonomous_and_a_propo
     }
     refused = call(mk, tools.propose, run_id, {**arguments, "body": "x"})
     assert refused["is_error"] and "marketing__personal" in refused["content"][0]["text"]
+    unset = call(mk, tools.personal, run_id, arguments)["content"][0]["text"]
+    assert "No blog project is set" in unset and "growth-proposals" not in unset
+    configure(mk.client, mk.h["owner"], "marketing", {"proposals_project": "team-blog"})
     answer = call(mk, tools.personal, run_id, arguments)
     text = answer["content"][0]["text"]
     assert not answer["is_error"] and "is draft" in text and mk.platform.sent == []
-    assert "growth-proposals" in text and "omelet-blog" in text
+    assert "growth-proposals" in text and "hub project team-blog" in text
     for line in ("Đề xuất bài: Vòng lặp chọn việc thế nào", "Lý do: gh.stars", "Kênh đích: tiktok alice", "Hạn: "):
         assert line in text
     reply = call(mk, tools.personal, run_id, {**arguments, "kind": "reply", "reply_to": "x"})

@@ -4,6 +4,7 @@ reached by default and its default rules (``docs/marketing-plugin.md``).
 Every number here is a default: a project overrides the rules of a channel in the plugin's config (``rules``). The
 limits of each platform are [Unverified] against its current terms; ``docs/marketing-plugin.md`` says so and names the
 page to check. Hacker News has no posting API and no account kind that may post by itself: it is draft_only always.
+A Facebook group is never posted to by a machine: facebook_group takes a member's account, draft_only always.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ CATALOG: dict[str, Spec] = {
     "facebook_page": Spec("facebook_page", ("project",), "api"),
     "facebook_profile": Spec("facebook_profile", ("personal",), "browser"),
     "tiktok": Spec("tiktok", ("project", "personal"), "api"),
+    "facebook_group": Spec("facebook_group", ("personal",), "browser", always_draft=True),  # a member shares it
 }
 
 LIMITS: dict[str, dict] = {  # [Unverified] against each platform's current terms
@@ -61,6 +63,7 @@ LIMITS: dict[str, dict] = {  # [Unverified] against each platform's current term
     "facebook_page": {"max_chars": 5000},
     "facebook_profile": {"max_chars": 5000},
     "tiktok": {"max_chars": 2200},
+    "facebook_group": {"max_chars": 5000},
 }
 RULE_FIELDS = frozenset(Rules.__dataclass_fields__)
 

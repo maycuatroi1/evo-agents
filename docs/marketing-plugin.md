@@ -17,6 +17,7 @@ answer 404.
 | facebook_page | project | api | target is the page id; posting only |
 | facebook_profile | personal | browser | only its owner may switch it to autonomous; posts through the browser adapter |
 | tiktok | project, personal | api | photo posts from an image link; posting only |
+| facebook_group | personal | browser | draft_only always: a member copies the draft and shares it in the group by hand |
 
 Each account has a kind (`project` or `personal`), a mode (`autonomous` or `draft_only`) and an adapter (`api` or
 `browser`). Every account is made `draft_only`. An admin makes a project account; a writer makes a personal one, which
@@ -31,7 +32,9 @@ belongs to them.
 - A post command (`POST /posts`) to a personal account that is `draft_only`, on a channel outside those two, or a reply
   from a personal account, is refused with 403 by code. An agent leaves a text for a personal account with
   `POST /drafts`, which goes through no gate and posts nothing.
-- Non-goals: no agent action on personal channels beyond original posts, no Facebook groups, no reading of Facebook or
+- `facebook_group` takes a member's personal account and is `draft_only` always: a post for a Facebook group is a
+  draft the member copies from the Marketing page and shares by hand.
+- Non-goals: no agent action on personal channels beyond original posts, no posting to Facebook groups by machine, no reading of Facebook or
   TikTok feeds or metrics, no paid ads, no scraping of people, no evasion of a captcha or a rate limit.
 
 ## Credentials
@@ -118,12 +121,30 @@ The plugin contributes the agent type `@marketer`, the tools `marketing__propose
   account's own replies are skipped, and a personal account's posts are never read.
 - `marketing__personal` takes content for a member's personal channel. If its owner made a `facebook_profile` or
   `tiktok` account autonomous, the post goes through the gate; otherwise it is kept as a draft. Either way the tool
-  returns a proposal for the hub project `omelet-blog`, which the agent sends with `chat_message` to the group chat
-  `growth-proposals`.
+  returns a proposal for the hub project named in the config field `proposals_project` (the blog project), which the
+  agent sends with `chat_message` to its group chat `growth-proposals`. With no project set, the proposal is returned
+  for the member to keep.
 - Language: English on github, hackernews, reddit, x and linkedin; Vietnamese on viblo, facebook_page,
   facebook_profile and tiktok.
 
 No agent changes a channel's mode, the kill switch, a Goal or the Policy, and none approves a baseline.
+
+## Pages and the weekly bulletin
+
+A project that enables the plugin has three pages in its menu (the web's `x/marketing`): Marketing (the kill switch
+with a confirmation, the month's cost against the cap, and each channel with its breaker and login session), Posts
+(the posts by where the gate left them, and the drafts of personal channels and Facebook groups, each with a copy
+button; writers only, as the route `GET /posts`) and Growth weekly. A reader reads them and changes nothing.
+
+`GET /v1/x/marketing/<project>/weekly` (any grant) is the Growth section of the project's weekly bulletin: each
+active Goal with a metric against its target, the posts that went out in the last 7 days, the counts by state, the
+breakers open now, the kill switch, the month's cost against the cap and the week's cost, and the posts for members'
+personal channels, the proposals for the blog project named in `proposals_project`. From Monday 08:00 UTC the job
+`advance` sends it once a week to the project's admins as a notice (Inbox, and Telegram where they linked it), with
+a link to the page.
+
+The Loop's Decisions page lists what waits on a person here: a channel whose breaker waits for an admin to reset it,
+a channel whose login session expired, and a month whose budget is spent.
 
 ## Commands
 

@@ -1,8 +1,8 @@
 """The core plugin marketing: the channel accounts a project posts on, and the gate every post passes before it goes out
 (criteria a14, a10, a21 and a22 of plan autonomous-oss-growth; ``docs/marketing-plugin.md``).
 
-A project registers accounts on github, hackernews, reddit, x, linkedin, viblo, facebook_page, facebook_profile and
-tiktok (``registry``). Each has a kind (project or personal), a mode (autonomous or draft_only) and an adapter (api or
+A project registers accounts on github, hackernews, reddit, x, linkedin, viblo, facebook_page, facebook_profile,
+tiktok and facebook_group, whose posts are drafts a member shares by hand (``registry``). Each has a kind (project or personal), a mode (autonomous or draft_only) and an adapter (api or
 browser). The credentials are sealed in the plugin's config and never reach a lease, an environment or a prompt. A
 personal account is made draft_only; only its owner switches facebook_profile or tiktok to autonomous, no agent changes
 a mode, and a post command to a personal account that is draft_only, or on another channel, is refused by code.
@@ -27,7 +27,7 @@ On the Loop (criterion a16; ``loop``, ``campaign``, ``replies``, ``tools``) the 
 the Channels or Customer segments cell that goes to testing into a plan of posts, each tied to its claim and a Signal
 key and posted at its time through the gate; a post that went out is measured, and a reply under a project account's
 post is answered within ``replies_per_day``. Content for a member's personal channel becomes a proposal for the hub
-project omelet-blog.
+project the config names in ``proposals_project``.
 """
 
 SERVER = "evo_agents.core_plugins.marketing.server"
@@ -63,7 +63,7 @@ post goes through a tool, and the gate decides.
   a post that goes out later, scheduled_at.
 - marketing__draft: a draft a person posts. Use it when the gate is not the right place, for example a launch.
 - marketing__personal: content for a member's personal channel. Send the proposal it gives back with chat_message
-  to the group chat growth-proposals of hub project omelet-blog, as it is.
+  to the group chat growth-proposals of the hub project it names, as it is.
 
 ## Rules
 
@@ -77,9 +77,9 @@ post goes through a tool, and the gate decides.
   should change, say so in your answer and stop.
 - Post nothing that names a person who did not agree, a private message or someone's personal data.
 
-## Proposals for omelet-blog
+## Proposals for the blog project
 
-Follow dinh-vi.md of omelet-blog: one mechanism per post, measured numbers, Vietnamese. Fill each line of the
+Follow dinh-vi.md of the blog project: one mechanism per post, measured numbers, Vietnamese. Fill each line of the
 proposal: Đề xuất bài (the topic), Lý do (the Signal, its value and span), Kênh đích, Nguồn dùng được, Hạn.
 """
 
@@ -147,6 +147,13 @@ CONFIG = {
             "minimum": 0,
             "default": 10,
         },
+        "proposals_project": {
+            "title": "Blog project",
+            "description": "The hub project whose group chat growth-proposals gets the proposals for members' "
+            "personal channels.",
+            "type": "string",
+            "default": "",
+        },
         "rules": {
             "title": "Rules of a channel",
             "description": "Per channel, the fields of its rules the project changes: posts_per_day, posts_per_week, "
@@ -188,6 +195,16 @@ TABLES = (
     ("marketing_replies", "What someone answered under a post of a project account, once each"),
 )
 
+PAGES = {
+    "overview": {
+        "title": "Marketing",
+        "icon": "message-square",
+        "description": "Channels, breakers, budget, kill switch",
+    },
+    "posts": {"title": "Posts", "icon": "list-checks", "description": "Posts by the gate's result, and drafts to copy"},
+    "weekly": {"title": "Growth weekly", "icon": "chart-column", "description": "Signal against Goal, posts and cost"},
+}
+
 MANIFEST = {
     "id": "marketing",
     "version": "1.0.0",
@@ -202,6 +219,7 @@ MANIFEST = {
     "config": CONFIG,
     "contributes": {
         "routes": [{"name": "marketing", "title": "The channels and posts of a project", "python": f"{SERVER}:router"}],
+        "pages": [{"name": name, **page} for name, page in PAGES.items()],
         "jobs": [
             {
                 "name": ADVANCE_JOB,
@@ -259,7 +277,7 @@ MANIFEST = {
                 "name": "personal",
                 "title": "Propose content for a member's personal channel",
                 "description": "Through the gate when its owner made the account autonomous on facebook_profile or "
-                "tiktok, a draft otherwise; answers the proposal to send to omelet-blog.",
+                "tiktok, a draft otherwise; answers the proposal to send to the blog project.",
                 "python": f"{TOOLS}:personal",
                 "input_schema": PERSONAL_SCHEMA,
             },
