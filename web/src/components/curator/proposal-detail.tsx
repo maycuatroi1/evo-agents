@@ -30,7 +30,7 @@ import { EvidenceList } from "./evidence";
 import { useCuratorViewer } from "./hooks";
 import { LedgerCard } from "./ledger";
 import { ReplayCard } from "./replay-card";
-import { FixOfNote, ProbeCard } from "./probe-card";
+import { FixOfNote, ProbeCard } from "./probe-lazy";
 import type { RepoInfo } from "./model";
 import { Promotion } from "./promotion";
 import { promotionView } from "./promotion-model";

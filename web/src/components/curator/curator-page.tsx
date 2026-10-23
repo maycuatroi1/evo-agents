@@ -28,7 +28,7 @@ import { CuratorHeader, CuratorTabs } from "./curator-header";
 import { useCuratorRights, useCuratorViewer } from "./hooks";
 import { budgetShare, nightOutcome, proposalSearch, NO_PROPOSAL_FILTERS } from "./model";
 import { Fact, Facts, useDay, useMoney } from "./parts";
-import { ProbeReport } from "./probe-report";
+import { ProbeReport } from "./probe-lazy";
 import { type CuratorStatus, curatorHref, curatorStatusQuery, type NightList, type NightSummary, nightsQuery } from "./queries";
 
 /** The CLI command that writes a charter, for whoever reads the empty state without the admin role. */
