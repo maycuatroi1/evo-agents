@@ -104,6 +104,7 @@ function ChannelTable({ project, channels, role }: { project: string; channels: 
           <TableHead>{t("mode")}</TableHead>
           <TableHead>{t("breaker")}</TableHead>
           <TableHead>{t("session")}</TableHead>
+          <TableHead>{t("health")}</TableHead>
           {role === "admin" ? <TableHead className="sr-only">{t("actions")}</TableHead> : null}
         </TableRow>
       </TableHeader>
@@ -142,6 +143,14 @@ function ChannelTable({ project, channels, role }: { project: string; channels: 
               ) : (
                 <Badge variant="outline">{t("sessionNone")}</Badge>
               )}
+            </TableCell>
+            <TableCell className="max-w-72 whitespace-normal">
+              <div className="flex flex-col gap-1" data-testid="marketing-health" data-health={channel.health}>
+                <Badge variant={channel.health === "ok" ? "success" : channel.health === "failing" ? "destructive" : "outline"}>
+                  {channel.health === "ok" ? t("healthOk") : channel.health === "failing" ? t("healthFailing") : channel.health === "n/a" ? t("healthNa") : t("healthUnknown")}
+                </Badge>
+                {channel.health_reason ? <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{channel.health_reason}</span> : null}
+              </div>
             </TableCell>
             {role === "admin" ? <TableCell>{channel.paused ? <CloseBreaker project={project} channel={channel} /> : null}</TableCell> : null}
           </TableRow>
@@ -201,7 +210,7 @@ function Overview({ project, status, role }: { project: string; status: Marketin
 
 /**
  * The marketing of a project (/p/{project}/x/marketing/overview): the kill switch, the month's cost against its cap,
- * and each channel account with its breaker and, for a browser channel, its login session.
+ * and each channel account with its breaker, its health and, for a browser channel, its login session.
  */
 export function OverviewPage({ project, title, initialError }: { project: string; title: string; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("marketing");

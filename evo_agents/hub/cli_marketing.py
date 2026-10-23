@@ -1,8 +1,10 @@
-"""``evo-agents hub marketing channels|posts|pause|resume|kill|login|browser-post``: the channels and posts of a project that enabled the
+"""``evo-agents hub marketing channels|add|check|posts|pause|resume|kill|login|browser-post``: the channels and posts of a project that enabled the
 core plugin marketing, through its routes under ``/v1/x/marketing/<project>`` (``docs/marketing-plugin.md``). The
 plugin's code is ``evo_agents.core_plugins.marketing``, which this client never imports: it speaks HTTP only.
 
-``channels --project X`` lists the accounts with their mode and breaker, ``posts --project X`` the posts with the state
+``channels --project X`` lists the accounts with their mode, breaker and health, ``add --project X --channel C
+--account A`` makes one (draft_only), ``check --project X [--channel-id ID]`` checks the health of one account or of
+every one (a read of the platform that posts nothing; an admin does), ``posts --project X`` the posts with the state
 and the reason of each (``--state`` narrows it). ``pause --project X CHANNEL_ID`` opens the breaker of one channel,
 ``resume --project X [CHANNEL_ID]`` closes it (an admin does; without an id it clears the kill switch of the project)
 and ``kill --project X`` stops every channel. ``--json`` prints what the hub answered. Standard library only.
@@ -28,6 +30,10 @@ CHANNEL_KEYS = (
     "paused_reason",
     "autonomous_since",
     "session_state",
+    "account_kind",
+    "health",
+    "health_reason",
+    "health_checked_at",
 )
 POST_KEYS = (
     "id",
@@ -52,6 +58,18 @@ POST_KEYS = (
     "scheduled_at",
 )
 DONE_KEYS = ("ok",)
+CHANNELS = (  # evo_agents.hub.tables_marketing.CHANNELS; the hub refuses any other
+    "github",
+    "hackernews",
+    "reddit",
+    "x",
+    "linkedin",
+    "viblo",
+    "facebook_page",
+    "facebook_profile",
+    "tiktok",
+    "facebook_group",
+)
 STATES = ("proposed", "judging", "queued", "posting", "posted", "draft", "failed", "withdrawn")
 
 
@@ -68,11 +86,48 @@ def cmd_channels(args) -> int:
     if args.json:
         print_json(found)
         return 0
+    _channels(found)
+    return 0
+
+
+def _channels(found: list[dict]) -> None:
     rows = [
-        (c["id"], c["channel"], c["account"], c["kind"], c["mode"], "open" if c["paused"] else "closed") for c in found
+        (c["id"], c["channel"], c["account"], c["kind"], c["mode"], "open" if c["paused"] else "closed", _health(c))
+        for c in found
     ]
     if rows:
-        table(("id", "channel", "account", "kind", "mode", "breaker"), rows)
+        table(("id", "channel", "account", "kind", "mode", "breaker", "health"), rows)
+
+
+def _health(channel: dict) -> str:
+    said = channel.get("health") or "unknown"
+    return f"{said}: {channel['health_reason']}"[:70] if channel.get("health_reason") else said
+
+
+@client_command
+def cmd_add(args) -> int:
+    hub, _ = signed_in()
+    body = {"channel": args.channel, "account": args.account, "kind": args.kind, "adapter": args.adapter}
+    found = hub.call("POST", path(args.project, "channels"), {**body, "target": args.target})
+    if args.json:
+        print_json(found)
+    else:
+        print(f"Channel {found['id']} is {found['channel']} {found['account']} ({found['kind']}, {found['mode']})")
+    return 0
+
+
+@client_command
+def cmd_check(args) -> int:
+    hub, _ = signed_in()
+    if args.channel_id is None:
+        ids = [c["id"] for c in hub.call("GET", path(args.project, "channels"))]
+    else:
+        ids = [args.channel_id]
+    found = [hub.call("POST", path(args.project, "channels", str(i), "check"), {}) for i in ids]
+    if args.json:
+        print_json(found)
+        return 0
+    _channels(found)
     return 0
 
 
@@ -139,6 +194,16 @@ def register_marketing(hsub) -> None:
 
     channels = command("channels", "the accounts with their mode and breaker", cmd_channels)
     json_option(channels, returns_array(*CHANNEL_KEYS, schema="MarketingChannel"))
+    add = command("add", "make a channel account, draft_only (a project account: an admin)", cmd_add)
+    add.add_argument("--channel", required=True, choices=CHANNELS, help="the channel")
+    add.add_argument("--account", required=True, metavar="ACCOUNT", help="the handle, page or repo it posts as")
+    add.add_argument("--kind", choices=("project", "personal"), default="project", help="whose account (project)")
+    add.add_argument("--adapter", choices=("api", "browser"), help="how it posts; the channel's default when none")
+    add.add_argument("--target", metavar="TARGET", help="a subreddit, a page id, owner/name, an author urn")
+    json_option(add, returns_object(*CHANNEL_KEYS, schema="MarketingChannel"))
+    check = command("check", "check the health of the accounts, posting nothing (admin)", cmd_check)
+    check.add_argument("--channel-id", type=int, metavar="ID", help="one channel; none checks every one")
+    json_option(check, returns_array(*CHANNEL_KEYS, schema="MarketingChannel"))
     posts = command("posts", "the posts with their state and reason", cmd_posts)
     posts.add_argument("--state", choices=STATES, help="only posts in this state")
     json_option(posts, returns_array(*POST_KEYS, schema="MarketingPost"))

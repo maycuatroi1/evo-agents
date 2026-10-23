@@ -5,6 +5,10 @@ and reads the platform's id of the post out of the answer. The endpoints and fie
 platform's current API documentation (``docs/marketing-plugin.md`` names the page of each); a platform that changed
 answers an error, which the breaker counts, and nothing else breaks. No adapter reads a feed or a metric of Facebook or
 TikTok: those two post only (plan autonomous-oss-growth, non-goals).
+
+``health`` is the read-only check of an account (plan autonomous-oss-growth, step 22): one read of the platform that
+says the credential works and may post as the account, and posts nothing. It answers what it read, or raises
+AdapterError with the reason; neither holds the credential.
 """
 
 from __future__ import annotations
@@ -31,6 +35,10 @@ class _Base:
 
     async def call(self, request: HttpRequest) -> dict:
         return check(await self.transport.send(request), f"{self.channel} post")
+
+    async def read(self, request: HttpRequest) -> dict:
+        """The body of a read of the health check; AdapterError as ``call`` otherwise."""
+        return check(await self.transport.send(request), f"{self.channel} check")
 
 
 class GitHub(_Base):
@@ -59,6 +67,17 @@ class GitHub(_Base):
             )
         )
         return Published(str(body.get("html_url") or f"https://github.com/{repo}/releases"), str(body.get("id", "")))
+
+    async def health(self, target: str | None, token: str) -> str:
+        """The target repo read with the credential, which must have push on it (Releases and Discussions need it)."""
+        repo = (target or "").partition("#")[0]
+        if repo.count("/") != 1:
+            raise AdapterError("missing", "github: the account has no target owner/name")
+        headers = _bearer(token, **{"X-GitHub-Api-Version": "2022-11-28"})
+        body = await self.read(HttpRequest("GET", f"{self.API}/repos/{repo}", headers))
+        if not (body.get("permissions") or {}).get("push"):
+            raise AdapterError("rejected", f"github: the credential reads {repo} but may not push to it")
+        return f"push on {body.get('full_name') or repo}"
 
     async def _discussion(self, content: Content, ids: str, headers: dict) -> Published:
         repository, _, category = ids.partition(":")
@@ -148,6 +167,14 @@ class X(_Base):
         found = str((body.get("data") or {}).get("id", ""))
         return Published(f"https://x.com/{content.account}/status/{found}", found, cost_usd=0.01)
 
+    async def health(self, target: str | None, token: str) -> str:
+        """The user the credential acts as."""
+        body = await self.read(HttpRequest("GET", "https://api.x.com/2/users/me", _bearer(token)))
+        user = body.get("data") or {}
+        if not user.get("id"):
+            raise AdapterError("rejected", "x: the platform did not say whose credential it is")
+        return f"signed in as @{user.get('username') or user['id']}"
+
     async def metrics(self, external_id: str, token: str) -> dict[str, float]:
         url = f"{self.API}/{external_id}?tweet.fields=public_metrics"
         found = ((await self.call(HttpRequest("GET", url, _bearer(token)))).get("data") or {}).get(
@@ -184,6 +211,15 @@ class LinkedIn(_Base):
         urn = answer.headers.get("x-restli-id") or str(answer.body.get("id", ""))
         return Published(f"https://www.linkedin.com/feed/update/{urn}", urn)
 
+    async def health(self, target: str | None, token: str) -> str:
+        """The member the credential acts as (OpenID userinfo), with an author urn to post as."""
+        if not (target or "").startswith("urn:li:"):
+            raise AdapterError("missing", "linkedin: the account has no target author urn")
+        body = await self.read(HttpRequest("GET", "https://api.linkedin.com/v2/userinfo", _bearer(token)))
+        if not body.get("sub"):
+            raise AdapterError("rejected", "linkedin: the platform did not say whose credential it is")
+        return f"signed in as {body.get('name') or body['sub']}, posting as {target}"
+
 
 class Reddit(_Base):
     """A self post in the subreddit of the target (``r/name``), or a comment under ``reply_to`` (a thing id)."""
@@ -213,6 +249,14 @@ class Reddit(_Base):
         if (body.get("json") or {}).get("errors"):
             raise AdapterError("rejected", "reddit: the post was refused")
         return Published(str(data.get("url", "")), str(data.get("name") or data.get("id") or ""))
+
+    async def health(self, target: str | None, token: str) -> str:
+        """The user the credential acts as."""
+        headers = _bearer(token, **{"User-Agent": "evo-agents-marketing/1"})
+        body = await self.read(HttpRequest("GET", "https://oauth.reddit.com/api/v1/me", headers))
+        if not body.get("name"):
+            raise AdapterError("rejected", "reddit: the platform did not say whose credential it is")
+        return f"signed in as u/{body['name']}"
 
     async def metrics(self, external_id: str, token: str) -> dict[str, float]:
         headers = _bearer(token, **{"User-Agent": "evo-agents-marketing/1"})
@@ -259,6 +303,16 @@ class FacebookPage(_Base):
         found = str(body.get("id", ""))
         return Published(f"https://www.facebook.com/{found}", found)
 
+    async def health(self, target: str | None, token: str) -> str:
+        """The page read with the credential, whose tasks must let it create content. Reads no feed and no insight."""
+        if not target:
+            raise AdapterError("missing", "facebook_page: the account has no target page id")
+        url = f"{self.API}/{target}?fields=name,tasks"
+        body = await self.read(HttpRequest("GET", url, _bearer(token)))
+        if "CREATE_CONTENT" not in (body.get("tasks") or []):
+            raise AdapterError("rejected", f"facebook_page: the credential reads page {target} but may not post on it")
+        return f"may post on {body.get('name') or target}"
+
 
 class TikTok(_Base):
     """A photo post by the Content Posting API from a media url the post links to. Posting only."""
@@ -278,6 +332,16 @@ class TikTok(_Base):
         body = await self.call(HttpRequest("POST", self.API, _bearer(token), payload))
         found = str((body.get("data") or {}).get("publish_id", ""))
         return Published(f"https://www.tiktok.com/@{content.account}", found)
+
+    async def health(self, target: str | None, token: str) -> str:
+        """The creator info query of the Content Posting API: who the credential posts as. Posts nothing."""
+        url = "https://open.tiktokapis.com/v2/post/publish/creator_info/query/"
+        body = await self.read(HttpRequest("POST", url, _bearer(token), {}))
+        code = (body.get("error") or {}).get("code") or "ok"
+        creator = body.get("data") or {}
+        if code != "ok" or not creator.get("creator_username"):
+            raise AdapterError("rejected", f"tiktok: the creator info query answered {str(code)[:60]}")
+        return f"posting as @{creator['creator_username']}"
 
 
 ADAPTERS = {cls.channel: cls for cls in (GitHub, X, LinkedIn, Reddit, FacebookPage, TikTok)}

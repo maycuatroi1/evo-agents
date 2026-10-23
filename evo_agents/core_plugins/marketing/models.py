@@ -41,6 +41,13 @@ class MarketingChannel(BaseModel):
     session_state: str = Field(
         default="none", description="none, ok or stale: whether the login session of a browser channel works"
     )
+    account_kind: str = Field(description="project or personal: the same as kind")
+    health: str = Field(
+        default="unknown",
+        description="unknown, ok, failing or n/a: the last health check, a read of the platform that posts nothing",
+    )
+    health_reason: str | None = Field(description="what the check read, or why it failed")
+    health_checked_at: datetime | None
 
 
 class MarketingModeIn(BaseModel):
