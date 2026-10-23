@@ -14,12 +14,13 @@ A tick, in order, each step in a transaction of its own that first takes the pro
    its cycle and its repos, the rate of hand-outs and the worker, its run handed out by ``dispatch`` when it passes
    (``dispatch.hand_out`` unless a caller names another), else its reason written; then when the tick ended.
 
-The engine (``model.Engine``, ``rules.RULES`` in this release) reads and never writes; this module writes what it
-returns. A work item is made with INSERT ... ON CONFLICT (project, key) DO NOTHING, so the same delta read twice, an
-event replayed included, makes nothing more; a transition moves only a work item not finished; a result is noted in a
-claim's chain once by its key. Each write adds its row to the work item's ledger (loop_item_events) in the same
-transaction. A tick of a project whose Loop is off does nothing; one with nothing new reads and writes no work item,
-and nothing but ``dispatch`` hands out a run; no tick calls a model.
+The engine (``model.Engine``, ``rules2.RULES`` in this release, ``rules/2``) reads and never writes; this module writes
+what it returns, a work item with the problem its goal answers (``WorkSpec.problem_id``). A work item is made with
+INSERT ... ON CONFLICT (project, key) DO NOTHING, so the same delta read twice, an event replayed included, makes
+nothing more; a transition moves only a work item not finished; a result is noted in a claim's chain once by its key.
+Each write adds its row to the work item's ledger (loop_item_events) in the same transaction. A tick of a project
+whose Loop is off does nothing; one with nothing new reads and writes no work item, and nothing but ``dispatch`` hands
+out a run; no tick calls a model.
 
 The hand-out of each kind of work item is ``dispatch.hand_out`` (criterion a6): a task run of @strategist or @ba, an
 author run or a plan run on worker loop.worker. Nothing else in a tick hands out a run.
@@ -56,7 +57,7 @@ from evo_agents.hub.server.loop.model import (
     WorkSpec,
 )
 from evo_agents.hub.server.loop.plugin_rules import RuleSet, load_rules
-from evo_agents.hub.server.loop.rules import RULES
+from evo_agents.hub.server.loop.rules2 import RULES
 from evo_agents.hub.server.loop.view import load
 
 log = logging.getLogger(__name__)
@@ -112,6 +113,7 @@ async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id
         "owner": spec.owner,
         "engine": engine,
         "event_id": event_id,
+        "problem_id": spec.problem_id,
     }
     query = pg_insert(i).values(values).on_conflict_do_nothing(index_elements=[i.c.project_id, i.c.key])
     item_id = await conn.scalar(query.returning(i.c.id))

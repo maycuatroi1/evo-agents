@@ -11,7 +11,8 @@ and writes the same rows.
   project, so the same delta never makes a second one), its ancestors (the goal, the claim, the SRS document, use case
   and version, the frame task, the plan, the run in flight, the work item it came of), where it stands and why, what it
   waits on (``detail``), how often a run was handed out for it and how often one failed, who it stands for, the engine
-  that made it, the event that made it, and when it was made, changed and finished.
+  that made it, the event that made it, when it was made, changed and finished, and the problem its goal answered
+  when it was made (0132, plan problem-oriented-hub).
 - loop_item_events: what happened to each work item, only ever added to: made, ready, admitted, handed a run,
   waiting, failed, triaged, asked, done, cancelled, or a result noted in its chain; the state and reason after it, the
   run and the event of hub_events it came of.
@@ -105,6 +106,7 @@ def _items(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _stamp("updated_at"),
         _when("finished_at"),
+        Column("problem_id", BigInteger),  # 0132
         _key(name, "project_id", "projects", ondelete="CASCADE"),
         _key(name, "goal_id", "goals", ondelete="SET NULL"),
         _key(name, "claim_id", "canvas_claims", ondelete="SET NULL"),
@@ -113,6 +115,7 @@ def _items(metadata: MetaData) -> Table:
         _key(name, "run_id", "runs", ondelete="SET NULL"),
         _key(name, "parent_id", "loop_items", ondelete="SET NULL"),
         _key(name, "event_id", "hub_events", ondelete="SET NULL"),
+        _key(name, "problem_id", "problems", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="loop_items_pkey"),
         UniqueConstraint("project_id", "key", name="loop_items_key_key"),
     )
@@ -124,6 +127,7 @@ def _items(metadata: MetaData) -> Table:
     )
     Index("loop_items_claim_idx", table.c.claim_id, postgresql_where=table.c.claim_id.is_not(None))
     Index("loop_items_run_idx", table.c.run_id, postgresql_where=table.c.run_id.is_not(None))
+    Index("loop_items_problem_idx", table.c.problem_id, postgresql_where=table.c.problem_id.is_not(None))
     return table
 
 

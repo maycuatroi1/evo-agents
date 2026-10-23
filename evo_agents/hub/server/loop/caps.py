@@ -5,7 +5,7 @@ of step 1, answer 1): it reserves nothing and settles no cost; each run it hands
   the policy's ``loop.caps.author`` or ``loop.caps.plan`` and ``max_usd`` empty (``run_budget``), and a timeout of
   that agent time plus GRACE_SECONDS (``timeout_s``), so the cap stops the agent before the timeout does: Claude Code
   stops at its turns, Codex at its time.
-- A task run (``brainstorm`` of @strategist, ``use_case`` of @ba): handed to the agent type through
+- A task run (``brainstorm`` and ``discover`` of @strategist, ``use_case`` of @ba): handed to the agent type through
   ``task_dispatch.hand_own_task`` like any task run of a core plugin (``hand_task``): its cost cap is what is left of
   the type's ``daily_usd`` in the last 24 hours, with the time cap of a task run. A type that is off, whose run_as no
   longer holds writer, or whose cap is spent hands out nothing, and the work item stays queued with reason
@@ -22,10 +22,14 @@ from collections.abc import Mapping
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.server.loop.admit import TYPE_REFUSED, Handed
-from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, USE_CASE
+from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, DISCOVER, USE_CASE
 
 CAPS_OF = {BUILD: "author", DELIVER: "plan"}  # the section of loop.caps for the run of each kind
-AGENT_OF = {BRAINSTORM: ("canvas", "strategist"), USE_CASE: ("srs", "ba")}  # (plugin, agent type) of a task run
+AGENT_OF = {  # (plugin, agent type) of a task run
+    BRAINSTORM: ("canvas", "strategist"),
+    USE_CASE: ("srs", "ba"),
+    DISCOVER: ("canvas", "strategist"),
+}
 GRACE_SECONDS = 300  # a run's timeout is its agent time plus this, as a night shift's and a release run's
 
 
@@ -44,7 +48,8 @@ def timeout_s(kind: str, policy: Mapping) -> int:
 async def hand_task(
     conn: AsyncConnection, project_id: int, kind: str, task: str, title: str | None = None, for_id: int | None = None
 ) -> Handed:
-    """Hand ``task`` to the agent type of a work item of ``kind`` (brainstorm or use_case) in project ``project_id``,
+    """Hand ``task`` to the agent type of a work item of ``kind`` (brainstorm, use_case or discover) in project
+    ``project_id``,
     in the caller's transaction, for the person ``for_id`` (the owner of the item's goal): the task run, or
     ``type_refused`` with why the hub handed none."""
     # Imported here: task_dispatch's own imports go round a cycle when it is the first module of the server a process

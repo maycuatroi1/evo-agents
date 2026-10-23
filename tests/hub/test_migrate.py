@@ -3235,3 +3235,56 @@ def test_0131_keeps_the_problems_a_claim_links_and_going_back_drops_them(hub_db)
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the check of 0078 is back
         conn.execute(insert(k.claims).values(number=4, use_cases=[f"UC ORD-{n}" for n in range(21)], **claim))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0131") :]
+
+
+def test_0132_keeps_the_problem_of_a_work_item_and_the_kind_discover_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0131")
+    t = hub_tables
+    i, e = t.loop_items, t.loop_item_events
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        item = {"project_id": ids["project"], "kind": "brainstorm", "cycle": "business", "key": "brainstorm:G-1:r1"}
+        item |= {"engine": "rules/1", "owner": "@strategist"}
+        conn.execute(insert(i).values(item))  # a work item of rules/1, before any problem
+        with pytest.raises(errors.CheckViolation):  # 0123 knows no discover
+            conn.execute(insert(i).values({**item, "key": "discover:c:CL-1:b1", "kind": "discover"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0132")
+    assert "problem_id" in columns(hub_db, "loop_items")
+    assert query(hub_db, select(i.c.key, i.c.problem_id)) == [("brainstorm:G-1:r1", None)]
+    texts = {"statement": "Shops run out of milk", "who": "shop owners", "when": "before a delivery"}
+    row = {**texts, "workaround": "they buy it retail", "revision": 1, "rank": 1, "owner_id": ids["user"]}
+    row |= {"status": "open", "created_by": ids["user"]}
+    p = t.problems
+    with live.connect(hub_db) as conn:
+        problem_id = one(conn, insert(p).values(project_id=ids["project"], number=1, revision=1).returning(p.c.id))
+        conn.execute(insert(t.problem_revisions).values({**row, "problem_id": problem_id}))
+        found = {**item, "key": "discover:c:CL-1:b1", "kind": "discover", "engine": "rules/2", "problem_id": problem_id}
+        found_id = one(conn, insert(i).values(found).returning(i.c.id))
+        conn.execute(insert(e).values(item_id=found_id, kind="created", state="queued"))
+        built = {**found, "key": "build:claim:c:CL-2:b1", "kind": "build", "cycle": "development", "owner": None}
+        conn.execute(insert(i).values(built))
+        for bad in (
+            insert(i).values({**found, "key": "x", "cycle": "development"}),  # a discover is of the business cycle
+            insert(i).values({**found, "key": "y", "problem_id": problem_id + 99}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        # a problem deleted under a work item leaves it, its link cleared
+        conn.execute(delete(t.problem_revisions).where(t.problem_revisions.c.problem_id == problem_id))
+        conn.execute(delete(p).where(p.c.id == problem_id))
+    held = select(i.c.key, i.c.kind, i.c.problem_id).order_by(i.c.id)
+    assert query(hub_db, held) == [
+        ("brainstorm:G-1:r1", "brainstorm", None),
+        ("discover:c:CL-1:b1", "discover", None),
+        ("build:claim:c:CL-2:b1", "build", None),
+    ]
+    # going back deletes the discover with its ledger and drops the column; the rest stays
+    move_to(hub_db, "0131", down=True)
+    assert "problem_id" not in columns(hub_db, "loop_items")
+    assert query(hub_db, select(i.c.key).order_by(i.c.id)) == [("brainstorm:G-1:r1",), ("build:claim:c:CL-2:b1",)]
+    assert query(hub_db, select(func.count()).select_from(e)) == [(0,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the check of 0123 is back
+        conn.execute(insert(i).values({**item, "key": "discover:c:CL-3:b1", "kind": "discover"}))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0132") :]
