@@ -14,6 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
 from evo_agents.worker import gitops
 from evo_agents.worker.runner.agent import Agent
 from evo_agents.worker.runner.common import RunFailed

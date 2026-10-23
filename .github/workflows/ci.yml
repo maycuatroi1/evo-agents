@@ -268,7 +268,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e '.[test,graphify,worker]'
+      - run: uv pip install --system -e '.[test,graphify]'
       - run: pytest -q
 
   test-windows:
@@ -289,7 +289,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e ".[test,graphify,worker]"
+      - run: uv pip install --system -e ".[test,graphify]"
       - run: python -m pytest -q -n 4 --durations=20
 
   # The web under web/ without a browser: the First Load JS budgets on a production build first, since they fail the
