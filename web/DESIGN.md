@@ -1739,6 +1739,32 @@ Shared pieces built on them:
   at each signal (Recharts, loaded on demand), and every series, numbers and feedback alike, is a table of its values,
   the newest first, with when, the tenant and who sent it. It shows values and their series over time and analyses
   nothing.
+- `components/crm`, the core plugin crm's Contacts (`/p/{project}/x/crm/contacts`, its page `contacts` in the sidebar's
+  plugin group; `/x/crm` leads there), only where the project enabled crm. Its words are the `crm` namespace. The
+  pipeline is a row of five toggle buttons (All, then lead, invited, activated, retained, each with its count,
+  `aria-pressed` on the one shown) that filters the list on the client; the list is a `Table`: the login in mono
+  opening the contact, the stage as a badge (lead outline, invited info, activated and retained success), where the
+  person came from, first seen and in this stage since. A contact (`/contacts/{login}`, a GitHub login or 404) heads
+  with a back link, the login, its stage and a link to the GitHub profile; then its touchpoints, newest first (kind,
+  ref, link, a note's text and who wrote it) beside the stages it reached. A writer adds a note (1,000 characters at
+  most); an admin's Delete contact opens a `ConfirmAction` that says everything goes for good, as the person asked.
+  Readers see a note that they only read, and no control that writes.
+- `components/marketing`, the core plugin marketing's pages (`/p/{project}/x/marketing/overview|posts|weekly`, one
+  `TabNav`; `/x/marketing` leads to the overview), only where the project enabled marketing. Its words are the
+  `marketing` namespace. The overview heads with Stop all posting (a writer's, a `ConfirmAction`; an admin's Resume
+  posting once stopped, with the danger banner of the reason), then the month: the channel accounts, the breakers open
+  (red once one is) and the cost against the cap as a `Meter` (`warning` from 80 %, `danger` once spent, the split
+  between spent and held by posts in flight below it), and the channel accounts as a `Table`: channel and account (and
+  whose, for a personal one), mode, the breaker (Closed, or Open with its reason and an admin's Close breaker) and the
+  login session of a browser channel (Expired in amber). Posts are grouped by what the gate did: drafts to share by hand
+  (a member's personal account, a Facebook group; each with Copy text, `useClipboard`), waiting for the gate, passed,
+  went out (with its link and cost) and stopped (with the reason); their text is a writer's, so a reader is told so.
+  The Growth weekly, the link of the Monday notice, is the bulletin's Growth section: each Goal's signal against its
+  target (Met, Not yet), the posts that went out, the breakers open, the week's cost and the month's `Meter`, and the
+  drafts kept for the blog project the config `proposals_project` names. On the Decisions page
+  (`components/marketing/growth-decisions.tsx`, the `extra` slot of `DecidePage`) a Growth card lists what waits for a
+  person, from the same reads, and nothing where marketing is off: each open breaker, each browser channel whose login
+  session expired and the month's spent budget, each with who acts and Open to the overview.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
