@@ -32,17 +32,17 @@ night_shift, under its row's lock (a schedule another run of the job holds is pa
 breaker look at the night (``outcomes.check_circuit``: once the charter's ``circuit_breaker.max_failed_in_a_row`` jobs
 of the night in a row failed or were reverted, every schedule of the project is paused with the reason in
 ``pause_reason`` and no member in ``paused_by``, and their owner gets the notice curator_paused), then it cancels its
-queued runs when it is paused or outside its window, and otherwise queues at most one run (``gate_of`` says when it
-may): the night's review run first, when the night has none yet and the worker runs review runs
-(``evo_agents.hub.server.collect``), else the night's history run once its review run was queued
-(``evo_agents.hub.server.history``), else the judge run of a change of the Curator that waits for one, else the replay
-run of a change that waits for one (``evo_agents.hub.server.replays``), else the Builder of a change the Curator
-planned (``evo_agents.hub.server.changes``), else a plan run of the charter's night_plans, as ``evo_agents.hub.curator``
-says, audited as curator.dispatch with the owner as actor and no token.
-GET .../curator also names the last review run of the project, with how many findings and proposals it wrote, and its
-last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each agent
-session once at its largest total, as Claude Code reports a session's running total. The charter also names what the
-Curator's runs get of the owner's secrets (``git_secret``, ``env_secrets``): no other secret is leased to them.
+queued runs when it is paused, and outside its window those of the night (``shift_hours``), and otherwise queues at most
+one run (``gate_of`` says when it may): the night's review run first, when the night has none yet and the worker runs
+review runs (``evo_agents.hub.server.collect``), else the night's history run once its review run was queued
+(``evo_agents.hub.server.history``), these two inside the window alone, else the judge run of a change of the Curator
+that waits for one, else the replay run of a change that waits for one (``evo_agents.hub.server.replays``), else the
+Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else, inside the window, a plan run of the
+charter's night_plans, as ``evo_agents.hub.curator`` says, audited as curator.dispatch with the owner as actor and no
+token. GET .../curator also names the last review run of the project, with how many findings and proposals it wrote, and
+its last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each
+agent session once at its largest total, as Claude Code reports a session's running total. The charter also names what
+the Curator's runs get of the owner's secrets (``git_secret``, ``env_secrets``): no other secret is leased to them.
 """
 
 from __future__ import annotations
@@ -86,11 +86,12 @@ from evo_agents.hub.server.charter_settings import HistorySettings, ReplaySettin
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, night_figures, usage_cost
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
+from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import ModelName
 from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, plan_run_repos, unfit
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.shift_hours import cancel_queued, changes_waiting
 from evo_agents.hub.server.worker_models import WORKER_NAME
 
 log = logging.getLogger(__name__)
@@ -958,23 +959,6 @@ async def nights(
 # Pausing
 
 
-async def _cancel_queued(conn: AsyncConnection, schedule_ids: list[int], reason: str) -> list[int]:
-    """Cancel the runs of ``schedule_ids`` still queued, but a run that resumes a parked one, which its owner's answer
-    queued; their ids."""
-    r = tables.runs
-    query = (
-        select(r.c.id)
-        .where(r.c.schedule_id.in_(schedule_ids), r.c.state == "queued", r.c.resume_of_run_id.is_(None))
-        .order_by(r.c.id)
-        .with_for_update(skip_locked=True)
-    )
-    cancelled = []
-    for run_id in (await conn.execute(query)).scalars().all():
-        await move_run(conn, run_id, "queued", "cancelled", "owner", reason=reason)
-        cancelled.append(run_id)
-    return cancelled
-
-
 async def _pausable(conn: AsyncConnection, user: Principal, project: str, doing: str):
     """(access, ids of the project's schedules, locked) for an admin of the project or the owner of one of them."""
     access = await project_access(conn, user, project)
@@ -1009,7 +993,7 @@ async def pause(request: Request, project: ProjectName, user: CurrentUser) -> Cu
             .values(paused_at=func.now(), paused_by=user.user_id, updated_at=func.now())
             .where(s.c.id.in_(ids), s.c.paused_at.is_(None))
         )
-        cancelled = await _cancel_queued(conn, ids, f"the night shift of {access.name} was paused by {user.login}")
+        cancelled = await cancel_queued(conn, ids, f"the night shift of {access.name} was paused by {user.login}")
         await audit.record(
             conn,
             actor_id=user.user_id,
@@ -1232,11 +1216,13 @@ async def _writer_access(conn: AsyncConnection, due) -> ProjectAccess | None:
     return access
 
 
-async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
+async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False, any_hour: bool = False):
     """(word, gate) for schedule ``due`` now, in the caller's transaction, under the schedule's row lock it takes: a
-    ``collect.Gate`` when the night shift may queue a run now, else None and the word for the job's summary. Paused or
-    outside its window, the schedule's queued runs are cancelled. With ``figures_first`` (the job curator.collect),
-    the night's figures are counted as soon as the window is open, before a run of the schedule held now ends."""
+    ``collect.Gate`` when the night shift may queue a run now, else None and the word for the job's summary. Paused,
+    the schedule's queued runs are cancelled; outside its window, those of the night alone (``shift_hours``), and with
+    ``any_hour`` (the job hub.fire_schedules) the gate is for the Curator's changes, ``inside`` false. With
+    ``figures_first`` (the job curator.collect), the night's figures are counted as soon as the window is open, before
+    a run of the schedule held now ends."""
     from evo_agents.hub.server.collect import Gate, ensure_figures  # it queues runs through this module
     from evo_agents.hub.server.outcomes import check_circuit  # it pauses through this module
 
@@ -1249,10 +1235,15 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
     inside, night = curator.window_state(due.local_now, window["start"], window["end"])
     if found.paused_at is None and await check_circuit(conn, due, night, found.updated_at):
         return "circuit", None
-    if found.paused_at is not None or not inside:
-        why = "paused" if found.paused_at is not None else "outside its window"
-        cancelled = await _cancel_queued(conn, [due.id], f"the night shift of {due.project} is {why}")
-        return ("cancelled" if cancelled else ("paused" if found.paused_at is not None else "outside")), None
+    if found.paused_at is not None:
+        cancelled = await cancel_queued(conn, [due.id], f"the night shift of {due.project} is paused")
+        return ("cancelled" if cancelled else "paused"), None
+    if not inside:
+        why = f"the night shift of {due.project} is outside its window"
+        if await cancel_queued(conn, [due.id], why, changes_too=False):
+            return "cancelled", None
+        if not any_hour or not await changes_waiting(conn, due.project_id):
+            return "outside", None
     access = None
     if figures_first:
         access = await _writer_access(conn, due)
@@ -1275,7 +1266,7 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
     if worker is None:
         log.info("night shift waits for its worker", extra={"project": due.project, "why": why})
         return "worker", None
-    return "", Gate(night=night, figures=figures, budget=budget, access=access, worker=worker)
+    return "", Gate(night=night, figures=figures, budget=budget, access=access, worker=worker, inside=inside)
 
 
 async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
@@ -1285,12 +1276,12 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     from evo_agents.hub.server.history import queue_history  # it queues runs through this module
     from evo_agents.hub.server.replays import queue_replay  # it queues runs through this module
 
-    word, gate = await gate_of(conn, due)
+    word, gate = await gate_of(conn, due, any_hour=True)
     if gate is None:
         return word
-    if await queue_review(conn, due, gate) is not None:
+    if gate.inside and await queue_review(conn, due, gate) is not None:
         return "review"
-    if await queue_history(conn, due, gate) is not None:
+    if gate.inside and await queue_history(conn, due, gate) is not None:
         return "history"
     if await queue_judge(conn, due, gate) is not None:
         return "judge"
@@ -1298,6 +1289,8 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
         return "replay"
     if await queue_builder(conn, due, gate, curator_app=curator_app) is not None:
         return "builder"
+    if not gate.inside:  # the night's plans wait for the window
+        return "outside"
     night, worker, budget = gate.night, gate.worker, gate.budget
     plan, why = await _next_plan(conn, gate.access, due.body, worker)
     if plan is None:

@@ -137,9 +137,23 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
 # plugin hands an agent type of its own; the replay of a past step (``hub.replay``); the night's reading of sessions and
 # runs (``hub.history``); a cut or a fix of a release cycle (``hub.releases``); a read-only question a core plugin asks
-# an agent type of its own (``hub.question_runs``). A session on a member's own machine, which no worker runs, is
-# LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question")
+# an agent type of its own (``hub.question_runs``); the login session of a browser identity, which a person drives in
+# the identity's Chromium with no agent (``hub.browser_login``). A session on a member's own machine, which no worker
+# runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
+RUN_KINDS = (
+    "step",
+    "plan",
+    "review",
+    "judge",
+    "author",
+    "chat",
+    "task",
+    "replay",
+    "history",
+    "release",
+    "question",
+    "browser",
+)
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
@@ -184,6 +198,10 @@ CLONES_CHECKOUTS = "clones_checkouts"
 AUTONOMY = "autonomy"
 AUTONOMY_RUNTIME = "claude-code"
 AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
+# a daemon that installed Chromium (`evo-agents worker browser install`) and starts it for a run dispatched with
+# browser (evo_agents.worker.browser); its heartbeat's browser says how many at once, and only it gets such a run
+BROWSER = "browser"
+MAX_BROWSERS = 64  # the most browser runs a worker may say it holds at once
 # a daemon that runs `evo-agents worker doctor` when it starts and every 24 hours and sends what it found (POST
 # /v1/worker/doctor; evo_agents.worker.doctor_report): only a worker whose newest report is fresh and has no high
 # finding may be narrowed to units of the org chart (evo_agents.hub.server.worker_doctor)
@@ -206,6 +224,7 @@ WORKER_FEATURES = (
     CLONES_CHECKOUTS,
     AUTONOMY,
     AGENT_HOME,
+    BROWSER,
     DOCTOR_REPORT,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
@@ -290,7 +309,7 @@ LOOP_DECISION_CATEGORY = "loop"
 AUTONOMY_DECISION_CATEGORY = "autonomy"
 # the hub does what the answer chooses
 HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY, AUTONOMY_DECISION_CATEGORY)
-SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES)
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES, "login")
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -339,6 +358,7 @@ NOTICE_KINDS = (
     "plugin_notice",  # what an isolated plugin granted notifications:send sends (``server.plugin_notify``)
     AUTONOMY_DECISION_CATEGORY,
     "worker_doctor",  # the doctor of a worker narrowed to units found something high (``server.worker_doctor``)
+    "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser_logins``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
@@ -388,6 +408,7 @@ WORKER_EVENT_KINDS = ACP_EVENT_KINDS + ("system", "output")  # the hub alone wri
 
 EVENT_CUT_MARK = "\n[cut by the hub: the event was over {limit} bytes]"
 MAX_CUT_PASSES = 64  # strings of one body fit_event_body cuts before it keeps the start of the body's JSON instead
+NUL_STAND_IN = "�"  # what a NUL character of an event body is stored as: Postgres keeps NUL out of jsonb
 
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
@@ -534,6 +555,28 @@ def fit_event_body(body: dict, limit: int = MAX_EVENT_BODY_BYTES) -> tuple[dict,
     if not _cut_strings(fallback, limit):
         fallback = {"cut": EVENT_CUT_MARK.format(limit=limit).strip()}
     return fallback, True
+
+
+def without_nul(body: dict) -> dict:
+    """``body`` when none of its keys and strings holds a NUL character; else a copy with each NUL as NUL_STAND_IN.
+    Postgres refuses a jsonb value with a NUL in it, so one tool's binary output would fail its whole batch, again at
+    each resend. A walk with a stack of its own, as ``_longest_string``."""
+    if "\\u0000" not in json.dumps(body):
+        return body
+    copy = json.loads(json.dumps(body))
+    stack = [copy]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for key in [key for key in node if "\0" in key]:
+                node[key.replace("\0", NUL_STAND_IN)] = node.pop(key)
+        items = list(node.items() if isinstance(node, dict) else enumerate(node))
+        for key, child in items:
+            if isinstance(child, str):
+                node[key] = child.replace("\0", NUL_STAND_IN)
+            elif isinstance(child, (dict, list)):
+                stack.append(child)
+    return copy
 
 
 def step_title(step: dict) -> str | None:

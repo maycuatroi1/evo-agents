@@ -1,4 +1,4 @@
-"""The tables of the core plugin crm (0118), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
+"""The tables of the core plugin crm (0124), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
 attributes (``tables.crm_contacts``, ``tables.crm_touchpoints``, ``tables.crm_stage_history``, ``tables.crm_cursors``,
 ``tables.crm_deletions``): the contacts of a project, people who found it themselves (``docs/crm-plugin.md``).
 
@@ -144,7 +144,7 @@ def deletions_table(metadata: MetaData) -> Table:
 
 
 def invites_sent_table(metadata: MetaData) -> Table:
-    """Each invite link @community made for an invite request (0121): once per request, counted by the weekly cap."""
+    """Each invite link @community made for an invite request (0127): once per request, counted by the weekly cap."""
     return Table(
         "crm_invites_sent",
         metadata,

@@ -463,6 +463,15 @@ def test_a_body_over_64_kib_is_cut_and_marked_truncated(hub):
     assert third["body"]["cut"].startswith('{"0":0,"1":1,') and third["body"]["cut"].endswith(CUT)
 
 
+def test_a_nul_in_a_body_is_stored_as_a_replacement_character_and_the_batch_goes_in(hub):
+    worker, run_id = running(hub)
+    binary = {**event(1), "body": {"text": "ELF\x00\x01\x00rest", "k\x00": ["\x00"]}}  # a tool's binary output
+    assert sent(hub, worker, run_id, binary, event(2)) == {"ack_seq": 2, "stored": 2}
+    first, second = read_events(hub, run_id, after=2)["events"]
+    assert first["body"] == {"text": "ELF�\x01�rest", "k�": ["�"]} and first["truncated"] is False
+    assert second["body"] == event(2)["body"]
+
+
 # Who reads
 
 

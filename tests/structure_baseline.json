@@ -4,9 +4,9 @@
     "evo_agents/hub/judge.py": 1047,
     "evo_agents/hub/memory.py": 1124,
     "evo_agents/hub/server/changes.py": 1559,
-    "evo_agents/hub/server/curator.py": 1330,
+    "evo_agents/hub/server/curator.py": 1323,
     "evo_agents/worker/cli.py": 1087,
-    "evo_agents/worker/interactive.py": 1376
+    "evo_agents/worker/interactive.py": 1329
   },
   "functions": {
     "evo_agents/harness/__init__.py::knowledge_semantics": {"complexity": 16},
@@ -17,8 +17,8 @@
     "evo_agents/hub/judge.py::hack_signs": {"complexity": 29, "statements": 69},
     "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 22, "statements": 51},
     "evo_agents/hub/run_cli.py::_describe": {"complexity": 21, "statements": 58},
-    "evo_agents/hub/run_cli.py::register_runs": {"statements": 63},
-    "evo_agents/hub/server/app.py::create_app": {"statements": 96},
+    "evo_agents/hub/run_cli.py::register_runs": {"statements": 58},
+    "evo_agents/hub/server/app.py::create_app": {"statements": 94},
     "evo_agents/hub/server/blobs.py::commit_uploads": {"statements": 58},
     "evo_agents/hub/server/changes.py::_merge": {"statements": 57},
     "evo_agents/hub/server/kg.py::push_run": {"statements": 59},
@@ -127,7 +127,6 @@
       "evo_agents.kg.serve._error"
     ],
     "evo_agents/hub/server/outcomes.py": [
-      "evo_agents.hub.server.curator._cancel_queued",
       "evo_agents.hub.server.curator._owner_access"
     ],
     "evo_agents/kg/cli_graph.py": [

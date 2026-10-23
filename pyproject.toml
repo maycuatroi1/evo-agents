@@ -70,6 +70,7 @@ git = "evo_agents.kg.connectors.git:run"
 # The core plugins evo-ak ships (evo_agents.core_plugins), which the hub's image therefore has. telegram and chats are
 # evo-agents-core-plugins', which deploy/hub/core-plugins.txt pins into the image.
 [project.entry-points."evo_agents.plugins"]
+browser = "evo_agents.core_plugins.browser:MANIFEST"
 builder = "evo_agents.core_plugins.builder:MANIFEST"
 srs = "evo_agents.core_plugins.srs:MANIFEST"
 tasks = "evo_agents.core_plugins.tasks:MANIFEST"
@@ -100,6 +101,7 @@ evo_agents = [
     "hub/migrations/versions/*.py",
     "hub/migrations/sql/*",
     "core_plugins/*/packs/**/*",  # the agent packs a core plugin ships (evo_agents.plugins.core.image_bundle)
+    "core_plugins/*/packs/**/.mcp.json",  # a dotfile no star matches
 ]
 
 [tool.ruff]

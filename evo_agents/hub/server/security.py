@@ -37,9 +37,10 @@ principal carries a ``RunScope``, and ``evo_agents.hub.server.projects.project_a
 to it.
 
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
-one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the web terminal's two ends, see
-``evo_agents.hub.server.terminal``); any other is closed during its handshake, which the client sees as a 403, so a
-websocket route added later is refused until it checks a credential and is listed there.
+one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the two ends of the web terminal, see
+``evo_agents.hub.server.terminal``, and of the live view of a run's browser, ``evo_agents.hub.server.browser_view``);
+any other is closed during its handshake, which the client sees as a 403, so a websocket route added later is
+refused until it checks a credential and is listed there.
 """
 
 from __future__ import annotations
@@ -109,6 +110,8 @@ PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/", HOOKS_PREFIX)
 SELF_CHECKED_WEBSOCKETS = (
     re.compile(r"/v1/projects/[^/]+/runs/[^/]+/terminal"),  # the browser's end: the session cookie, Origin, CSRF
     re.compile(r"/v1/worker/runs/[^/]+/terminal"),  # the worker's end: its evw_ token and the protocol header
+    re.compile(r"/v1/projects/[^/]+/runs/[^/]+/browser"),  # the live view's viewer: as the terminal's browser end
+    re.compile(r"/v1/worker/runs/[^/]+/browser"),  # the worker's end of the live view: as the terminal's
 )
 WEBSOCKET_REFUSED = 4403  # the close code of a websocket under /v1 that no route checks a credential of
 INGEST_PREFIX = "evi_"  # an ingest key of a project's signals (evo_agents.hub.signals)

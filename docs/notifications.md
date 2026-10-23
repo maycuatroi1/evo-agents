@@ -165,6 +165,16 @@ failures counted from 0), `drop` and `manual` (the work item cancelled, its chai
 answers it, through the Inbox or `hub decision answer`, with one of those options; any other answer is 422. The hub
 does the option; an answer for a work item that moved on since does nothing. No run waits on the answer.
 
+### A decision to log in
+
+The agent of a run with a browser that meets a login page runs `evo-agents worker browser login` (plan agent-browser,
+[workers.md](workers.md#the-browser-pack-and-the-login-decision)), which stores a decision of category `login` on the
+run, with the options `done` and `skip` and the link to the live view of the run's browser in its context. The run
+waits for its owner, holding its slot and its browser; the Inbox and Telegram carry the decision as any other. Done
+saves the browser's profile to the identity and the agent goes on signed in; Skip saves nothing. A second call while one
+is open returns the open decision. A run that cannot wait (a step run) gets no decision: its identity is set
+`needs_login` and the run fails.
+
 ## Notices
 
 A notice needs no answer (`NOTICE_KINDS`):

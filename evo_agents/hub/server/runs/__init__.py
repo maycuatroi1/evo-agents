@@ -28,7 +28,7 @@ spent already (``ClaimedBudget``). A worker whose owner set its dispatch_from to
 session only: a dispatch, plan run or rerun pinned to it with a token gets 403 saying so, and its claims pass over
 the runs dispatched with a token.
 
-A plan the Curator made (``evo_agents.hub.server.changes``) is run by the night shift alone: a dispatch of its steps, a
+A plan the Curator made (``evo_agents.hub.server.changes``) is run by the night shift alone, at any hour: a dispatch of its steps, a
 plan run of it and a rerun of a run of it get 409, as does a rerun of a review run or a judge run, which only the night
 shift queues. A judge run is claimed only by a worker whose daemon says it runs judge runs, with a checkout of its repo,
 and comes with ``judge.build_judge_prompt``; the claim of any run of the Curator says so (``curator``: its role, the

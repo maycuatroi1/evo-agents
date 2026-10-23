@@ -2009,6 +2009,40 @@ of a plugin's environment, each pack's directory is mounted read-only at its own
 handed to a person in a terminal UI, which loads none. Checked against Claude Code 2.1.296, opencode 1.18.34 and
 codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a pack built so.
 
+### The browser pack and the login decision
+
+Every run dispatched with a browser gets one more agent pack, whatever its profile attaches: the pack `browser/browser`
+of the core plugin `browser` (`evo_agents.core_plugins.browser`), which the daemon builds from its own installation, so
+the hub hands out no ticket for it and an old worker simply never sees one. It holds the Playwright MCP server
+`@playwright/mcp@0.0.83` started with `--cdp-endpoint ${EVO_BROWSER_CDP}`, which the run fills in with the DevTools
+endpoint of its Chromium before each agent starts, and instructions on logins. A profile that attaches the pack too gets
+it once. Claude Code, Codex and opencode load it; a runtime that loads no MCP server fails the run before its agent
+starts, with cause `runtime`, saying to dispatch it without browser.
+
+Inside such a run:
+
+- `evo-agents worker browser login --identity NAME --url URL --reason TEXT` asks the run's owner to sign in. For a
+  plan, author or chat run it stores a decision of category `login` with the options `done` and `skip` (the context has
+  the reason, the page and the link to the live view), notes it in `runs/<run>/browser-logins.jsonl` and
+  `decisions.jsonl`, and the agent ends its turn. The run goes to `waiting` and keeps its slot and its browser; the
+  Inbox and Telegram tell the owner as for any decision. On Done the daemon saves the profile to the identity at once
+  (`BrowserSession.checkpoint`), restarts Chromium on the same profile and DevTools port, and hands the agent the
+  answer; on Skip nothing is saved. A checkpoint also removes cookies outside the identity's domains from the live
+  profile, as every save does. A parked run closes its browser and saves a profile only if the owner answered Done.
+- A step run cannot wait. The same call sets the identity `needs_login` and the hub fails the run with the reason, so
+  the identity is logged in on the Browser page and the step dispatched again.
+- `evo-agents worker browser state --out FILE` writes the cookies of the run's Chromium as a Playwright storageState
+  into `runs/<run>/` (a relative path is relative to it), mode 0600. A path in a worktree or outside the run's
+  directory is refused, as the file holds secrets.
+
+### Browser identities on the worker
+
+`evo-agents worker browser login NAME --project P` signs a browser identity in on the worker's own machine, with no run:
+the daemon's Chromium opens with a window (`chromium.start(headed=True)`; a Linux machine needs `DISPLAY` or
+`WAYLAND_DISPLAY`), and the profile goes back with `PUT /v1/worker/browser-identities/{id}/profile` once the window
+closes, after a window-less pass has deleted the cookies outside the identity's domains. See
+[docs/browser.md](browser.md).
+
 ### A run on the machine
 
 1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see

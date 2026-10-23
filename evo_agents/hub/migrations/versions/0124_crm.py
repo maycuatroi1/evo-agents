@@ -1,7 +1,7 @@
 """The contacts of the core plugin crm: crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors and crm_deletions.
 
-Revision ID: 0118
-Revises: 0117
+Revision ID: 0124
+Revises: 0123
 Create Date: 2026-10-23
 
 The names below are copies of ``evo_agents.hub.tables_crm`` as of this revision, never imports, so a later change to
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0118"
-down_revision = "0117"
+revision = "0124"
+down_revision = "0123"
 branch_labels = None
 depends_on = None
 

@@ -396,7 +396,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e '.[test,hub-server]'
+      - run: uv pip install --system -e '.[test,hub-server,worker]'
         working-directory: .
       # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt): the stack's hub serves
       # Telegram's routes, which e2e/telegram.spec.ts drives.

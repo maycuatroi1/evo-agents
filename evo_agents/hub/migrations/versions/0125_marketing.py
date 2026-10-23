@@ -1,8 +1,8 @@
 """The channel accounts and the posting gate of the core plugin marketing: marketing_channels, marketing_posts,
 marketing_budget, marketing_denylist, marketing_state and marketing_metrics.
 
-Revision ID: 0119
-Revises: 0118
+Revision ID: 0125
+Revises: 0124
 Create Date: 2026-10-23
 
 The names below are copies of ``evo_agents.hub.tables_marketing`` as of this revision, never imports, so a later
@@ -23,8 +23,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0119"
-down_revision = "0118"
+revision = "0125"
+down_revision = "0124"
 branch_labels = None
 depends_on = None
 
