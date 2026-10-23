@@ -6,10 +6,11 @@ import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, TIME_OF_DAY, TIME_ZONE, WORKER
 /**
  * The charter as a form and back (curator.CharterBody): every number as typed, every list one entry a line, checked
  * with the hub's own limits so a form the web takes the hub takes too. The form writes the whole body, so what it
- * shows is what it keeps: the night's replay of the Curator's changes and its history run included.
+ * shows is what it keeps: the night's replay of the Curator's changes, its history run and its weekly probes included.
  */
 
 export type RoleForm = { runtime: Runtime; model: string };
+export type ProbeModel = { runtime: Runtime; model?: string | null };
 
 /** The charter as the form edits it: every number as typed, every list one entry a line. */
 export type CharterForm = {
@@ -41,6 +42,12 @@ export type CharterForm = {
   historyBudget: string;
   /** `history.model`: empty, the cheapest the worker on duty reports. */
   historyModel: string;
+  /** `probes.k`: the sessions of each arm of a probe, on each model. */
+  probeK: string;
+  /** `probes.budget_usd`: what the probe runs of a week may cost; empty, none is run. */
+  probeBudget: string;
+  /** `probes.models` as the charter names them, kept as they are; empty, the builder's, whichever it is when written. */
+  probeModels: ProbeModel[];
   reviewer: RoleForm;
   builder: RoleForm;
   judge: RoleForm;
@@ -49,7 +56,7 @@ export type CharterForm = {
 };
 
 export type CharterField =
-  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge">
+  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "probeModels">
   | "goals"
   | `${"reviewer" | "builder" | "judge"}Model`;
 
@@ -74,8 +81,9 @@ export type CharterProblem =
 
 export type CharterErrors = Partial<Record<CharterField, CharterProblem>>;
 
-/** `replay.DEFAULT_TASKS`. */
+/** `replay.DEFAULT_TASKS` and `probes.DEFAULT_K`. */
 const REPLAY_TASKS = 3;
+const PROBE_K = 3;
 
 function lines(text: string): string[] {
   return text
@@ -85,6 +93,17 @@ function lines(text: string): string[] {
 }
 
 const money = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
+
+/**
+ * The models a charter's probes run on, as the form keeps them: none when they are the charter's builder alone, which
+ * is what the hub fills in for none, so that a new builder takes the probes along with it.
+ */
+function probeModels(charter: Charter): ProbeModel[] {
+  const models = charter.probes?.models ?? [];
+  const builder = { runtime: charter.builder?.runtime ?? "claude-code", model: charter.builder?.model ?? null };
+  const only = models.length === 1 && models[0]?.runtime === builder.runtime && (models[0]?.model ?? null) === builder.model;
+  return only ? [] : models.map((item) => ({ runtime: item.runtime, model: item.model ?? null }));
+}
 
 function roleForm(role: { runtime: Runtime; model?: string | null } | undefined): RoleForm {
   return { runtime: role?.runtime ?? "claude-code", model: role?.model ?? "" };
@@ -121,6 +140,9 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
       replayBudget: "",
       historyBudget: "",
       historyModel: "",
+      probeK: String(PROBE_K),
+      probeBudget: "",
+      probeModels: [],
       reviewer: roleForm(undefined),
       builder: roleForm(undefined),
       judge: roleForm(undefined),
@@ -152,6 +174,9 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
     replayBudget: money(charter.replay?.budget_usd),
     historyBudget: money(charter.history?.budget_usd),
     historyModel: charter.history?.model ?? "",
+    probeK: String(charter.probes?.k ?? PROBE_K),
+    probeBudget: money(charter.probes?.budget_usd),
+    probeModels: probeModels(charter),
     reviewer: roleForm(charter.reviewer),
     builder: roleForm(charter.builder),
     judge: roleForm(charter.judge),
@@ -166,13 +191,16 @@ function wholeNumber(text: string, range: { min: number; max: number }): number 
   return value;
 }
 
-/** Dollars as typed: empty is null when the field is optional; `zero` takes 0 too (the history run's "none"). */
-function dollars(text: string, optional: boolean, zero = false): number | null | CharterProblem {
+/**
+ * Dollars as typed: empty is null when the field is optional; `zero` takes 0 too (the history run's "none"); `max` is
+ * a night's most, or a week's for the probes.
+ */
+function dollars(text: string, optional: boolean, zero = false, max: number = LIMITS.budgetUsd): number | null | CharterProblem {
   const trimmed = text.trim();
   if (trimmed === "") return optional ? null : { code: "required" };
   const value = Number(trimmed);
   const low = zero ? value < 0 : value <= 0;
-  if (!Number.isFinite(value) || low || value > LIMITS.budgetUsd) return { code: zero ? "moneyOrZero" : "money", max: LIMITS.budgetUsd };
+  if (!Number.isFinite(value) || low || value > max) return { code: zero ? "moneyOrZero" : "money", max };
   return value;
 }
 
@@ -256,6 +284,9 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
   const reviewLenses = note<number>("reviewLenses", wholeNumber(form.reviewLenses, LIMITS.lenses));
   const reviewDays = note<number>("reviewDays", wholeNumber(form.reviewDays, LIMITS.reviewDays));
   const replayTasks = note<number>("replayTasks", wholeNumber(form.replayTasks, LIMITS.replayTasks));
+  const probeK = note<number>("probeK", wholeNumber(form.probeK, LIMITS.probeK));
+  // A week's probes are not a night's spending, so their budget is not held against the night's.
+  const probeBudget = note<number | null>("probeBudget", dollars(form.probeBudget, true, false, LIMITS.probeBudgetUsd));
   const nightPlans = note<string[]>("nightPlans", listOf(form.nightPlans, LIMITS.nightPlans, 100, (line) => PLAN_ID.test(line), "planId"));
   const protectedPaths = note<string[]>(
     "protectedPaths",
@@ -291,6 +322,7 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       review: { lenses: reviewLenses as number, days: reviewDays as number, budget_usd: caps.reviewBudget },
       replay: { tasks: replayTasks as number, budget_usd: caps.replayBudget },
       history: { budget_usd: caps.historyBudget, model: historyModel },
+      probes: { k: probeK as number, models: form.probeModels, budget_usd: probeBudget },
       reviewer,
       builder,
       judge: { ...judge, hidden_checks: hiddenChecks },
@@ -324,6 +356,8 @@ export const CHARTER_FIELDS: readonly CharterField[] = [
   "replayBudget",
   "historyBudget",
   "historyModel",
+  "probeK",
+  "probeBudget",
   "reviewerModel",
   "builderModel",
   "judgeModel",

@@ -5870,7 +5870,8 @@
       "plugin_notice": "A notice from a plugin",
       "browser_needs_login": "A browser identity needs a new login",
       "autonomy": "What the hub did under your autonomy",
-      "worker_doctor": "A shared worker's doctor found something high"
+      "worker_doctor": "A shared worker's doctor found something high",
+      "curator_probe_report": "Weekly probe report of the Curator"
     },
     "item": {
       "unread": "Unread",
@@ -6637,7 +6638,7 @@
         "scope": "What it may do",
         "review": "Review",
         "roles": "Roles",
-        "nightRuns": "Replays and history"
+        "nightRuns": "Replays, history and probes"
       },
       "groupHints": {
         "goals": "The product's goals, highest first.",
@@ -6646,7 +6647,7 @@
         "scope": "The plans it runs, how many decisions a day it may ask, what it may merge and what it never touches.",
         "review": "The nightly review run: how many lenses it looks through and how far back it counts.",
         "roles": "The runtime and model of the Reviewer, the Builder and the Judge.",
-        "nightRuns": "The night's runs besides the review: the replays that measure a change of a skill, an AGENTS.md or a CLAUDE.md on the project's own history, and the history run that reads sessions with a cheap model."
+        "nightRuns": "The night's runs besides the review: the replays that measure a change of a skill, an AGENTS.md or a CLAUDE.md on the project's own history, the history run that reads sessions with a cheap model, and the weekly probes that check a merged correction still holds."
       },
       "roles": {
         "reviewer": "Reviewer",
@@ -6684,7 +6685,10 @@
         "replayTasks": "Replay tasks a change",
         "replayBudget": "Replay budget a night, USD",
         "historyBudget": "History run budget, USD",
-        "historyModel": "History run model"
+        "historyModel": "History run model",
+        "probeK": "Probe sessions an arm",
+        "probeBudget": "Probe budget a week, USD",
+        "probeModels": "Probe models"
       },
       "hints": {
         "windowEnd": "Before the start, the window runs past midnight.",
@@ -6708,7 +6712,9 @@
         "replayTasks": "Holdout tasks each change is replayed on, from {min} to {max}. Its replays need 6 before they can win.",
         "replayBudget": "Empty: no replay runs.",
         "historyBudget": "Empty: the smaller of 1 USD and a quarter of the night's budget. 0: no history run.",
-        "historyModel": "Empty: the cheapest model the worker on duty reports for the Reviewer's runtime."
+        "historyModel": "Empty: the cheapest model the worker on duty reports for the Reviewer's runtime.",
+        "probeK": "Sessions of each arm of a probe, on each model, from {min} to {max}.",
+        "probeBudget": "Empty: no probe runs. Up to {max} for an ISO week, apart from the night budget."
       },
       "placeholders": {
         "model": "the runtime's default",
@@ -6744,7 +6750,9 @@
       "replayBudgetNone": "None: no replay runs",
       "historyBudgetDefault": "The smaller of 1 USD and a quarter of the night's budget",
       "historyBudgetOff": "None: no history run",
-      "historyModelDefault": "the cheapest model the worker reports"
+      "historyModelDefault": "the cheapest model the worker reports",
+      "probeBudgetNone": "None: no probe runs",
+      "probeModelsBuilder": "The Builder's runtime and model"
     },
     "metaHistory": "History of {project}",
     "metaGraph": "Graph health of {project}",
@@ -7184,6 +7192,81 @@
       "written": "Accepting it wrote <link>shared memory #{id}, revision {revision}</link>.",
       "notWritten": "Nothing is written until the proposal is accepted.",
       "merged": "The memory after the merge"
+    },
+    "probes": {
+      "title": "Probes",
+      "sub": "{k, plural, one {# session} other {# sessions}} an arm on each model, up to {budget} a week",
+      "off": "The charter gives probes no weekly budget, so none run.",
+      "unreadable": "The probe report could not be read.",
+      "retry": "Try again",
+      "weeks": "Weeks of the probe report",
+      "thisWeek": "This week",
+      "weekOf": "Week of {day}",
+      "flagCount": "{count, plural, one {# result flagged} other {# results flagged}}",
+      "results": "{count, plural, =0 {No results} one {# result} other {# results}}",
+      "statusCount": "{count} {status}",
+      "spent": "{cost} spent",
+      "spentOf": "{cost} of {budget} spent",
+      "noResults": "No probe was due this week: no merged change has an active probe yet.",
+      "explain": "Each probe gives an agent its task {k, plural, one {once} other {# times}} with the change's rule in place and as often with the rule taken off. A failed session repeated the mistake.",
+      "caption": "The week's probes, with the change's rule and without it",
+      "head": {
+        "probe": "Probe",
+        "model": "Model",
+        "on": "With the rule",
+        "off": "Without the rule",
+        "status": "Status"
+      },
+      "probeName": "Probe #{id}",
+      "ids": "probe #{probe}, change #{change}",
+      "runtimeModel": "Runtime's choice",
+      "failed": "{failed} of {runs} failed",
+      "notRun": "Not run",
+      "recurrence": "recurs {share}",
+      "previous": "Last week: {status}",
+      "word": {
+        "holds": "held",
+        "recurring": "recurring",
+        "not_reproduced": "not reproduced",
+        "stale": "stale",
+        "unmeasured": "not measured"
+      },
+      "openRun": "Open probe run #{id}",
+      "status": {
+        "recurring": "Recurring",
+        "not_reproduced": "Not reproduced",
+        "stale": "Stale",
+        "unmeasured": "Not measured"
+      },
+      "fixes": "Fix proposals of probes that recurred",
+      "fixOf": "for change #{change}",
+      "unprobed": "Merged changes without a probe",
+      "more": "and {count} more"
+    },
+    "probe": {
+      "title": "Probe",
+      "sub": "Probe #{id} of change #{change}",
+      "subNoChange": "Probe #{id}; it measures the change accepting this proposal makes",
+      "repo": "Repo",
+      "commit": "Base commit",
+      "tip": "Tip of the default branch when it was written",
+      "source": "Written by",
+      "sources": {
+        "proposal": "This proposal",
+        "review": "A review run",
+        "admin": "An admin"
+      },
+      "replaces": "Written in place of probe #{id}, which did not bring the mistake back two weeks in a row.",
+      "task": "Task",
+      "verify": "Verify",
+      "verifyHidden": "Only the project's admins read the verify: it is the answer key, and no agent sees it.",
+      "weeks": "Weeks",
+      "noWeeks": "No week has measured this probe yet.",
+      "waitsForChange": "The weeks measure it once accepting this proposal made a change and the change merged.",
+      "fixes": "Fix proposals",
+      "unreadable": "The probe's weeks could not be read.",
+      "retry": "Try again",
+      "fixOf": "This proposal fixes the rule of <link>change #{change}</link>, whose probe recurred two weeks in a row."
     }
   },
   "releases": {
