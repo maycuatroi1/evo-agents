@@ -46,6 +46,7 @@ const CHARTER: Charter = {
   review: { lenses: 3, days: 7, budget_usd: null },
   replay: { tasks: 6, budget_usd: 0.8 },
   history: { budget_usd: 0, model: "claude-haiku-4-5" },
+  probes: { k: 2, models: [{ runtime: "codex", model: "gpt-5.5" }, { runtime: "claude-code", model: "claude-opus-5-5" }], budget_usd: 12 },
   reviewer: { runtime: "claude-code", model: null },
   builder: { runtime: "claude-code", model: "claude-opus-5-5" },
   judge: { runtime: "codex", model: null, hidden_checks: ["python -m pytest -q tests/hidden"] },
@@ -270,6 +271,27 @@ describe("the charter as a form", () => {
     expect(charterBody({ ...form, historyBudget: "2.5" }).errors).toEqual({ historyBudget: { code: "overNight" } });
     expect(charterBody({ ...form, historyBudget: "" }).body?.history).toEqual({ budget_usd: null, model: "claude-haiku-4-5" });
     expect(charterBody({ ...form, historyModel: "two\nlines" }).errors).toEqual({ historyModel: { code: "model", max: 200 } });
+  });
+
+  it("keeps the probes of the charter, and lets a builder that takes the probes along change", () => {
+    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    expect(form).toMatchObject({ probeK: "2", probeBudget: "12" });
+    expect(charterBody(form).body?.probes).toEqual(CHARTER.probes);
+    // The hub filled in the builder for no models: written back as none, so a new builder takes the probes with it.
+    const onBuilder = charterForm({ ...CHARTER, probes: { k: 3, models: [{ runtime: "claude-code", model: "claude-opus-5-5" }], budget_usd: 4 } }, { worker: "", timezone: "" });
+    expect(charterBody({ ...onBuilder, builder: { runtime: "codex", model: "" } }).body?.probes).toEqual({ k: 3, models: [], budget_usd: 4 });
+    expect(charterBody(charterForm({ ...CHARTER, probes: undefined }, { worker: "", timezone: "" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
+    expect(charterBody(charterForm(null, { worker: "mini", timezone: "UTC" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
+  });
+
+  it("refuses the probes' settings the hub refuses, and does not hold a week's budget against a night's", () => {
+    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    expect(charterBody({ ...form, probeK: "0" }).errors).toEqual({ probeK: { code: "whole", min: 1, max: 10 } });
+    expect(charterBody({ ...form, probeK: "11" }).errors).toEqual({ probeK: { code: "whole", min: 1, max: 10 } });
+    expect(charterBody({ ...form, probeBudget: "0" }).errors).toEqual({ probeBudget: { code: "money", max: 7000 } });
+    expect(charterBody({ ...form, probeBudget: "7000.01" }).errors).toEqual({ probeBudget: { code: "money", max: 7000 } });
+    expect(charterBody({ ...form, probeBudget: "1500" }).body?.probes?.budget_usd).toBe(1500);
+    expect(charterBody({ ...form, probeBudget: "" }).body?.probes?.budget_usd).toBeNull();
   });
 
   it("reads which revision the page shows and whether it edits", () => {

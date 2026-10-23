@@ -36,7 +36,7 @@ kg_more continues any cut result of the same user and session project whose audi
 (``kg_audience``), with or without a graph. chat_message and chat_thread read the messages of group chats whole, as
 ``chat_read`` rules who may, from the chats and grants as they are at each call. The others call the
 hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
-review run reads (the night's figures, session digests, the events of a run, decisions, replays, and the project's
+review run reads (the night's figures, session digests, the events of a run, decisions, replays, the probes' weekly report, and the project's
 whole history, ``history_mcp``) in this process, so they read and write under the same rules: the read rule of
 ``evo_agents.hub.access`` through the session's sink, the write rule, revisions, conflicts and audit rows. Their
 arguments are checked against their schema first, and their text goes through the envelope of ``kg serve``: over
@@ -106,6 +106,7 @@ from evo_agents.hub.server import (
     memories,
     plans,
     plugin_tools,
+    probe_report,
     projects,
     proposals,
     replays,
@@ -162,11 +163,12 @@ RUN_ONLY = (
     f"a worker token opens {MOUNT} only for the agent of a run its worker holds, named in {RUN_HEADER}: "
     "`evo-agents hub mcp` sends it inside a run"
 )
-KIND_ONLY = {  # what a judge run, a replay run and a history run may call is mcp_tools.RUN_TOOLS
+KIND_ONLY = {  # what a judge, replay, history or probe run may call is mcp_tools.RUN_TOOLS
     "judge": "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is "
     "not for a judge run",
     "replay": "a replay run does a past step from its base commit alone; {tool} is not for a replay run",
     "history": "a history run reads the batch in its prompt alone; {tool} is not for a history run",
+    "probe": "a probe run does its task from its base commit alone; {tool} is not for a probe run",
 }
 
 
@@ -398,6 +400,7 @@ class HubMcp(MCPServer):
             "run_events": self._run_events,
             "decision_list": self._decision_list,
             "curator_replay": partial(self._delegated, replays.mcp_answer),
+            "curator_probe_report": partial(self._delegated, probe_report.mcp_answer),
             **{name: partial(self._delegated, partial(history_mcp.answer, name)) for name in history_mcp.NAMES},
         }
 

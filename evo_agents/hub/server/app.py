@@ -320,6 +320,9 @@ def create_app(config: HubConfig) -> FastAPI:
         ledger,
         org,
         playbook,
+        probe_report,
+        probe_routes,
+        probe_runs,
         proposal_plans,
         protection,
         replays,
@@ -346,6 +349,10 @@ def create_app(config: HubConfig) -> FastAPI:
         earlier.router,
         playbook.router,
         playbook.worker_router,
+        probe_routes.router,  # the Curator's probes (plan correction-recurrence)
+        probe_routes.worker_router,
+        probe_runs.worker_router,  # the probe runs' sessions (plan correction-recurrence)
+        probe_report.router,  # and their weekly report
         org.router,  # the org chart (plan org-chart)
         autonomy_routes.router,  # the autonomy levels (plan autonomy-levels)
         autonomy_stops.router,  # and their stop S4

@@ -859,6 +859,8 @@ findings = Table(
     Column("evidence", JSONB, nullable=False),
     Column("label", JSONB, nullable=False),
     _stamp("created_at"),
+    Column("fix_of", BigInteger),  # the change a review run was asked to fix and wrote this finding for instead (0133)
+    ForeignKeyConstraint(["fix_of"], ["curator_changes.id"], ondelete="SET NULL", name="findings_fix_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="findings_project_id_fkey"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="findings_run_id_fkey"),
     PrimaryKeyConstraint("id", name="findings_pkey"),
@@ -896,6 +898,10 @@ proposals = Table(
     _stamp("created_at"),
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
     Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0103)
+    Column("fix_of", BigInteger),  # the merged change whose probe recurred two weeks in a row, that it fixes (0133)
+    ForeignKeyConstraint(  # curator_changes names its proposal: a cycle, as plan_revisions_run_id_fkey
+        ["fix_of"], ["curator_changes.id"], ondelete="SET NULL", name="proposals_fix_of_fkey", use_alter=True
+    ),
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
     ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
     ForeignKeyConstraint(["revert_of"], ["proposals.id"], ondelete="SET NULL", name="proposals_revert_of_fkey"),
@@ -913,6 +919,12 @@ Index(
     postgresql_where=proposals.c.state == "rejected",
 )
 Index("proposals_deferred_idx", proposals.c.deferred_until, postgresql_where=proposals.c.state == "deferred")
+Index(  # one open fix proposal per change (0133)
+    "proposals_fix_open_key",
+    proposals.c.fix_of,
+    unique=True,
+    postgresql_where=proposals.c.fix_of.is_not(None) & proposals.c.state.in_(("open", "deferred")),
+)
 Index(
     "proposals_inbox_idx",
     proposals.c.project_id,
@@ -961,6 +973,8 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
+curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
+curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097

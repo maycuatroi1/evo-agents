@@ -325,3 +325,105 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
         Index("curator_playbook_deltas_entry_idx", "entry_id", "id"),
     )
     return entries, deltas
+
+
+def probe_tables(metadata: MetaData) -> Table:
+    """curator_probes (0130), added to ``metadata``: a probe of a proposal, then of its change."""
+    return Table(
+        "curator_probes",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("proposal_id", BigInteger),
+        Column("change_id", BigInteger),
+        Column("repo", Text, nullable=False),
+        Column("base_sha", Text),  # None: the tip of the repo's default branch when the probe was made
+        Column("task", Text, nullable=False),
+        Column("verify", Text, nullable=False),
+        Column("state", Text, nullable=False, server_default="active"),
+        Column("source", Text, nullable=False),
+        Column("label", JSONB, nullable=False),
+        Column("created_by", BigInteger),
+        Column("created_run_id", BigInteger),
+        Column("updated_by", BigInteger),
+        _when("retired_at"),
+        Column("retired_note", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        Column("replaces", BigInteger),  # the probe, not reproduced two weeks in a row, this one replaced (0133)
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_probes_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["replaces"], ["curator_probes.id"], ondelete="SET NULL", name="curator_probes_replaces_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_probes_proposal_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_probes_change_id_fkey"
+        ),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name="curator_probes_created_by_fkey"),
+        ForeignKeyConstraint(
+            ["created_run_id"], ["runs.id"], ondelete="SET NULL", name="curator_probes_created_run_id_fkey"
+        ),
+        ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name="curator_probes_updated_by_fkey"),
+        PrimaryKeyConstraint("id", name="curator_probes_pkey"),
+        Index("curator_probes_project_idx", "project_id", "id"),
+        Index("curator_probes_change_idx", "change_id"),
+        Index("curator_probes_proposal_idx", "proposal_id"),
+    )
+
+
+def probe_run_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -> Table:
+    """curator_probe_runs (0131), added to ``metadata``: one probe measured on one runtime and model in an ISO week (its
+    Monday); and the index that keeps one probe run of a project active at a time, as runs_active_replay_key does."""
+    Index(
+        "runs_active_probe_key",
+        runs.c.project_id,
+        unique=True,
+        postgresql_where=(runs.c.kind == "probe") & runs.c.state.in_(active),
+    )
+    return Table(
+        "curator_probe_runs",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("probe_id", BigInteger, nullable=False),
+        Column("change_id", BigInteger, nullable=False),
+        Column("week", Date, nullable=False),  # the Monday of the ISO week, in the charter's time zone
+        Column("runtime", Text, nullable=False),
+        Column("model", Text),  # None: the runtime's own choice
+        Column("k", SmallInteger, nullable=False),  # the sessions of each arm, as the charter said when it was queued
+        Column("run_id", BigInteger),
+        Column("state", Text, nullable=False, server_default="queued"),
+        Column("attempts", SmallInteger, nullable=False, server_default="0"),
+        Column("probe_key", Text),  # SHA-256 of the key the claim of its run handed the daemon
+        Column("base_sha", Text),  # the commit of the task's repo the sessions started from
+        Column("harness_sha", Text),  # the tip of the default branch of the change's repo arm on ran with
+        Column("sessions", JSONB, nullable=False, server_default="[]"),  # each session's result, as reported
+        Column("reason", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_probe_runs_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["probe_id"], ["curator_probes.id"], ondelete="CASCADE", name="curator_probe_runs_probe_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_probe_runs_change_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="curator_probe_runs_run_id_fkey"),
+        PrimaryKeyConstraint("id", name="curator_probe_runs_pkey"),
+        UniqueConstraint(
+            "probe_id",
+            "week",
+            "runtime",
+            "model",
+            name="curator_probe_runs_week_key",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("curator_probe_runs_week_idx", "project_id", "week", "id"),
+        Index("curator_probe_runs_run_idx", "run_id"),
+    )

@@ -92,7 +92,7 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "review":  # on no plan, queued by a schedule (0014)
         row |= {"kind": "review", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "dispatched_via": "schedule", "schedule_night": now.date()}
-    elif kind in ("judge", "replay"):  # the Judge (0017) or a replay (0056) of a change of the Curator's plan
+    elif kind in ("judge", "replay", "probe"):  # the Judge (0017), a replay (0056) or a probe (0131) of a change
         row |= {"kind": kind, "step_key": None, "repo": None, "branch": None, "repos": REPOS}
         row |= {"dispatched_via": "schedule", "schedule_night": now.date()}
     elif kind == "history":  # the night's reading of the history with a model, on no plan and no repo (0059)
@@ -333,6 +333,8 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, kind="replay", schedule_id=schedule)
     for state in ("queued", *runs.TERMINAL_STATES):  # and one history run (0059)
         add_run(conn, ids, state, kind="history", schedule_id=schedule)
+    for state in ("queued", *runs.TERMINAL_STATES):  # and one probe run (0131)
+        add_run(conn, ids, state, kind="probe", schedule_id=schedule)
     for state in runs.RUN_STATES:  # author runs, as many as their owners dispatch (0020)
         add_run(conn, ids, state, kind="author")
     chat_id = new_id(conn, tables.chats, title="Release talk", created_by=ids["user"])

@@ -148,6 +148,15 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
           <Fact label={t("fields.historyModel")}>
             {charter.history?.model ? <span className="font-mono text-xs">{charter.history.model}</span> : t("historyModelDefault")}
           </Fact>
+          <Fact label={t("fields.probeK")} testId="charter-probe-k-value">
+            {charter.probes?.k ?? 3}
+          </Fact>
+          <Fact label={t("fields.probeBudget")} testId="charter-probe-budget-value">
+            {charter.probes?.budget_usd ? money(charter.probes.budget_usd) : t("probeBudgetNone")}
+          </Fact>
+          <Fact label={t("fields.probeModels")} testId="charter-probe-models-value">
+            <List items={(charter.probes?.models ?? []).map(role)} empty={t("probeModelsBuilder")} />
+          </Fact>
         </Facts>
       </HomeCard>
       <HomeCard title={t("groups.roles")} testId="charter-view-roles">

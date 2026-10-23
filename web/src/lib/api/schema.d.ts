@@ -4156,6 +4156,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Probes
+         * @description The project's probes the caller may read, newest first.
+         */
+        get: operations["list_probes_v1_projects__project__curator_probes_get"];
+        put?: never;
+        /**
+         * Add Probe
+         * @description Add a probe to a change or a proposal of the project; its admins alone may.
+         */
+        post: operations["add_probe_v1_projects__project__curator_probes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/probes/{probe_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Probe */
+        get: operations["show_probe_v1_projects__project__curator_probes__probe_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Probe
+         * @description Change the repo, commit, task or verify of an active probe; the project's admins alone may.
+         */
+        patch: operations["edit_probe_v1_projects__project__curator_probes__probe_id__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/probes/{probe_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Probe
+         * @description Retire a probe: no probe run takes it from then on; the project's admins alone may.
+         */
+        post: operations["retire_probe_v1_projects__project__curator_probes__probe_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Probe
+         * @description A probe from the agent of the review run this worker holds, for a merged change that has none.
+         */
+        post: operations["record_probe_v1_worker_runs__run_id__probes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Probe
+         * @description One session's result of the probe run this worker holds, or why the probe is stale; with the run's key.
+         */
+        post: operations["report_probe_v1_worker_runs__run_id__probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/probe-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Probe Report
+         * @description The weekly report of the project's probes.
+         */
+        get: operations["probe_report_v1_projects__project__curator_probe_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/org": {
         parameters: {
             query?: never;
@@ -12635,6 +12760,7 @@ export interface components {
             review?: components["schemas"]["ReviewSettings"];
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
+            probes?: components["schemas"]["ProbeSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -12765,6 +12891,7 @@ export interface components {
             review?: components["schemas"]["ReviewSettings"];
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
+            probes?: components["schemas"]["ProbeSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -13944,15 +14071,16 @@ export interface components {
          * @description What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
          *     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
          *     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
-         *     head, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own
-         *     key (``evo_agents.hub.server.history``).
+         *     head, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own
+         *     key (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key
+         *     (``evo_agents.hub.server.probe_runs``).
          */
         CuratorSpec: {
             /**
              * Role
              * @enum {string}
              */
-            role: "reviewer" | "builder" | "judge" | "replay" | "history";
+            role: "reviewer" | "builder" | "judge" | "replay" | "history" | "probe";
             /**
              * Protected Paths
              * @description globs of the charter, repo:glob for one repo
@@ -14001,6 +14129,13 @@ export interface components {
              * @description a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); the daemon keeps it as a judge run's
              */
             history_key?: string | null;
+            /** @description a probe run's probe and change; null for any other run */
+            probe?: components["schemas"]["ProbeSpec"] | null;
+            /**
+             * Probe Key
+             * @description a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's
+             */
+            probe_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -14904,6 +15039,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Fix Of
+             * @description the change it says why this run proposed no fix of
+             */
+            fix_of?: number | null;
         };
         /** FindingIn */
         FindingIn: {
@@ -14927,6 +15067,11 @@ export interface components {
             body?: string | null;
             /** Evidence */
             evidence: components["schemas"]["EvidenceIn"][];
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
         };
         /** FindingList */
         FindingList: {
@@ -18690,7 +18835,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -19383,7 +19528,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -21142,6 +21287,592 @@ export interface components {
              */
             cost_month_usd: number;
         };
+        /** Probe */
+        Probe: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Proposal Id
+             * @description the proposal it came with, if any
+             */
+            proposal_id: number | null;
+            /**
+             * Change Id
+             * @description the change it probes; null until accepting its proposal made one
+             */
+            change_id: number | null;
+            /** Repo */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; null: the tip of the default branch when it was made
+             */
+            commit: string | null;
+            /** Task */
+            task: string;
+            /**
+             * Verify
+             * @description the answer key: the project's admins alone read it, null for the others
+             */
+            verify: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "retired";
+            /**
+             * Source
+             * @description who wrote it: its proposal, a review run or an admin
+             * @enum {string}
+             */
+            source: "proposal" | "review" | "admin";
+            /** Created By */
+            created_by: string | null;
+            /** Created Run Id */
+            created_run_id: number | null;
+            /** Retired At */
+            retired_at: string | null;
+            /** Retired Note */
+            retired_note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Replaces
+             * @description the probe, not reproduced two weeks in a row, this one replaced
+             */
+            replaces?: number | null;
+        };
+        /**
+         * ProbeAdd
+         * @description A probe an admin adds: to a change, or to a proposal (whose change, once accepting it made one, takes it).
+         */
+        ProbeAdd: {
+            /**
+             * Repo
+             * @description the repo of the project the task runs in
+             */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; none: the tip of the repo's default branch when the probe is made
+             */
+            commit?: string | null;
+            /**
+             * Task
+             * @description the task text the agent of a probe run is given, 16 KiB
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command
+             */
+            verify: string;
+            /** Change Id */
+            change_id?: number | null;
+            /** Proposal Id */
+            proposal_id?: number | null;
+        };
+        /** ProbeArmCount */
+        ProbeArmCount: {
+            /**
+             * Runs
+             * @description the arm's sessions
+             */
+            runs: number;
+            /**
+             * Failed
+             * @description those whose verify did not pass
+             */
+            failed: number;
+            /**
+             * Recurrence
+             * @description 1 - pass^k of the arm; null without a session
+             */
+            recurrence: number | null;
+        };
+        /**
+         * ProbeEdit
+         * @description What an admin changes of a probe: any of its repo, commit, task and verify, at least one.
+         */
+        ProbeEdit: {
+            /** Repo */
+            repo?: string | null;
+            /** Commit */
+            commit?: string | null;
+            /** Task */
+            task?: string | null;
+            /** Verify */
+            verify?: string | null;
+        };
+        /**
+         * ProbeFix
+         * @description A proposal that fixes the rule of a change whose probe recurs (criterion a5).
+         */
+        ProbeFix: {
+            /** Proposal Id */
+            proposal_id: number;
+            /** Change Id */
+            change_id: number;
+            /** Title */
+            title: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * ProbeIn
+         * @description A probe: the task an agent is given, from a base commit of a repo, and the verify that says it did not repeat
+         *     the mistake.
+         */
+        ProbeIn: {
+            /**
+             * Repo
+             * @description the repo of the project the task runs in
+             */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; none: the tip of the repo's default branch when the probe is made
+             */
+            commit?: string | null;
+            /**
+             * Task
+             * @description the task text the agent of a probe run is given, 16 KiB
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command
+             */
+            verify: string;
+        };
+        /** ProbeList */
+        ProbeList: {
+            /**
+             * Probes
+             * @description newest first
+             */
+            probes: components["schemas"]["Probe"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ProbeModel
+         * @description A runtime and model the arms of a probe run on.
+         */
+        ProbeModel: {
+            /**
+             * Runtime
+             * @default claude-code
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description as the runtime names it; null: the runtime's own choice
+             */
+            model?: string | null;
+        };
+        /**
+         * ProbeReplacement
+         * @description A probe a review run wrote in place of one not reproduced two weeks in a row (criterion a5).
+         */
+        ProbeReplacement: {
+            /** Probe Id */
+            probe_id: number;
+            /**
+             * Replaces
+             * @description the probe it replaced, now retired
+             */
+            replaces: number;
+            /** Change Id */
+            change_id: number | null;
+            /** State */
+            state: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ProbeReport
+         * @description A session's result with the commits the arms run from; or why the change's diff no longer comes off the tip of
+         *     the default branch (``stale``).
+         */
+        ProbeReport: {
+            /**
+             * Base Sha
+             * @description the task's base commit the sessions start at
+             */
+            base_sha?: string | null;
+            /**
+             * Harness Sha
+             * @description the tip of the default branch of the change's repo arm on runs with
+             */
+            harness_sha?: string | null;
+            session?: components["schemas"]["ProbeSession"] | null;
+            /**
+             * Stale
+             * @description why arm off cannot be made: the probe is stale for the week
+             */
+            stale?: string | null;
+        };
+        /** ProbeRetire */
+        ProbeRetire: {
+            /**
+             * Note
+             * @description why it is retired
+             */
+            note?: string | null;
+        };
+        /** ProbeRun */
+        ProbeRun: {
+            /** Id */
+            id: number;
+            /** Probe Id */
+            probe_id: number;
+            /** Change Id */
+            change_id: number;
+            /**
+             * Week
+             * Format: date
+             * @description the Monday of the ISO week, in the charter's time zone
+             */
+            week: string;
+            /** Runtime */
+            runtime: string;
+            /** Model */
+            model: string | null;
+            /**
+             * K
+             * @description the sessions of each arm
+             */
+            k: number;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "stale" | "failed" | "unmeasured";
+            /** Attempts */
+            attempts: number;
+            /** Base Sha */
+            base_sha: string | null;
+            /** Harness Sha */
+            harness_sha: string | null;
+            /**
+             * Sessions
+             * @description ProbeSession, in the order they were reported
+             */
+            sessions: {
+                [key: string]: unknown;
+            }[];
+            /** Reason */
+            reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProbeSession
+         * @description One session of a probe run: its arm, which of the arm's k it is, whether the probe's verify passed on its work,
+         *     and what the agent took, on the runtime and the model it actually ran.
+         */
+        ProbeSession: {
+            /**
+             * Arm
+             * @description on: the change's rule in place; off: the change's diff taken off
+             * @enum {string}
+             */
+            arm: "on" | "off";
+            /**
+             * Index
+             * @description which of the arm's k sessions, from 1
+             */
+            index: number;
+            /**
+             * Passed
+             * @description the probe's verify exited 0 on the session's work
+             */
+            passed: boolean;
+            /**
+             * Exit Code
+             * @description the verify's; null when it did not run
+             */
+            exit_code?: number | null;
+            /**
+             * Cost Usd
+             * @description the agent's session; null when its runtime names none
+             */
+            cost_usd?: number | null;
+            /** Turns */
+            turns?: number | null;
+            /**
+             * Duration Ms
+             * @description the agent's time
+             */
+            duration_ms: number;
+            /**
+             * Runtime
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description the model the session ran on, as its runtime said it
+             */
+            model?: string | null;
+            /**
+             * Agent Error
+             * @description why its turn ended short
+             */
+            agent_error?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+        };
+        /**
+         * ProbeSettings
+         * @description How the probes of the Curator's changes run (``evo_agents.hub.probes``): how many arms of each probe, on which
+         *     models, and the most they cost in an ISO week of the charter's time zone.
+         */
+        ProbeSettings: {
+            /**
+             * K
+             * @description arms of each probe, on each model
+             * @default 3
+             */
+            k: number;
+            /**
+             * Models
+             * @description the runtimes and models the arms run on, each once; empty: the charter's builder
+             */
+            models?: components["schemas"]["ProbeModel"][];
+            /**
+             * Budget Usd
+             * @description the most the probe runs of an ISO week in the charter's time zone cost; null: no probes run
+             */
+            budget_usd?: number | null;
+        };
+        /**
+         * ProbeSpec
+         * @description What the worker of a probe run is told (``evo_agents.hub.server.probe_runs``): the probe, the change whose rule
+         *     its arms put on and take off, and the sessions of each arm.
+         */
+        ProbeSpec: {
+            /** Probe Run Id */
+            probe_run_id: number;
+            /** Probe Id */
+            probe_id: number;
+            /**
+             * Repo
+             * @description the repo of the probe's task
+             */
+            repo: string;
+            /**
+             * Base Sha
+             * @description the task's base commit; null: the default branch's tip at made_at
+             */
+            base_sha: string | null;
+            /**
+             * Made At
+             * Format: date-time
+             * @description when the probe was made
+             */
+            made_at: string;
+            /**
+             * Task
+             * @description the only text the agent of a session is given
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line the worker runs on each session's work; never shown the agent
+             */
+            verify: string;
+            /**
+             * K
+             * @description the sessions of each arm
+             */
+            k: number;
+            /**
+             * Week
+             * Format: date
+             * @description the Monday of the ISO week the run measures
+             */
+            week: string;
+            /**
+             * Change Repo
+             * @description the repo of the change, which holds its rule
+             */
+            change_repo: string;
+            /**
+             * Merge Sha
+             * @description the change's merge commit; null: its head against the default branch
+             */
+            merge_sha: string | null;
+        };
+        /**
+         * ProbeUnprobed
+         * @description A merged change born of a correction that has no active probe.
+         */
+        ProbeUnprobed: {
+            /** Change Id */
+            change_id: number;
+            /** Proposal Id */
+            proposal_id: number;
+            /** Title */
+            title: string;
+            /** Merged At */
+            merged_at: string | null;
+            /** Reason */
+            reason: string;
+        };
+        /** ProbeWeek */
+        ProbeWeek: {
+            /**
+             * Week
+             * Format: date
+             * @description the Monday of the ISO week, in the charter's time zone
+             */
+            week: string;
+            /**
+             * Complete
+             * @description false for the week in progress
+             */
+            complete: boolean;
+            /**
+             * Cost Usd
+             * @description what the week's probe runs cost
+             */
+            cost_usd: number;
+            /**
+             * Budget Usd
+             * @description the charter's probes.budget_usd; null: the project runs no probe
+             */
+            budget_usd: number | null;
+            /** Probes */
+            probes: components["schemas"]["ProbeWeekResult"][];
+            totals: components["schemas"]["ProbeWeekTotals"];
+        };
+        /**
+         * ProbeWeekResult
+         * @description One probe on one runtime and model in a week.
+         */
+        ProbeWeekResult: {
+            /** Change Id */
+            change_id: number;
+            /** Probe Id */
+            probe_id: number;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Model
+             * @description null: the runtime's own choice
+             */
+            model: string | null;
+            /**
+             * K
+             * @description the sessions of each arm; null when the week queued none
+             */
+            k: number | null;
+            /** @description the change's rule in place */
+            on: components["schemas"]["ProbeArmCount"];
+            /** @description the change's diff taken off */
+            off: components["schemas"]["ProbeArmCount"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "holds" | "recurring" | "not_reproduced" | "stale" | "unmeasured";
+            /**
+             * Previous
+             * @description the status of the week before; null when it had none
+             */
+            previous: ("holds" | "recurring" | "not_reproduced" | "stale" | "unmeasured") | null;
+            /**
+             * Reason
+             * @description why it is stale or unmeasured
+             */
+            reason: string | null;
+            /**
+             * Run Id
+             * @description the probe run that measured it last
+             */
+            run_id: number | null;
+        };
+        /** ProbeWeekTotals */
+        ProbeWeekTotals: {
+            /**
+             * Probes
+             * @description the results of the week
+             */
+            probes: number;
+            /** Holds */
+            holds: number;
+            /** Recurring */
+            recurring: number;
+            /** Not Reproduced */
+            not_reproduced: number;
+            /** Stale */
+            stale: number;
+            /** Unmeasured */
+            unmeasured: number;
+            on: components["schemas"]["ProbeArmCount"];
+            off: components["schemas"]["ProbeArmCount"];
+        };
+        /** ProbeWeekly */
+        ProbeWeekly: {
+            /** Project */
+            project: string;
+            /**
+             * K
+             * @description the charter's probes.k
+             */
+            k: number;
+            /**
+             * Budget Usd
+             * @description the charter's probes.budget_usd per ISO week; null: no probes
+             */
+            budget_usd: number | null;
+            /**
+             * Weeks
+             * @description the newest first
+             */
+            weeks: components["schemas"]["ProbeWeek"][];
+            /**
+             * Unprobed
+             * @description merged changes born of a correction without an active probe
+             */
+            unprobed: components["schemas"]["ProbeUnprobed"][];
+            /**
+             * Fixes
+             * @description the fix proposals of recurring probes, with their state
+             */
+            fixes: components["schemas"]["ProbeFix"][];
+            /**
+             * Replacements
+             * @description the probes written in place of probes not reproduced two weeks in a row
+             */
+            replacements?: components["schemas"]["ProbeReplacement"][];
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -21737,6 +22468,11 @@ export interface components {
              * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
              */
             revert_of?: number | null;
+            /**
+             * Fix Of
+             * @description the merged change whose rule it fixes: its probe recurred two weekly reports in a row
+             */
+            fix_of?: number | null;
             /** Summary */
             summary: string | null;
             /** Paths */
@@ -21781,6 +22517,8 @@ export interface components {
             note: string | null;
             /** @description what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it waits; null before, for tier 3, and when the caller may not read its plan */
             change?: components["schemas"]["Change"] | null;
+            /** @description its active probe, if any; its verify is null unless the caller is an admin of the project */
+            probe?: components["schemas"]["Probe"] | null;
         };
         /** ProposalAnswer */
         ProposalAnswer: {
@@ -21860,6 +22598,13 @@ export interface components {
             } | null;
             /** @description kind memory: in place of a plan */
             promotion?: components["schemas"]["PromotionIn"] | null;
+            /** @description a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place */
+            probe?: components["schemas"]["ProbeIn"] | null;
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix; at least tier 1, and the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
         };
         /** ProposalList */
         ProposalList: {
@@ -21935,6 +22680,11 @@ export interface components {
              * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
              */
             revert_of?: number | null;
+            /**
+             * Fix Of
+             * @description the merged change whose rule it fixes: its probe recurred two weekly reports in a row
+             */
+            fix_of?: number | null;
         };
         /** Protection */
         Protection: {
@@ -23170,6 +23920,39 @@ export interface components {
             items: components["schemas"]["Found"][];
         };
         /**
+         * ReviewProbe
+         * @description A probe the agent of a review run adds to a merged change that has none.
+         */
+        ReviewProbe: {
+            /**
+             * Repo
+             * @description the repo of the project the task runs in
+             */
+            repo: string;
+            /**
+             * Commit
+             * @description the base commit; none: the tip of the repo's default branch when the probe is made
+             */
+            commit?: string | null;
+            /**
+             * Task
+             * @description the task text the agent of a probe run is given, 16 KiB
+             */
+            task: string;
+            /**
+             * Verify
+             * @description one shell line, at most 2000 characters, that exits 0 when the agent does not repeat the mistake; its first program is a real command
+             */
+            verify: string;
+            /** Change Id */
+            change_id: number;
+            /**
+             * Replaces
+             * @description the change's active probe, not reproduced two weekly reports in a row, that this one replaces; the hub retires it
+             */
+            replaces?: number | null;
+        };
+        /**
          * ReviewRunSummary
          * @description The last review run of a project: the run, the night it reviewed, and what it wrote.
          */
@@ -23355,7 +24138,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
             /** Project */
             project: string;
             /**
@@ -24675,7 +25458,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser";
             /** Project */
             project: string;
             /**
@@ -36113,7 +36896,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "browser" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -45229,6 +46012,560 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_probes_v1_projects__project__curator_probes_get: {
+        parameters: {
+            query?: {
+                /** @description the probes of this change */
+                change?: number | null;
+                /** @description the probes of this proposal */
+                proposal?: number | null;
+                /** @description active or retired; both by default */
+                state?: ("active" | "retired") | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_probe_v1_projects__project__curator_probes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_probe_v1_projects__project__curator_probes__probe_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                probe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_probe_v1_projects__project__curator_probes__probe_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                probe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    retire_probe_v1_projects__project__curator_probes__probe_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                probe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeRetire"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    record_probe_v1_worker_runs__run_id__probes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewProbe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_probe_v1_worker_runs__run_id__probe_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the probe run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Probe-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeRun"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_report_v1_projects__project__curator_probe_report_get: {
+        parameters: {
+            query?: {
+                /** @description the newest weeks, the one in progress first */
+                weeks?: number;
+                /** @description a day of the newest week to show; default today, in the charter's time zone */
+                week?: string | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeWeekly"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

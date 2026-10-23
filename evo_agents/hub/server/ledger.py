@@ -166,17 +166,14 @@ async def _evidence_texts(conn: AsyncConnection, proposal) -> list[str]:
     return [review.evidence_text(item) for item in items]
 
 
-async def trigger_for(conn: AsyncConnection, proposal) -> dict:
-    """The figures that set off ``proposal`` (a row with ``run_id``, ``lens``, ``evidence`` and ``finding_ids``):
-    ``ledger.trigger_of`` over the night's figures of the review run that wrote it."""
+async def _run_figures(conn: AsyncConnection, run_id: int):
+    """The row (``figures``, ``night``) of the night's figures review run ``run_id`` was queued on, or None."""
     cf, r = tables.curator_figures, tables.runs
     row = (
-        await conn.execute(
-            select(cf.c.figures, cf.c.night).where(cf.c.run_id == proposal.run_id).order_by(cf.c.id).limit(1)
-        )
+        await conn.execute(select(cf.c.figures, cf.c.night).where(cf.c.run_id == run_id).order_by(cf.c.id).limit(1))
     ).one_or_none()
     if row is None:  # a run whose figures were counted, then queued again: the night's figures all the same
-        run = (await conn.execute(select(r.c.project_id, r.c.schedule_night).where(r.c.id == proposal.run_id))).one()
+        run = (await conn.execute(select(r.c.project_id, r.c.schedule_night).where(r.c.id == run_id))).one()
         row = (
             await conn.execute(
                 select(cf.c.figures, cf.c.night).where(
@@ -184,9 +181,25 @@ async def trigger_for(conn: AsyncConnection, proposal) -> dict:
                 )
             )
         ).one_or_none()
+    return row
+
+
+async def trigger_for(conn: AsyncConnection, proposal) -> dict:
+    """The figures that set off ``proposal`` (a row with ``run_id``, ``lens``, ``evidence`` and ``finding_ids``):
+    ``ledger.trigger_of`` over the night's figures of the review run that wrote it."""
+    row = await _run_figures(conn, proposal.run_id)
     figures = row.figures if row is not None else None
     texts = await _evidence_texts(conn, proposal)
     return ledger.trigger_of(figures, proposal.lens, texts, night=row.night.isoformat() if row is not None else None)
+
+
+async def cites_corrections(conn: AsyncConnection, proposal) -> bool:
+    """Whether the evidence of ``proposal`` (a row with ``run_id``, ``evidence`` and ``finding_ids``, its findings'
+    included) points at an entry of ``corrections`` in the night's figures of the review run that wrote it."""
+    row = await _run_figures(conn, proposal.run_id)
+    if row is None or not isinstance(row.figures, dict):
+        return False
+    return "corrections" in ledger.evidence_metrics(row.figures, await _evidence_texts(conn, proposal))
 
 
 async def proposal_recorded(conn: AsyncConnection, project_id: int, proposal_id: int) -> None:

@@ -31,6 +31,7 @@ from aiohttp import WSMsgType, web
 from evo_agents.hub import runs
 from evo_agents.hub.history import HISTORY_KEY_HEADER
 from evo_agents.hub.judge import JUDGE_KEY_HEADER
+from evo_agents.hub.probes import PROBE_KEY_HEADER
 from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
 TOKEN = "evw_" + "f" * 43
@@ -88,6 +89,8 @@ class FakeHub:
         self.judge_refused: list[tuple[str, int]] = []  # (route, run id) of each ask without the run's key
         self.replays: list[dict] = []  # what the replay runs posted, with the run's id
         self.replay_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon
+        self.probes: list[dict] = []  # what the probe runs posted, with the run's id
+        self.probe_keys: dict[int, str] = {}
         # A history run's items, each {item, kind, source, fingerprint, lines, anchors, cut, excerpt}, handed out in
         # order until reported; the groups that have no name and those named, which ``clusters`` hands; what its
         # reports said (each with the run's id), and each ask of .../history/next (its body).
@@ -197,6 +200,7 @@ class FakeHub:
                 get("/v1/worker/runs/{id}/merge-judge", self._judge),
                 post("/v1/worker/runs/{id}/merge-verdict", self._verdict),
                 post("/v1/worker/runs/{id}/replay", self._replay),
+                post("/v1/worker/runs/{id}/probe", self._probe),
                 post("/v1/worker/runs/{id}/history/next", self._history_next),
                 post("/v1/worker/runs/{id}/history/report", self._history_report),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
@@ -429,6 +433,41 @@ class FakeHub:
             **extra,
         )
         self.replay_keys[run_id] = key
+        return run_id
+
+    def queue_probe_run(
+        self, repos: list[dict], curator: dict, *, runtime: str = "claude-code", model: str | None = "opus", **extra
+    ) -> int:
+        """A probe run of the probe and the change ``curator`` names, over ``repos``, as the night shift queues it; its
+        claim hands the daemon the run's own key, which POST .../probe takes."""
+        key = secrets.token_urlsafe(16)
+        run_id = self.queue_run(
+            kind="probe",
+            project=self.project,
+            plan_id="curator-1-change",
+            step_key=None,
+            title="Probe #5 of the Curator's change #1",
+            plan_revision=1,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime=runtime,
+            model=model,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=repos,
+            lease_expires_at=_now(),
+            prompt="This probe run probes the change.",
+            plan=None,
+            curator={"role": "probe", **curator, "probe_key": key},
+            **extra,
+        )
+        self.probe_keys[run_id] = key
         return run_id
 
     def queue_history_run(self, budget: dict | None = None, model: str = "haiku", **extra) -> int:
@@ -1332,6 +1371,17 @@ class FakeHub:
             raise _refusal(403, f"run {run_id} is a replay run: its route takes the run's own key")
         body = await request.json()
         self.replays.append({"run_id": run_id, **body})
+        return web.json_response({"id": 1, "state": "running"})
+
+    async def _probe(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "probe":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a probe run")
+        if request.headers.get(PROBE_KEY_HEADER) != self.probe_keys.get(run_id):
+            self.judge_refused.append(("probe", run_id))
+            raise _refusal(403, f"run {run_id} is a probe run: its route takes the run's own key")
+        body = await request.json()
+        self.probes.append({"run_id": run_id, **body})
         return web.json_response({"id": 1, "state": "running"})
 
     def _held_history(self, request: web.Request, route: str) -> int:

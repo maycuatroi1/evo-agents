@@ -30,6 +30,9 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"tool_result": {"id": ID, "content": [block, ...]}}``: the result of tool call ID, as Claude Code's adapter maps
   one (``claude_code.tool_result``): its images taken out as files of the event.
 - ``{"sh": "command"}``: run a shell command there.
+- ``{"bash": "command"}``: run a shell command there as Claude Code's Bash tool does, its tool_call (kind execute,
+  ``rawInput.command``) sent first.
+- ``{"model": "name"}``: send Claude Code's system init event, which names the model the session runs on.
 - ``{"spawn": [argv]}``: start a process in a session of its own, as a runtime is started, and name it as the leader
   of the agent's process group (``group_pid``); the adapter kills its group once the turn is over, so only a daemon
   that dies first leaves it running.
@@ -37,7 +40,7 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 A plan run (no step key) follows ``"plan:<plan id>"``, a review run ``"review"``, a judge run ``"judge"``, an
 author run ``"author"``, a chat run ``"chat"``, a task run ``"task"``, a release run ``"release"``, a replay run
 ``"replay"`` (its second arm
-``"replay/2"``) and a history run ``"history"`` (its second session ``"history/2"``). The
+``"replay/2"``), a probe run ``"probe"`` (its n-th session ``"probe/<n>"``) and a history run ``"history"`` (its second session ``"history/2"``). The
 n-th start of the same run in this process follows ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after
 its owner answered);
 otherwise a run that goes on with a session (after a handback, or a plan run resumed after it was parked) follows
@@ -295,7 +298,18 @@ class FakeAdapter(Adapter):
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
         run = context.run
-        if run.get("kind") in ("review", "judge", "author", "chat", "task", "replay", "history", "release", "question"):
+        if run.get("kind") in (
+            "review",
+            "judge",
+            "author",
+            "chat",
+            "task",
+            "replay",
+            "history",
+            "release",
+            "question",
+            "probe",
+        ):
             key = run["kind"]
         else:
             key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"
@@ -475,6 +489,14 @@ class FakeAdapter(Adapter):
                     await self._command([sys.executable, "-m", "evo_agents", "worker", *action["cli"]], action["cli"])
                 elif "sh" in action:
                     await self._command(["/bin/sh", "-c", action["sh"]], action["sh"])
+                elif "bash" in action:
+                    call = {"toolCallId": f"bash-{uuid.uuid4().hex[:8]}", "title": "Bash", "kind": "execute"}
+                    call |= {"status": "pending", "rawInput": {"command": action["bash"]}}
+                    await self._queue.put(AgentEvent("tool_call", call))
+                    await self._command(["/bin/sh", "-c", action["bash"]], action["bash"])
+                elif "model" in action:
+                    init = {"type": "system", "subtype": "init", "model": action["model"], "session_id": self._session}
+                    await self._queue.put(AgentEvent("output", {"raw": init}))
                 elif "spawn" in action:
                     self._group = subprocess.Popen(
                         action["spawn"],
