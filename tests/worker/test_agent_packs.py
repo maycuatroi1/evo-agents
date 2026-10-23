@@ -513,6 +513,7 @@ def test_a_pack_run_whose_pack_does_not_build_fails_before_its_agent_starts(mach
 
 
 def test_a_pack_run_on_a_runtime_that_loads_no_pack_fails_before_its_agent_starts(machine, tmp_path, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(fake_adapter.FakeAdapter, "pack_kinds", ())
     found = _pack_daemon(machine, tmp_path, monkeypatch, accepted=[PLUGIN])
     hub, run_id = found["hub"], found["run"]
     run = hub.runs[run_id]
