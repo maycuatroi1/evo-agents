@@ -22,6 +22,7 @@ class HttpRequest:
     headers: dict[str, str] = field(default_factory=dict, repr=False)  # holds the credential: never printed
     json: dict | None = None
     form: dict[str, str] | None = None
+    params: dict[str, str] | None = field(default=None, repr=False)  # a query that may hold a credential
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,12 @@ class HttpTransport:
 
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             answer = await client.request(
-                request.method, request.url, headers=request.headers, json=request.json, data=request.form
+                request.method,
+                request.url,
+                headers=request.headers,
+                json=request.json,
+                data=request.form,
+                params=request.params,
             )
         try:
             body = answer.json()

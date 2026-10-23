@@ -292,7 +292,7 @@ class FacebookPage(_Base):
     """A post on a Page (target is the page id). Posting only: no feed and no insight is read."""
 
     channel = "facebook_page"
-    API = "https://graph.facebook.com/v19.0"
+    API = "https://graph.facebook.com/v22.0"
 
     async def publish(self, content: Content, token: str) -> Published:
         if not content.target:
@@ -304,14 +304,22 @@ class FacebookPage(_Base):
         return Published(f"https://www.facebook.com/{found}", found)
 
     async def health(self, target: str | None, token: str) -> str:
-        """The page read with the credential, whose tasks must let it create content. Reads no feed and no insight."""
+        """The page the credential speaks for (``/me`` of a Page token is the page) and the credential's own debug
+        record, which must be a valid Page token of the target holding ``pages_manage_posts``. Posts nothing."""
         if not target:
             raise AdapterError("missing", "facebook_page: the account has no target page id")
-        url = f"{self.API}/{target}?fields=name,tasks"
-        body = await self.read(HttpRequest("GET", url, _bearer(token)))
-        if "CREATE_CONTENT" not in (body.get("tasks") or []):
+        me = await self.read(HttpRequest("GET", f"{self.API}/me?fields=id,name", _bearer(token)))
+        if str(me.get("id")) != target:
+            raise AdapterError("rejected", f"facebook_page: the credential is not a Page token of page {target}")
+        query = {"input_token": token}
+        debug = (await self.read(HttpRequest("GET", f"{self.API}/debug_token", _bearer(token), params=query))).get(
+            "data"
+        ) or {}
+        if not debug.get("is_valid") or debug.get("type") != "PAGE" or str(debug.get("profile_id") or target) != target:
+            raise AdapterError("rejected", f"facebook_page: the credential is not a valid Page token of page {target}")
+        if "pages_manage_posts" not in (debug.get("scopes") or []):
             raise AdapterError("rejected", f"facebook_page: the credential reads page {target} but may not post on it")
-        return f"may post on {body.get('name') or target}"
+        return f"may post on {me.get('name') or target}"
 
 
 class TikTok(_Base):
