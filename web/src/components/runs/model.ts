@@ -302,7 +302,7 @@ export function activePlanRun<R extends Pick<Run, "kind" | "plan_id" | "state">>
 /** The ids of the Curator's plans start with this (`CURATOR_PLAN_PREFIX` of the hub's judge). */
 export const CURATOR_PLAN_PREFIX = "curator-";
 
-/** Whether `planId` is one of the Curator's plans, which only the night shift runs: the hub refuses a dispatch (409). */
+/** Whether `planId` is one of the Curator's plans, which the night shift runs itself at any hour: the hub refuses a dispatch (409). */
 export function isCuratorPlan(planId: string): boolean {
   return planId.startsWith(CURATOR_PLAN_PREFIX);
 }
