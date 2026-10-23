@@ -205,7 +205,9 @@ curl -X PUT "$HUB/v1/projects/northwind/agent-types/canvas/strategist" -H "Autho
 ```
 
 The type declares `chat_runs: run_as`, so its chat runs go to a worker of `run_as`, whoever mentioned it. `daily_usd`
-caps what its task runs (brainstorms and judging runs together) cost in 24 hours.
+caps what its task runs (brainstorms and judging runs together) cost in 24 hours. A handle is unique on the hub, so
+the profile is @strategist in the first project that enables the type and @strategist-<project> in the next, unless
+the admin names another in `handle` (`docs/plugins.md`, Agent types).
 
 **Its tools** are on the hub's /mcp, listed in a session whose project enabled the plugin:
 

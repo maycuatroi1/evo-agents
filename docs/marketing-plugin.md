@@ -44,6 +44,28 @@ A credential is an `x-secret` field of the plugin's config (`github_token`, `x_t
 one request header. It never goes into a lease, an environment, a prompt, a log or an answer of a route. The hub needs
 `EVO_HUB_SECRETS_KEY` to store one.
 
+X takes either credential:
+
+- `x_token`: an OAuth 2.0 user access token, sent as a bearer. An app-only bearer token acts as no user: `/2/users/me`
+  refuses it and the check fails.
+- The account's four OAuth 1.0a user-context keys from the app's "Keys and tokens" page: `x_consumer_key` (API key),
+  `x_consumer_secret` (API key secret), `x_access_token` and `x_access_token_secret`. They sign each request with
+  HMAC-SHA1 as docs.x.com ("Creating a signature") describes. When all four are set they win over `x_token`; fewer than
+  four count as no credential. The access token's permission must be "Read and write" for a post; "Read" is enough for
+  the health check.
+
+One field for each call, its value read from stdin so it is in no shell history:
+
+```
+evo-agents hub plugin config marketing --project P --secret x_consumer_key < key-file
+evo-agents hub plugin config marketing --project P --secret x_consumer_secret < secret-file
+evo-agents hub plugin config marketing --project P --secret x_access_token < token-file
+evo-agents hub plugin config marketing --project P --secret x_access_token_secret < token-secret-file
+evo-agents hub marketing check --project P --channel-id ID
+```
+
+Signing keys give a personal X account no autonomy: it stays `draft_only` (`registry.may_be_autonomous`).
+
 Limitation: one credential for each channel type, shared by the accounts of that type in the project.
 
 ## The gate
@@ -154,17 +176,18 @@ An admin checks whether an account could post now with `evo-agents hub marketing
 | Channel | What it reads | ok when |
 |---|---|---|
 | github | the target repo (`owner/name`, or the repo of `owner/name#repoId:categoryId`) | the credential has push on it |
-| x | `GET /2/users/me` | it names the user |
+| x | `GET /2/users/me`, with a bearer or signed with the OAuth 1.0a keys | it names the user |
 | reddit | `GET /api/v1/me` | it names the user |
 | linkedin | `GET /v2/userinfo`, with an author urn as the target | it names the member |
-| facebook_page | `GET /{page_id}?fields=name,tasks` | the page reads and its tasks hold `CREATE_CONTENT` |
+| facebook_page | `GET /me?fields=id,name` and `GET /debug_token` on the credential itself (Graph v22.0) | `/me` is the target page, and the token is a valid `PAGE` token of that page holding `pages_manage_posts` |
 | tiktok | the creator info query of the Content Posting API | it names the creator |
 | a browser account | its login session | the session is `ok` |
 | hackernews, facebook_group | nothing | always `n/a`: no code posts on them |
 
 The channel keeps `health` (`unknown` until the first check, then `ok`, `failing` or `n/a`), `health_reason` (what the
 check read, or why it failed: "no credential" when the plugin's config has none) and `health_checked_at`. The credential
-goes into the request header only; it is in no reason, answer or audit row (`marketing.channel.check`). Which fields
+goes into the request header only (and, for facebook_page, the `input_token` query of `debug_token`, which no log or
+repr prints); it is in no reason, answer or audit row (`marketing.channel.check`). Which fields
 each platform answers is [Unverified] against its current API documentation. A channel's answer also has
 `account_kind`, the same value as `kind`.
 
