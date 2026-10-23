@@ -5245,6 +5245,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/marketing/{project}/channels/{channel_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Channel
+         * @description Check the health of an account: one read of the platform with its credential, or of its login session, that
+         *     posts nothing; the result stays on the channel. An admin does; the credential is in no answer and no audit.
+         */
+        post: operations["check_channel_v1_x_marketing__project__channels__channel_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/marketing/{project}/kill": {
         parameters: {
             query?: never;
@@ -17419,6 +17440,24 @@ export interface components {
              * @default none
              */
             session_state: string;
+            /**
+             * Account Kind
+             * @description project or personal: the same as kind
+             */
+            account_kind: string;
+            /**
+             * Health
+             * @description unknown, ok, failing or n/a: the last health check, a read of the platform that posts nothing
+             * @default unknown
+             */
+            health: string;
+            /**
+             * Health Reason
+             * @description what the check read, or why it failed
+             */
+            health_reason: string | null;
+            /** Health Checked At */
+            health_checked_at: string | null;
         };
         /** MarketingChannelIn */
         MarketingChannelIn: {
@@ -49128,6 +49167,74 @@ export interface operations {
                 "application/json": components["schemas"]["MarketingSessionIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingChannel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_channel_v1_x_marketing__project__channels__channel_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                channel_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

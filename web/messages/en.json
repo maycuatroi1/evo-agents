@@ -8929,8 +8929,13 @@
       "stale": "Expired",
       "sessionOk": "Valid",
       "sessionNone": "None yet",
+      "health": "Health",
+      "healthOk": "OK",
+      "healthFailing": "Failing",
+      "healthNa": "Not applicable",
+      "healthUnknown": "Not checked yet",
       "emptyTitle": "No channel account yet",
-      "emptyText": "An admin adds a project account and each member their own with evo-agents hub marketing channel add."
+      "emptyText": "An admin adds a project account and each member their own with evo-agents hub marketing add."
     },
     "posts": {
       "sub": "The posts of the project by what the gate did with them. Copy a draft to share it by hand.",
