@@ -73,7 +73,6 @@ from sqlalchemy import exc as sa_exc
 from starlette.requests import Request
 
 from evo_agents import __version__
-from evo_agents.hub import problems as problem_model
 from evo_agents.hub import runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
@@ -130,6 +129,8 @@ from evo_agents.hub.server.mcp_text import (
     memory_line,
     memory_where,
     one_line,
+    problem_line,
+    problem_lines,
 )
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (
@@ -722,13 +723,9 @@ class HubMcp(MCPServer):
         status = arguments.get("status")
         async with self.hub.state.engine.begin() as conn:
             found = await problems.listed(conn, access, status)
-        lines = [
-            f"{p.code} ({problem_model.status_text(p.model_dump())}, rank {p.rank}, owner {p.owner}, "
-            f"{problem_model.metric_text(p.metric.model_dump() if p.metric else None)}): {one_line(p.statement, EXCERPT)}"
-            for p in found
-        ]
-        text = "\n".join(lines) or f"project {project} has no problem{' ' + status if status else ''} on the hub"
         listed = [p.model_dump(mode="json") for p in found]
+        lines = [problem_line(problem) for problem in listed]
+        text = "\n".join(lines) or f"project {project} has no problem{' ' + status if status else ''} on the hub"
         return text, {"project": project, "problems": listed, "summary": f"{len(found)} problems"}
 
     async def _problem_show(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
@@ -737,17 +734,7 @@ class HubMcp(MCPServer):
         async with self.hub.state.engine.begin() as conn:
             shown = await problems.shown(conn, access, arguments["code"], arguments.get("revision"))
         data = shown.model_dump(mode="json")
-        lines = [
-            f"# Problem {shown.code} of project {project}, revision {shown.revision}",
-            f"statement: {shown.statement}",
-            f"who: {shown.who}",
-            f"when: {shown.when}",
-            f"workaround: {shown.workaround}",
-            f"metric: {problem_model.metric_text(data['metric'])}",
-            f"rank: {shown.rank}; owner: {shown.owner}; status: {problem_model.status_text(data)}",
-        ]
-        goals = [f"- {goal.code} ({goal.status}): {one_line(goal.statement, EXCERPT)}" for goal in shown.goals]
-        lines += ["goals that answer it:", *goals] if goals else ["no goal answers it yet"]
+        lines = problem_lines(project, data)
         return "\n".join(lines), {"project": project, "problem": data, "summary": f"problem {shown.code}"}
 
     async def _ask_member(self, caller: Caller, arguments: dict) -> tuple[str, dict]:

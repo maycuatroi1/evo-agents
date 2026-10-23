@@ -369,8 +369,9 @@ def test_problems_from_the_command_line(hub_db, tmp_path, github, monkeypatch, c
             "  status: open",
         ]
         assert shown[9].endswith("UTC: a month") and shown[10] == "Goals: none answers it yet"
-        assert shown[11:13] == ["Revisions:", "REVISION  WRITTEN (UTC)     BY     CHANGED"]
-        assert shown[13].startswith("2 ") and shown[13].endswith("alice  metric")
+        assert shown[11:13] == ["Claims: none links it yet", "Plans: none names it yet"]
+        assert shown[13:15] == ["Revisions:", "REVISION  WRITTEN (UTC)     BY     CHANGED"]
+        assert shown[15].startswith("2 ") and shown[15].endswith("alice  metric")
         listed = ok(problem("reader", "list")).out.splitlines()
         assert listed[0].split() == ["CODE", "STATUS", "RANK", "OWNER", "METRIC", "STATEMENT"]
         assert listed[1].startswith("P-1 ") and "run.failed_rate mean over 30 days" in listed[1]

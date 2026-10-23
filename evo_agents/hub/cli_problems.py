@@ -2,7 +2,8 @@
 and PUT /v1/projects/{p}/problems and the routes below it.
 
 ``list`` prints the project's problems by rank, those of one ``--status`` alone when given. ``show CODE`` prints a
-problem (P-<number>) at its newest revision or at ``--revision``, with the goals that answer it and its revisions.
+problem (P-<number>) at its newest revision or at ``--revision``, with the goals that answer it, the claims of the
+canvases that link it, the plans that name it, and its revisions.
 ``set`` writes a problem's next revision: without CODE it makes a new problem under the project's next code, which
 needs ``--statement``, ``--who``, ``--when`` and ``--workaround``; with CODE it changes the options given and keeps the
 rest, at the revision the problem is at when it is read unless ``--if-revision`` says another. A metric is ``--metric
@@ -129,6 +130,17 @@ def _show(problem: dict, revisions: list[dict]) -> None:
     print("Goals:" if answering else "Goals: none answers it yet")
     for goal in answering:
         print(f"  {goal['code']} ({goal['status']}): {_clip(goal['statement'], SHOWN_STATEMENT_CHARS)}")
+    claims = problem.get("claims") or []
+    print("Claims:" if claims else "Claims: none links it yet")
+    for claim in claims:
+        where = f"{claim['canvas']}, {claim['cell']}, {claim['status']}"
+        print(f"  {claim['code']} ({where}): {_clip(claim['text'], SHOWN_STATEMENT_CHARS)}")
+    plans = problem.get("plans") or []
+    print("Plans:" if plans else "Plans: none names it yet")
+    for plan in plans:
+        done = f"{plan['area']}, {plan['steps_done']}/{plan['steps_total']} steps done"
+        title = f": {_clip(plan['title'], SHOWN_STATEMENT_CHARS)}" if plan.get("title") else ""
+        print(f"  {plan['plan_id']} ({done}){title}")
     if revisions:
         print("Revisions:")
         rows = [
@@ -278,7 +290,7 @@ def register_problems(hsub) -> None:
     shown.add_argument("code", metavar="CODE", help="its code (P-<number>)")
     shown.add_argument("--revision", type=int, metavar="N", help="an older revision (default: the newest)")
     shown.add_argument("--project", help=PROJECT_HELP)
-    json_option(shown, returns_object(*PROBLEM_KEYS, "goals", schema="ProjectProblemShown"))
+    json_option(shown, returns_object(*PROBLEM_KEYS, "goals", "claims", "plans", schema="ProjectProblemShown"))
     shown.set_defaults(func=cmd_show)
 
     written = psub.add_parser(

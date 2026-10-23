@@ -7,9 +7,9 @@ a claim the project does not hold is made with the code the file gives, or the p
 code another canvas of the project holds refuses the import. Evidence a claim holds already (by id) is left; other
 evidence is added as the member's, except what an agent added and nobody confirmed, which stays an agent's to
 confirm. The kinds signal and feedback are the hub's to write and are left out, as is withdrawn evidence; each such
-piece is a warning. So is each link to a use case or a signal key the project does not hold (``links.kept``), which is
-left out. A dry run does all of it in a savepoint it rolls back, so it reports exactly what the import
-would do.
+piece is a warning. So is each link to a use case, a signal key or a problem the project does not hold
+(``links.kept``), which is left out. A dry run does all of it in a savepoint it rolls back, so it reports exactly what
+the import would do.
 """
 
 from __future__ import annotations
@@ -70,6 +70,7 @@ class FileClaim(BaseModel):
     archived: bool = False
     use_cases: list = Field(default_factory=list, description="the codes of the use cases it links")
     signal_keys: list = Field(default_factory=list, description="the signal keys it links")
+    problems: list = Field(default_factory=list, description="the codes of the problems of the project it answers")
     evidence: list[FileEvidence] = Field(default_factory=list, max_length=store.MAX_EVIDENCE)
 
 
@@ -218,6 +219,7 @@ def _values(claim: FileClaim) -> dict:
         "archived": claim.archived,
         "use_cases": claim.use_cases,
         "signal_keys": claim.signal_keys,
+        "problems": claim.problems,
     }
     if claim.position is not None:
         values["position"] = claim.position

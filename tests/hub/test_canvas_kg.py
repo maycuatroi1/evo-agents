@@ -8,6 +8,11 @@ the signal key it links measuring it; kg_path goes from the claim to the use cas
 plan step that implements the task; the claim carries the canvas's label and a member whose grant is below it sees
 none of it; a claim archived, and a canvas archived, leave the graph. The product, Northwind Pantry, is made up; the
 api and the worker run in this process and the blob store is moto's, as in ``tests.hub.test_kg``.
+
+As criterion a5 of plan problem-oriented-hub names it: the graph holds a problem of the project as a Problem node found
+by its code, and its section by the words of its statement; the plan that names it, the claim that links it and the
+goal that answers it each address it, kg_context of the plan lists it, and a write of a problem or a goal queues a
+build.
 """
 
 from __future__ import annotations
@@ -100,7 +105,7 @@ def test_canvas_plugin_graph_on_the_hub_traces_a_claim_to_its_use_case_task_and_
     canvas_post(hub, f"/{SLUG}/edit", {"changes": [claim]})
     assert queued(hub) == 1  # the edit's build joined the one that waits
     run_jobs(hub.db, hub.s3, hub.worker_dir)
-    assert build_rows(hub)[0]["status"] == "succeeded", build_rows(hub)[0]
+    assert build_rows(hub)[0]["status"] == "succeeded", build_rows(hub)[0].get("error")
 
     found = node(hub, CLAIM)
     assert (found["kind"], found["status"], found["label"]["level"]) == ("Claim", "declared", "internal")
@@ -125,3 +130,68 @@ def test_canvas_plugin_graph_on_the_hub_traces_a_claim_to_its_use_case_task_and_
     assert queued(hub) == 1
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert call_tool(hub, "kg_node", {"id": CANVAS}).json()["isError"]  # so does an archived canvas
+
+
+# Problems (plan problem-oriented-hub, criterion a5)
+
+PROBLEM = "problem:P-1"
+STOCK_OUTS = {
+    "statement": "Corner shops run out of milk between deliveries",
+    "who": "the owners of corner shops",
+    "when": "by Thursday of a week with one delivery",
+    "workaround": "they drive to a cash and carry",
+}
+RESTOCK = {
+    "id": "restock",
+    "title": "Restock",
+    "goal": "Shops never run dry.",
+    "problems": ["P-1"],
+    "steps": [{"id": 1, "title": "Reorder", "what": "the reorder button", "status": "pending"}],
+}
+
+
+def test_problem_graph_on_the_hub_finds_a_problem_by_code_or_text_with_the_plan_claim_and_goal_that_address_it(
+    hub, tmp_path
+):
+    made = hub.client.put(f"/v1/projects/{PROJECT}/problems/P-1", json=STOCK_OUTS, headers=hub.alice)
+    assert made.status_code == 200, made.text
+    put_plan(hub, RESTOCK)
+    machine(hub, tmp_path)  # the knowledge config, and a build of the plan and the problem
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert build_rows(hub)[0]["status"] == "succeeded", build_rows(hub)[0].get("error")
+
+    found = node(hub, PROBLEM)
+    assert (found["kind"], found["name"], found["label"]["level"]) == ("Problem", "P-1", "internal")
+    by_code = tool_ok(hub, "kg_search", {"query": "P-1"})["structuredContent"]["results"]
+    assert by_code[0]["id"] == PROBLEM
+    by_text = tool_ok(hub, "kg_search", {"query": "cash and carry"})["structuredContent"]["results"]
+    assert "plugin.hub_problems:doc:problems#P-1" in [hit["id"] for hit in by_text]  # the section that defines it
+    context = tool_ok(hub, "kg_context", {"ids": ["plan:restock"]})["structuredContent"]
+    assert PROBLEM in [item["id"] for item in context["nodes"]]
+    planned = tool_ok(hub, "kg_path", {"from": "plan:restock", "to": PROBLEM})["structuredContent"]
+    assert planned["found"] and [edge["rel"] for edge in planned["edges"]] == ["addresses"]
+    assert call_tool(hub, "kg_node", {"id": PROBLEM}, member="carol").json()["isError"]  # below the project's label
+
+    canvas_post(hub, "", {"slug": SLUG, "name": "Northwind Pantry"}, expect=201)
+    claim = {"cell": "problem", "text": "Shops run out of milk by Thursday", "problems": ["P-1"]}
+    canvas_post(hub, f"/{SLUG}/edit", {"changes": [claim]})
+    goal = {"statement": "No shop runs dry in a week", "problem": "P-1"}
+    named = hub.client.put(f"/v1/projects/{PROJECT}/goals/G-1", json=goal, headers=hub.owner)
+    assert named.status_code == 200, named.text
+    assert queued(hub) == 1  # the canvas, the claim and the goal joined one build
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    for start in (CLAIM, "goal:G-1"):
+        path = tool_ok(hub, "kg_path", {"from": start, "to": PROBLEM})["structuredContent"]
+        assert path["found"] and [edge["rel"] for edge in path["edges"]] == ["addresses"], start
+    assert node(hub, "goal:G-1")["kind"] == "Goal"
+
+    closed = hub.client.post(
+        f"/v1/projects/{PROJECT}/problems/P-1/close",
+        json={"status": "solved", "reason": "a second delivery on Wednesday"},
+        headers=hub.alice,
+    )
+    assert closed.status_code == 200, closed.text
+    assert queued(hub) == 1  # a problem's write queues a build
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    solved = tool_ok(hub, "kg_search", {"query": "second delivery on Wednesday"})["structuredContent"]["results"]
+    assert "plugin.hub_problems:doc:problems#P-1" in [hit["id"] for hit in solved]

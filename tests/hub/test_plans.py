@@ -1004,6 +1004,90 @@ def test_put_file_creates_or_replaces_then_rewrites_the_file_as_the_copy(client,
     assert [str(i) for r in validate_harness(root) for i in errors(r.issues)] == []
 
 
+PROBLEM = {
+    "statement": "Plans the owner approved wait until morning",
+    "who": "the owner of the project",
+    "when": "every night a plan is approved after six",
+    "workaround": "they start the plan run by hand the next morning",
+}
+
+
+def test_a_copy_writes_the_problems_of_a_plan_after_its_goal_and_validate_takes_it(tmp_path):
+    body = {**draft(), "title": "Rollout", "problems": ["P-2", "P-10"]}
+    digest = plan_digest(body)
+    text = render(reversed_keys(body), PROJECT, 4, digest)
+    data = parse_yaml(text)
+    assert list(data)[:5] == ["id", "title", "goal", "problems", "repos"]  # the order of plan.schema.json
+    assert "\nproblems: [P-2, P-10]\n" in text and data["problems"] == ["P-2", "P-10"]
+    assert plan_digest(data) == digest
+    assert "problems" not in render(draft(), PROJECT, 1, plan_digest(draft()))  # a plan without any: as before
+    root = make_harness(tmp_path / "evo-agents-harness", PROJECT)
+    write(root / "plans/active/rollout.yaml", text)
+    assert [str(i) for r in validate_harness(root) for i in r.issues] == []
+    write(root / "plans/active/rollout.yaml", render({**body, "problems": ["P-2", "P-2", "p-3"]}, PROJECT, 4, digest))
+    found = sorted(str(i) for r in validate_harness(root) for i in errors(r.issues))
+    assert "error: problems[1]: repeats 'P-2': each item may appear once" in found
+    assert "error: problems[2]: does not match pattern '^P-[1-9][0-9]{0,8}$'" in found
+
+
+@needs_pg
+def test_a_plan_names_problems_of_its_project_and_a_write_naming_none_warns(client, github, hub_db, tmp_path):
+    from evo_agents.hub.server.plan_problems import NO_PROBLEMS
+
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    made = alice.client.put(f"/v1/projects/{PROJECT}/problems/P-1", json=PROBLEM, headers=alice.headers)
+    assert made.status_code == 200, made.text
+    before = counts(hub_db)
+    refused = put(alice, {**draft(), "problems": ["P-1", "P-7"]})
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["message"] == (
+        f"plan rollout names problem P-7, which project {PROJECT} does not have: see `evo-agents hub problem list`. "
+        "Nothing was written"
+    )
+    assert refused.json()["detail"] == [{"path": "problems", "message": f"no problem P-7 in project {PROJECT}"}]
+    twice = put(alice, {**draft(), "problems": ["P-1", "P-1"]})
+    assert twice.status_code == 422 and "problems[1]: repeats 'P-1'" in twice.json()["message"], twice.text
+    assert counts(hub_db) == before
+
+    root = make_harness(tmp_path / "ws" / "evo-agents-harness", PROJECT)
+    path = write(root / "plans/active/rollout.yaml", as_yaml({**draft(), "problems": ["P-1"]}))
+    created = put_file(alice, path)
+    assert created["created"] and not [w for w in created["warnings"] if w["path"] == "problems"]
+    assert read_plan(path).body["problems"] == ["P-1"] and "\nproblems: [P-1]\n" in path.read_text(encoding="utf-8")
+    assert [str(i) for r in validate_harness(root) for i in errors(r.issues)] == []
+
+    plain = put(alice, draft("other"))
+    assert plain.status_code == 200, plain.text
+    assert {"path": "problems", "message": NO_PROBLEMS} in plain.json()["warnings"]  # stored, with a warning
+    again = put(alice, draft("other"))
+    assert (
+        again.json()["changed"] is False
+        and {"path": "problems", "message": NO_PROBLEMS} not in again.json()["warnings"]
+    )  # no revision, no warning
+    named = put(alice, {**draft("other"), "problems": ["P-1"]}, if_revision=1)
+    assert named.status_code == 200 and named.json()["warnings"] == [], named.text
+    dropped = put(alice, draft("other"), if_revision=2)
+    assert {"path": "problems", "message": NO_PROBLEMS} in dropped.json()["warnings"]  # a revision naming none
+
+    listed = {p["plan_id"]: p["problems"] for p in alice.client.get(plan_url(), headers=alice.headers).json()}
+    assert listed == {"other": [], "rollout": ["P-1"]}
+    step = {"section": "steps", "step": 1, "updates": {"status": "done"}, "if_revision": 1}
+    marked = alice.client.patch(plan_url("rollout"), json=step, headers=alice.headers)
+    assert marked.status_code == 200, marked.text  # a code held already is not looked up again
+
+    night = put(alice, {**draft("night-shift", steps=2), "title": "Night shift", "problems": ["P-1"]})
+    assert night.status_code == 200, night.text
+    shown = alice.client.get(f"/v1/projects/{PROJECT}/problems/P-1", headers=hubs["reader"].headers).json()
+    assert [(p["plan_id"], p["area"], p["title"], p["steps_done"], p["steps_total"]) for p in shown["plans"]] == [
+        ("night-shift", "active", "Night shift", 0, 2),
+        ("rollout", "active", None, 1, 3),
+    ]
+    low = alice.client.get(f"/v1/projects/{PROJECT}/problems/P-1", headers=hubs["public-reader"].headers).json()
+    assert low["plans"] == []  # the plans carry the project's label, internal, above this reader's grant
+    assert_json_keys("hub problem show", shown)
+
+
 # The CLI against `hub serve`, and real concurrency
 
 
@@ -1064,9 +1148,13 @@ def test_the_cli_imports_exports_commits_and_restores_a_hand_edited_copy(hub_db,
         assert git(root, "status", "--porcelain", "--", "plans").strip() == ""
         ok(evo(["harness", "validate", str(root)], home))
 
-        # A new plan: put from a draft, steps marked through the hub, completed, its copy moved and committed.
-        draft_path = write(root / "plans/active/rollout.yaml", as_yaml(draft(steps=2)))
-        ok(evo(["hub", "plan", "put", "plans/active/rollout.yaml"], home, cwd=root))
+        # A new plan: put from a draft naming a problem, steps marked through the hub, completed, its copy moved and
+        # committed.
+        said = [f"--{name}={text}" for name, text in PROBLEM.items()]
+        assert "problem P-1 of project" in ok(evo(["hub", "problem", "set", *said], home, cwd=root)).stdout
+        draft_path = write(root / "plans/active/rollout.yaml", as_yaml({**draft(steps=2), "problems": ["P-1"]}))
+        put_out = ok(evo(["hub", "plan", "put", "plans/active/rollout.yaml"], home, cwd=root)).stdout
+        assert "warning: problems" not in put_out
         assert read_plan(draft_path).hub["revision"] == 1
         ok(evo(["hub", "plan", "step", "rollout", "1", "done", "--evidence", "evo-agents@abc1234: tests"], home, root))
         refused = evo(["hub", "plan", "complete", "rollout"], home, cwd=root)
@@ -1088,6 +1176,10 @@ def test_the_cli_imports_exports_commits_and_restores_a_hand_edited_copy(hub_db,
         ]
         shown = ok(evo(["hub", "plan", "show", "rollout"], home, cwd=root)).stdout
         assert shown == (root / "plans/completed/rollout.yaml").read_text(encoding="utf-8")
+        assert "\nproblems: [P-1]\n" in shown  # the plan's problems, in the order of plan.schema.json
+        ok(evo(["harness", "validate", str(root)], home))
+        answered = ok(evo(["hub", "problem", "show", "P-1"], home, cwd=root)).stdout
+        assert "Plans:\n  rollout (completed, 2/2 steps done)\n" in answered
         listed = json.loads(ok(evo(["hub", "plan", "list", "--json"], home, cwd=root)).stdout)
         assert_json_keys("hub plan list", listed)
         assert [(p["plan_id"], p["area"]) for p in listed] == [

@@ -3,7 +3,9 @@
 
 - GET /v1/projects/{project}/problems: the project's problems as they are now, by rank, for a member with a grant on
   the project; ``?status=`` keeps those of one status. GET .../problems/{ref}: one problem, by its code (P-<number>),
-  at its newest revision or at ``?revision=``, with the goals whose newest revision answers it. GET
+  at its newest revision or at ``?revision=``, with the goals whose newest revision answers it, the claims of the
+  project's canvases that link it (plan problem-oriented-hub, criterion a3) and the plans whose body names it
+  (criterion a4), each the member sees through the project's hub sink. GET
   .../problems/{ref}/revisions: its revisions, newest first, each with the fields whose value it changed.
 - PUT .../problems/{ref}: the problem's next revision, for a writer of the project, made when the project has no such
   problem yet: a new problem takes the next code. The body is the problem whole; ``rank`` and ``owner`` left out keep
@@ -33,10 +35,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, problems, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_build import queue_if_configured
+from evo_agents.hub.plans import AREAS
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.tables_signals import KEY_NAME, MAX_KEY_NAME_CHARS
@@ -103,8 +108,34 @@ class ProjectProblem(BaseModel):
     created_at: datetime
 
 
+class ProblemClaim(BaseModel):
+    """A claim of a canvas of the project that links the problem: not archived, in a canvas that is not."""
+
+    canvas: str = Field(description="the canvas's slug")
+    canvas_name: str = Field(description="the product's name")
+    code: str = Field(description="CL-<number>")
+    cell: str
+    status: str
+    confidence: str
+    text: str
+
+
+class ProblemPlan(BaseModel):
+    """A plan of the project whose body names the problem in its problems."""
+
+    plan_id: str
+    area: Literal[AREAS]
+    title: str | None
+    status: str | None = Field(description="the status the plan's body gives, if any")
+    revision: int
+    steps_total: int
+    steps_done: int = Field(description="its steps done or descoped")
+
+
 class ProjectProblemShown(ProjectProblem):
     goals: list[ProblemGoal] = Field(description="the goals whose newest revision answers it, by code")
+    claims: list[ProblemClaim] = Field(description="the claims that link it, by canvas and code: those the member sees")
+    plans: list[ProblemPlan] = Field(description="the plans that name it, by plan id: those the member sees")
 
 
 class ProjectProblemWritten(ProjectProblem):
@@ -295,6 +326,74 @@ async def answered_by(conn: AsyncConnection, problem_id: int) -> list[ProblemGoa
     ]
 
 
+def _hub_sink(access: ProjectAccess) -> str | None:
+    """The sink a read of the problem's claims and plans goes through: the project's hub sink."""
+    return access.rules.hub_sink.sink if access.rules.hub_sink else None
+
+
+async def claimed_by(conn: AsyncConnection, access: ProjectAccess, code: str) -> list[ProblemClaim]:
+    """The claims of the project's canvases that link problem ``code``, neither archived nor in an archived canvas, that
+    the member sees, by canvas and number."""
+    k, c = tables.canvas.claims, tables.canvas.canvases
+    query = (
+        select(c.c.slug, c.c.name, k.c.number, k.c.cell, k.c.status, k.c.confidence, k.c.text, k.c.label)
+        .join_from(k, c, c.c.id == k.c.canvas_id)
+        .where(
+            k.c.project_id == access.project_id,
+            k.c.problems.contains([code]),
+            k.c.archived_at.is_(None),
+            c.c.archived_at.is_(None),
+        )
+        .order_by(c.c.slug, k.c.number)
+    )
+    through = _hub_sink(access)
+    return [
+        ProblemClaim(
+            canvas=row.slug,
+            canvas_name=row.name,
+            code=f"CL-{row.number}",
+            cell=row.cell,
+            status=row.status,
+            confidence=row.confidence,
+            text=row.text,
+        )
+        for row in await conn.execute(query)
+        if through is not None and access.visible(row.label, through)
+    ]
+
+
+async def named_by(conn: AsyncConnection, access: ProjectAccess, code: str) -> list[ProblemPlan]:
+    """The plans of the project whose body names problem ``code`` in its problems, that the member sees, by id."""
+    plans = tables.plans
+    query = (
+        select(
+            plans.c.plan_id,
+            plans.c.area,
+            plans.c.label,
+            plans.c.revision,
+            plans.c.body["title"].astext.label("title"),
+            plans.c.body["status"].astext.label("status"),
+            *step_counts(plans.c.body),
+        )
+        .where(plans.c.project_id == access.project_id, plans.c.body["problems"].contains([code]))
+        .order_by(plans.c.plan_id)
+    )
+    through = _hub_sink(access)
+    return [
+        ProblemPlan(
+            plan_id=row.plan_id,
+            area=row.area,
+            title=row.title,
+            status=row.status,
+            revision=row.revision,
+            steps_total=row.steps_total,
+            steps_done=row.steps_done,
+        )
+        for row in await conn.execute(query)
+        if through is not None and access.visible(row.label, through)
+    ]
+
+
 async def _next_number(conn: AsyncConnection, project_id: int) -> int:
     p = tables.problems
     query = select(func.coalesce(func.max(p.c.number), 0)).where(p.c.project_id == project_id)
@@ -441,6 +540,13 @@ def closing(row, status: str, reason: str, note: str | None, if_revision: int | 
 # Routes
 
 
+async def _graph_changed(request: Request, conn: AsyncConnection, access: ProjectAccess, changed: bool) -> None:
+    """Queue a build of the project's knowledge graph, which holds its problems (``evo_agents.hub.kg_problems``), once
+    a write changed one."""
+    if changed:
+        await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
+
+
 async def reader(conn: AsyncConnection, user: Principal, project: str) -> ProjectAccess:
     """``user``'s access to the project's problems: 404 without a grant (``project_access``), 403 for a hub admin
     without one."""
@@ -479,9 +585,16 @@ async def listed(conn: AsyncConnection, access: ProjectAccess, status: str | Non
 async def shown(
     conn: AsyncConnection, access: ProjectAccess, ref: str, revision: int | None = None
 ) -> ProjectProblemShown:
-    """Problem ``ref`` at ``revision`` (its newest when None), with the goals that answer it now."""
+    """Problem ``ref`` at ``revision`` (its newest when None), with the goals that answer it now, and the claims and
+    plans that point to it now."""
     row = await _one(conn, access, ref, revision)
-    return ProjectProblemShown(**view(access.name, row).model_dump(), goals=await answered_by(conn, row.id))
+    code = problems.code(row.number)
+    return ProjectProblemShown(
+        **view(access.name, row).model_dump(),
+        goals=await answered_by(conn, row.id),
+        claims=await claimed_by(conn, access, code),
+        plans=await named_by(conn, access, code),
+    )
 
 
 @router.get("/{project}/problems", response_model=list[ProjectProblem], responses=REFUSALS)
@@ -547,6 +660,7 @@ async def write_problem(
     async with request.app.state.engine.begin() as conn:
         access = await _writer(conn, user, project)
         written, changed = await write(conn, user, access, ref, body)
+        await _graph_changed(request, conn, access, changed)
     return ProjectProblemWritten(**written.model_dump(), changed=changed)
 
 
@@ -566,4 +680,5 @@ async def close_problem(
             )
         closed = closing(held, body.status, body.reason, body.note, body.if_revision)
         written, changed = await write(conn, user, access, ref, closed)
+        await _graph_changed(request, conn, access, changed)
     return ProjectProblemWritten(**written.model_dump(), changed=changed)

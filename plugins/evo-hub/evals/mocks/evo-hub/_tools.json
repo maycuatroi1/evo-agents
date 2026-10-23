@@ -487,7 +487,7 @@
     },
     {
       "name": "problem_show",
-      "description": "One problem of a project on the hub by its code: what hurts, who is hurt, when it happens, how they cope today, its metric, rank, owner, status and revision, and the goals that answer it.",
+      "description": "One problem of a project on the hub by its code: what hurts, who is hurt, when it happens, how they cope today, its metric, rank, owner, status and revision, the goals that answer it, the claims of the project's canvases that link it and the plans that name it.",
       "inputSchema": {
         "type": "object",
         "properties": {
