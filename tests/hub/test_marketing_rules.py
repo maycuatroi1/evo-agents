@@ -271,12 +271,23 @@ def test_marketing_health_x_reddit_and_linkedin_read_whose_credential_it_is():
     assert all(r.method == "GET" for r in fake.sent)
 
 
-def test_marketing_health_facebook_page_needs_create_content_and_tiktok_reads_the_creator():
-    page = HttpResponse(200, {"name": "Evo", "tasks": ["ANALYZE", "CREATE_CONTENT"]})
-    said, fake = health("facebook_page", "42", page)
-    assert said == "may post on Evo" and fake.sent[0].url.endswith("/42?fields=name,tasks")
-    assert fake.sent[0].method == "GET"
-    assert "may not post" in refused("facebook_page", "42", HttpResponse(200, {"tasks": ["ANALYZE"]})).message
+def test_marketing_health_facebook_page_needs_a_page_token_that_may_post_and_tiktok_reads_the_creator():
+    me = HttpResponse(200, {"id": "42", "name": "Evo"})
+    token = {"is_valid": True, "type": "PAGE", "profile_id": "42", "scopes": ["pages_show_list", "pages_manage_posts"]}
+    said, fake = health("facebook_page", "42", me, HttpResponse(200, {"data": token}))
+    assert said == "may post on Evo" and [(r.method, r.url) for r in fake.sent] == [
+        ("GET", "https://graph.facebook.com/v22.0/me?fields=id,name"),
+        ("GET", "https://graph.facebook.com/v22.0/debug_token"),
+    ]
+    assert fake.sent[1].params == {"input_token": SECRET} and SECRET not in repr(fake.sent[1])
+    assert "not a Page token" in refused("facebook_page", "42", HttpResponse(200, {"id": "7", "name": "Other"})).message
+    no_post = HttpResponse(200, {"data": {**token, "scopes": ["pages_read_engagement"]}})
+    assert "may not post" in refused("facebook_page", "42", me, no_post).message
+    user = HttpResponse(200, {"data": {**token, "type": "USER"}})
+    assert "not a valid Page token" in refused("facebook_page", "42", me, user).message
+    other = HttpResponse(200, {"data": {**token, "profile_id": "7"}})
+    assert "not a valid Page token" in refused("facebook_page", "42", me, other).message
+    assert refused("facebook_page", "42", HttpResponse(400, {"error": {"code": 100}})).kind == "rejected"
     assert refused("facebook_page", None).kind == "missing"
     creator = HttpResponse(200, {"data": {"creator_username": "evo"}, "error": {"code": "ok"}})
     said, fake = health("tiktok", None, creator)

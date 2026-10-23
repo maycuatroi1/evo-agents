@@ -157,14 +157,15 @@ An admin checks whether an account could post now with `evo-agents hub marketing
 | x | `GET /2/users/me` | it names the user |
 | reddit | `GET /api/v1/me` | it names the user |
 | linkedin | `GET /v2/userinfo`, with an author urn as the target | it names the member |
-| facebook_page | `GET /{page_id}?fields=name,tasks` | the page reads and its tasks hold `CREATE_CONTENT` |
+| facebook_page | `GET /me?fields=id,name` and `GET /debug_token` on the credential itself (Graph v22.0) | `/me` is the target page, and the token is a valid `PAGE` token of that page holding `pages_manage_posts` |
 | tiktok | the creator info query of the Content Posting API | it names the creator |
 | a browser account | its login session | the session is `ok` |
 | hackernews, facebook_group | nothing | always `n/a`: no code posts on them |
 
 The channel keeps `health` (`unknown` until the first check, then `ok`, `failing` or `n/a`), `health_reason` (what the
 check read, or why it failed: "no credential" when the plugin's config has none) and `health_checked_at`. The credential
-goes into the request header only; it is in no reason, answer or audit row (`marketing.channel.check`). Which fields
+goes into the request header only (and, for facebook_page, the `input_token` query of `debug_token`, which no log or
+repr prints); it is in no reason, answer or audit row (`marketing.channel.check`). Which fields
 each platform answers is [Unverified] against its current API documentation. A channel's answer also has
 `account_kind`, the same value as `kind`.
 
