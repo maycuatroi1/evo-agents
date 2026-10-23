@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_gate, post_merge, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, autonomy_gates
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.gitlab import GitLabRefused, MergeRequest, RevertRefused
 
@@ -580,7 +580,30 @@ class After:
         if chosen is None:
             return
         by_id = {row.id: row for row in rows}
-        await self.deploy(by_id[chosen[0]], [by_id[row_id] for row_id in chosen[1]])
+        target, carried = by_id[chosen[0]], [by_id[row_id] for row_id in chosen[1]]
+        if await self.held(target, [target, *carried]):
+            return
+        await self.deploy(target, carried)
+        async with self.engine.begin() as conn:
+            for row in (target, *carried):
+                title = f"The hub deployed !{row.iid} of {row.repo} to PROD for your run {row.run_id}"
+                await autonomy_gates.tell_after(
+                    conn, row.run_id, "K6", key=_deploy_key(row), title=title, repo=row.repo
+                )
+
+    async def held(self, target, rows: list) -> bool:
+        """Whether K6 of the principal of a run whose merge the deploy carries holds it (``autonomy_gates``): asked and
+        not yet answered, refused or denied, the reason on the target's row."""
+        async with self.engine.begin() as conn:
+            for row in rows:
+                what = f"deploy !{row.iid} of {row.repo} to PROD"
+                said = await autonomy_gates.check(
+                    conn, row.run_id, "K6", key=_deploy_key(row), what=what, repo=row.repo
+                )
+                if not said.act:
+                    await queue.set_row(conn, target.id, reason=merge_gate.reason_line(said.reason))
+                    return True
+        return False
 
     async def deploy(self, target, carried: list) -> None:
         name = self.jobs["prod_deploy"]
@@ -845,3 +868,7 @@ async def ask_revert(conn: AsyncConnection, user, access, queue_id: int):
         project_id=access.project_id,
     )
     return await queue.row_of(conn, row.id)
+
+
+def _deploy_key(row) -> str:
+    return f"deploy {row.repo}!{row.iid}"

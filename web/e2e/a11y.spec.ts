@@ -31,6 +31,7 @@ import {
   setupNote,
   signedInPerson,
 } from "./support/chats";
+import { ceilingOver, prefByApi, stopOwnByApi } from "./support/autonomy";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { promotionNight, seedCurator } from "./support/curator";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -853,6 +854,25 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/org");
       await expect(seatOf(page, me.login, slug)).toBeVisible();
+    },
+  },
+  {
+    name: "autonomy settings under a ceiling, with a lowered class and a stop that holds",
+    open: async ({ page, me }) => {
+      await ceilingOver(me.login, "A2");
+      await prefByApi(me, { level: "A4", classes: { K10: "deny" } });
+      await stopOwnByApi(me, { reason: "a check" });
+      await page.goto("/settings/autonomy");
+      await expect(page.locator("#main").getByTestId("autonomy-lowered")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("autonomy-stop")).toBeVisible();
+    },
+  },
+  {
+    name: "autonomy settings on a small screen",
+    open: async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/settings/autonomy");
+      await expect(page.locator("#main").getByTestId("autonomy-classes")).toBeVisible();
     },
   },
   {

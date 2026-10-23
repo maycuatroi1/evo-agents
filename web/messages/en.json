@@ -411,6 +411,7 @@
     "themeDark": "Dark",
     "themeSystem": "System",
     "language": "Language",
+    "autonomy": "Autonomy",
     "shortcuts": "Keyboard shortcuts",
     "logout": "Sign out",
     "loggingOut": "Signing out…",
@@ -2630,7 +2631,9 @@
       "editSeat": "Edit seat",
       "endSeat": "End seat",
       "seatMenu": "Actions for the seat of {who}",
-      "unitMenu": "Actions for {name}"
+      "unitMenu": "Actions for {name}",
+      "stopRuns": "Stop their runs",
+      "stopUnit": "Stop the unit's runs"
     },
     "unitDialog": {
       "createTitle": "New unit",
@@ -2720,6 +2723,113 @@
       "grants": "{count, plural, one {# grant} other {# grants}}",
       "placeLabel": "Add a seat for {login}",
       "place": "Add seat"
+    },
+    "stops": {
+      "stopped": "Stopped",
+      "stoppedSince": "Stopped {since}",
+      "stoppedWhy": "Stopped {since}: {reason}",
+      "lift": "Lift",
+      "liftLabel": "Lift the stop of {name}",
+      "liftAllLabel": "Lift the stop of the whole hub",
+      "lifted": "Stop of {name} lifted",
+      "liftedAll": "Stop of the whole hub lifted",
+      "classes": "{count, plural, =0 {Autonomy: every class auto} one {Autonomy: # class not auto} other {Autonomy: # classes not auto}}",
+      "stoppedOne": "Runs of {name} stopped",
+      "stoppedAll": "Every run on the hub stopped",
+      "count": "{runs, plural, =0 {No run at work would be cancelled} one {# run at work will be cancelled or asked to stop} other {# runs at work will be cancelled or asked to stop}}, {people, plural, one {# person covered} other {# people covered}}.",
+      "countAll": "{runs, plural, =0 {No run at work would be cancelled} one {# run at work will be cancelled or asked to stop} other {# runs at work will be cancelled or asked to stop}}.",
+      "countFailed": "The hub could not count the runs it would stop.",
+      "counting": "Counting the runs at work…",
+      "title": "Stop the runs of {name}?",
+      "titleAll": "Stop every run on the hub?",
+      "textLogin": "Their agents act at A0 until someone lifts the stop, and they are told.",
+      "textUnit": "Everyone whose primary seat is in this unit or below acts at A0 until someone lifts the stop.",
+      "textAll": "Every agent on the hub acts at A0 until a hub administrator lifts the stop.",
+      "confirm": "Stop runs",
+      "stopping": "Stopping…",
+      "cancel": "Cancel",
+      "allHeld": "Every run on this hub is stopped.",
+      "stopAll": "Stop all runs"
+    }
+  },
+  "autonomy": {
+    "modes": {
+      "deny": "Deny",
+      "ask": "Ask",
+      "notify": "Notify",
+      "auto": "Auto"
+    },
+    "sources": {
+      "ownPref": "your preference",
+      "pref": "the preference of {login}",
+      "seat": "seat #{id}",
+      "unit": "unit {slug}",
+      "policy": "the policy of {repo}",
+      "profile": "agent profile {handle}",
+      "credential": "a shared credential",
+      "instance": "this hub's limit"
+    },
+    "levels": {
+      "A0": {
+        "name": "A0: Read only",
+        "hint": "Agents read code, documents and logs; they change nothing."
+      },
+      "A1": {
+        "name": "A1: Branch work",
+        "hint": "Agents edit, commit and push their own branch and open pull requests; a merge waits for your answer."
+      },
+      "A2": {
+        "name": "A2: Supervised",
+        "hint": "Merges go ahead and tell you, except on risk paths; deploys and sending out wait for you."
+      },
+      "A3": {
+        "name": "A3: Trusted",
+        "hint": "Merges go ahead; deploys tell you; deleting data, credentials and spending wait for you."
+      },
+      "A4": {
+        "name": "A4: Broad",
+        "hint": "Almost everything goes ahead and tells you; changing grants and policies waits for you."
+      },
+      "A5": {
+        "name": "A5: Full",
+        "hint": "Everything goes ahead, within the budget and never above the writer's own level."
+      }
+    },
+    "figures": {
+      "line": "Last {days} days: {figures}",
+      "none": "Nothing in the last {days} days",
+      "refused": "{count, plural, one {# hook block} other {# hook blocks}}",
+      "asked": "{count, plural, one {# held for an answer} other {# held for answers}}",
+      "decisions": "{count, plural, one {# decision} other {# decisions}}",
+      "merged": "{count, plural, one {# merge} other {# merges}}",
+      "reverted": "{count, plural, one {# revert} other {# reverts}}",
+      "rolled_back": "{count, plural, one {# rollback} other {# rollbacks}}"
+    },
+    "settings": {
+      "title": "Autonomy",
+      "level": "Level {level}",
+      "levelFrom": "Set by {source}",
+      "stopTitle": "{scope, select, login {Your runs are stopped} unit {The runs of unit {name} are stopped} other {Every run on this hub is stopped}}",
+      "stopText": "Stopped {when}. Reason: {reason}. Your agents act at A0 until it is lifted.",
+      "loweredTitle": "{count, plural, one {# class is lower than your preference} other {# classes are lower than your preference}}",
+      "loweredText": "{classes}: the ceiling {ceiling}, set by {source}, keeps them below what you chose.",
+      "noPrefTitle": "No preference yet",
+      "noPrefText": "You have not chosen a level, so you prefer A5 and the ceilings above you decide. Pick a level below to set one.",
+      "saved": "Preference saved: {level}, revision {revision}",
+      "forbidden": "You may not change this preference.",
+      "discard": "Discard",
+      "save": "Save preference",
+      "saving": "Saving…",
+      "levelTitle": "Your preferred level",
+      "aboveCeiling": "Above your ceiling {ceiling}, set by {source}",
+      "sourceDetail": "{source} ({detail})",
+      "classesTitle": "Classes of action",
+      "setBy": "set by {source}",
+      "lowered": "Lowered from {mode}",
+      "modeOf": "Mode of {klass}, {name}",
+      "levelDefault": "As the level: {mode} ({level})",
+      "modeAbove": "{mode}: above the ceiling {ceiling}, set by {source}",
+      "ceilingOf": "Ceiling {mode}, set by {source}"
     }
   },
   "agents": {
@@ -4752,6 +4862,22 @@
         "deleteForbidden": "Only who dispatched the run, or an admin of the project, deletes its files.",
         "preview": "Outputs",
         "previewOpen": "Open all outputs"
+      },
+      "autonomy": {
+        "title": "Autonomy",
+        "tightened": "Tightened",
+        "principal": "Acts for",
+        "also": "Also bounded by {logins}",
+        "level": "Level",
+        "levelFrom": "{level}, set by {source}",
+        "taken": "Taken",
+        "tightenedAt": "Tightened",
+        "environments": "Environments",
+        "workers": "Workers",
+        "noneAllowed": "none allowed",
+        "boundedLabel": "Classes that are not auto",
+        "allAuto": "Every class is auto.",
+        "showAll": "{count, plural, one {Show the class} other {Show all # classes}}"
       }
     },
     "diff": {
@@ -5606,10 +5732,14 @@
       "spend_money": "Spend money",
       "architecture": "Architecture",
       "scope": "Scope",
+      "merge": "Merge",
+      "credential": "Credential",
+      "access": "Access",
       "question": "Question",
       "triage": "Failed run",
       "release": "Release",
-      "loop": "Loop"
+      "loop": "Loop",
+      "autonomy": "Autonomy"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",
@@ -5633,6 +5763,7 @@
       "goal_review": "The month's review of the goals",
       "loop_brief": "The Loop's morning brief",
       "plugin_notice": "A notice from a plugin",
+      "autonomy": "What the hub did under your autonomy",
       "worker_doctor": "A shared worker's doctor found something high"
     },
     "item": {
@@ -5690,7 +5821,7 @@
       "notDelivered": "Waiting for the worker to hand the answer to the agent at its next turn.",
       "hubTook": "The hub did what the answer chose.",
       "resumed": "Run #{run} was parked: the answer resumed it as <link>run #{next}</link>.",
-      "onlyOwner": "Only {owner}, who dispatched run #{run}, can answer this decision.",
+      "onlyOwner": "Only {owner}, whom this decision of run #{run} is asked of, can answer it.",
       "runGone": "Run #{run} is {state}: no agent can take an answer any more.",
       "expired": "Nobody answered while run #{run} was parked for 7 days, so the run was cancelled and the decision expired.",
       "cancelled": "Run #{run} ended before anyone answered, so the decision was cancelled.",

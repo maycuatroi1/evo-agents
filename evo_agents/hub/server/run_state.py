@@ -664,7 +664,7 @@ def _next_attempt(run_id: int):
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
     from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the schedule,
     night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config; a
-    task run's agent type and pull requests."""
+    task run's agent type and pull requests; its principal and autonomy snapshot."""
     r = tables.runs
     copied = (
         "kind",
@@ -694,6 +694,8 @@ def _next_attempt(run_id: int):
         "plugin_config",
         "agent_type_id",
         "pulls",
+        "principal_id",
+        "autonomy",
         *CHAT_COLUMNS,
     )
     source = select(
@@ -877,10 +879,11 @@ def _hours(span: timedelta) -> str:
 
 async def expire_seats(engine: AsyncEngine, sealer, github_app) -> dict:
     """The job hub.expire_seats (``org_expiry.expire_seats``): the org seats past their end date ended, and the leases
-    of the people whose primary seat ended taken back. The hub's worker reaches it through this module, as the reaper."""
-    from evo_agents.hub.server.org_expiry import expire_seats as expire
+    of the people whose primary seat ended taken back, and the leads of an intern's unit told of a decision of the
+    intern's runs open 24 hours (``principals.escalate``). The hub's worker reaches it through this module."""
+    from evo_agents.hub.server import org_expiry, principals
 
-    return await expire(engine, sealer, github_app)
+    return {**await org_expiry.expire_seats(engine, sealer, github_app), "escalated": await principals.escalate(engine)}
 
 
 async def recover_runs(

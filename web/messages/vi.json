@@ -411,6 +411,7 @@
     "themeDark": "Tối",
     "themeSystem": "Theo hệ thống",
     "language": "Ngôn ngữ",
+    "autonomy": "Quyền tự chủ",
     "shortcuts": "Phím tắt",
     "logout": "Đăng xuất",
     "loggingOut": "Đang đăng xuất…",
@@ -2630,7 +2631,9 @@
       "editSeat": "Sửa vị trí",
       "endSeat": "Kết thúc vị trí",
       "seatMenu": "Thao tác cho vị trí của {who}",
-      "unitMenu": "Thao tác cho {name}"
+      "unitMenu": "Thao tác cho {name}",
+      "stopRuns": "Dừng các run của họ",
+      "stopUnit": "Dừng các run của đơn vị"
     },
     "unitDialog": {
       "createTitle": "Đơn vị mới",
@@ -2720,6 +2723,113 @@
       "grants": "{count, plural, other {# quyền}}",
       "placeLabel": "Thêm vị trí cho {login}",
       "place": "Thêm vị trí"
+    },
+    "stops": {
+      "stopped": "Đã dừng",
+      "stoppedSince": "Dừng lúc {since}",
+      "stoppedWhy": "Dừng lúc {since}: {reason}",
+      "lift": "Gỡ dừng",
+      "liftLabel": "Gỡ lệnh dừng của {name}",
+      "liftAllLabel": "Gỡ lệnh dừng của cả hub",
+      "lifted": "Đã gỡ lệnh dừng của {name}",
+      "liftedAll": "Đã gỡ lệnh dừng của cả hub",
+      "classes": "{count, plural, =0 {Tự chủ: mọi lớp tự động} other {Tự chủ: # lớp không tự động}}",
+      "stoppedOne": "Đã dừng các run của {name}",
+      "stoppedAll": "Đã dừng mọi run trên hub",
+      "count": "{runs, plural, =0 {Không run nào đang chạy bị huỷ} other {# run đang chạy sẽ bị huỷ hoặc được yêu cầu dừng}}, {people, plural, other {áp dụng cho # người}}.",
+      "countAll": "{runs, plural, =0 {Không run nào đang chạy bị huỷ} other {# run đang chạy sẽ bị huỷ hoặc được yêu cầu dừng}}.",
+      "countFailed": "Hub không đếm được số run sẽ dừng.",
+      "counting": "Đang đếm các run đang chạy…",
+      "title": "Dừng các run của {name}?",
+      "titleAll": "Dừng mọi run trên hub?",
+      "textLogin": "Agent của họ chạy ở A0 cho đến khi lệnh dừng được gỡ, và họ được báo.",
+      "textUnit": "Mọi người có ghế chính trong đơn vị này hoặc bên dưới chạy ở A0 cho đến khi lệnh dừng được gỡ.",
+      "textAll": "Mọi agent trên hub chạy ở A0 cho đến khi quản trị viên hub gỡ lệnh dừng.",
+      "confirm": "Dừng run",
+      "stopping": "Đang dừng…",
+      "cancel": "Huỷ",
+      "allHeld": "Mọi run trên hub này đang bị dừng.",
+      "stopAll": "Dừng mọi run"
+    }
+  },
+  "autonomy": {
+    "modes": {
+      "deny": "Cấm",
+      "ask": "Hỏi",
+      "notify": "Báo",
+      "auto": "Tự động"
+    },
+    "sources": {
+      "ownPref": "lựa chọn của bạn",
+      "pref": "lựa chọn của {login}",
+      "seat": "ghế #{id}",
+      "unit": "đơn vị {slug}",
+      "policy": "chính sách của {repo}",
+      "profile": "hồ sơ agent {handle}",
+      "credential": "một thông tin xác thực dùng chung",
+      "instance": "giới hạn của hub này"
+    },
+    "levels": {
+      "A0": {
+        "name": "A0: Chỉ đọc",
+        "hint": "Agent đọc mã, tài liệu và log; không thay đổi gì."
+      },
+      "A1": {
+        "name": "A1: Làm trên nhánh",
+        "hint": "Agent sửa, commit và push nhánh của mình và mở pull request; việc merge chờ bạn trả lời."
+      },
+      "A2": {
+        "name": "A2: Có giám sát",
+        "hint": "Merge được làm và báo bạn, trừ trên đường rủi ro; deploy và gửi ra ngoài chờ bạn."
+      },
+      "A3": {
+        "name": "A3: Tin cậy",
+        "hint": "Merge được làm; deploy thì báo bạn; xoá dữ liệu, thông tin xác thực và chi tiền chờ bạn."
+      },
+      "A4": {
+        "name": "A4: Rộng",
+        "hint": "Hầu hết được làm và báo bạn; đổi quyền và chính sách chờ bạn."
+      },
+      "A5": {
+        "name": "A5: Toàn quyền",
+        "hint": "Mọi việc được làm, trong ngân sách và không bao giờ vượt cấp của người viết."
+      }
+    },
+    "figures": {
+      "line": "{days} ngày qua: {figures}",
+      "none": "Không có gì trong {days} ngày qua",
+      "refused": "{count, plural, other {# lần hook chặn}}",
+      "asked": "{count, plural, other {# lần chờ trả lời}}",
+      "decisions": "{count, plural, other {# quyết định}}",
+      "merged": "{count, plural, other {# lần merge}}",
+      "reverted": "{count, plural, other {# lần revert}}",
+      "rolled_back": "{count, plural, other {# lần rollback}}"
+    },
+    "settings": {
+      "title": "Quyền tự chủ",
+      "level": "Cấp {level}",
+      "levelFrom": "Đặt bởi {source}",
+      "stopTitle": "{scope, select, login {Các run của bạn đang bị dừng} unit {Các run của đơn vị {name} đang bị dừng} other {Mọi run trên hub này đang bị dừng}}",
+      "stopText": "Dừng lúc {when}. Lý do: {reason}. Agent của bạn chạy ở A0 cho đến khi lệnh dừng được gỡ.",
+      "loweredTitle": "{count, plural, other {# lớp thấp hơn lựa chọn của bạn}}",
+      "loweredText": "{classes}: trần {ceiling}, do {source} đặt, giữ chúng dưới mức bạn chọn.",
+      "noPrefTitle": "Chưa có lựa chọn",
+      "noPrefText": "Bạn chưa chọn cấp, nên bạn được tính là chọn A5 và các trần phía trên quyết định. Chọn một cấp bên dưới để đặt.",
+      "saved": "Đã lưu lựa chọn: {level}, bản {revision}",
+      "forbidden": "Bạn không được đổi lựa chọn này.",
+      "discard": "Bỏ thay đổi",
+      "save": "Lưu lựa chọn",
+      "saving": "Đang lưu…",
+      "levelTitle": "Cấp bạn chọn",
+      "aboveCeiling": "Vượt trần {ceiling} của bạn, do {source} đặt",
+      "sourceDetail": "{source} ({detail})",
+      "classesTitle": "Các lớp hành động",
+      "setBy": "do {source} đặt",
+      "lowered": "Bị hạ từ {mode}",
+      "modeOf": "Chế độ của {klass}, {name}",
+      "levelDefault": "Theo cấp: {mode} ({level})",
+      "modeAbove": "{mode}: vượt trần {ceiling}, do {source} đặt",
+      "ceilingOf": "Trần {mode}, do {source} đặt"
     }
   },
   "agents": {
@@ -4752,6 +4862,22 @@
         "deleteForbidden": "Chỉ người dispatch run, hoặc admin của dự án, xoá được file của nó.",
         "preview": "Output",
         "previewOpen": "Mở tất cả output"
+      },
+      "autonomy": {
+        "title": "Quyền tự chủ",
+        "tightened": "Đã siết",
+        "principal": "Chạy thay cho",
+        "also": "Cũng bị giới hạn bởi {logins}",
+        "level": "Cấp",
+        "levelFrom": "{level}, do {source} đặt",
+        "taken": "Ghi nhận",
+        "tightenedAt": "Siết lúc",
+        "environments": "Môi trường",
+        "workers": "Worker",
+        "noneAllowed": "không cho phép",
+        "boundedLabel": "Các lớp không tự động",
+        "allAuto": "Mọi lớp đều tự động.",
+        "showAll": "{count, plural, other {Xem cả # lớp}}"
       }
     },
     "diff": {
@@ -5606,10 +5732,14 @@
       "spend_money": "Tốn tiền",
       "architecture": "Kiến trúc",
       "scope": "Phạm vi",
+      "merge": "Merge",
+      "credential": "Thông tin xác thực",
+      "access": "Quyền truy cập",
       "question": "Câu hỏi",
       "triage": "Run lỗi",
       "release": "Phát hành",
-      "loop": "Loop"
+      "loop": "Loop",
+      "autonomy": "Mức tự chủ"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",
@@ -5633,6 +5763,7 @@
       "goal_review": "Rà goal của tháng",
       "loop_brief": "Bản tin sáng của Loop",
       "plugin_notice": "Thông báo từ một plugin",
+      "autonomy": "Việc hub đã làm theo mức tự chủ của bạn",
       "worker_doctor": "Doctor của một worker được chia phát hiện mức high"
     },
     "item": {
@@ -5690,7 +5821,7 @@
       "notDelivered": "Đang chờ worker chuyển câu trả lời cho agent ở lượt kế tiếp.",
       "hubTook": "Hub đã làm điều câu trả lời chọn.",
       "resumed": "Run #{run} đang tạm gác: câu trả lời đã cho run chạy tiếp thành <link>run #{next}</link>.",
-      "onlyOwner": "Chỉ {owner}, người đã giao run #{run}, mới trả lời được quyết định này.",
+      "onlyOwner": "Chỉ {owner}, người được hỏi quyết định này của run #{run}, mới trả lời được.",
       "runGone": "Run #{run} đang ở trạng thái {state}: không còn agent nào nhận câu trả lời.",
       "expired": "Không ai trả lời trong 7 ngày run #{run} tạm gác, nên run đã bị huỷ và quyết định hết hạn.",
       "cancelled": "Run #{run} đã kết thúc trước khi có câu trả lời, nên quyết định bị huỷ.",

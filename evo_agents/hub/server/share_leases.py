@@ -2,16 +2,18 @@
 own (``own_secrets``) and those another member shared with them (``shared_secrets``), read in the transactions of
 ``credentials.lease_credentials`` and ``rate_limits``; and what the hub takes back when a share ends.
 
-The principal of a run is the member who dispatched it (runs.dispatched_by): runs.principal_id of plan
-autonomy-levels is not in the schema yet. Each lease records the principal it was made for
+The principal of a run is the member it acts for (runs.principal_id, ``run_autonomy``), the member who dispatched it
+for a run without one (a local run, one queued before schema 0113). Each lease records the principal it was made for
 (credential_leases.principal_id), so the cost of the runs that took an account splits by principal
-(``account_views``).
+(``account_views``). A share's level is source 6 of the run's autonomy from the lease that lends it on
+(``run_autonomy.share_levels``).
 
 A share covers a run when it is not revoked, its end has not passed, it is for the run's project, and its grantee is
 the principal (``user``), a live unit holding the principal's live primary seat or a unit above that seat
-(``unit``), or anyone (``all``). Its secret is live, of a kind the hub leases, not the principal's own, and still bound
-to the project on any worker of its owner; it counts as on this worker when it is bound to this one. A run of the
-Curator and a release run never take a shared secret: their charter and their runtime's login are their own.
+(``unit``), or anyone (``all``). Its secret is live, of a kind the hub leases, neither the principal's own nor the run
+owner's, and still bound to the project on any worker of its owner; it counts as on this worker when it is bound to
+this one. A run of the Curator and a release run never take a shared secret: their charter and their runtime's login
+are their own.
 
 A run that holds a lease under a share keeps being lent it. Otherwise the share lends only when each of these holds,
 and the first that does not is the share's refusal, which goes to the run's events naming the share by its id, never
@@ -85,6 +87,7 @@ def _secret_columns():
         s.c.nonce,
         s.c.key_id,
         s.c.expires_at,
+        s.c.environment,
         s.c.owner_id,
     )
 
@@ -183,8 +186,8 @@ async def shared_secrets(
         .where(
             live_share(),
             exists().where(csp.c.share_id == cs.c.id, csp.c.project_id == run.project_id),
-            await grantee_clause(conn, run.owner_id),
-            s.c.owner_id != run.owner_id,
+            await grantee_clause(conn, run.principal),
+            s.c.owner_id.not_in({run.owner_id, run.principal}),
             s.c.kind.in_(LEASED_KINDS),
             s.c.deleted_at.is_(None),
             _live(refreshable),

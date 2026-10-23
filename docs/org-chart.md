@@ -73,6 +73,18 @@ differ:
 
 So a team under a unit at A3 is at most A3, whatever its own ceiling says, and a member of that team at A2 is at A2.
 
+### Levels per class
+
+A level is a bundle of modes, one for each of the twelve classes of action K1 to K12 (`deny`, `ask`, `notify`,
+`auto`; the table is in [autonomy levels](autonomy.md)). A ceiling may also set the mode of single classes
+(`--class K6=deny`, `--class K5=notify:ask_on_risk_paths`), and the environments and workers it allows
+(`--environment`, `--worker`; none: no limit). Each class of a seat takes the strictest mode of the ceilings of its
+seat and every unit above it, so a unit that caps K6 at ask holds every seat below it at ask on K6 whatever level they
+carry. The effective level shown is the lowest level any of them sets; the effective mode of each class, with the
+ceiling that set it, is the same computation over these two sources of the seven that bound a run (`docs/autonomy.md`).
+The rule that nobody gives more than they have holds per class: a lead whose own K6 is ask cannot give a cohort below
+K6 notify.
+
 ## Who changes what
 
 Nobody may give more than they have:
@@ -94,8 +106,9 @@ Every write runs in one transaction under one lock of the whole chart, so two wr
 rules above: one root, no cycle, one live primary seat per person. Each writes one audit row whose action starts with
 `org.`, with the person who made it and the target, old and new values, and the unit's new revision, for example
 `seat:12 unit=lab role=member->lead revision=4`. The actions are `org.unit_create`, `org.unit_edit`,
-`org.unit_archive`, `org.seat_add`, `org.seat_edit`, `org.seat_end` and `org.ceiling_set`. The note of a ceiling stays
-in its revision and is not copied into the audit row. The web's `/admin/audit` lists them.
+`org.unit_archive`, `org.seat_add`, `org.seat_edit` and `org.seat_end`; a ceiling writes `autonomy.ceiling_set` (see
+[autonomy levels](autonomy.md)). The note of a ceiling stays in its revision and is not copied into the audit
+row. The web's `/admin/audit` lists them.
 
 ## Seats that end
 
@@ -137,7 +150,8 @@ Every command signs in like the rest of `evo-agents hub` and only calls the rout
 | `evo-agents hub org seat add --agent <handle> --project <project> --unit <slug> --role agent --sponsor <login>` | the seat of an agent profile |
 | `evo-agents hub org seat edit <login> [--unit <slug>] [--role member] [--reports-to <login> \| --clear-reports-to] [--sponsor <login>] [--primary] [--starts-on <date>] [--ends-on <date> \| --clear-ends-on]` | change a live seat |
 | `evo-agents hub org seat end <login> [--unit <slug>]` | end a seat now |
-| `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text>` | the next ceiling revision of a unit; `--login <login>` for a person's primary seat, `--seat <id>` for one seat |
+| `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text> [--class Kn=mode]... [--environment E]... [--worker W]...` | the next ceiling revision of a unit, whole: what it leaves out it drops; `--login <login>` for a person's primary seat, `--seat <id>` for one seat |
+| `evo-agents hub stop (--login <login> \| --unit <slug> \| --all) [--reason <text>] [--lift]` | the stop of autonomy S4: cancels the runs of a person, of a unit and the units below it, or of the hub, and holds new ones until `--lift` (`docs/autonomy.md`) |
 | `evo-agents hub org worker list [--json]` | the caller's live workers (every live worker for a hub admin), each with `shared`, the units it is narrowed to and its newest doctor report (`doctor_at`, `doctor_high`, `doctor_medium`) |
 | `evo-agents hub org worker share <worker> --unit <slug>` | narrow a worker to a unit and every unit below it, turning sharing on; refused (409) while the worker's newest doctor report is missing, older than 48 hours or has a high finding |
 | `evo-agents hub org worker unshare <worker> --unit <slug>` | take a unit back from a worker; taking back its last unit turns sharing off |
@@ -171,7 +185,8 @@ evo-agents hub admin grant <login> <project> --role writer --max-level <level>
 | `POST /v1/org/seats` | admin, lead (Who changes what) | add a seat (201) |
 | `PATCH /v1/org/seats/{seat_id}` | admin, lead | change a live seat, or make it primary |
 | `POST /v1/org/seats/{seat_id}/end` | admin, lead | end a seat now |
-| `PUT /v1/org/ceilings` | admin, lead | the next ceiling revision of exactly one of `unit`, `login` (their primary seat) or `seat` |
+| `PUT /v1/org/ceilings` | admin, lead | the next ceiling revision of exactly one of `unit`, `login` (their primary seat) or `seat`, with its `classes`, `environments` and `workers` |
+| `GET /v1/autonomy/org` | any member signed in | every seat's effective mode of each class with its source, and the stops that hold |
 | `GET /v1/org/workers` | any member signed in | the caller's live workers (every live worker for a hub admin), with `shared`, `units` and the newest doctor report |
 | `PUT /v1/org/workers/{id}/units/{slug}` | the worker's owner, admin | narrow the worker to a unit, turning sharing on |
 | `DELETE /v1/org/workers/{id}/units/{slug}` | the worker's owner, admin | take a unit back; with the last one, sharing turns off |
@@ -190,6 +205,11 @@ source, and the person's runs at work, which link to the runs list of each proje
 edit and end seats and set ceilings on the page, under the same rules; someone who may not write sees no write button.
 A 403 shows the hub's reason. Ended seats and archived units appear with "show all". An admin also sees Unplaced: the
 people with a grant and no live seat outside the root.
+
+Each seat also lists how many classes its effective autonomy holds below auto, and opens to the mode of each class.
+Someone who may stop a person or a unit (the person themself, a lead above, an admin) gets Stop and Lift there, with a
+confirmation that names how many runs the stop cancels; a seat or unit under a stop is marked. Only what is unusual
+shows: a stop that holds, a class held below auto.
 
 ## Schema
 

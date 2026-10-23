@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import Text, cast, select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, merge_gate, runs, tables
@@ -75,9 +75,12 @@ def _refs(work, **more) -> dict:
 
 
 def _decisions():
+    """The open decisions of runs, each with the person it is asked of (``asked``: decisions.asked_of, or its run's
+    owner for one asked before schema 0115)."""
     d, r = tables.decisions, tables.runs
+    asked = func.coalesce(d.c.asked_of, r.c.dispatched_by).label("asked")
     return (
-        select(d.c.id, d.c.run_id, d.c.category, d.c.question, d.c.asked_at, r.c.dispatched_by)
+        select(d.c.id, d.c.run_id, d.c.category, d.c.question, d.c.asked_at, asked)
         .add_columns(r.c.plan_id.label("run_plan"), d.c.plan_id)
         .join_from(d, r, r.c.id == d.c.run_id)
         .where(d.c.state == OPEN, r.c.kind != "local")  # a local run's decisions are its owner's alone
@@ -98,7 +101,7 @@ async def _loop_decisions(conn: AsyncConnection, reading: Reading, crowd: People
             continue
         title = f"Decision #{row.id} on run #{row.run_id}: {line(row.question)}"
         refs = _refs(works.get(row.item_id), decision=row.id, run=row.run_id)
-        deciders, link = crowd.logins([row.dispatched_by]), decision_link(row.id)
+        deciders, link = crowd.logins([row.asked]), decision_link(row.id)
         found.append(
             item("loop_decision", title, row.asked_at, RUN_OWNER, deciders, link, work_item=row.item_id, refs=refs)
         )
@@ -130,7 +133,7 @@ async def _asking(conn: AsyncConnection, reading: Reading, crowd: People, waitin
         for row in open_on.get(run.id, []):
             title = f"Decision #{row.id} of run #{run.id}, work item #{work.id} ({work.kind}): {line(row.question)}"
             link, refs = decision_link(row.id), _refs(work, decision=row.id, run=run.id)
-            deciders = crowd.logins([row.dispatched_by])
+            deciders = crowd.logins([row.asked])
             found.append(
                 item("run_decision", title, row.asked_at, RUN_OWNER, deciders, link, work_item=work.id, refs=refs)
             )

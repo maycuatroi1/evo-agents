@@ -64,6 +64,7 @@ from evo_agents.hub.blobs import GET_TTL
 from evo_agents.hub.server import attachment_store, audit, tool_stats
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.agent_account_mask import masked, run_values
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
 from evo_agents.hub.server.chat_store import wake_run_chat
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -370,8 +371,9 @@ async def store_events(
         detail = [{"limit": "events_per_run", "max": runs.MAX_RUN_EVENTS, "ack_seq": acked}]
         return error_response(request, 413, message, detail=detail)
     rows = []
+    leased = await run_values(conn, request.app.state.sealer, run_id)  # the floor S3, whatever the daemon did
     for number, event in enumerate(fresh, start=last_seq + 1):
-        stored, cut = runs.fit_event_body(event.body)
+        stored, cut = runs.fit_event_body(masked(event.body, leased))
         rows.append(
             {
                 "run_id": run_id,

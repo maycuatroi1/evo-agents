@@ -46,6 +46,9 @@ class FakeHub:
         self.decisions: dict[int, dict] = {}
         self.inbox: dict[int, list[dict]] = {}
         self.notices: list[dict] = []
+        self.backups: list[dict] = []  # what `evo-agents worker backup` recorded, with the run's id
+        self.autonomy_acts: list[dict] = []  # what the hook of autonomy asked, with the run's id
+        self.autonomy_answer: dict = {"mode": "notify", "told": True, "answered": False}  # the answer to each
         self.doctor_reports: list[dict] = []  # what the daemon's doctor sent (POST /v1/worker/doctor)
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
@@ -162,6 +165,8 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/steps/{key}", self._step),
                 post("/v1/worker/runs/{id}/decisions", self._decision),
                 post("/v1/worker/runs/{id}/notices", self._notice),
+                post("/v1/worker/runs/{id}/backups", self._backup),
+                post("/v1/worker/runs/{id}/autonomy-acts", self._autonomy_act),
                 post("/v1/worker/runs/{id}/findings", self._finding),
                 post("/v1/worker/runs/{id}/proposals", self._proposal),
                 post("/v1/worker/runs/{id}/playbook", self._playbook),
@@ -1209,6 +1214,20 @@ class FakeHub:
             return _error(422, "invalid", "not a notice kind")
         self.notices.append({"run_id": run_id, **body})
         return web.json_response({"id": len(self.notices), "kind": "notice", **body}, status=201)
+
+    async def _backup(self, request: web.Request) -> web.Response:
+        run_id, _ = self._run(request)
+        body = await request.json()
+        if not body.get("target") or not body.get("location"):
+            return _error(422, "invalid", "target and location")
+        self.backups.append({"run_id": run_id, **body})
+        made_at = body.get("made_at") or "2026-01-01T00:00:00+00:00"
+        return web.json_response({"seq": len(self.backups), "made_at": made_at, "fresh": True}, status=201)
+
+    async def _autonomy_act(self, request: web.Request) -> web.Response:
+        run_id, _ = self._run(request)
+        self.autonomy_acts.append({"run_id": run_id, **(await request.json())})
+        return web.json_response(self.autonomy_answer)
 
     def _held_review_run(self, request: web.Request) -> tuple[int, dict]:
         run_id, run = self._run(request)

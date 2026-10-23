@@ -283,6 +283,12 @@ class WorkerHub:
     async def notice(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
 
+    async def backup(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/backups", body)
+
+    async def autonomy_act(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/autonomy-acts", body, timeout=timeout)
+
     # A review run: its findings and proposals
 
     async def finding(self, run_id: int, body: dict) -> dict:

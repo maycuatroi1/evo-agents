@@ -181,14 +181,39 @@ GOAL_SET = "goal.set"
 # The org chart belongs to no project (evo_agents.hub.server.org_store). A target names the unit by slug and the seat
 # by id with its holder, then each field that changed as "<field>=<was>-><is>" and the unit's revision after it:
 # "unit:<slug> parent=<slug> kind=<kind> revision=1", "seat:<id> unit=<slug> login=<l> role=<role> primary=true->false
-# revision=<n>", "ceiling unit:<slug> level=A5->A1 revision=<n>"; never a ceiling's note.
+# revision=<n>"; never a ceiling's note.
 ORG_UNIT_CREATE = "org.unit_create"
 ORG_UNIT_EDIT = "org.unit_edit"
 ORG_UNIT_ARCHIVE = "org.unit_archive"
 ORG_SEAT_ADD = "org.seat_add"
 ORG_SEAT_EDIT = "org.seat_edit"
 ORG_SEAT_END = "org.seat_end"
-ORG_CEILING_SET = "org.ceiling_set"
+# Autonomy levels belong to no project (evo_agents.hub.server.autonomy_store, .org_writes; plan autonomy-levels): a
+# ceiling revision of a unit or seat, "ceiling unit:<slug> level=A5->A1[ K5=ask ...][ environments=<e,...>]
+# [ workers=<w,...>] revision=<n>", and a revision of a person's own preference, "pref <login> level=A5->A2
+# [ K6=deny ...][ reset] revision=<n>"; never a ceiling's note.
+AUTONOMY_CEILING_SET = "autonomy.ceiling_set"
+AUTONOMY_PREF_SET = "autonomy.pref_set"
+# A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy_gates,
+# .lease_autonomy, .route_autonomy): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
+# act), "run:<id> <class> <act> decision:<id>" when it asked the principal, "run:<id> <class> <act>" when it acted and
+# told the principal; a route refused to a run's credential is "<class> <route> mode=<mode> source=<source> run:<id>".
+AUTONOMY_REFUSED = "autonomy.refused"
+AUTONOMY_ASKED = "autonomy.asked"
+AUTONOMY_NOTIFIED = "autonomy.notified"
+# A backup the agent of a run made before deleting data (evo_agents.hub.server.worker_autonomy, the floor S2), in the
+# run's project, with the worker's owner as actor: "run:<id> <target> at=<location> made=<ISO time>".
+AUTONOMY_BACKUP = "autonomy.backup"
+# The ledger S1 of autonomy (evo_agents.hub.server.autonomy_ledger): every decision a gate of the hub made for a run,
+# in the run's project, with the run's principal as actor, once for each distinct decision: "run:<id> principal=<login>
+# agent=<handle> <class> mode=<mode> result=<acted|asked|refused|allowed|granted|withheld> <act>", "-" for a principal
+# or an agent the run has none of.
+AUTONOMY_DECIDED = "autonomy.decided"
+# The stop S4 and its lift (evo_agents.hub.server.autonomy_stops), in no project, with who stopped or lifted as actor:
+# "stop:<id> <login:<login>|unit:<slug>|all> runs=<n cancelled or asked to stop> leases=<n ended>" and "stop:<id>
+# <login:<login>|unit:<slug>|all>"; never the reason.
+AUTONOMY_STOP = "autonomy.stop"
+AUTONOMY_STOP_LIFT = "autonomy.stop.lift"
 # The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a

@@ -678,7 +678,13 @@ class RunCredentials:
             return await self._push(request)
         if op == "open":
             return await self._open_repo(request)
-        return {"error": "the socket answers op git, op env, op push and op open"}
+        if op == "leaks":  # the commit of a push that holds a value of the run's, never the value (lease_leaks)
+            from evo_agents.worker import lease_leaks
+
+            path, source, remote = (str(request.get(key) or "") for key in ("path", "source", "remote"))
+            mine = [value for value, holders in _held.items() if self.run_id in holders]
+            return {"commit": await lease_leaks.leaked_commit(Path(path), source, remote, mine) if path else None}
+        return {"error": "the socket answers op git, op env, op push, op open and op leaks"}
 
     def _ticket_ok(self, ticket) -> bool:
         """Whether ``ticket`` is one of a git command of the daemon that runs now."""

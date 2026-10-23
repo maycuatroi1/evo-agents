@@ -23,7 +23,9 @@ from evo_agents.hub.server.runs.models.run_parts import (
     PlanCopy,
     PluginRuntime,
     ReleaseSpec,
+    RunAutonomy,
     RunBudget,
+    RunCard,
     RunEnvironment,
     RunOrigin,
     RunPack,
@@ -361,6 +363,12 @@ class Run(BaseModel):
     last_activity_at: datetime | None = Field(
         None, description="the last time a local run's session said anything; null for any other run"
     )
+    principal: str | None = Field(
+        None,
+        description="the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null "
+        "for a local run and one queued before the hub knew principals",
+    )
+    autonomy: RunAutonomy | None = Field(None, description="the autonomy it acts under; null where principal is")
 
 
 class ClaimRequest(BaseModel):
@@ -519,6 +527,9 @@ class RunSpec(BaseModel):
     )
     release: ReleaseSpec | None = Field(
         None, description="a release run's cycle, mode and start commit; null for any other run"
+    )
+    autonomy: RunCard | None = Field(
+        None, description="the autonomy card its prompt opens with; null for a run without a snapshot of autonomy"
     )
     attachments: list[Attachment] = Field(
         default_factory=list,
