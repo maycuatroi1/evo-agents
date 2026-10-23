@@ -132,6 +132,8 @@ def test_growth_pages_of_crm_and_marketing_are_native_and_named():
     from evo_agents.core_plugins.crm import MANIFEST as CRM
 
     assert [page["name"] for page in MANIFEST["contributes"]["pages"]] == ["overview", "posts", "weekly"]
+    # Posts and Growth weekly are tabs of the Marketing page: one menu item for the plugin.
+    assert [page["name"] for page in MANIFEST["contributes"]["pages"] if page.get("menu", True)] == ["overview"]
     assert [page["name"] for page in CRM["contributes"]["pages"]] == ["contacts"]
     for page in [*MANIFEST["contributes"]["pages"], *CRM["contributes"]["pages"]]:
         assert "entry" not in page and page["title"] and page["description"]

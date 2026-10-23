@@ -153,7 +153,8 @@ No agent changes a channel's mode, the kill switch, a Goal or the Policy, and no
 
 ## Pages and the weekly bulletin
 
-A project that enables the plugin has three pages in its menu (the web's `x/marketing`): Marketing (the kill switch
+A project that enables the plugin has three pages (the web's `x/marketing`), one item in its menu and tabs on each
+page: Marketing (the kill switch
 with a confirmation, the month's cost against the cap, and each channel with its breaker and login session), Posts
 (the posts by where the gate left them, and the drafts of personal channels and Facebook groups, each with a copy
 button; writers only, as the route `GET /posts`) and Growth weekly. A reader reads them and changes nothing.

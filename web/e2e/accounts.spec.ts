@@ -5,6 +5,7 @@ import { agentPath, createAgentByApi, putAgentAccountByApi } from "./support/age
 import { API_URL } from "./support/env";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
+import { revealNavItem } from "./support/nav";
 import { claimRun, dispatch, leaseCredentials, type LiveWorker, liveWorker, openRunDetails, runPath, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, recordResponses, secretsOf, secretValue } from "./support/secrets";
 import { otherMember, shareByApi } from "./support/sharing";
@@ -72,6 +73,7 @@ async function rateLimit(live: LiveWorker, runId: number, body: Record<string, u
 
 test("the sidebar leads to Accounts, which points to the Secrets page while there is none", async ({ page, member }) => {
   await member([{ role: "writer", maxLevel: "internal" }]);
+  await revealNavItem(page, "nav-accounts");
   await page.getByTestId("nav-accounts").click();
   await page.waitForURL("**/accounts");
   await expect(page.getByRole("heading", { level: 1, name: "Accounts" })).toBeVisible();
