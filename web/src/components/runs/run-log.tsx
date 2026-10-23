@@ -1,9 +1,8 @@
 "use client";
 
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownToLine, Images, ListTree, MessageCircle, Pause, Play, ScrollText, Terminal } from "lucide-react";
+import { ArrowDownToLine, Globe, Images, ListTree, MessageCircle, Pause, Play, ScrollText, Terminal } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { memo, type ReactNode, type RefObject, useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { FacetGroup } from "@/components/data/facet-group";
 import { SearchField } from "@/components/data/search-field";
@@ -13,8 +12,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 import { GROUP_ICON, GroupMenu } from "./log-group-menu";
-import { filterLines, groupCounts, LOG_GROUPS, type LogGroup, type LogLine, splitMatches, VIRTUAL_THRESHOLD } from "./log-model";
-import type { RunEventKind } from "./queries";
+import { filterLines, groupCounts, LOG_GROUPS, type LogGroup, VIRTUAL_THRESHOLD } from "./log-model";
+import { PlainRows, type Virtual, VirtualRows } from "./log-rows";
 import { LogStreamState } from "./log-stream-state";
 import type { RunLog } from "./use-run-log";
 
@@ -25,149 +24,8 @@ import type { RunLog } from "./use-run-log";
  * display while the stream goes on). Past 2,000 lines shown, only the rows in view are rendered.
  */
 
-const KIND_TONE: Record<RunEventKind, string> = {
-  agent_message_chunk: "text-term-agent",
-  agent_thought_chunk: "text-term-agent",
-  plan: "text-term-agent",
-  user_message: "text-term-user",
-  tool_call: "text-term-tool",
-  tool_call_update: "text-term-tool",
-  output: "text-term-muted",
-  system: "text-term-system",
-  state: "text-term-system",
-  usage_update: "text-term-muted",
-};
-
-
 /** How close to the end (px) still counts as at the end. */
 const END_SLACK = 32;
-/** A row's height before it is measured: one line of 12.5 px text at 1.6. */
-const ROW_ESTIMATE = 22;
-
-function textTone(line: LogLine): string {
-  if (line.tone === "error") return "text-term-error";
-  if (line.tone === "ok") return "text-term-ok";
-  if (line.kind === "user_message") return "text-term-user";
-  if (line.kind === "agent_thought_chunk" || line.kind === "output") return "text-term-muted";
-  return "text-term-fg";
-}
-
-function Highlighted({ text, query }: { text: string; query: string }) {
-  const parts = splitMatches(text, query);
-  if (parts.length === 1) return <>{text}</>;
-  return (
-    <>
-      {parts.map((part, index) =>
-        index % 2 === 1 ? (
-          <mark key={index} className="rounded-xs bg-term-mark px-0.5 text-term-bg">
-            {part}
-          </mark>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
-}
-
-const LogRow = memo(function LogRow({ line, query, time, kind, notes }: { line: LogLine; query: string; time: string; kind: string; notes: string[] }) {
-  return (
-    <div
-      className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 px-3 py-px hover:bg-term-row sm:grid-cols-[11ch_6.75rem_minmax(0,1fr)] sm:px-3.5"
-      data-seq={line.seq}
-      data-kind={line.kind}
-      data-testid="log-line"
-    >
-      {/* 11ch holds the longest time of either locale, "12:42:05 AM", on one line in the mono log. */}
-      <time dateTime={line.at} className="whitespace-nowrap text-term-muted tabular-nums">
-        {time}
-      </time>
-      <span className={cn("truncate font-medium", KIND_TONE[line.kind])}>{kind}</span>
-      <span className={cn("col-span-2 break-words whitespace-pre-wrap [overflow-wrap:anywhere] sm:col-span-1", textTone(line))}>
-        <Highlighted text={line.text} query={query} />
-        {notes.length ? <span className="text-term-muted"> [{notes.join("; ")}]</span> : null}
-      </span>
-    </div>
-  );
-});
-
-function useRowProps() {
-  const t = useTranslations("runs.detail.log");
-  const format = useFormatter();
-  return (line: LogLine) => {
-    const notes: string[] = [];
-    if (line.truncated) notes.push(t("truncated"));
-    if (line.shortened) notes.push(t("shortened"));
-    return {
-      time: format.dateTime(new Date(line.at), { timeStyle: "medium" }),
-      kind: t(`kind.${line.kind}`),
-      notes,
-    };
-  };
-}
-
-function PlainRows({ lines, query }: { lines: readonly LogLine[]; query: string }) {
-  const rowProps = useRowProps();
-  return (
-    <ol className="flex flex-col">
-      {lines.map((line) => (
-        <li key={line.seq}>
-          <LogRow line={line} query={query} {...rowProps(line)} />
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-type Virtual = ReturnType<typeof useVirtualizer<HTMLDivElement, HTMLLIElement>>;
-
-function VirtualRows({
-  lines,
-  query,
-  scrollRef,
-  virtualRef,
-}: {
-  lines: readonly LogLine[];
-  query: string;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  /** Where the card finds the virtualizer, to scroll to the newest line. */
-  virtualRef: RefObject<Virtual | null>;
-}) {
-  const rowProps = useRowProps();
-  // The app does not use the React Compiler, which this rule is about; the virtualizer re-renders through its own state.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const virtualizer = useVirtualizer<HTMLDivElement, HTMLLIElement>({
-    count: lines.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_ESTIMATE,
-    getItemKey: (index) => lines[index].seq,
-    overscan: 24,
-  });
-  useLayoutEffect(() => {
-    virtualRef.current = virtualizer;
-    return () => {
-      virtualRef.current = null;
-    };
-  }, [virtualRef, virtualizer]);
-  return (
-    <ol className="relative" style={{ height: virtualizer.getTotalSize() }}>
-      {virtualizer.getVirtualItems().map((item) => {
-        const line = lines[item.index];
-        return (
-          <li
-            key={item.key}
-            ref={virtualizer.measureElement}
-            data-index={item.index}
-            className="absolute inset-x-0 top-0"
-            style={{ transform: `translateY(${item.start}px)` }}
-          >
-            <LogRow line={line} query={query} {...rowProps(line)} />
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
 
 /** A tab's count: a round pill drawn for the eye, said in words after the tab's name. */
 function TabCount({ count, label, testId }: { count: number; label: string; testId: string }) {
@@ -182,14 +40,16 @@ function TabCount({ count, label, testId }: { count: number; label: string; test
   );
 }
 
-export type SessionTab = "chat" | "trace" | "outputs" | "log" | "terminal";
+export type SessionTab = "chat" | "trace" | "outputs" | "log" | "terminal" | "browser";
 
-export const SESSION_TABS: readonly SessionTab[] = ["chat", "trace", "outputs", "log", "terminal"];
+export const SESSION_TABS: readonly SessionTab[] = ["chat", "trace", "outputs", "log", "terminal", "browser"];
 
 /**
  * The card of a run's session: the Chat of an author run (first), the Trace (the kit's AgentTrace), the Outputs once
- * the run has files (run-outputs.tsx), the Raw log and, for the owner of the run and of its worker, the Terminal, as tabs. Every panel stays mounted, so switching tabs keeps the terminal's session, the
- * log's place and the trace's open rows. The composer sits under the Trace and the Raw log.
+ * the run has files (run-outputs.tsx), the Raw log, for the owner of the run and of its worker the Terminal, and for
+ * the dispatcher of a run started with a browser the Browser, as tabs. Every panel stays mounted, so switching tabs
+ * keeps the terminal's session, the log's place and the trace's open rows. The composer sits under the Trace and the
+ * Raw log.
  */
 export function RunLogCard({
   runId,
@@ -200,6 +60,7 @@ export function RunLogCard({
   trace = null,
   outputs = null,
   terminal = null,
+  browser = null,
   frozen,
   tab: heldTab,
   onTabChange,
@@ -221,6 +82,8 @@ export function RunLogCard({
    * tab shown.
    */
   terminal?: ((shown: boolean) => ReactNode) | null;
+  /** The Browser tab's panel, for the dispatcher of a run started with a browser (run-browser.tsx), given whether it is shown. */
+  browser?: ((shown: boolean) => ReactNode) | null;
   /**
    * Pause held by the page (the line count shown when paused, null while live), so the top bar's LiveIndicator can say
    * Paused and resume it; without it the card holds Pause itself.
@@ -244,10 +107,10 @@ export function RunLogCard({
   const first: SessionTab = chat ? "chat" : trace ? "trace" : "log";
   const [ownTab, setOwnTab] = useState<SessionTab>(first);
   const wanted = heldTab ?? ownTab;
-  // A tab the card does not have (the Terminal once it is not offered, the Trace or the Chat without one) shows the
-  // first it has.
-  const tab: SessionTab =
-    (wanted === "terminal" && !terminal) || (wanted === "trace" && !trace) || (wanted === "chat" && !chat) || (wanted === "outputs" && !outputs) ? first : wanted;
+  // A tab the card does not have (the Terminal or the Browser once it is not offered, the Trace or the Chat without
+  // one) shows the first it has.
+  const missing: Record<SessionTab, boolean> = { chat: !chat, trace: !trace, outputs: !outputs, log: false, terminal: !terminal, browser: !browser };
+  const tab: SessionTab = missing[wanted] ? first : wanted;
   const setTab = onTabChange ?? setOwnTab;
   const [group, setGroup] = useState<LogGroup | null>(null);
   const [query, setQuery] = useState("");
@@ -391,7 +254,7 @@ export function RunLogCard({
     </>
   );
 
-  if (!chat && !trace && !terminal && !outputs) {
+  if (!chat && !trace && !terminal && !browser && !outputs) {
     return (
       <section
         aria-labelledby={`${ids}-title`}
@@ -462,9 +325,15 @@ export function RunLogCard({
                 {tTabs("terminal")}
               </TabsTrigger>
             ) : null}
+            {browser ? (
+              <TabsTrigger value="browser" className="h-12" data-testid="run-tab-browser">
+                <Globe aria-hidden="true" />
+                {tTabs("browser")}
+              </TabsTrigger>
+            ) : null}
           </TabsList>
           {/* The kit's tab bar: what the stream is doing at its right end, the Raw log's line count before it. */}
-          {tab !== "terminal" ? (
+          {tab !== "terminal" && tab !== "browser" ? (
             <div className="ml-auto flex items-center gap-3">
               {tab === "log" ? count : null}
               {status}
@@ -494,7 +363,12 @@ export function RunLogCard({
             {terminal(tab === "terminal")}
           </TabsContent>
         ) : null}
-        {tab !== "terminal" && tab !== "chat" && tab !== "outputs" ? composer : null}
+        {browser ? (
+          <TabsContent value="browser" forceMount className={cn("gap-0 data-[state=inactive]:hidden", panelFill)}>
+            {browser(tab === "browser")}
+          </TabsContent>
+        ) : null}
+        {tab === "trace" || tab === "log" ? composer : null}
       </section>
     </Tabs>
   );

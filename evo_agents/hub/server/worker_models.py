@@ -13,6 +13,7 @@ from evo_agents.hub import runs
 from evo_agents.hub.credentials import DISPATCH_FROM
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.runs.models import KgSyncReport, NightlyRead, SelfUpdateReport
+from evo_agents.hub.server.runs.models.browser import WORKER_HELP, BrowserReport
 from evo_agents.plugins.manifest import PLUGIN_ID
 
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
@@ -134,6 +135,7 @@ class Worker(BaseModel):
         "duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat "
         "said nothing of it",
     )
+    browser: BrowserReport | None = Field(None, description=WORKER_HELP)
     update_now: WorkerUpdateNow | None = Field(
         description="the last Update now its owner or a hub admin asked for, open or ended; null when none was"
     )

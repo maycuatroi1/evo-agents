@@ -431,7 +431,7 @@ describe("plan runs", () => {
     expect(planRunLock(runs.slice(3), "rollout", 1)).toBeNull();
   });
 
-  it("locks Run plan on a plan of the Curator, which only the night shift runs", () => {
+  it("locks Run plan on a plan of the Curator, which the night shift runs itself", () => {
     expect(planRunLock([], "curator-38-worker-tool-prerequisites", 2)).toEqual({ kind: "curator" });
     expect(planRunLock([], "rollout", 2)).toBeNull();
   });

@@ -1467,7 +1467,7 @@ or a repo without an origin, becomes no plan: its change stays `open` with the r
 names another repo or branch, or changes anything but the progress of its steps (`status`, `done_at`, `evidence`,
 `note`) and its `status`, is 409: its what, goal, context, verify and acceptance stay as the hub made them. A plan whose
 id starts with `curator-` is made this way alone (a member's put of one is 409). No member dispatches the steps of a
-Curator's plan or a plan run of it (409): the night shift alone runs it. `evo-agents hub curator proposal plan ID`
+Curator's plan or a plan run of it (409): the night shift alone runs it, at any hour. `evo-agents hub curator proposal plan ID`
 (`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
 accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
 the answer alone; one not accepted, of tier 3 or with a change already is 409 with the reason.
@@ -3080,3 +3080,10 @@ local variable and goes through the same masking.
 
 **Upgrades.** Set `EVO_HUB_VERSION` to the new release, pull, and recreate the services; the api migrates on start.
 Take a backup first when the release notes mention a migration.
+
+## Hub browser identity
+
+`/v1/projects/{p}/browser-identities` lists, creates and deletes the identities of a project (owner `member`, `project` or
+`agent`), `POST .../{id}/default` sets the default identity of an agent profile, and `POST .../{id}/login` queues a login
+session. A worker's owner signs one in without a run through `POST /v1/worker/browser-identities/login` and
+`PUT /v1/worker/browser-identities/{id}/profile`. See [docs/browser.md](browser.md).

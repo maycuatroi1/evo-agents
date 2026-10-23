@@ -36,6 +36,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from evo_agents.hub import (
     tables_accounts,
     tables_attachments,
+    tables_browser,
     tables_crm,
     tables_curator,
     tables_goals,
@@ -405,7 +406,7 @@ Index(
 
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
-workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0065
+workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0119
 
 runs = Table(
     "runs",
@@ -465,6 +466,9 @@ runs = Table(
     _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
     Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     Column("session_per_step", Boolean, nullable=False, server_default=false()),  # a session for each step (0025)
+    Column("browser", Boolean, nullable=False, server_default=false()),  # its agent gets a Chromium of its own (0118)
+    # The browser identities its Chromium opens with, the first one's profile and the others' cookies (0119).
+    Column("browser_identities", ARRAY(BigInteger), nullable=False, server_default="{}"),
     # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
     # Claude Code session id, and its worker_id stays NULL.
     Column("machine", Text),
@@ -966,15 +970,16 @@ org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops, worker_
 )
 credential_shares, credential_share_projects = tables_accounts.share_tables(metadata, credential_leases)  # 0105
 invites = tables_invites.invite_tables(metadata)  # the invite links (0110)
+browser_identities = tables_browser.browser_tables(metadata)  # the browser identities of projects and members (0117)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
-# the contacts of the core plugin crm (0118)
+# the contacts of the core plugin crm (0124)
 crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions, crm_invites_sent = tables_crm.crm_tables(
     metadata
 )
-# the channel accounts, posts and gate of the core plugin marketing (0119)
+# the channel accounts, posts and gate of the core plugin marketing (0125)
 (
     marketing_channels,
     marketing_posts,

@@ -1,7 +1,7 @@
 """The kinds and the reason of the work items a core plugin's Loop rules make: extension point loop_rules.
 
-Revision ID: 0117
-Revises: 0116
+Revision ID: 0123
+Revises: 0122
 Create Date: 2026-10-23
 
 The names below are copies of ``evo_agents.hub.server.loop.model`` as of this revision, never imports, so a later change
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0117"
-down_revision = "0116"
+revision = "0123"
+down_revision = "0122"
 branch_labels = None
 depends_on = None
 

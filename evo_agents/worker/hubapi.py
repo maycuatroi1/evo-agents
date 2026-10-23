@@ -128,7 +128,10 @@ class WorkerHub:
         return headers
 
     async def call(self, method: str, path: str, body=None, *, timeout: float = TIMEOUT, headers: dict | None = None):
-        data = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
+        if isinstance(body, bytes):  # sent as it is, with the caller's Content-Type
+            data = body
+        else:
+            data = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         try:
             async with self.session.request(
                 method,
@@ -241,6 +244,59 @@ class WorkerHub:
     async def release_credentials(self, run_id: int) -> dict:
         """Give back every lease this worker holds of the run, in whatever state it is; ``{revoked}``."""
         answer = await self.call("DELETE", f"/v1/worker/runs/{int(run_id)}/credentials")
+        return answer if isinstance(answer, dict) else {}
+
+    # The profiles of a run's browser identities (evo_agents.worker.browser.profiles): no caller logs one
+
+    async def browser_profile(self, run_id: int, identity_id: int) -> dict:
+        """One browser identity of a run this worker holds: its name, domains, version and profile (base64 or
+        null)."""
+        path = f"/v1/worker/runs/{int(run_id)}/browser-profile"
+        answer = await self.call("POST", path, {"identity_id": int(identity_id)}, timeout=UPLOAD_TIMEOUT)
+        return answer if isinstance(answer, dict) else {}
+
+    async def save_browser_profile(
+        self, run_id: int, identity_id: int, archive: bytes, *, base_version: int, chromium_version: str | None
+    ) -> dict:
+        """Send the profile ``archive`` of a browser identity of the run as the version after ``base_version``;
+        ``{identity_id, version}``."""
+        query = f"base_version={int(base_version)}"
+        if chromium_version:
+            query += f"&chromium_version={quote(chromium_version, safe='')}"
+        path = f"/v1/worker/runs/{int(run_id)}/browser-profile/{int(identity_id)}?{query}"
+        headers = {"Content-Type": "application/octet-stream"}
+        answer = await self.call("PUT", path, archive, timeout=UPLOAD_TIMEOUT, headers=headers)
+        return answer if isinstance(answer, dict) else {}
+
+    async def browser_needs_login(self, run_id: int, identity_id: int, cause: str) -> dict:
+        """Say that the run's Chromium could not use the identity's profile (``cause``); ``{identity_id, status}``."""
+        path = f"/v1/worker/runs/{int(run_id)}/browser-profile/{int(identity_id)}/needs-login"
+        answer = await self.call("POST", path, {"cause": cause})
+        return answer if isinstance(answer, dict) else {}
+
+    async def browser_login(self, run_id: int, body: dict) -> dict:
+        """Ask the run's dispatcher to sign in on one of its browser identities (or, for a run that cannot wait, fail
+        the run): ``{outcome, decision_id, message}``."""
+        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/browser-login", body)
+        return answer if isinstance(answer, dict) else {}
+
+    async def local_browser_login(self, body: dict) -> dict:
+        """Open a login of a browser identity on this worker's own machine, with no run (``browser_local``): the
+        identity (made when ``body`` says how) and its profile, as ``browser_profile`` answers, with ``project``."""
+        answer = await self.call("POST", "/v1/worker/browser-identities/login", body, timeout=UPLOAD_TIMEOUT)
+        return answer if isinstance(answer, dict) else {}
+
+    async def save_local_browser_profile(
+        self, identity_id: int, archive: bytes, *, base_version: int, chromium_version: str | None
+    ) -> dict:
+        """Send the profile ``archive`` a local login made as the version after ``base_version``; ``{identity_id,
+        version}``."""
+        query = f"base_version={int(base_version)}"
+        if chromium_version:
+            query += f"&chromium_version={quote(chromium_version, safe='')}"
+        path = f"/v1/worker/browser-identities/{int(identity_id)}/profile?{query}"
+        headers = {"Content-Type": "application/octet-stream"}
+        answer = await self.call("PUT", path, archive, timeout=UPLOAD_TIMEOUT, headers=headers)
         return answer if isinstance(answer, dict) else {}
 
     async def rate_limit(self, run_id: int, body: dict) -> dict:

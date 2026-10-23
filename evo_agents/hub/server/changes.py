@@ -10,18 +10,18 @@ nothing of it runs (``proposal_plans.plan_from_proposal``). A write of a Curator
 branch for it, or changes anything but the progress of its steps (status, done_at, evidence and note) and its status,
 is refused (``plan_write_refusal``, from ``plans._store``): its what, goal, context, verify and acceptance stay as the
 hub made them. A plan whose id starts with ``curator-`` is made this way alone, never by hand. No member dispatches a
-run of a Curator's plan, step or plan (``refuse_manual_dispatch``): the night shift alone runs it.
+run of a Curator's plan, step or plan (``refuse_manual_dispatch``): the night shift alone runs it, at any hour.
 
-The night shift (``curator.gate_of`` and ``_fire``) queues, after the night's review run, the judge run of a change
-waiting for one (``queue_judge``), then the Builder of a planned change (``queue_builder``): a plan run of the
-Curator's plan, pinned to the worker on duty, as the schedule's owner, within the night's caps. A change on GitHub gets
-its Builder only once the hub checked the repo's ruleset within PROTECTION_DAYS and found it keeps the Curator's App
-off the default branch (curator_repo_checks); one on GitLab only once the charter names the owner's git secret
-(``git_secret``) and the secret is there. A Builder never runs while a judge run of its change is active, nor a judge
-run while a run of the plan is. Each planned change ``queue_builder`` passes over keeps why as its reason, written only
-when it says something new, and null again once its Builder is queued: its plan gone, the repo's ruleset not checked
-or not keeping the Curator off (``protection.ruleset_wait``), the owner's git secret missing, a run of the plan still
-active, no step ready, or a worker on duty that cannot build it.
+The night shift (``curator.gate_of`` and ``_fire``) queues, after the night's review run and outside its window too
+(``shift_hours``), the judge run of a change waiting for one (``queue_judge``), then the Builder of a planned change
+(``queue_builder``): a plan run of the Curator's plan, pinned to the worker on duty, as the schedule's owner, within the
+night's caps. A change on GitHub gets its Builder only once the hub checked the repo's ruleset within PROTECTION_DAYS
+and found it keeps the Curator's App off the default branch (curator_repo_checks); one on GitLab only once the charter
+names the owner's git secret (``git_secret``) and the secret is there. A Builder never runs while a judge run of its
+change is active, nor a judge run while a run of the plan is. Each planned change ``queue_builder`` passes over keeps
+why as its reason, written only when it says something new, and null again once its Builder is queued: its plan gone,
+the repo's ruleset not checked or not keeping the Curator off (``protection.ruleset_wait``), the owner's git secret
+missing, a run of the plan still active, no step ready, or a worker on duty that cannot build it.
 
 When the Builder ends done with every step of the plan done (``builder_ended``), the change waits for its pull
 request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitLab, where the push opened the merge
@@ -322,12 +322,12 @@ async def plan_write_refusal(
 
 
 async def refuse_manual_dispatch(conn: AsyncConnection, project_id: int, plan_id: str) -> None:
-    """409 when plan ``plan_id`` is the Curator's: the night shift alone runs it."""
+    """409 when plan ``plan_id`` is the Curator's: the night shift alone runs it, at any hour."""
     if await change_of_plan(conn, project_id, plan_id) is not None:
         raise HTTPException(
             409,
-            f"plan {plan_id} is the Curator's: only the night shift of the project's charter runs it, on its worker on "
-            "duty, on its own branch; nothing was dispatched",
+            f"plan {plan_id} is the Curator's: the night shift of the project's charter runs it itself, at any hour, "
+            "within a minute once its worker on duty is free, on its own branch; nothing was dispatched",
         )
 
 

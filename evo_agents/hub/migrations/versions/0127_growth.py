@@ -1,8 +1,8 @@
 """The growth rules of the core plugins marketing and crm on the Loop: a post tied to its claim and Signal key and
 posted at a time, the replies to a project account's posts, and the invite links @community sent.
 
-Revision ID: 0121
-Revises: 0120
+Revision ID: 0127
+Revises: 0126
 Create Date: 2026-10-23
 
 The names below are copies of ``evo_agents.hub.tables_marketing`` and ``evo_agents.hub.tables_crm`` as of this
@@ -22,8 +22,8 @@ Going back drops the two tables and the four columns; scheduled posts that did n
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0121"
-down_revision = "0120"
+revision = "0127"
+down_revision = "0126"
 branch_labels = None
 depends_on = None
 

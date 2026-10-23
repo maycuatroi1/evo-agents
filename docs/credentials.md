@@ -919,3 +919,10 @@ medium findings as `warning:` lines; they never stop the install.
 | an agent account | delete it (`evo-agents hub agent account remove`) or the agent on the project's page, then revoke it at its source; a run that holds it keeps the value until it ends, so end those runs too |
 | a GitHub App token | it ends within the hour; to end all at once, suspend or uninstall the App, or rotate its private key |
 | `EVO_HUB_SECRETS_KEY` | rotate the key, then have every owner set their secrets again |
+
+## Browser identities
+
+A browser identity is a Chromium profile kept logged in for one worker (see [docs/browser.md](browser.md)). Each version
+of it is sealed with a fresh AES-256-GCM data key, itself sealed under `EVO_HUB_SECRETS_KEY` with the identity and the
+version as associated data; the hub keeps two versions, and a delete drops the keys first. An identity of an agent profile
+is an admin's and is retired with the profile. No route returns a cookie, a key or a hash of a blob.

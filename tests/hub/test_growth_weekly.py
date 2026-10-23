@@ -134,10 +134,10 @@ def test_growth_pages_of_crm_and_marketing_are_native_and_named():
 
 
 @pytest.mark.empty_db
-def test_0122_takes_facebook_group_for_a_personal_draft_only_account_and_going_back_deletes_them(hub_db):
+def test_0128_takes_facebook_group_for_a_personal_draft_only_account_and_going_back_deletes_them(hub_db):
     from tests.hub.test_migrate import ALL, move_to, one, seed
 
-    move_to(hub_db, "0121")
+    move_to(hub_db, "0127")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
     t = tables.marketing_channels
@@ -145,14 +145,14 @@ def test_0122_takes_facebook_group_for_a_personal_draft_only_account_and_going_b
     group = {**group, "owner_id": ids["user"]}
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(t).values(group))  # not a channel yet
-    move_to(hub_db, "0122")
+    move_to(hub_db, "0128")
     with live.connect(hub_db) as conn:
         assert one(conn, insert(t).values(group).returning(t.c.id))
         with pytest.raises(errors.CheckViolation):
             conn.execute(insert(t).values({**group, "account": "h", "mode": "autonomous"}))
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(t).values({**group, "account": "p", "account_kind": "project", "owner_id": None}))
-    move_to(hub_db, "0121", down=True)
+    move_to(hub_db, "0127", down=True)
     with live.connect(hub_db) as conn:
         assert conn.execute(select(t.c.id)).all() == []
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0122") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0128") :]

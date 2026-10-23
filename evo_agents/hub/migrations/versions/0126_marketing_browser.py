@@ -1,8 +1,8 @@
 """The browser adapter of the core plugin marketing: a login session on each channel, a queue for the worker's script and
 the screenshot of a post.
 
-Revision ID: 0120
-Revises: 0119
+Revision ID: 0126
+Revises: 0125
 Create Date: 2026-10-23
 
 The names below are copies of ``evo_agents.hub.tables_marketing`` as of this revision, never imports, so a later change
@@ -13,15 +13,15 @@ works. marketing_posts takes two states, queued (the gate passed a post for a br
 not claimed it) and posting (a script claimed it and has not reported), and gains claimed_at and screenshot (the PNG the
 script took after posting, or when it stopped). No session is in any column: it is a sealed field of the plugin's config.
 
-Going back turns the posts that wait or run for a browser into drafts, takes the check of 0119 again and drops the
+Going back turns the posts that wait or run for a browser into drafts, takes the check of 0125 again and drops the
 three columns; the screenshots are lost.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0120"
-down_revision = "0119"
+revision = "0126"
+down_revision = "0125"
 branch_labels = None
 depends_on = None
 

@@ -227,6 +227,7 @@ class Conversation:
             messages = await self.after_turn()
             if not messages:
                 return
+            await run.agent.login_answered(messages)
             prompt = runs.clip(
                 self.prompt_for(messages) + "\n\n" + await run.inbox.take(messages), runs.MAX_PROMPT_BYTES
             )

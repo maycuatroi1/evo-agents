@@ -48,7 +48,7 @@ from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture
 from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
-from tests.hub.test_curator import NIGHT, PROJECT, THE_NIGHT, charter_body, fire, grant, put_charter, written
+from tests.hub.test_curator import DAY, NIGHT, PROJECT, THE_NIGHT, charter_body, fire, grant, put_charter, written
 from tests.hub.test_decisions import ask as ask_decision
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import reported
@@ -163,11 +163,11 @@ def protect(world, repo: str = "evo-agents", headers=None):
     return world.client.post(path("protection", repo, "check"), headers=headers or world.headers["owner"])
 
 
-def builder(world, files=None) -> int:
-    """The Builder of the planned change: queued by the night shift, claimed, its step done, ended done; then the
-    branch on the fake GitHub at HEAD with ``files``. Its run's id."""
+def builder(world, files=None, now=NIGHT) -> int:
+    """The Builder of the planned change: queued by the night shift at ``now``, claimed, its step done, ended done;
+    then the branch on the fake GitHub at HEAD with ``files``. Its run's id."""
     assert protect(world).json()["protected"] is True
-    assert fire(world.client, NIGHT)["builder"] == 1
+    assert fire(world.client, now)["builder"] == 1
     spec = claim(world.client, world.worker)
     assert spec["kind"] == "plan" and spec["plan_id"] == PLAN_ID and spec["curator"]["role"] == "builder"
     run_id = spec["id"]
@@ -179,9 +179,9 @@ def builder(world, files=None) -> int:
     return run_id
 
 
-def judge_run(world) -> dict:
-    """The judge run the night shift queues, claimed; its spec, whose key ``inputs`` and ``verdict`` send."""
-    assert fire(world.client, NIGHT)["judge"] == 1
+def judge_run(world, now=NIGHT) -> dict:
+    """The judge run the night shift queues at ``now``, claimed; its spec, whose key ``inputs`` and ``verdict`` send."""
+    assert fire(world.client, now)["judge"] == 1
     spec = judge_key(claim(world.client, world.worker))
     assert spec["kind"] == "judge"
     return spec
@@ -216,9 +216,10 @@ def verdict(world, run_id: int, *, key: str | None = None, **body):
     return world.client.post(f"/v1/worker/runs/{run_id}/verdict", json=sent, headers=headers)
 
 
-def judged(world, **body) -> dict:
-    """The judge run queued, claimed, its inputs read, its verdict posted, and the run ended done; the change."""
-    spec = judge_run(world)
+def judged(world, now=NIGHT, **body) -> dict:
+    """The judge run queued at ``now``, claimed, its inputs read, its verdict posted, and the run ended done; the
+    change."""
+    spec = judge_run(world, now)
     assert inputs(world, spec["id"]).status_code == 200
     response = verdict(world, spec["id"], **body)
     assert response.status_code == 200, response.text
@@ -312,7 +313,7 @@ def test_curator_plan_never_names_a_default_branch_and_keeps_its_verify(world):
     assert world.client.put(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json=put, headers=owner).status_code == 200
 
 
-def test_curator_plan_runs_only_on_the_night_shift(world):
+def test_curator_plan_no_member_dispatches_it(world):
     accepted(world)
     owner, worker_id = world.headers["owner"], world.worker["id"]
     for route, body in (
@@ -320,7 +321,10 @@ def test_curator_plan_runs_only_on_the_night_shift(world):
         ("runs", {"plan_id": PLAN_ID, "steps": [1], "worker_id": worker_id}),
     ):
         refused = world.client.post(f"/v1/projects/{PROJECT}/{route}", json=body, headers=owner)
-        assert refused.status_code == 409 and "only the night shift of the project's charter runs it" in refused.text
+        assert (
+            refused.status_code == 409
+            and "the night shift of the project's charter runs it itself, at any hour" in refused.text
+        )
     assert sql(world.db, select(func.count()).select_from(tables.runs).where(tables.runs.c.plan_id == PLAN_ID)) == [
         (0,)
     ]
@@ -509,6 +513,28 @@ def test_curator_plan_the_night_shift_keeps_why_it_passes_over_a_planned_change(
     assert one_change(world)["reason"].startswith(
         f"worker mac-mini on duty cannot build it: it has no checkout of {PROJECT}/evo-agents"
     )
+
+
+def test_curator_plan_its_builder_and_judge_run_outside_the_window_too(world):
+    accepted(world)
+    assert fire(world.client, DAY) == {"outside": 1}  # the ruleset is not checked yet: no Builder, and no night plan
+    assert one_change(world)["reason"].startswith("the hub has not checked the ruleset of repo evo-agents yet")
+    builder_id = builder(world, now=DAY)
+    r = tables.runs
+    night = sql(world.db, select(r.c.schedule_night, r.c.dispatched_via).where(r.c.id == builder_id))
+    assert night == [(THE_NIGHT, "schedule")]  # counted toward the night that last opened, within its caps
+    assert moved_on(world) == {"opened": 1}
+    judged(world, now=DAY)
+    assert one_change(world)["state"] == "judged"
+
+
+def test_curator_plan_a_builder_queued_at_night_outlives_the_window(world):
+    accepted(world)
+    assert protect(world).json()["protected"] is True
+    assert fire(world.client, NIGHT)["builder"] == 1
+    assert fire(world.client, DAY) == {"busy": 1}  # still queued, not cancelled with the night's own runs
+    spec = claim(world.client, world.worker)
+    assert spec["plan_id"] == PLAN_ID and spec["curator"]["role"] == "builder"
 
 
 def test_curator_plan_a_planned_change_whose_plan_left_the_hub_says_so(world):

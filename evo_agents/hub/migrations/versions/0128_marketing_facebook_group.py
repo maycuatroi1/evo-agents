@@ -1,22 +1,22 @@
 """The channel facebook_group of the core plugin marketing: a post for a Facebook group is a draft a member shares by
 hand, never a post a machine makes (plan autonomous-oss-growth, step 20, and its non-goal on Facebook groups).
 
-Revision ID: 0122
-Revises: 0121
+Revision ID: 0128
+Revises: 0127
 Create Date: 2026-10-23
 
 The names below are copies of ``evo_agents.hub.tables_marketing`` as of this revision, never imports, so a later change
 to them takes a new revision. Every statement is an Alembic operation on SQLAlchemy Core expressions.
 
 marketing_channels takes the channel facebook_group, for a member's personal account only and in draft_only mode
-always. Going back deletes the facebook_group accounts (their posts go with them) and takes the check of 0119 again.
+always. Going back deletes the facebook_group accounts (their posts go with them) and takes the check of 0125 again.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0122"
-down_revision = "0121"
+revision = "0128"
+down_revision = "0127"
 branch_labels = None
 depends_on = None
 

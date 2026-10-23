@@ -20,8 +20,8 @@ export type RunState = Run["state"];
 export type StateCounts = Schemas["StateCounts"];
 export type ReadySteps = Schemas["ReadySteps"];
 export type StepReadiness = Schemas["StepReadiness"];
-export type DispatchRequest = Schemas["Dispatch"];
-export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step"> & { session_per_step?: true }; // sent only when on
+export type DispatchRequest = Omit<Schemas["Dispatch"], "browser" | "identities"> & Partial<Pick<Schemas["Dispatch"], "browser" | "identities">>; // a browser sent only when asked for
+export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step" | "browser" | "identities"> & { session_per_step?: true } & Partial<Pick<Schemas["PlanRunDispatch"], "browser" | "identities">>; // sent only when on
 export type { RequestedRuntime };
 export type RunMode = DispatchRequest["mode"];
 export type Approval = DispatchRequest["approval"];
@@ -191,7 +191,7 @@ export const readyStepsQuery = (api: ApiSource, project: string, plan: string) =
 /** Queue one run per step named, all of them or none (409 when a step is not ready), with the session's CSRF header. */
 export async function dispatchRuns(api: ApiClient, project: string, body: DispatchRequest): Promise<Run[]> {
   const headers = await csrfHeaders(api);
-  return call(api.POST("/v1/projects/{project}/runs", { params: { path: { project } }, body, headers }));
+  return call(api.POST("/v1/projects/{project}/runs", { params: { path: { project } }, body: body as Schemas["Dispatch"], headers }));
 }
 
 /**

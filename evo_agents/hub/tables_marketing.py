@@ -1,4 +1,4 @@
-"""The tables of the core plugin marketing (0119), which ``evo_agents.hub.tables`` adds to its metadata and exposes as
+"""The tables of the core plugin marketing (0125), which ``evo_agents.hub.tables`` adds to its metadata and exposes as
 its own attributes (``tables.marketing_channels``, ``marketing_posts``, ``marketing_budget``, ``marketing_denylist``,
 ``marketing_state`` and ``marketing_metrics``): the channel accounts of a project, what was proposed to post on them
 and what the gate decided (``docs/marketing-plugin.md``).
@@ -8,16 +8,16 @@ or draft_only), its adapter (api or browser), the member who owns a personal acc
 subreddit, a page id, a repo, an author URN) and when it was paused. No credential is in it: those are sealed in the
 plugin's config. The constraints of the registry are checked here as well as in code: a personal account is never
 autonomous but on facebook_profile and tiktok, facebook_profile is personal only, hackernews is always draft_only, facebook_group is personal and draft_only
-always (0122).
+always (0128).
 
 marketing_posts holds what an agent proposed: the text, its links and sources, the result of each layer of the gate,
 the Judge's scores, where it ended (posted, draft with the reason, failed, withdrawn), its cost and the run that
 proposed it. A post for a browser channel waits as queued until a worker's script claims it (posting, claimed_at) and
-reports; its screenshot is kept on it (0120). marketing_budget holds the money reserved and spent in each month. marketing_denylist holds the terms,
+reports; its screenshot is kept on it (0126). marketing_budget holds the money reserved and spent in each month. marketing_denylist holds the terms,
 domains and people a post must never name. marketing_state holds the kill switch of a project. marketing_metrics holds
 the numbers read from a post at +24h and +7d. A post of a campaign names the claim it tests and the Signal key its
 numbers count toward, and may wait for its time (scheduled_at) until the Loop releases it (released_at);
-marketing_replies holds what someone answered under a post of a project account (0121).
+marketing_replies holds what someone answered under a post of a project account (0127).
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ CHANNELS = (
     "facebook_page",
     "facebook_profile",
     "tiktok",
-    "facebook_group",  # a member's draft for a Facebook group, which the member shares by hand (0122)
+    "facebook_group",  # a member's draft for a Facebook group, which the member shares by hand (0128)
 )
 ACCOUNT_KINDS = ("project", "personal")
 MODES = ("autonomous", "draft_only")
@@ -134,10 +134,10 @@ def posts_table(metadata: MetaData) -> Table:
         Column("posted_at", DateTime(timezone=True)),
         Column("claimed_at", DateTime(timezone=True)),
         Column("screenshot", LargeBinary),
-        Column("claim_id", BigInteger),  # 0121
-        Column("signal_key", Text),  # 0121
-        Column("scheduled_at", DateTime(timezone=True)),  # 0121
-        Column("released_at", DateTime(timezone=True)),  # 0121
+        Column("claim_id", BigInteger),  # 0127
+        Column("signal_key", Text),  # 0127
+        Column("scheduled_at", DateTime(timezone=True)),  # 0127
+        Column("released_at", DateTime(timezone=True)),  # 0127
         _key("marketing_posts", "project_id", "projects", ondelete="CASCADE"),
         _key("marketing_posts", "channel_id", "marketing_channels", ondelete="CASCADE"),
         _key("marketing_posts", "proposed_by", "users", ondelete="SET NULL"),
@@ -150,7 +150,7 @@ def posts_table(metadata: MetaData) -> Table:
 
 
 def replies_table(metadata: MetaData) -> Table:
-    """What someone answered under a post of a project account (0121), once per reply."""
+    """What someone answered under a post of a project account (0127), once per reply."""
     return Table(
         "marketing_replies",
         metadata,
