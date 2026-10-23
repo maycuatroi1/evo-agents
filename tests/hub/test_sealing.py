@@ -102,6 +102,25 @@ def test_every_seal_draws_a_new_nonce():
     assert SEALER.open(first, aad) == SEALER.open(second, aad) == ENV_VALUE
 
 
+def test_bytes_seal_like_text_and_a_browser_identitys_data_key_opens_only_as_its_identity_and_version():
+    data_key = secrets.token_bytes(sealing.KEY_BYTES)
+    aad = sealing.browser_identity_aad(12, 3)
+    assert aad == b"browser-identity:12:3"
+    sealed = SEALER.seal_bytes(data_key, aad)
+    assert SEALER.open_bytes(sealed, aad) == data_key and data_key not in sealed.ciphertext
+    assert len(sealed.nonce) == sealing.NONCE_BYTES and len(sealed.ciphertext) == len(data_key) + sealing.TAG_BYTES
+    for other in (sealing.browser_identity_aad(13, 3), sealing.browser_identity_aad(12, 4), secret_aad(12, "3", "env")):
+        with pytest.raises(Unsealable, match="does not open here"):
+            SEALER.open_bytes(sealed, other)
+
+    # the text format is the bytes format of the value's UTF-8: either opens what the other sealed
+    aad = secret_aad(7, "gitlab-ops", "git")
+    assert SEALER.open_bytes(SEALER.seal(GIT_VALUE, aad), aad) == GIT_VALUE.encode()
+    assert SEALER.open(SEALER.seal_bytes("välue".encode(), aad), aad) == "välue"
+    with pytest.raises(Unsealable, match="does not open here"):  # bytes that are no text never open as text
+        SEALER.open(SEALER.seal_bytes(b"\xff\xfe", aad), aad)
+
+
 def test_the_key_stays_out_of_reprs_and_errors():
     key = base64.urlsafe_b64decode(KEY + "=")
     assert repr(SEALER) == f"Sealer(key_id={SEALER.key_id!r})"

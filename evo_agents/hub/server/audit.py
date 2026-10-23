@@ -128,6 +128,25 @@ AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
 AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name
 AGENT_ACCOUNT_SET = "agent-account.set"  # an admin renewed it or changed its weight, priority, workers, end or pause
 AGENT_ACCOUNT_DELETE = "agent-account.delete"  # an admin deleted it: value and bindings went, its leases were revoked
+# Browser identities (evo_agents.hub.server.browser_identities, browser_profiles, browser_leases), in the project; the
+# target is "<project> browser-identity:<id>", with " version=<n>" for a profile saved or handed out and " run:<id>"
+# for a run's, never a domain, a cookie or a key. A run's are in the name of its dispatcher, with its worker's token.
+BROWSER_IDENTITY_CREATE = "browser_identity.create"  # a member made one of their own, or an admin one of the project
+BROWSER_IDENTITY_DELETE = "browser_identity.delete"  # its owner or an admin deleted it: its keys and blobs went
+BROWSER_IDENTITY_SAVE = "browser_identity.save"  # a new version of its profile was sealed; the one before the last went
+BROWSER_IDENTITY_LEASE = "browser_identity.lease"  # the worker of a run that holds it was handed its profile
+BROWSER_IDENTITY_LOGIN = (
+    "browser_identity.login"  # a login session of it was queued: "<project> browser-identity:<id> run:<id>"
+)
+BROWSER_IDENTITY_DISABLE = "browser_identity.disable"  # its member or an admin disabled it: no run attaches it
+BROWSER_IDENTITY_ENABLE = "browser_identity.enable"  # it was enabled again
+BROWSER_IDENTITY_DEFAULT = "browser_identity.default"  # an admin made it the identity its agent hands its runs
+BROWSER_IDENTITY_NEEDS_LOGIN = "browser_identity.needs_login"  # its profile did not open: it waits for a new login
+# The live view of a run's browser (evo_agents.hub.server.browser_view), in the run's project and the name of who
+# dispatched it; the target names the run as above, then "start", or "end=<how>" with the screen frames and events
+# relayed, never a key, a text, a URL or a frame.
+BROWSER_VIEW = "browser.view"  # the dispatcher opened the run's browser in the live view, or the view ended
+BROWSER_CONTROL = "browser.control"  # in a view, the dispatcher got the browser to drive (mode human), or gave it back
 # Group chats (evo_agents.hub.server.chats); the target is "chat:<id>", then "person:<login>", "agent:@<handle>" or
 # "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's project.
 CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with

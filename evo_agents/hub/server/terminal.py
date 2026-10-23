@@ -335,7 +335,7 @@ async def _open(websocket: WebSocket, project: str, run_id: int) -> Session | No
         raise Refusal(frames.CLOSE_UNAVAILABLE, "the hub database is unavailable; try again shortly") from None
 
 
-def _fresh_session(token_id: int):
+def fresh_session(token_id: int):
     """Whether the web session of token ``token_id`` was created within SESSION_MAX_AGE; no row without the token."""
     tokens = tables.tokens
     return select(tokens.c.created_at > func.now() - SESSION_MAX_AGE).where(tokens.c.id == token_id)
@@ -367,7 +367,7 @@ def _terminal_run(run_id: int, project_id: int):
 async def _open_session(conn: AsyncConnection, session: Session, project: str) -> None:
     """Check the run and the session's age, reserve the run's terminal for ``session`` and audit it."""
     user, run_id = session.user, session.run_id
-    fresh = (await conn.execute(_fresh_session(user.token_id))).scalar_one_or_none()
+    fresh = (await conn.execute(fresh_session(user.token_id))).scalar_one_or_none()
     if not fresh:
         hours = int(SESSION_MAX_AGE.total_seconds() // 3600)
         raise Refusal(frames.CLOSE_FORBIDDEN, f"the web session is older than {hours} hours: sign in again")
@@ -486,7 +486,7 @@ async def browser_terminal(websocket: WebSocket, project: ProjectName, run_id: R
 # The worker's end
 
 
-def _bearer(websocket: WebSocket) -> str:
+def bearer(websocket: WebSocket) -> str:
     authorization = websocket.headers.get("authorization")
     if authorization is None:
         raise Refusal(frames.CLOSE_UNAUTHENTICATED, f"a worker token is required: {JOIN_HINT}")
@@ -499,7 +499,7 @@ def _bearer(websocket: WebSocket) -> str:
     return token
 
 
-def _holding_worker(token_id: int):
+def holding_worker(token_id: int):
     """The worker of token ``token_id``, revoked or not."""
     workers = tables.workers
     return select(workers.c.id, workers.c.name, workers.c.revoked_at).where(workers.c.token_id == token_id)
@@ -519,14 +519,14 @@ async def _attach(websocket: WebSocket, run_id: int) -> Session:
             frames.CLOSE_UPGRADE,
             f"this hub speaks version {PROTOCOL_VERSION} of the worker protocol: upgrade evo-agents on the worker",
         )
-    token = _bearer(websocket)
+    token = bearer(websocket)
     app = websocket.app
     try:
         user = await authenticate(app.state.engine, token, WORKER, app.state.config)
         if user is None:
             raise Refusal(frames.CLOSE_UNAUTHENTICATED, f"the worker token is revoked, expired or unknown: {JOIN_HINT}")
         async with app.state.engine.begin() as conn:
-            worker = (await conn.execute(_holding_worker(user.token_id))).one_or_none()
+            worker = (await conn.execute(holding_worker(user.token_id))).one_or_none()
             held = (await conn.execute(_held_run(run_id))).one_or_none()
     except (psycopg.OperationalError, sa_exc.OperationalError, OSError) as exc:
         log.warning("cannot attach a terminal: database unavailable", extra={"error": type(exc).__name__})

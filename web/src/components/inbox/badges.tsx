@@ -14,6 +14,7 @@ import {
   Hammer,
   Images,
   IterationCw,
+  LogIn,
   KeyRound,
   type LucideIcon,
   MessageCircleQuestionMark,
@@ -63,6 +64,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   release: Tags,
   // What the Loop asks a person after a work item failed a third time: retry it, drop it, or take it over.
   loop: IterationCw,
+  // What the agent of a run with a browser asks when a page wants a sign-in: Done, or Skip.
+  login: LogIn,
   // What the hub asks the principal of a run before it merges, deploys or releases for it (K5, K6 at ask).
   autonomy: ShieldQuestionMark,
 };
@@ -100,6 +103,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   goal_review: { icon: Goal },
   loop_brief: { icon: IterationCw },
   plugin_notice: { icon: Puzzle },
+  browser_needs_login: { icon: LogIn },
   autonomy: { icon: ShieldCheck },
   worker_doctor: { icon: ShieldAlert },
 };

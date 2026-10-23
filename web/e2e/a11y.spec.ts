@@ -2148,10 +2148,15 @@ const PAGES: Entry[] = [
   },
 ];
 
-/** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
-const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
+/**
+ * The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). `slow` says why a check
+ * gets three times the timeout: two pages run axe twice over a list that grows with every member the suite made before
+ * them, which on a loaded machine takes longer than 30 s.
+ */
+const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void>; slow?: string }[] = [
   {
     name: "org chart as a hub admin, with Unplaced and the add-seat form with errors",
+    slow: "two axe passes over /org, whose Unplaced lists every member the suite made so far",
     open: async (page) => {
       test.setTimeout(60_000); // two axe passes, which went past 30 s on a loaded machine
       const slug = await unitByApi("a11y-org");
@@ -2192,6 +2197,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
   },
   {
     name: "admin grant dialog, form and confirmation",
+    slow: "two axe passes over /admin/members, which lists every member the suite made so far",
     open: async (page) => {
       await page.goto("/admin/members");
       await page.getByTestId("grant-open").click();
@@ -2414,6 +2420,7 @@ for (const scheme of ["light", "dark"] as const) {
     for (const entry of ADMIN_PAGES) {
       test(`${entry.name} has no serious axe violation (${scheme})`, async ({ page, signInAs }) => {
         test.skip(isDeployed, "signs in as the stack's hub admin");
+        test.slow(entry.slow !== undefined, entry.slow);
         await signInAs(ADMIN_ACCOUNT);
         await entry.open(page);
         await expect(page.locator("html")).toHaveClass(new RegExp(scheme));

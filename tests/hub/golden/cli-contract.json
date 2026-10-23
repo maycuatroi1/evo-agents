@@ -2271,6 +2271,493 @@
         "schema": "AutonomyView"
       }
     },
+    "hub browser identity create": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--domain"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project",
+            "agent"
+          ],
+          "default": "member"
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--login-url"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "owner",
+          "owner_login",
+          "agent",
+          "agent_default",
+          "domains",
+          "login_url",
+          "worker",
+          "worker_owner",
+          "status",
+          "version",
+          "size",
+          "chromium_version",
+          "held_by_run",
+          "last_saved_at",
+          "last_saved_by",
+          "last_used_at",
+          "created_at",
+          "can_manage"
+        ],
+        "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity delete": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project",
+            "agent"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "owner",
+          "owner_login",
+          "agent",
+          "agent_default",
+          "domains",
+          "login_url",
+          "worker",
+          "worker_owner",
+          "status",
+          "version",
+          "size",
+          "chromium_version",
+          "held_by_run",
+          "last_saved_at",
+          "last_saved_by",
+          "last_used_at",
+          "created_at",
+          "can_manage",
+          "deleted"
+        ],
+        "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity disable": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project",
+            "agent"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "owner",
+          "owner_login",
+          "agent",
+          "agent_default",
+          "domains",
+          "login_url",
+          "worker",
+          "worker_owner",
+          "status",
+          "version",
+          "size",
+          "chromium_version",
+          "held_by_run",
+          "last_saved_at",
+          "last_saved_by",
+          "last_used_at",
+          "created_at",
+          "can_manage"
+        ],
+        "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity enable": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project",
+            "agent"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "owner",
+          "owner_login",
+          "agent",
+          "agent_default",
+          "domains",
+          "login_url",
+          "worker",
+          "worker_owner",
+          "status",
+          "version",
+          "size",
+          "chromium_version",
+          "held_by_run",
+          "last_saved_at",
+          "last_saved_by",
+          "last_used_at",
+          "created_at",
+          "can_manage"
+        ],
+        "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "owner",
+          "owner_login",
+          "agent",
+          "agent_default",
+          "domains",
+          "login_url",
+          "worker",
+          "worker_owner",
+          "status",
+          "version",
+          "size",
+          "chromium_version",
+          "held_by_run",
+          "last_saved_at",
+          "last_saved_by",
+          "last_used_at",
+          "created_at",
+          "can_manage"
+        ],
+        "schema": "BrowserIdentity"
+      }
+    },
+    "hub browser identity login": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "member",
+            "project",
+            "agent"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at",
+          "steady_wait",
+          "failure_cause",
+          "session_per_step",
+          "browser",
+          "browser_identities",
+          "profile",
+          "profile_id",
+          "profile_version",
+          "environment",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
+          "chat_id",
+          "chat_message_id",
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title",
+          "principal",
+          "autonomy"
+        ],
+        "schema": "Run"
+      }
+    },
     "hub canvas brainstorm": {
       "positionals": [
         {
@@ -9728,6 +10215,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -9901,6 +10390,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10007,6 +10498,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10243,6 +10736,22 @@
         },
         {
           "flags": [
+            "--browser"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--identity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--model"
           ],
           "value": "string",
@@ -10330,6 +10839,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10436,6 +10947,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10542,6 +11055,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10618,6 +11133,7 @@
             "history",
             "release",
             "question",
+            "browser",
             "local"
           ]
         },
@@ -10925,6 +11441,22 @@
         },
         {
           "flags": [
+            "--browser"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--identity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--account"
           ],
           "value": "string",
@@ -11004,6 +11536,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -11056,6 +11590,14 @@
         {
           "flags": [
             "--account-by-rule"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--browser"
           ],
           "value": null,
           "required": false,
@@ -11126,6 +11668,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -11290,6 +11834,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -11396,6 +11942,8 @@
           "steady_wait",
           "failure_cause",
           "session_per_step",
+          "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -16332,7 +16880,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -16601,7 +17149,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -17082,7 +17630,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -17655,7 +18203,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -17720,7 +18268,7 @@
               }
             },
             "413": {
-              "description": "Request Entity Too Large",
+              "description": "Content Too Large",
               "content": {
                 "application/json": {
                   "schema": {
@@ -17730,7 +18278,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -17812,7 +18360,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -17919,7 +18467,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -17929,7 +18477,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -18286,7 +18834,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -18296,7 +18844,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -18398,7 +18946,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -18408,7 +18956,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19002,7 +19550,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19012,7 +19560,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19116,7 +19664,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19126,7 +19674,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19237,7 +19785,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19247,7 +19795,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19514,7 +20062,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19524,7 +20072,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -19698,7 +20246,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -19884,7 +20432,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -19894,7 +20442,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -20004,7 +20552,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -20014,7 +20562,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -20619,7 +21167,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -20715,7 +21263,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21127,7 +21675,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21292,7 +21840,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21396,7 +21944,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21502,7 +22050,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21692,7 +22240,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21872,7 +22420,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -21994,7 +22542,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -22668,7 +23216,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -22862,7 +23410,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -23015,7 +23563,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -23179,7 +23727,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -23438,7 +23986,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -23873,7 +24421,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -24013,7 +24561,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -24384,6 +24932,7 @@
                       "history",
                       "release",
                       "question",
+                      "browser",
                       "local"
                     ],
                     "type": "string"
@@ -24662,7 +25211,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -24960,7 +25509,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25054,7 +25603,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25950,7 +26499,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -25960,7 +26509,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -26068,7 +26617,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -26327,7 +26876,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "description": "Validation Error",
@@ -26695,7 +27244,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -26705,7 +27254,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -26892,7 +27441,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -26902,7 +27451,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -26997,7 +27546,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27298,7 +27847,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -27645,7 +28194,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27747,7 +28296,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27853,7 +28402,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27959,7 +28508,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28063,7 +28612,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28167,7 +28716,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28180,7 +28729,7 @@
               "description": "Service Unavailable"
             },
             "413": {
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             }
           }
         }
@@ -28274,7 +28823,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28659,7 +29208,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -28754,7 +29303,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -28872,7 +29421,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -28977,7 +29526,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29082,7 +29631,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29202,7 +29751,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29318,7 +29867,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29430,7 +29979,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29535,7 +30084,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "413": {
               "content": {
@@ -29545,7 +30094,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             }
           }
         }
@@ -29742,7 +30291,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -29844,7 +30393,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -29919,7 +30468,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -31230,7 +31779,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -31434,7 +31983,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -31529,7 +32078,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -31799,7 +32348,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -32146,7 +32695,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -32850,7 +33399,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -32860,7 +33409,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -32976,7 +33525,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -32986,7 +33535,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -33166,7 +33715,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -33176,7 +33725,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -33281,7 +33830,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -33291,7 +33840,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -34039,7 +34588,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -34049,7 +34598,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -34446,7 +34995,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -34456,7 +35005,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -35123,7 +35672,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "502": {
               "content": {
@@ -35653,7 +36202,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -35663,7 +36212,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -35999,7 +36548,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -36009,7 +36558,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -37809,7 +38358,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38033,7 +38582,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38184,7 +38733,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -38585,7 +39134,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38724,7 +39273,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -38825,7 +39374,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38909,7 +39458,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38984,7 +39533,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39086,7 +39635,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39171,7 +39720,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39246,7 +39795,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39387,7 +39936,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39452,7 +40001,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39534,7 +40083,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39616,7 +40165,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -39745,7 +40294,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -39960,7 +40509,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -40053,7 +40602,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40289,7 +40838,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40393,7 +40942,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40487,7 +41036,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40603,7 +41152,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -40613,7 +41162,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -40721,7 +41270,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -40731,7 +41280,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40855,7 +41404,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -40865,7 +41414,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -40990,7 +41539,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41000,7 +41549,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41129,7 +41678,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41139,7 +41688,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41302,7 +41851,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41312,7 +41861,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41424,7 +41973,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41434,7 +41983,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41546,7 +42095,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41556,7 +42105,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41668,7 +42217,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41678,7 +42227,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41800,7 +42349,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41810,7 +42359,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -41932,7 +42481,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -41942,7 +42491,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42077,7 +42626,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42087,7 +42636,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42232,7 +42781,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42242,7 +42791,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42377,7 +42926,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42387,7 +42936,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42530,7 +43079,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42540,7 +43089,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42662,7 +43211,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42672,7 +43221,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42804,7 +43353,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42814,7 +43363,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -42936,7 +43485,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -42946,7 +43495,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43056,7 +43605,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43066,7 +43615,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43182,7 +43731,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43192,7 +43741,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -43312,7 +43861,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43322,7 +43871,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43446,7 +43995,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43456,7 +44005,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43603,7 +44152,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43613,7 +44162,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43732,7 +44281,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43848,7 +44397,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43858,7 +44407,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -43987,7 +44536,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -43997,7 +44546,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44111,7 +44660,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44121,7 +44670,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -44239,7 +44788,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44249,7 +44798,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44369,7 +44918,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44379,7 +44928,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44521,7 +45070,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44531,7 +45080,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44661,7 +45210,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44671,7 +45220,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44812,7 +45361,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44822,7 +45371,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -44932,7 +45481,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -44942,7 +45491,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45062,7 +45611,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45072,7 +45621,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45192,7 +45741,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45202,7 +45751,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45332,7 +45881,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45342,7 +45891,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45485,7 +46034,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45495,7 +46044,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45632,7 +46181,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45642,7 +46191,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45752,7 +46301,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45762,7 +46311,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45872,7 +46421,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -45882,7 +46431,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -45996,7 +46545,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46006,7 +46555,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -46124,7 +46673,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46134,7 +46683,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46254,7 +46803,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46264,7 +46813,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46401,7 +46950,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46411,7 +46960,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46541,7 +47090,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46551,7 +47100,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46635,7 +47184,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46645,7 +47194,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -46854,7 +47403,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46864,7 +47413,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -46972,7 +47521,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -46982,7 +47531,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47095,7 +47644,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47105,7 +47654,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -47226,7 +47775,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47236,7 +47785,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47324,7 +47873,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47334,7 +47883,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -47426,7 +47975,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47436,7 +47985,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47524,7 +48073,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47534,7 +48083,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47657,7 +48206,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47667,7 +48216,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47790,7 +48339,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47800,7 +48349,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -47933,7 +48482,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -47943,7 +48492,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48048,7 +48597,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48058,7 +48607,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48168,7 +48717,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -48178,7 +48727,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -48347,7 +48896,7 @@
               }
             },
             "413": {
-              "description": "Request Entity Too Large",
+              "description": "Content Too Large",
               "content": {
                 "application/json": {
                   "schema": {
@@ -48674,7 +49223,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -48925,7 +49474,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -50279,7 +50828,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -50469,7 +51018,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -50563,7 +51112,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -50759,7 +51308,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -50769,7 +51318,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -50873,7 +51422,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -51083,7 +51632,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -51209,7 +51758,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -51318,7 +51867,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -51873,7 +52422,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -51979,7 +52528,1343 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities": {
+        "get": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "List Browser Identities",
+          "description": "The project's identities and your own in it, never another member's, and its agents' for an admin; metadata\nonly.",
+          "operationId": "list_browser_identities_v1_projects__project__browser_identities_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/BrowserIdentity"
+                    },
+                    "title": "Response List Browser Identities V1 Projects  Project  Browser Identities Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Create Browser Identity",
+          "description": "Create an identity with no profile yet (version 0): your own with the writer role, or the project's or an\nagent's as an admin. It is logged in later, on its worker.",
+          "operationId": "create_browser_identity_v1_projects__project__browser_identities_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserIdentityCreate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}": {
+        "delete": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Delete Browser Identity",
+          "description": "Delete an identity: its member, or an admin for the project's. Its keys go from the hub and its profiles from\nthe blob store; 409 while a run holds it.",
+          "operationId": "delete_browser_identity_v1_projects__project__browser_identities__identity_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}/default": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Default Browser Identity",
+          "description": "Make an agent's identity the one its profile hands to every run under it, in place of the one that was: an admin\nof the project. 409 for an identity no agent owns.",
+          "operationId": "default_browser_identity_v1_projects__project__browser_identities__identity_id__default_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}/login": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Login Browser Identity",
+          "description": "Queue a login session of an identity: Chromium on its profile, on its worker, for at most 30 minutes, which you\nopen in the live view in human mode and end with Save (the profile is sealed, its version raised) or by cancelling\nit (nothing is saved). With ``worker`` it is a Move: the session runs there and the identity moves after Save.\n409 while another run holds the identity or a session of it waits, and for a disabled one.",
+          "operationId": "login_browser_identity_v1_projects__project__browser_identities__identity_id__login_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserLogin"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}/disable": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Disable Browser Identity",
+          "description": "Disable an identity: no run attaches it and its login session is refused until it is enabled; its profile is\nkept. Its member, or an admin for the project's; 409 while a run holds it.",
+          "operationId": "disable_browser_identity_v1_projects__project__browser_identities__identity_id__disable_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/browser-identities/{identity_id}/enable": {
+        "post": {
+          "tags": [
+            "browser"
+          ],
+          "summary": "Enable Browser Identity",
+          "description": "Enable a disabled identity: active when it has a saved profile, else needs_login.",
+          "operationId": "enable_browser_identity_v1_projects__project__browser_identities__identity_id__enable_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the identity's id (`evo-agents hub browser identity list`)",
+                "title": "Identity Id"
+              },
+              "description": "the identity's id (`evo-agents hub browser identity list`)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/browser-login": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask Login",
+          "description": "Ask the dispatcher of a run with a browser to sign in on one of its identities, or, for a run that cannot wait,\nset the identity needs_login and fail the run.",
+          "operationId": "ask_login_v1_worker_runs__run_id__browser_login_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserLoginBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserLoginAsked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/browser-profile": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Lease Browser Profile",
+          "description": "One of the run's browser identities, with its profile: what its Chromium opens with.",
+          "operationId": "lease_browser_profile_v1_worker_runs__run_id__browser_profile_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfileAsk"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserProfileLease"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/browser-profile/{identity_id}/needs-login": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Browser Needs Login",
+          "description": "The run's Chromium could not use the identity's profile: it waits for a new login.",
+          "operationId": "browser_needs_login_v1_worker_runs__run_id__browser_profile__identity_id__needs_login_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "one of the run's browser identities",
+                "title": "Identity Id"
+              },
+              "description": "one of the run's browser identities"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserNeedsLogin"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentityState"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/browser-profile/{identity_id}": {
+        "put": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Save Browser Profile",
+          "description": "Seal the profile the run's Chromium leaves as the identity's next version, while the run holds it.",
+          "operationId": "save_browser_profile_v1_worker_runs__run_id__browser_profile__identity_id__put",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "one of the run's browser identities",
+                "title": "Identity Id"
+              },
+              "description": "one of the run's browser identities"
+            },
+            {
+              "name": "base_version",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "the version the run's profile started from",
+                "title": "Base Version"
+              },
+              "description": "the version the run's profile started from"
+            },
+            {
+              "name": "chromium_version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6}){0,3}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the worker's Chromium, as it says its version",
+                "title": "Chromium Version"
+              },
+              "description": "the worker's Chromium, as it says its version"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserProfileSaved"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the archive of the profile, as `evo_agents.hub.browser_archive.pack` makes it",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/browser-identities/login": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Open Local Login",
+          "description": "The identity, with its profile, for a login on this worker's own machine; created, held by this worker, when it\ndoes not exist yet.",
+          "operationId": "open_local_login_v1_worker_browser_identities_login_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalLoginAsk"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LocalLogin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Content",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/browser-identities/{identity_id}/profile": {
+        "put": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Save Local Profile",
+          "description": "Seal the profile a login on the worker's machine leaves as the identity's next version.",
+          "operationId": "save_local_profile_v1_worker_browser_identities__identity_id__profile_put",
+          "parameters": [
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "a browser identity this worker logged in",
+                "title": "Identity Id"
+              },
+              "description": "a browser identity this worker logged in"
+            },
+            {
+              "name": "base_version",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "the version the login started from",
+                "title": "Base Version"
+              },
+              "description": "the version the login started from"
+            },
+            {
+              "name": "chromium_version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6}){0,3}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the worker's Chromium, as it says its version",
+                "title": "Chromium Version"
+              },
+              "description": "the worker's Chromium, as it says its version"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserProfileSaved"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the archive of the profile, as `evo_agents.hub.browser_archive.pack` makes it",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
             }
           }
         }
@@ -52085,7 +53970,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -52192,7 +54077,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -52276,7 +54161,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -52371,7 +54256,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -53745,7 +55630,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -53755,7 +55640,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -54294,7 +56179,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -54379,7 +56264,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -54464,7 +56349,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -54549,7 +56434,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -54634,7 +56519,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -54719,7 +56604,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -54994,7 +56879,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -55004,7 +56889,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -55317,7 +57202,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -55423,7 +57308,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -55529,7 +57414,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -55625,7 +57510,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -55881,7 +57766,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -56067,7 +57952,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -56393,7 +58278,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -56499,7 +58384,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -56747,7 +58632,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57001,7 +58886,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57428,7 +59313,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -57556,7 +59441,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -57650,7 +59535,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -57660,7 +59545,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -57817,7 +59702,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -57945,7 +59830,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -58118,7 +60003,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -58290,7 +60175,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -58374,7 +60259,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -58384,7 +60269,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "429": {
               "content": {
@@ -58674,7 +60559,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -58766,7 +60651,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -58863,7 +60748,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -58963,7 +60848,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -59055,7 +60940,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -59150,7 +61035,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -59316,7 +61201,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -59897,7 +61782,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -60093,7 +61978,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -65532,6 +67417,565 @@
           ],
           "title": "BriefSummary",
           "description": "The project's last morning brief (``evo_agents.hub.server.brief``)."
+        },
+        "BrowserIdentity": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "owner": {
+              "type": "string",
+              "enum": [
+                "member",
+                "project",
+                "agent"
+              ],
+              "title": "Owner"
+            },
+            "owner_login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner Login",
+              "description": "the member who owns it; null for the project's and an agent's"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile that owns it; null for a member's or the project's"
+            },
+            "agent_default": {
+              "type": "boolean",
+              "title": "Agent Default",
+              "description": "whether its agent profile hands it to every run under it"
+            },
+            "domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Domains"
+            },
+            "login_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login Url",
+              "description": "the page its login session opens; null: its first domain's home page"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker"
+            },
+            "worker_owner": {
+              "type": "string",
+              "title": "Worker Owner",
+              "description": "the login of the worker's owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "needs_login",
+                "disabled"
+              ],
+              "title": "Status"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "profiles saved so far; 0 until the first login is saved"
+            },
+            "size": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size",
+              "description": "bytes of the current profile, sealed; null at version 0"
+            },
+            "chromium_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chromium Version",
+              "description": "the Chromium that saved the current profile"
+            },
+            "held_by_run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Held By Run",
+              "description": "the run that holds it now"
+            },
+            "last_saved_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Saved At"
+            },
+            "last_saved_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Saved By"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "can_manage": {
+              "type": "boolean",
+              "title": "Can Manage",
+              "description": "whether you may delete it: its member, or an admin for the project's"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "name",
+            "owner",
+            "owner_login",
+            "agent",
+            "agent_default",
+            "domains",
+            "login_url",
+            "worker",
+            "worker_owner",
+            "status",
+            "version",
+            "size",
+            "chromium_version",
+            "held_by_run",
+            "last_saved_at",
+            "last_saved_by",
+            "last_used_at",
+            "created_at",
+            "can_manage"
+          ],
+          "title": "BrowserIdentity"
+        },
+        "BrowserIdentityCreate": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+              "title": "Name",
+              "description": "unique among its owner's live identities in the project"
+            },
+            "domains": {
+              "items": {
+                "type": "string",
+                "maxLength": 253,
+                "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+                "description": "a host name in lower case, such as github.com"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Domains",
+              "description": "the sites whose cookies it keeps, each with its subdomains; the others are dropped at every save"
+            },
+            "worker": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Worker",
+              "description": "the worker that holds it: your own, or a shared one, serving the project; its profile opens there alone"
+            },
+            "owner": {
+              "type": "string",
+              "enum": [
+                "member",
+                "project",
+                "agent"
+              ],
+              "title": "Owner",
+              "description": "member: yours alone (the writer role); project: the admins', usable by every writer; agent: an agent profile's (``agent``), the admins' to manage, which the profile hands to its runs",
+              "default": "member"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile that owns it, @ left out; required for owner agent, refused otherwise. The first identity of a profile is the one it hands its runs"
+            },
+            "login_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login Url",
+              "description": "the page a login session opens, an http or https URL; null: the home page of the first domain"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "domains",
+            "worker"
+          ],
+          "title": "BrowserIdentityCreate"
+        },
+        "BrowserIdentityState": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "needs_login",
+                "disabled"
+              ],
+              "title": "Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "status"
+          ],
+          "title": "BrowserIdentityState"
+        },
+        "BrowserLogin": {
+          "properties": {
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "a Move: the name of the worker the identity should live on after the session saves (your own, or a shared one that serves the project and has the feature browser); null: the worker that holds it"
+            }
+          },
+          "type": "object",
+          "title": "BrowserLogin"
+        },
+        "BrowserLoginAsked": {
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "asked",
+                "failed"
+              ],
+              "title": "Outcome",
+              "description": "asked: a decision is open; failed: the run ends"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the login decision, for outcome asked"
+            },
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id",
+              "description": "the browser identity the login is for"
+            },
+            "message": {
+              "type": "string",
+              "title": "Message",
+              "description": "what the agent is told"
+            }
+          },
+          "type": "object",
+          "required": [
+            "outcome",
+            "decision_id",
+            "identity_id",
+            "message"
+          ],
+          "title": "BrowserLoginAsked"
+        },
+        "BrowserLoginBody": {
+          "properties": {
+            "identity": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Identity",
+              "description": "the id or the name of one of the run's browser identities"
+            },
+            "url": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Url",
+              "description": "the page to sign in on"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why the agent needs the login"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity",
+            "url",
+            "reason"
+          ],
+          "title": "BrowserLoginBody"
+        },
+        "BrowserNeedsLogin": {
+          "properties": {
+            "cause": {
+              "type": "string",
+              "enum": [
+                "unopenable",
+                "newer_chromium"
+              ],
+              "title": "Cause",
+              "description": "unopenable: the worker's Chromium could not open the profile; newer_chromium: a Chromium newer than the worker's saved it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "cause"
+          ],
+          "title": "BrowserNeedsLogin"
+        },
+        "BrowserProfileAsk": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Identity Id",
+              "description": "one of the run's browser_identities"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id"
+          ],
+          "title": "BrowserProfileAsk"
+        },
+        "BrowserProfileLease": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Domains",
+              "description": "the sites whose cookies the profile keeps, each with its subdomains; the worker drops every other cookie before it saves the profile"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "needs_login",
+                "disabled"
+              ],
+              "title": "Status"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version of the profile handed out, the base_version of its save; 0: none"
+            },
+            "chromium_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chromium Version",
+              "description": "the Chromium that saved it, as it said; null for none"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null too for a login session on another worker than the identity's (a Move)"
+            },
+            "login_url": {
+              "type": "string",
+              "title": "Login Url",
+              "description": "the page a login session opens: the identity's, else its first domain's"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "name",
+            "domains",
+            "status",
+            "version",
+            "chromium_version",
+            "profile",
+            "login_url"
+          ],
+          "title": "BrowserProfileLease"
+        },
+        "BrowserProfileSaved": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version the profile is at now, the one saved"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "version"
+          ],
+          "title": "BrowserProfileSaved"
+        },
+        "BrowserReport": {
+          "properties": {
+            "chromium": {
+              "type": "string",
+              "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6}){0,3}$",
+              "title": "Chromium",
+              "description": "its version, as `chrome --version` prints it"
+            },
+            "display": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "screen"
+              ],
+              "title": "Display",
+              "description": "headless: it runs with --headless=new, no screen needed; screen: it draws on a display"
+            },
+            "max": {
+              "type": "integer",
+              "maximum": 64.0,
+              "minimum": 1.0,
+              "title": "Max",
+              "description": "how many browser runs the worker holds at once, each its own Chromium; the hub hands it no more"
+            },
+            "sandbox": {
+              "type": "boolean",
+              "title": "Sandbox",
+              "description": "whether Chromium runs with its own sandbox; false where the machine does not let it (no unprivileged user namespaces), as the install found"
+            }
+          },
+          "type": "object",
+          "required": [
+            "chromium",
+            "display",
+            "max",
+            "sandbox"
+          ],
+          "title": "BrowserReport",
+          "description": "The Chromium a daemon starts for a browser run, as its heartbeat says."
         },
         "Build": {
           "properties": {
@@ -72540,7 +74984,8 @@
                 "triage",
                 "release",
                 "loop",
-                "autonomy"
+                "autonomy",
+                "login"
               ],
               "title": "Category"
             },
@@ -73352,6 +75797,25 @@
               ],
               "title": "Plugin Config",
               "description": "the run's own layer of the config of plugins enabled on the project, above the agent profile's: plugin name to the plain values it sets, checked against the plugin's schema; no secret (422). Null: none"
+            },
+            "browser": {
+              "type": "boolean",
+              "title": "Browser",
+              "description": "true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot",
+              "default": false
+            },
+            "identities": {
+              "items": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "a browser identity of yours of that name, else the project's (`evo-agents hub browser identity list`)"
+              },
+              "type": "array",
+              "maxItems": 8,
+              "title": "Identities",
+              "description": "browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one",
+              "default": []
             }
           },
           "type": "object",
@@ -75672,6 +78136,17 @@
                 }
               ],
               "description": "for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off"
+            },
+            "browser": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BrowserReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the Chromium the daemon starts for a browser run, with the feature browser; null for a daemon without one"
             }
           },
           "type": "object",
@@ -78952,6 +81427,163 @@
           ],
           "title": "LocalDecisionAsk"
         },
+        "LocalLogin": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Domains",
+              "description": "the sites whose cookies the profile keeps, each with its subdomains; the worker drops every other cookie before it saves the profile"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "needs_login",
+                "disabled"
+              ],
+              "title": "Status"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version of the profile handed out, the base_version of its save; 0: none"
+            },
+            "chromium_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chromium Version",
+              "description": "the Chromium that saved it, as it said; null for none"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login; null too for a login session on another worker than the identity's (a Move)"
+            },
+            "login_url": {
+              "type": "string",
+              "title": "Login Url",
+              "description": "the page a login session opens: the identity's, else its first domain's"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "whether this login created the identity"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "name",
+            "domains",
+            "status",
+            "version",
+            "chromium_version",
+            "profile",
+            "login_url",
+            "project",
+            "created"
+          ],
+          "title": "LocalLogin"
+        },
+        "LocalLoginAsk": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project",
+              "description": "the project of the identity"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+              "title": "Name",
+              "description": "unique among its owner's live identities in the project"
+            },
+            "owner": {
+              "type": "string",
+              "enum": [
+                "member",
+                "project",
+                "agent"
+              ],
+              "title": "Owner",
+              "description": "whose identity: yours, the project's or an agent's",
+              "default": "member"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the agent's handle, for owner agent"
+            },
+            "domains": {
+              "items": {
+                "type": "string",
+                "maxLength": 253,
+                "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+                "description": "a host name in lower case, such as github.com"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Domains",
+              "description": "the sites a new identity keeps; needed to create one, else ignored",
+              "default": []
+            },
+            "login_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login Url",
+              "description": "of a new identity"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "name"
+          ],
+          "title": "LocalLoginAsk"
+        },
         "LocalRegister": {
           "properties": {
             "machine": {
@@ -82048,7 +84680,8 @@
                     "loop_brief",
                     "plugin_notice",
                     "autonomy",
-                    "worker_doctor"
+                    "worker_doctor",
+                    "browser_needs_login"
                   ]
                 },
                 {
@@ -83477,7 +86110,8 @@
                 "triage",
                 "release",
                 "loop",
-                "autonomy"
+                "autonomy",
+                "login"
               ],
               "title": "Category"
             },
@@ -83606,6 +86240,7 @@
                 "history",
                 "release",
                 "question",
+                "browser",
                 "local"
               ],
               "title": "Kind"
@@ -85002,6 +87637,25 @@
               ],
               "title": "Profile",
               "description": "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
+            },
+            "browser": {
+              "type": "boolean",
+              "title": "Browser",
+              "description": "true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot",
+              "default": false
+            },
+            "identities": {
+              "items": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "a browser identity of yours of that name, else the project's (`evo-agents hub browser identity list`)"
+              },
+              "type": "array",
+              "maxItems": 8,
+              "title": "Identities",
+              "description": "browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one",
+              "default": []
             }
           },
           "type": "object",
@@ -92328,6 +94982,18 @@
               "title": "Account By Rule",
               "description": "true: the rules of the caller's policy pick the account, not the one picked for the run",
               "default": false
+            },
+            "browser": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Browser",
+              "description": "true: the rerun gets a Chromium of its own; false: it gets none, nor the run's browser identities; null keeps what the run rerun had"
             }
           },
           "additionalProperties": false,
@@ -92812,6 +95478,7 @@
                 "history",
                 "release",
                 "question",
+                "browser",
                 "local"
               ],
               "title": "Kind",
@@ -93348,6 +96015,21 @@
               "title": "Session Per Step",
               "description": "a plan run whose worker starts a new agent session for each step; its usage lists the sessions (usage.sessions). False for any other run",
               "default": false
+            },
+            "browser": {
+              "type": "boolean",
+              "title": "Browser",
+              "description": "a run whose agent got a Chromium of its own on its worker (dispatched with browser); false for any other",
+              "default": false
+            },
+            "browser_identities": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Browser Identities",
+              "description": "the ids of the browser identities the run's Chromium opened with, in the order dispatched",
+              "default": []
             },
             "profile": {
               "anyOf": [
@@ -95435,7 +98117,8 @@
                 "replay",
                 "history",
                 "release",
-                "question"
+                "question",
+                "browser"
               ],
               "title": "Kind"
             },
@@ -95671,6 +98354,21 @@
               "title": "Session Per Step",
               "description": "a plan run to run with a new agent session for each step not done yet, each with its prompt and the handoff of the plan; false: one session does every step, with the prompt above",
               "default": false
+            },
+            "browser": {
+              "type": "boolean",
+              "title": "Browser",
+              "description": "true: start a Chromium for the run's agent before its first turn and hand its DevTools endpoint to the agent (EVO_BROWSER_CDP); absent for a run without one",
+              "default": false
+            },
+            "browser_identities": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Browser Identities",
+              "description": "the ids of the browser identities to open the run's Chromium with (POST /v1/worker/runs/{id}/browser-profile hands each one's profile), in order; absent for a run without them",
+              "default": []
             },
             "profile": {
               "anyOf": [
@@ -107440,6 +110138,17 @@
                 }
               ],
               "description": "what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it"
+            },
+            "browser": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BrowserReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the worker's last heartbeat said of its Chromium; null when it said nothing of one"
             },
             "update_now": {
               "anyOf": [

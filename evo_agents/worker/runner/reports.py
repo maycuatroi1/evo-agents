@@ -87,8 +87,10 @@ class Reports:
             run.request_stop("gone")
 
     async def end(self, state: str, **fields) -> None:
-        """Send the run's outputs (``Outputs.settle``) and every event, then the report that ends the run."""
+        """Send the profiles of the run's browser identities (``Agent.save_browser``), the run's outputs
+        (``Outputs.settle``) and every event, then the report that ends the run."""
         run = self.run
+        await run.agent.save_browser()
         await run.outputs.settle()
         if not await run.sender.drained():
             log.warning("ending the run with events unsent", extra={"run_id": run.id, "why": run.sender.gave_up})

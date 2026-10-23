@@ -121,6 +121,27 @@ class Server:
             headers=tuple((key, put(value)) for key, value in self.headers),
         )
 
+    def with_variables(self, variables: Mapping[str, str]) -> Server:
+        """The server with each ``${NAME}`` of ``variables`` replaced by its value, in its command, args, env, url and
+        headers; a name not in ``variables`` stays as it is. The worker gives a run's own values this way, such as the
+        DevTools endpoint of its browser (``EVO_BROWSER_CDP``)."""
+        if not variables:
+            return self
+
+        def put(text: str) -> str:
+            for name, value in variables.items():
+                text = text.replace("${" + name + "}", value)
+            return text
+
+        return replace(
+            self,
+            command=put(self.command),
+            args=tuple(put(arg) for arg in self.args),
+            env=tuple((key, put(value)) for key, value in self.env),
+            url=put(self.url),
+            headers=tuple((key, put(value)) for key, value in self.headers),
+        )
+
     def claude(self) -> dict:
         """The server as Claude Code's mcpServers and the Agent SDK's mcp_servers take it."""
         if self.transport == "stdio":

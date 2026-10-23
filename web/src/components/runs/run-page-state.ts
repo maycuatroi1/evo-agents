@@ -29,21 +29,21 @@ export function useDescribeMove() {
 }
 
 /**
- * The tab the session card shows, held by the page and kept in the URL (`?view=log`, `?view=outputs`, `?view=terminal`; the first tab,
- * the Trace or an author run's Chat, has none): the Terminal tab once offered when the page was opened on it (a
- * decision's Take over from the Inbox), or when a decision's Take over here asks for it. The notice author_waiting
- * links to `?tab=chat`, the Chat, which an author run's page shows first anyway. Changing tabs replaces the URL without a
- * navigation.
+ * The tab the session card shows, held by the page and kept in the URL (`?view=log`, `?view=outputs`, `?view=terminal`,
+ * `?view=browser`; the first tab, the Trace or an author run's Chat, has none): the Terminal or the Browser tab once
+ * offered when the page was opened on it (a decision's Take over from the Inbox), or when a decision's Take over here
+ * asks for the Terminal. The notice author_waiting links to `?tab=chat`, the Chat, which an author run's page shows
+ * first anyway. Changing tabs replaces the URL without a navigation.
  */
-export function useSessionTab(terminalOffered: boolean, first: SessionTab) {
+export function useSessionTab(offered: { terminal: boolean; browser: boolean }, first: SessionTab) {
   const params = useSearchParams();
   const asked = params.get(RUN_VIEW_PARAM) ?? (params.get("tab") === CHAT_TAB ? CHAT_TAB : null);
   const wanted: SessionTab | null = (SESSION_TABS as readonly string[]).includes(asked ?? "") ? (asked as SessionTab) : null;
   const [tab, setTab] = useState<SessionTab>(wanted === "log" || wanted === "trace" || wanted === "outputs" || (wanted === "chat" && first === "chat") ? wanted : first);
   const [applied, setApplied] = useState(false);
-  if (wanted === "terminal" && terminalOffered && !applied) {
+  if ((wanted === "terminal" || wanted === "browser") && offered[wanted] && !applied) {
     setApplied(true);
-    setTab("terminal");
+    setTab(wanted);
   }
   const choose = useCallback(
     (next: SessionTab) => {

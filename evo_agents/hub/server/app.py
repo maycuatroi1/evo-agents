@@ -10,7 +10,8 @@ ticket of their own (``security.PUBLIC_PREFIXES``), and the routes of a feature 
 answer 404 (``FeatureGate``, ``evo_agents.hub.server.hub_settings``). The OpenAPI document is served at /v1/openapi.json
 for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted,
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
-(``evo_agents.hub.server.terminal``), which check their own credential. ``app.state.sealer`` seals the members' secrets
+(``evo_agents.hub.server.terminal``) and of the live view of its browser (``evo_agents.hub.server.browser_view``),
+which check their own credential. ``app.state.sealer`` seals the members' secrets
 (``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
 503. As it starts, the hub records the core plugins of its image that projects enable, and turns off an installed plugin
 that no longer runs on its release and tells the hub admins (``evo_agents.hub.server.plugin_store``). The routes of
@@ -172,6 +173,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 yield
         finally:
             await app.state.terminals.close_all()
+            await app.state.browser_views.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
             for opened in (app.state.github_app, app.state.curator_app, app.state.plugin_host):
@@ -356,11 +358,7 @@ def create_app(config: HubConfig) -> FastAPI:
     # The routes of the core plugins (Telegram's, at the paths it had), then those of isolated plugins under /v1/x.
     app.state.core_plugins = plugin_routes.include(app)
 
-    from evo_agents.hub.server import terminal
-
-    app.include_router(terminal.router)
-    app.include_router(terminal.worker_router)
-    app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
+    _include_websockets(app)
 
     from evo_agents.hub.server import (
         account_views,
@@ -372,6 +370,11 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_types,
         autonomy_policies,
         branding,
+        browser_asks,
+        browser_identities,
+        browser_leases,
+        browser_local,
+        browser_logins,
         chat_agents,
         chat_direct,
         chat_images,
@@ -415,6 +418,13 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_account_views.router,
         agent_packs.router,
         agent_types.router,
+        browser_identities.router,
+        browser_logins.router,
+        browser_asks.worker_router,
+        browser_leases.worker_router,
+        browser_leases.upload_router,
+        browser_local.router,
+        browser_local.upload_router,
         task_dispatch.router,
         plugin_notify.router,
         task_dispatch.worker_router,
@@ -456,6 +466,18 @@ def create_app(config: HubConfig) -> FastAPI:
         PluginHostClient(config.plugin_host_url, config.plugin_host_token),
     )
     return app
+
+
+def _include_websockets(app: FastAPI) -> None:
+    """The websockets of the hub, each with its two ends and the registry of what it has open in this process."""
+    from evo_agents.hub.server import browser_view, terminal
+
+    app.include_router(terminal.router)
+    app.include_router(terminal.worker_router)
+    app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
+    app.include_router(browser_view.router)
+    app.include_router(browser_view.worker_router)
+    app.state.browser_views = browser_view.BrowserViews()  # the live views of runs' browsers, one channel per run
 
 
 async def _check_plugins(app: FastAPI, config: HubConfig) -> None:

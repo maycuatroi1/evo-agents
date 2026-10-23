@@ -30,7 +30,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import ActiveRun, AuthorRunDispatch, Dispatch, PlanRunDispatch, Run, available
-from evo_agents.hub.server.runs.service import plugin_runtimes
+from evo_agents.hub.server.runs.service import browsers, plugin_runtimes
 from evo_agents.hub.server.runs.service.accounts import Picked, pick_account, record_pick
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.profiles import Asked, Chosen, choose
@@ -124,6 +124,35 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
     return Pinned(worker_id, name, *found, plugins=tuple(row.plugins or ()))
 
 
+async def pinned_with_identities(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, names, pinned: Pinned | None
+) -> tuple[list[int], Pinned | None]:
+    """The ids of the browser identities ``names`` a dispatch names (``browsers.resolve``) and the worker its run goes
+    to: ``pinned``, else the one that holds the identities, as ``pinnable`` checks it for ``user``."""
+    ids, worker_id = await browsers.resolve(conn, user, access, names, pinned)
+    if ids and pinned is None:
+        pinned = await pinnable(conn, user, access, worker_id)
+    return ids, pinned
+
+
+async def with_profile_identity(
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    chosen: Chosen,
+    identities: list[int],
+    pinned: Pinned | None,
+) -> tuple[list[int], Pinned | None]:
+    """``identities`` and ``pinned`` as they are for a run under the agent profile ``chosen``: the identity the profile
+    hands its runs when the dispatch names none, with the run pinned to the worker that holds it."""
+    if identities:
+        return identities, pinned
+    ids, worker_id = await browsers.profile_default(conn, chosen.profile.id, pinned)
+    if ids and pinned is None:
+        pinned = await pinnable(conn, user, access, worker_id)
+    return ids, pinned
+
+
 async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | None:
     """Worker ``worker_id`` as its last heartbeat reported it, for a run the hub hands out itself in its owner's name
     (the Loop's, ``evo_agents.hub.server.loop.dispatch``): no check of who dispatches; None for no such worker."""
@@ -148,12 +177,19 @@ async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | No
 
 
 def unfit(
-    worker: Pinned, project: str, kind: str, repos: list[str], runtime: str, *, session_per_step: bool = False
+    worker: Pinned,
+    project: str,
+    kind: str,
+    repos: list[str],
+    runtime: str,
+    *,
+    session_per_step: bool = False,
+    browser: bool = False,
 ) -> list[str]:
     """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime`` (a plan run
-    with a session per step when ``session_per_step``), as its last heartbeat reported it and the claim checks it;
-    empty when nothing does. A repo it has no checkout of keeps only an older daemon from it: one that says it clones
-    them (runs.CLONES_CHECKOUTS) clones it before the run starts."""
+    with a session per step when ``session_per_step``, a run with a Chromium of its own when ``browser``), as its last
+    heartbeat reported it and the claim checks it; empty when nothing does. A repo it has no checkout of keeps only an
+    older daemon from it: one that says it clones them (runs.CLONES_CHECKOUTS) clones it before the run starts."""
     problems = []
     if kind == "plan" and not runs.takes_plan_runs(worker.agent_version):
         problems.append(
@@ -166,7 +202,7 @@ def unfit(
             "run with a session for each step, and would run every step in one session: upgrade it and restart its "
             "daemon, or dispatch the plan run without a session per step"
         )
-    if (kind in runs.CURATOR_KINDS or kind in ("author", "chat")) and kind not in worker.run_kinds:
+    if (kind in runs.CURATOR_KINDS or kind in ("author", "chat", "browser")) and kind not in worker.run_kinds:
         problems.append(
             f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not say it runs {kind} "
             "runs: upgrade it and restart its daemon"
@@ -192,7 +228,7 @@ def unfit(
             f"{worker.agent_version or 'of an unknown version'}) does not clone what it lacks: upgrade it and restart "
             "its daemon"
         )
-    return problems
+    return problems + browsers.unfit(worker.features, browser)
 
 
 def _fits(
@@ -267,11 +303,16 @@ async def queue_run(
     picked: tuple[Picked, ...] = (),
     chosen: Chosen | None = None,
     plugin_config: dict | None = None,
+    browser: bool = False,
+    identities: list[int] | tuple[int, ...] = (),
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
     by hand, under the agent profile ``chosen`` (the project's default without one), with its own layer of plugin
-    config ``plugin_config`` (checked already); HTTPException when the step may not run now."""
+    config ``plugin_config`` (checked already), with a Chromium of its own when ``browser`` or browser
+    ``identities`` (resolved already, the run ``pinned`` to their worker); HTTPException when the step may not run
+    now."""
     body = held.body
+    browser = browser or bool(identities)
     try:
         step = body["steps"][step_index(body, key)]
     except PlanProblem as exc:
@@ -287,7 +328,7 @@ async def queue_run(
         raise HTTPException(
             422, f"step {key} names no repo and the plan does not list exactly one: give the step a repo"
         )
-    _fits(pinned, access, "step", [name], runtime)
+    _fits(pinned, access, "step", [name], runtime, browser=browser)
     await _refuse_without_origin(conn, access, user, [name], f"step {key} of plan {held.plan_id}")
     values = {
         "project_id": access.project_id,
@@ -307,6 +348,8 @@ async def queue_run(
         "parent_run_id": parent,
         "repo": name,
         "branch": _short(repo.get("branch")),
+        "browser": browser,
+        "browser_identities": list(identities),
         **({} if plugin_config is None else {"plugin_config": plugin_config}),  # a JSON null is no layer
         **({} if chosen is None else chosen.columns()),
     }
@@ -365,9 +408,11 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
+        identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
         picked = await _picked(conn, user, access, body.account, pinned)
         asked = Asked("step", body.runtime, body.model, pinned, _picks(picked))
         chosen = await choose(conn, user, access, body.profile, asked)
+        identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
         layer = await check_run_layer(conn, access.project_id, project, body.plugin_config)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
@@ -390,6 +435,8 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 picked=_picks(picked),
                 chosen=chosen,
                 plugin_config=layer,
+                browser=body.browser,
+                identities=identities,
             )
             target = run_target(project, body.plan_id, key, run_id) + _account_text(picked) + chosen.audit_text()
             await audit.record(
@@ -454,6 +501,8 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
+        identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
+        browser = body.browser or bool(identities)
         picked = await _picked(conn, user, access, body.account, pinned)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
@@ -469,11 +518,16 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             )
         repos = plan_run_repos(held)
         names = [entry["repo"] for entry in repos]
-        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step)
+        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=browser)
         await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
         chosen = await choose(
             conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
         )
+        if not identities:
+            identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
+            if identities:
+                browser = True
+                _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=True)
         values = {
             "kind": "plan",
             "project_id": access.project_id,
@@ -482,7 +536,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "plan_revision": held.revision,
             "dispatched_by": user.user_id,
             "dispatched_via": dispatch_credential(user.kind),
-            "pinned_worker_id": body.worker_id,
+            "pinned_worker_id": None if pinned is None else pinned.id,
             "requested_runtime": body.runtime,
             "runtime": body.runtime,
             "model": chosen.model,
@@ -491,6 +545,8 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "timeout_s": body.timeout_h * 3600,
             "repos": repos,
             "session_per_step": body.session_per_step,
+            "browser": browser,
+            "browser_identities": identities,
             **chosen.columns(),
         }
         try:

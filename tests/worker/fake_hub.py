@@ -3,6 +3,9 @@
 rules of the real hub that those tests lean on (the transition table with the worker as actor, a waiting report only
 with a decision open or an answer not taken, a step done only with verify results that all exited 0).
 
+It holds the worker's end of a run's browser live view too (WS /v1/worker/runs/{id}/browser, ``BrowserLink``): the
+test reads the frames the broker sends and sends it the hub's and the viewer's.
+
 It serves the bundles of skills too, as the blob store does through a presigned GET (``/blobs/<sha256>``, no worker
 token), for the author runs it queues with ``skills``.
 
@@ -23,7 +26,7 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from aiohttp import web
+from aiohttp import WSMsgType, web
 
 from evo_agents.hub import runs
 from evo_agents.hub.history import HISTORY_KEY_HEADER
@@ -31,6 +34,22 @@ from evo_agents.hub.judge import JUDGE_KEY_HEADER
 from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
 TOKEN = "evw_" + "f" * 43
+
+
+class BrowserLink:
+    """One connection of a run's broker to the hub, as the test sees it."""
+
+    def __init__(self, socket: web.WebSocketResponse):
+        self.socket = socket
+        self.frames: asyncio.Queue[bytes] = asyncio.Queue()  # binary frames the broker sent, in order
+        self.closed = asyncio.Event()
+        self.close_code: int | None = None
+
+    async def send(self, data: bytes) -> None:
+        await self.socket.send_bytes(data)
+
+    async def next(self, timeout: float = 10.0) -> bytes:
+        return await asyncio.wait_for(self.frames.get(), timeout)
 
 
 def _now() -> str:
@@ -115,6 +134,9 @@ class FakeHub:
         self.tool_images = True
         self.output_limits = {"max_file_bytes": 200 * 1024 * 1024, "max_outputs": 500, "max_run_bytes": 1024**3}
         self.outputs_down = 0
+        self.browser_links: dict[int, list[BrowserLink]] = {}  # run id -> the broker's connections, in order
+        self.browser_link_seen = asyncio.Event()
+        self.browser_refusal: int | None = None  # a code to close the broker's end with as soon as it connects
         self.output_routes = True  # False: 404, as a hub older than the outputs
         self._output_tickets: dict[str, tuple[str, int]] = {}  # upload id -> (sha256, size)
         # The files people attached to messages (plan chat-attachments): id -> {meta, data}, as ``attach`` makes them;
@@ -186,6 +208,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/output-uploads", self._output_uploads),
                 post("/v1/worker/runs/{id}/outputs", self._record_outputs),
                 web.put("/uploads/{upload}", self._put_upload),
+                get("/v1/worker/runs/{id}/browser", self._browser),
             ]
         )
         self._runner = web.AppRunner(app, access_log=None)
@@ -209,6 +232,31 @@ class FakeHub:
         if request.headers.get("Authorization") != f"Bearer {TOKEN}":
             return _error(401, "unauthorized", "not a worker token")
         return await handler(request)
+
+    async def _browser(self, request: web.Request) -> web.WebSocketResponse:
+        socket = web.WebSocketResponse(max_msg_size=4 * 1024 * 1024)
+        await socket.prepare(request)
+        link = BrowserLink(socket)
+        self.browser_links.setdefault(int(request.match_info["id"]), []).append(link)
+        self.browser_link_seen.set()
+        if self.browser_refusal is not None:
+            await socket.close(code=self.browser_refusal, message=b"refused by the test")
+        async for message in socket:
+            if message.type == WSMsgType.BINARY:
+                link.frames.put_nowait(message.data)
+        link.close_code = socket.close_code
+        link.closed.set()
+        return socket
+
+    async def browser_link(self, run_id: int, timeout: float = 30.0, index: int = 0) -> BrowserLink:
+        """The ``index``-th connection of run ``run_id``'s broker, once it is there."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while len(self.browser_links.get(run_id, ())) <= index:
+            if loop.time() > deadline:
+                raise TimeoutError(f"run {run_id}'s browser did not connect {index + 1} times")
+            await asyncio.sleep(0.05)
+        return self.browser_links[run_id][index]
 
     # What the test does
 
