@@ -5172,6 +5172,17 @@
       "accountPlaceholder": "Filter by account email",
       "accountClear": "Clear the account filter",
       "accountHint": "The Claude account of a local session"
+    },
+    "browser": {
+      "label": "Browser",
+      "info": "A Chromium for the runs, started by the worker. With an identity it starts logged in; an identity of the project can be used by every member.",
+      "none": "No browser",
+      "bare": "Chromium, no login",
+      "identity": "{name} ({owner})",
+      "status": {
+        "needs_login": "needs a login",
+        "disabled": "disabled"
+      }
     }
   },
   "insights": {
@@ -9715,7 +9726,9 @@
     "error": {
       "conflict": "A run holds this identity, it has a login session waiting, or it is disabled. Try again when that ends.",
       "exists": "You already have an identity with that name in this project."
-    }
+    },
+    "ownerAgent": "Agent {handle}",
+    "ownerAgentDefault": "Agent {handle} (default)"
   },
   "sharing": {
     "title": "Shared with other members",
