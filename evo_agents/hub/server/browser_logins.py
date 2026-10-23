@@ -100,8 +100,8 @@ async def login_browser_identity(
         await dispatch.check_seat(conn, user)
         row = await _visible(conn, user, access, identity_id)
         move = body.worker is not None
-        if move:
-            _manager(row, user, access, "moving")
+        if move or row.owner_kind == "agent":
+            _manager(row, user, access, "moving" if move else "logging in")
         if row.status == "disabled":
             raise HTTPException(409, f"browser identity {row.name} is disabled: enable it before it is logged in")
         if row.held_by_run is not None:

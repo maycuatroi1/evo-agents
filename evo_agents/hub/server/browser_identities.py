@@ -19,12 +19,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, insert, or_, select
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import aliased
 
-from evo_agents.hub import browser_login, runs, tables
+from evo_agents.hub import browser_login, profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server import audit
@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 MAX_DOMAINS = 50
 MAX_IDENTITIES = 200  # live identities of one project, its members' included
 DOMAIN = r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$"
-OWNERS = ("member", "project")
+OWNERS = ("member", "project", "agent")
 STATUSES = ("active", "needs_login", "disabled")
 IdentityName = Annotated[
     str,
@@ -72,7 +72,15 @@ class BrowserIdentityCreate(BaseModel):
         "alone",
     )
     owner: Literal[OWNERS] = Field(
-        "member", description="member: yours alone (the writer role); project: the admins', usable by every writer"
+        "member",
+        description="member: yours alone (the writer role); project: the admins', usable by every writer; agent: an "
+        "agent profile's (``agent``), the admins' to manage, which the profile hands to its runs",
+    )
+    agent: str | None = Field(
+        None,
+        pattern=profiles.HANDLE_PATTERN,
+        description="the handle of the agent profile that owns it, @ left out; required for owner agent, refused "
+        "otherwise. The first identity of a profile is the one it hands its runs",
     )
     login_url: str | None = Field(
         None,
@@ -86,7 +94,11 @@ class BrowserIdentity(BaseModel):
     project: str
     name: str
     owner: Literal[OWNERS]
-    owner_login: str | None = Field(description="the member who owns it; null for the project's")
+    owner_login: str | None = Field(description="the member who owns it; null for the project's and an agent's")
+    agent: str | None = Field(
+        description="the handle of the agent profile that owns it; null for a member's or the project's"
+    )
+    agent_default: bool = Field(description="whether its agent profile hands it to every run under it")
     domains: list[str]
     login_url: str | None = Field(description="the page its login session opens; null: its first domain's home page")
     worker: str
@@ -108,7 +120,7 @@ class BrowserIdentity(BaseModel):
 
 def identity_listing(project_id: int):
     """The live identities of the project, joined to the names they show, ordered by owner then name."""
-    b, w, u = tables.browser_identities, tables.workers, tables.users
+    b, w, u, ap = tables.browser_identities, tables.workers, tables.users, tables.agent_profiles
     owner, saver, worker_owner = aliased(u), aliased(u), aliased(u)
     return (
         select(
@@ -117,10 +129,12 @@ def identity_listing(project_id: int):
             saver.c.login.label("saver_login"),
             w.c.name.label("worker_name"),
             worker_owner.c.login.label("worker_owner_login"),
+            ap.c.handle.label("agent_handle"),
         )
         .join(w, w.c.id == b.c.worker_id)
         .join(worker_owner, worker_owner.c.id == w.c.owner_id)
         .outerjoin(owner, owner.c.id == b.c.owner_id)
+        .outerjoin(ap, ap.c.id == b.c.profile_id)
         .outerjoin(saver, saver.c.id == b.c.last_saved_by)
         .where(b.c.project_id == project_id, b.c.deleted_at.is_(None))
         .order_by(b.c.owner_kind, b.c.name, b.c.id)
@@ -140,6 +154,8 @@ def identity_view(row, project: str, user: Principal, access: ProjectAccess) -> 
         name=row.name,
         owner=row.owner_kind,
         owner_login=row.owner_login,
+        agent=row.agent_handle,
+        agent_default=row.profile_default,
         domains=list(row.domains),
         login_url=row.login_url,
         worker=row.worker_name,
@@ -161,11 +177,14 @@ def identity_view(row, project: str, user: Principal, access: ProjectAccess) -> 
 async def list_browser_identities(
     request: Request, response: Response, project: ProjectName, user: CurrentUser
 ) -> list[BrowserIdentity]:
-    """The project's identities and your own in it, never another member's; metadata only."""
+    """The project's identities and your own in it, never another member's, and its agents' for an admin; metadata
+    only."""
     b = tables.browser_identities
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
         mine = or_(b.c.owner_kind == "project", b.c.owner_id == user.user_id)
+        if has_role(access.role, "admin"):
+            mine = or_(mine, b.c.owner_kind == "agent")
         rows = (await conn.execute(identity_listing(access.project_id).where(mine))).all()
     response.headers.update(NO_STORE)
     return [identity_view(row, project, user, access) for row in rows]
@@ -205,24 +224,57 @@ async def identity_worker(conn: AsyncConnection, user: Principal, access: Projec
 
 
 def _may_create(access: ProjectAccess, owner: str) -> None:
-    needed = "admin" if owner == "project" else "writer"
+    needed = "writer" if owner == "member" else "admin"
     if not has_role(access.role, needed):
         held = access.role or "no grant"
-        whose = "the project's" if owner == "project" else "your own"
+        whose = "your own" if owner == "member" else f"{'the project' if owner == 'project' else 'an agent'}'s"
         raise HTTPException(
             403, f"creating {whose} browser identity in project {access.name} needs the {needed} role; you hold {held}"
         )
 
 
-async def _taken(conn: AsyncConnection, user: Principal, access: ProjectAccess, body: BrowserIdentityCreate) -> None:
+async def agent_profile_id(conn: AsyncConnection, access: ProjectAccess, handle: str) -> int:
+    """The id of the live, non-default agent profile ``handle`` of the project, its row locked; 404 for none, 422 for
+    the default profile or a deleted one."""
+    ap = tables.agent_profiles
+    found = (
+        await conn.execute(
+            select(ap.c.id, ap.c.is_default, ap.c.deleted_at)
+            .where(ap.c.project_id == access.project_id, ap.c.handle == handle)
+            .with_for_update(of=ap)
+        )
+    ).one_or_none()
+    if found is None:
+        raise HTTPException(
+            404,
+            f"project {access.name} has no agent @{handle}: see `evo-agents hub agent list --project {access.name}`",
+        )
+    if found.is_default or found.deleted_at is not None:
+        why = "the default agent of the project" if found.is_default else "deleted"
+        raise HTTPException(422, f"@{handle} is {why}: it takes no browser identity")
+    return found.id
+
+
+async def _has_default(conn: AsyncConnection, profile_id: int) -> bool:
+    b = tables.browser_identities
+    live = select(b.c.id).where(b.c.profile_id == profile_id, b.c.profile_default, b.c.deleted_at.is_(None))
+    return (await conn.execute(live)).first() is not None
+
+
+async def _taken(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, body: BrowserIdentityCreate, profile_id: int | None
+) -> None:
     """409 when the owner has a live identity of that name in the project, or the project has MAX_IDENTITIES."""
     b = tables.browser_identities
     live = (b.c.project_id == access.project_id, b.c.deleted_at.is_(None))
-    owned = b.c.owner_kind == "project" if body.owner == "project" else b.c.owner_id == user.user_id
+    if body.owner == "agent":
+        owned = b.c.profile_id == profile_id
+    else:
+        owned = b.c.owner_kind == "project" if body.owner == "project" else b.c.owner_id == user.user_id
     same = select(b.c.id).where(*live, owned, b.c.owner_kind == body.owner, b.c.name == body.name)
     if (await conn.execute(same)).first() is not None:
-        whose = "the project" if body.owner == "project" else "you"
-        raise HTTPException(409, f"{whose} have a browser identity named {body.name} in project {access.name} already")
+        whose = {"project": "the project has", "agent": f"@{body.agent} has"}.get(body.owner, "you have")
+        raise HTTPException(409, f"{whose} a browser identity named {body.name} in project {access.name} already")
     count = (await conn.execute(select(func.count()).select_from(b).where(*live))).scalar_one()
     if count >= MAX_IDENTITIES:
         raise HTTPException(409, f"project {access.name} has {count} browser identities, the most it may have")
@@ -243,38 +295,50 @@ async def identity_record(conn: AsyncConnection, user: Principal, access: Projec
     )
 
 
+async def insert_identity(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, body: BrowserIdentityCreate, worker_id: int
+) -> int:
+    """Insert the identity ``body`` describes, held by worker ``worker_id``, and audit it; its id. The first identity of
+    an agent profile is the one the profile hands its runs."""
+    b = tables.browser_identities
+    profile_id = await agent_profile_id(conn, access, body.agent) if body.agent is not None else None
+    await _taken(conn, user, access, body, profile_id)
+    first = profile_id is not None and not await _has_default(conn, profile_id)
+    row = {
+        "project_id": access.project_id,
+        "owner_kind": body.owner,
+        "owner_id": user.user_id if body.owner == "member" else None,
+        "profile_id": profile_id,
+        "profile_default": first,
+        "name": body.name,
+        "domains": list(dict.fromkeys(body.domains)),
+        "login_url": body.login_url,
+        "worker_id": worker_id,
+        "created_by": user.user_id,
+    }
+    try:
+        identity_id = (await conn.execute(insert(b).values(row).returning(b.c.id))).scalar_one()
+    except IntegrityError:  # another request created one of that name meanwhile
+        raise HTTPException(
+            409, f"a browser identity named {body.name} was just created in project {access.name}"
+        ) from None
+    await identity_record(conn, user, access, audit.BROWSER_IDENTITY_CREATE, identity_id)
+    return identity_id
+
+
 @router.post("/{project}/browser-identities", status_code=201, response_model=BrowserIdentity, responses=REFUSALS)
 async def create_browser_identity(
     request: Request, response: Response, project: ProjectName, body: BrowserIdentityCreate, user: CurrentUser
 ) -> BrowserIdentity:
-    """Create an identity with no profile yet (version 0): your own with the writer role, or the project's as an
-    admin. It is logged in later, on its worker."""
+    """Create an identity with no profile yet (version 0): your own with the writer role, or the project's or an
+    agent's as an admin. It is logged in later, on its worker."""
     b = tables.browser_identities
-    domains = list(dict.fromkeys(body.domains))
-    if body.login_url is not None and not browser_login.valid_url(body.login_url):
-        raise HTTPException(422, "login_url is an http or https URL with a host; nothing was created")
+    check_create(body)
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _may_create(access, body.owner)
         worker_id = await identity_worker(conn, user, access, body.worker)
-        await _taken(conn, user, access, body)
-        row = {
-            "project_id": access.project_id,
-            "owner_kind": body.owner,
-            "owner_id": user.user_id if body.owner == "member" else None,
-            "name": body.name,
-            "domains": domains,
-            "login_url": body.login_url,
-            "worker_id": worker_id,
-            "created_by": user.user_id,
-        }
-        try:
-            identity_id = (await conn.execute(insert(b).values(row).returning(b.c.id))).scalar_one()
-        except IntegrityError:  # another request created one of that name meanwhile
-            raise HTTPException(
-                409, f"a browser identity named {body.name} was just created in project {project}"
-            ) from None
-        await identity_record(conn, user, access, audit.BROWSER_IDENTITY_CREATE, identity_id)
+        identity_id = await insert_identity(conn, user, access, body, worker_id)
         created = (await conn.execute(identity_listing(access.project_id).where(b.c.id == identity_id))).one()
     log.info(
         "browser identity created",
@@ -282,6 +346,14 @@ async def create_browser_identity(
     )
     response.headers.update(NO_STORE)
     return identity_view(created, project, user, access)
+
+
+def check_create(body: BrowserIdentityCreate) -> None:
+    """422 for a login_url that is no address, or an agent that does not go with the owner."""
+    if body.login_url is not None and not browser_login.valid_url(body.login_url):
+        raise HTTPException(422, "login_url is an http or https URL with a host; nothing was created")
+    if (body.owner == "agent") != (body.agent is not None):
+        raise HTTPException(422, "agent names the agent profile of an identity with owner agent, and only of one")
 
 
 @router.delete(
@@ -311,3 +383,55 @@ async def delete_browser_identity(
         "browser identity deleted", extra={"project": project, "login": user.login, "browser_identity": identity_id}
     )
     return Response(status_code=204)
+
+
+@router.post("/{project}/browser-identities/{identity_id}/default", response_model=BrowserIdentity, responses=REFUSALS)
+async def default_browser_identity(
+    request: Request, response: Response, project: ProjectName, identity_id: IdentityId, user: CurrentUser
+) -> BrowserIdentity:
+    """Make an agent's identity the one its profile hands to every run under it, in place of the one that was: an admin
+    of the project. 409 for an identity no agent owns."""
+    b = tables.browser_identities
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        row = await locked(conn, identity_id)
+        if (
+            row is None
+            or row.project_id != access.project_id
+            or row.deleted_at is not None
+            or row.owner_kind != "agent"
+        ):
+            raise HTTPException(404, f"project {project} has no browser identity {identity_id} of an agent")
+        if not identity_can_manage(row, user, access):
+            held = access.role or "no grant"
+            raise HTTPException(
+                403,
+                f"setting the browser identity of an agent of project {project} needs the admin role; you hold {held}",
+            )
+        off = update(b).values(profile_default=False, updated_at=func.now())
+        await conn.execute(off.where(b.c.profile_id == row.profile_id, b.c.id != identity_id, b.c.profile_default))
+        await conn.execute(update(b).values(profile_default=True, updated_at=func.now()).where(b.c.id == identity_id))
+        await identity_record(conn, user, access, audit.BROWSER_IDENTITY_DEFAULT, identity_id)
+        found = (await conn.execute(identity_listing(access.project_id).where(b.c.id == identity_id))).one()
+    response.headers.update(NO_STORE)
+    return identity_view(found, project, user, access)
+
+
+async def retire_profile_identities(conn: AsyncConnection, profile_id: int) -> int:
+    """Delete the browser identities of agent profile ``profile_id`` with the profile (their keys go from the hub and
+    their profiles from the blob store); how many. 409 while a run holds one."""
+    b = tables.browser_identities
+    ids = (
+        (await conn.execute(select(b.c.id).where(b.c.profile_id == profile_id, b.c.deleted_at.is_(None))))
+        .scalars()
+        .all()
+    )
+    for identity_id in ids:
+        row = await locked(conn, identity_id)
+        if row.held_by_run is not None:
+            raise HTTPException(
+                409,
+                f"run {row.held_by_run} holds the browser identity {row.name} of the agent: delete it after the run ends",
+            )
+        await retire_profiles(conn, row)
+    return len(ids)

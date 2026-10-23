@@ -2,10 +2,11 @@
 attribute (``tables.browser_identities``): queries name it there.
 
 A browser identity is a Chromium profile kept logged in to some sites, which runs of a project use on the one worker
-that holds it. A member owns it (owner_kind member, owner_id that member), or the project does (owner_kind project,
-owner_id null); its name is unique among the live identities of its owner in the project. domains are the sites
-whose cookies it keeps, worker_id the worker its profile opens on, status active, needs_login or disabled, and
-held_by_run the run that holds it now, if any.
+that holds it. A member owns it (owner_kind member, owner_id that member), the project does (owner_kind project,
+owner_id null), or an agent profile does (owner_kind agent, profile_id that profile, owner_id null); its name is
+unique among the live identities of its owner in the project. domains are the sites whose cookies it keeps, worker_id
+the worker its profile opens on, status active, needs_login or disabled, and held_by_run the run that holds it now, if
+any.
 
 version counts the profiles saved, 0 before the first. The current one is the sealed blob sha256 (size bytes, kind
 browser-profile) with its data key sealed under EVO_HUB_SECRETS_KEY (sealed_key, key_nonce, key_id), and the
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -63,8 +65,12 @@ def browser_tables(metadata: MetaData) -> Table:
         metadata,
         Column("id", BigInteger, Identity(always=True), nullable=False),
         Column("project_id", BigInteger, nullable=False),
-        Column("owner_kind", Text, nullable=False),  # member or project
-        Column("owner_id", BigInteger),  # the member; null for the project's
+        Column("owner_kind", Text, nullable=False),  # member, project or agent
+        Column("owner_id", BigInteger),  # the member; null for the project's and an agent's
+        Column("profile_id", BigInteger),  # the agent profile that owns an agent's identity (0122)
+        Column(
+            "profile_default", Boolean, nullable=False, server_default="false"
+        ),  # the one its profile hands its runs
         Column("name", Text, nullable=False),
         Column("domains", ARRAY(Text), nullable=False),
         Column("worker_id", BigInteger, nullable=False),
@@ -86,6 +92,7 @@ def browser_tables(metadata: MetaData) -> Table:
         _key("owner_id", "users", ondelete="RESTRICT"),
         _key("worker_id", "workers", ondelete="RESTRICT"),
         _key("held_by_run", "runs", ondelete="SET NULL"),
+        _key("profile_id", "agent_profiles", ondelete="RESTRICT"),
         _key("last_saved_by", "users", ondelete="SET NULL"),
         _key("created_by", "users", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="browser_identities_pkey"),
@@ -107,5 +114,18 @@ def browser_tables(metadata: MetaData) -> Table:
         identities.c.name,
         unique=True,
         postgresql_where=(identities.c.owner_kind == "project") & live,
+    )
+    Index(  # an agent's identity: unique by name among its profile's live ones (0122)
+        "browser_identities_profile_name_key",
+        identities.c.profile_id,
+        identities.c.name,
+        unique=True,
+        postgresql_where=(identities.c.owner_kind == "agent") & live,
+    )
+    Index(  # the identity a profile hands its runs: at most one live one per profile (0122)
+        "browser_identities_profile_default_key",
+        identities.c.profile_id,
+        unique=True,
+        postgresql_where=identities.c.profile_default & live,
     )
     return identities

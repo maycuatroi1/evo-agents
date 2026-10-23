@@ -24,7 +24,7 @@ from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.run_cli_keys import RUN_KEYS
 
 EXIT_USAGE = 2
-OWNERS = ("member", "project")
+OWNERS = ("member", "project", "agent")
 # The keys of a browser identity in --json (the contract, `evo-agents hub contract print`).
 IDENTITY_KEYS = (
     "id",
@@ -32,6 +32,8 @@ IDENTITY_KEYS = (
     "name",
     "owner",
     "owner_login",
+    "agent",
+    "agent_default",
     "domains",
     "login_url",
     "worker",
@@ -59,6 +61,8 @@ def _usage(text: str) -> int:
 
 
 def _owner(identity: dict) -> str:
+    if identity["owner"] == "agent":
+        return f"agent {identity['agent']}" + (" (default)" if identity["agent_default"] else "")
     return "project" if identity["owner"] == "project" else identity["owner_login"]
 
 
@@ -100,12 +104,16 @@ def cmd_create(args) -> int:
     body = {"name": args.name, "domains": domains, "worker": args.worker, "owner": args.owner}
     if args.login_url:
         body["login_url"] = args.login_url
+    if (args.owner == "agent") != (args.agent is not None):
+        return _usage("--owner agent goes with --agent HANDLE, and --agent with --owner agent")
+    if args.agent:
+        body["agent"] = args.agent
     hub, _ = signed_in()
     created = hub.call("POST", _path(project), body)
     if args.json:
         print_json(created)
         return 0
-    whose = "the project's" if created["owner"] == "project" else "your"
+    whose = {"project": "the project's", "agent": f"agent {created['agent']}'s"}.get(created["owner"], "your")
     print(
         f"Created {whose} browser identity {created['name']} (id {created['id']}) in {project}, held by worker "
         f"{created['worker']}, for {', '.join(created['domains'])}. It has no profile yet: log it in on its worker."
@@ -213,8 +221,13 @@ def register_browser(hsub) -> None:
     )
     create.add_argument("--worker", required=True, metavar="NAME", help="your worker, or a shared one, serving it")
     create.add_argument(
-        "--owner", choices=OWNERS, default="member", help="member: yours (default); project: an admin's for the project"
+        "--owner",
+        choices=OWNERS,
+        default="member",
+        help="member: yours (default); project: an admin's for the project; agent: an admin's for an agent profile "
+        "(--agent), which its runs use by default",
     )
+    create.add_argument("--agent", metavar="HANDLE", help="the agent profile owning the identity, with --owner agent")
     create.add_argument(
         "--login-url", metavar="URL", help="the page its login session opens; default: its first domain"
     )
