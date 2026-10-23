@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 from psycopg import errors
 from sqlalchemy import delete, func, insert, select, update
 
-from evo_agents.hub import history, runs, tables
+from evo_agents.hub import autonomy_card, history, runs, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
@@ -158,7 +158,7 @@ def test_the_history_run_comes_once_a_night_right_after_the_review_run_on_the_ch
     (target,) = sql(lab.db, select(tables.audit.c.target).where(tables.audit.c.action == "curator.history"))
     assert target[0] == f"{PROJECT} run:{run_id} night=2026-10-08"
     spec = claim(lab.client, lab.worker)
-    assert spec["id"] == run_id and spec["prompt"] == history.RUN_PROMPT and spec["repos"] is None
+    assert spec["id"] == run_id and autonomy_card.without_card(spec["prompt"]) == history.RUN_PROMPT and spec["repos"] is None
     assert spec["curator"]["role"] == "history" and spec["curator"]["history_key"]
     assert spec["curator"]["history"] == {
         "batch_items": history.BATCH_ITEMS,
