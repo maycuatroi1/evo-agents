@@ -132,6 +132,7 @@ TABLES |= pg.INVITE_TABLES  # migration 0110
 TABLES |= pg.AUTONOMY_LEVEL_TABLES  # migration 0112
 TABLES |= pg.AUTONOMY_STOP_TABLES  # migration 0116
 TABLES |= pg.CRM_TABLES  # migration 0118
+TABLES |= pg.MARKETING_TABLES  # migration 0119
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -213,8 +214,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_fifty_seven_tables(hub_db):
-    assert len(TABLES) == 157  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_sixty_three_tables(hub_db):
+    assert len(TABLES) == 163  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2816,3 +2817,46 @@ def test_0118_crm_keeps_one_contact_a_login_and_going_back_drops_the_tables(hub_
     assert not {name for name in tables(hub_db) if name.startswith("crm_")}
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0118") :]
+
+
+def test_0119_marketing_keeps_the_registry_rules_in_the_database_and_going_back_drops_the_tables(hub_db):
+    move_to(hub_db, "0118")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0119")
+    t = hub_tables
+    account = {"project_id": ids["project"], "channel": "x", "account": "evo_agents", "account_kind": "project"}
+    personal = {**account, "channel": "tiktok", "account": "me", "account_kind": "personal", "owner_id": ids["user"]}
+    with live.connect(hub_db) as conn:
+        channel_id = one(conn, insert(t.marketing_channels).values(account).returning(t.marketing_channels.c.id))
+        assert one(conn, select(t.marketing_channels.c.mode)) == "draft_only"  # the default is the safe one
+        conn.execute(insert(t.marketing_channels).values({**personal, "mode": "autonomous"}))  # tiktok may
+        post = {"project_id": ids["project"], "channel_id": channel_id, "channel": "x", "account": "a", "body": "hi"}
+        post_id = one(conn, insert(t.marketing_posts).values(post).returning(t.marketing_posts.c.id))
+        conn.execute(insert(t.marketing_metrics).values(post_id=post_id, span="24h", metric="likes", value=3))
+        for bad in (
+            insert(t.marketing_channels).values(account),  # one row for each account
+            insert(t.marketing_channels).values({**account, "account": "b", "channel": "mastodon"}),
+            insert(t.marketing_channels).values({**account, "account": "b", "mode": "robot"}),
+            insert(t.marketing_channels).values({**personal, "account": "b", "owner_id": None}),  # an owner
+            insert(t.marketing_channels).values({**personal, "account": "b", "channel": "x", "mode": "autonomous"}),
+            insert(t.marketing_channels).values({**account, "account": "b", "channel": "facebook_profile"}),
+            insert(t.marketing_channels).values(
+                {**account, "account": "b", "channel": "hackernews", "mode": "autonomous"}
+            ),
+            insert(t.marketing_posts).values({**post, "state": "sent"}),
+            insert(t.marketing_posts).values({**post, "body": ""}),
+            insert(t.marketing_metrics).values(post_id=post_id, span="24h", metric="likes", value=4),
+            insert(t.marketing_denylist).values(project_id=ids["project"], kind="name", value="x"),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    with live.connect(hub_db) as conn:  # a channel takes its posts and their metrics with it
+        conn.execute(delete(t.marketing_channels).where(t.marketing_channels.c.id == channel_id))
+        assert one(conn, select(func.count()).select_from(t.marketing_posts)) == 0
+        assert one(conn, select(func.count()).select_from(t.marketing_metrics)) == 0
+    move_to(hub_db, "0118", down=True)
+    assert not {name for name in tables(hub_db) if name.startswith("marketing_")}
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0119") :]
