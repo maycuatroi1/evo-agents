@@ -8701,6 +8701,218 @@
       "counts": "{doing} in progress of {limit}, {review} to review as QA, {late} late"
     }
   },
+  "crm": {
+    "meta": {
+      "contacts": "Contacts of {project}",
+      "contact": "{login} in {project}"
+    },
+    "sub": "The people who found the project themselves, and how far each came: lead, invited, activated, retained.",
+    "readerTitle": "You read {project}",
+    "readerText": "You see the contacts and their history. Writers add notes; an admin deletes a contact on that person's request.",
+    "all": "All",
+    "pipeline": "Pipeline",
+    "pipelineFilter": "Show the contacts of one stage",
+    "stages": {
+      "lead": "Lead",
+      "invited": "Invited",
+      "activated": "Activated",
+      "retained": "Retained"
+    },
+    "kinds": {
+      "invite_request": "Invite request",
+      "invite_link": "Invite link",
+      "grant": "Grant",
+      "issue": "Issue",
+      "pull_request": "Pull request",
+      "discussion": "Discussion",
+      "note": "Note"
+    },
+    "emptyTitle": "No contact yet",
+    "emptyText": "A contact appears once someone asks for an invite, opens an issue or a pull request, or joins with a link.",
+    "emptyStage": "No contact is {stage}",
+    "tableLabel": "Contacts",
+    "columns": {
+      "login": "GitHub login",
+      "stage": "Stage",
+      "source": "Came from",
+      "firstSeen": "First seen",
+      "stageAt": "In this stage since"
+    },
+    "back": "All contacts",
+    "detail": {
+      "sub": "Came from: {source}",
+      "profile": "GitHub profile",
+      "touchpoints": "Touchpoints",
+      "noTouchpoints": "No touchpoint is kept for this contact.",
+      "by": "(by {author})",
+      "history": "Stages reached",
+      "noteLabel": "Add a note",
+      "addNote": "Add note",
+      "noting": "Adding",
+      "noted": "Note added",
+      "delete": "Delete contact",
+      "deleteTitle": "Delete {login}?",
+      "deleteText": "The contact, every touchpoint and its stage history are deleted for good, as the person asked. The audit log keeps only that it happened.",
+      "deleteConfirm": "Delete for good",
+      "deleting": "Deleting",
+      "keep": "Keep",
+      "deleted": "{login} deleted",
+      "deleteForbidden": "Only an admin of the project deletes a contact."
+    }
+  },
+  "marketing": {
+    "meta": {
+      "overview": "Marketing of {project}",
+      "posts": "Posts of {project}",
+      "weekly": "Growth weekly of {project}"
+    },
+    "sub": "Every post goes through the gate; a breaker stops a channel and the kill switch stops them all.",
+    "readerTitle": "You read {project}",
+    "readerText": "You see the channels, the budget and the week. Writers propose posts and stop posting; an admin resumes.",
+    "month": "This month",
+    "channelCount": "Channel accounts",
+    "breakerCount": "Breakers open",
+    "tabs": {
+      "label": "Marketing pages",
+      "overview": "Overview",
+      "posts": "Posts",
+      "weekly": "Growth weekly"
+    },
+    "budget": {
+      "label": "Cost of {month}",
+      "figures": "{used} of {cap}",
+      "split": "Spent {spent}, held by posts in flight {reserved}.",
+      "spentAll": "The month's budget is spent."
+    },
+    "kill": {
+      "stop": "Stop all posting",
+      "stopTitle": "Stop all posting in this project?",
+      "stopText": "No channel posts until an admin resumes. Drafts and posts waiting at the gate stay as they are.",
+      "stopConfirm": "Stop posting",
+      "resume": "Resume posting",
+      "resumeTitle": "Resume posting?",
+      "resumeText": "Channels post again through the gate. Breakers that are open stay open.",
+      "resumeConfirm": "Resume",
+      "pending": "Saving",
+      "cancel": "Cancel",
+      "stopped": "All posting stopped",
+      "resumed": "Posting resumed",
+      "forbidden": "Only a writer stops posting, and only an admin resumes it.",
+      "killedTitle": "All posting is stopped",
+      "killedReason": "Reason: {reason}",
+      "killedText": "No channel posts until an admin resumes.",
+      "killedBadge": "Stopped"
+    },
+    "channels": {
+      "title": "Channels",
+      "tableLabel": "Channel accounts",
+      "channel": "Channel",
+      "mode": "Mode",
+      "breaker": "Breaker",
+      "session": "Login session",
+      "actions": "Actions",
+      "ownedBy": "of {owner}",
+      "autonomous": "Autonomous",
+      "draftOnly": "Drafts only",
+      "open": "Open, not posting",
+      "shut": "Closed",
+      "close": "Close breaker",
+      "closed": "Breaker of {channel} {account} closed",
+      "noSession": "Not needed",
+      "stale": "Expired",
+      "sessionOk": "Valid",
+      "sessionNone": "None yet",
+      "emptyTitle": "No channel account yet",
+      "emptyText": "An admin adds a project account and each member their own with evo-agents hub marketing channel add."
+    },
+    "posts": {
+      "sub": "The posts of the project by what the gate did with them. Copy a draft to share it by hand.",
+      "readerText": "A post's text is for the project's writers; you read the overview and the week.",
+      "groups": {
+        "drafts": "Drafts to share by hand",
+        "waiting": "Waiting for the gate",
+        "passed": "Passed the gate",
+        "posted": "Went out",
+        "stopped": "Stopped"
+      },
+      "groupText": {
+        "drafts": "For a member's personal account or a Facebook group: nothing posts them, the member copies and shares them.",
+        "waiting": "The deny-list, the rules and the Judge have not decided yet.",
+        "passed": "Queued to post on the channel.",
+        "posted": "Posted on their channel.",
+        "stopped": "Stopped by the gate or withdrawn, with the reason."
+      },
+      "states": {
+        "proposed": "Proposed",
+        "judging": "Being judged",
+        "queued": "Queued",
+        "posting": "Posting",
+        "posted": "Posted",
+        "draft": "Draft",
+        "failed": "Stopped by the gate",
+        "withdrawn": "Withdrawn"
+      },
+      "count": "{count, plural, one {# post} other {# posts}}",
+      "none": "None.",
+      "dryRun": "Dry run",
+      "reason": "Why: {reason}",
+      "open": "Open the post",
+      "cost": "Cost {cost}",
+      "copy": "Copy text",
+      "copiedShort": "Copied",
+      "copied": "Draft copied to the clipboard",
+      "selected": "Draft text selected: press Ctrl+C or Cmd+C",
+      "emptyTitle": "No post yet",
+      "emptyText": "Posts appear once @marketer or a member proposes one."
+    },
+    "weekly": {
+      "sub": "From {since} to {until}",
+      "count": "{count, plural, =0 {none yet} other {#}}",
+      "goals": "Signal against Goal",
+      "noGoals": "No active Goal with a metric.",
+      "goal": "Goal",
+      "signal": "Signal",
+      "value": "Value",
+      "target": "Target",
+      "met": "Met",
+      "noValue": "No signal",
+      "unknown": "Unknown",
+      "reached": "Met",
+      "notReached": "Not yet",
+      "killed": "All posting is stopped",
+      "posted": "Posts that went out",
+      "noPosts": "No post went out this week.",
+      "open": "Open",
+      "breakers": "Breakers open",
+      "noBreakers": "No breaker is open.",
+      "cost": "Cost",
+      "weekCost": "This week:",
+      "proposals": "Proposals for the blog project",
+      "proposalsFor": "Proposals for {project}",
+      "noProposalsProject": "No blog project is set: the config proposals_project of marketing names it.",
+      "noProposals": "No proposal this week."
+    },
+    "decide": {
+      "title": "Growth",
+      "note": "Channels, login sessions and the budget of the plugin marketing",
+      "waiting": "{count, plural, one {# waits} other {# wait}}",
+      "kind": {
+        "breaker": "Breaker open",
+        "session": "Session expired",
+        "budget": "Budget spent"
+      },
+      "who": {
+        "breaker": "An admin closes it on the Marketing page once the cause is fixed.",
+        "session": "The account's owner logs in again with evo-agents hub marketing session.",
+        "budget": "An admin raises budget_usd, or posting waits for the next month."
+      },
+      "breaker": "{channel} {account} stopped posting: its breaker waits for a reset",
+      "session": "The login session of {channel} {account} expired",
+      "budget": "The budget of {month} ({cap}) is spent",
+      "open": "Open",
+      "openLabel": "Open in Marketing: {title}"
+    }
+  },
   "canvas": {
     "readerTitle": "You read {project} as a reader",
     "meta": {
