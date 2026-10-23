@@ -235,15 +235,19 @@ def test_agent_type_enable_is_refused_saying_why_and_changes_nothing(client, hub
         assert said in message(put_type(client, hub["owner"], **body), 422)
     for body in ({"daily_usd": 0}, {"daily_usd": 1000.5}, {"workers": ["w"] * 17}, {"model": "large"}):
         assert put_type(client, hub["owner"], **body).status_code == 422, body
-    # a handle a project or another agent holds
+    # a handle a project or another agent holds: the one the admin names, or both the template's and
+    # <template's>-<project>
     clash = {**TRIAGER, "name": "clash", "events": [], "profile": {"handle": PROJECT}}
     taken = {**TRIAGER, "name": "taken", "events": [], "profile": {"handle": "reviewer"}}
     install(hub_db, name="more", contributes={"agent_types": [clash, taken]}, permissions=[DISPATCH])
     enable_plugin(client, hub["owner"], "more", [DISPATCH])
-    assert "is a project's" in message(put_type(client, hub["owner"], name="clash", plugin="more"), 409)
-    made = client.post(f"/v1/projects/{PROJECT}/agents", json={"handle": "reviewer", "name": "R"}, headers=hub["owner"])
-    assert made.status_code == 201, made.text
-    assert "is taken by another agent" in message(put_type(client, hub["owner"], name="taken", plugin="more"), 409)
+    named = put_type(client, hub["owner"], name="clash", plugin="more", handle=PROJECT)
+    assert f"@{PROJECT}, the handle agent type clash" in message(named, 409)
+    for handle in ("reviewer", f"reviewer-{PROJECT}"):
+        made = client.post(f"/v1/projects/{PROJECT}/agents", json={"handle": handle, "name": "R"}, headers=hub["owner"])
+        assert made.status_code == 201, made.text
+    both = f"@reviewer and @reviewer-{PROJECT}, the handles agent type taken"
+    assert both in message(put_type(client, hub["owner"], name="taken", plugin="more"), 409)
     assert sql(hub_db, select(func.count()).select_from(tables.project_agent_types)) == [(0,)]
     assert audit_rows(hub_db, "agent-type") == []
     # a deleted profile is never made again
