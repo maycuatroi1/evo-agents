@@ -3028,3 +3028,27 @@ def test_0130_curator_probes_keep_a_task_and_a_verify_and_going_back_drops_the_t
     assert "curator_probes" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0130") :]
+
+
+def test_0132_notices_take_the_weekly_probe_report_and_going_back_deletes_those_notices(hub_db):
+    move_to(hub_db, "0131")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    n = hub_tables.notifications
+    notice = {"user_id": ids["user"], "kind": "notice", "title": "Probe report", "project_id": ids["project"]}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(n).values({**notice, "notice_kind": "curator_probe_report"}))
+    move_to(hub_db, "0132")
+    with live.connect(hub_db) as conn:
+        for kind in ("curator_probe_report", "browser_needs_login", "release"):
+            conn.execute(insert(n).values({**notice, "notice_kind": kind}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(n).values({**notice, "notice_kind": "curator_probe_weekly"}))
+    # Going back deletes the reports and keeps the other kinds.
+    move_to(hub_db, "0131", down=True)
+    assert query(hub_db, select(n.c.notice_kind).order_by(n.c.id)) == [("browser_needs_login",), ("release",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n).where(n.c.notice_kind.in_(("browser_needs_login", "release"))))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0132") :]

@@ -1,11 +1,14 @@
-"""``evo-agents hub curator probe list|show|add|retire``: the probes of the Curator's proposals and changes
-(``evo_agents.hub.probes``; GET, POST .../curator/probes and POST .../curator/probes/{id}/retire).
+"""``evo-agents hub curator probe list|show|add|retire|report``: the probes of the Curator's proposals and changes
+(``evo_agents.hub.probes``; GET, POST .../curator/probes, POST .../curator/probes/{id}/retire and GET
+.../curator/probe-report).
 
 ``probe list`` lists the probes the caller may read, newest first, by ``--change``, ``--proposal`` and ``--state``;
 ``probe show`` prints one. Their verify is the answer key: the hub sends it to the project's admins alone, and prints
 ``(hidden)`` for the others. ``probe add`` (admins) adds one to ``--change`` or ``--proposal``: the ``--repo``, the base
 ``--commit`` (none: the tip of the default branch), the task (``--task``, or ``--task-file``, ``-`` for stdin) and the
-one-line ``--verify``. ``probe retire`` (admins) retires one, with ``--note``.
+one-line ``--verify``. ``probe retire`` (admins) retires one, with ``--note``. ``probe report`` prints the weekly report
+of ``--weeks`` ISO weeks, the newest first (the week of ``--week``, default the one in progress): each probe on each runtime and model, arm on and arm off
+(sessions and failed), their 1 - pass^k and its status, then the changes born of a correction that have no probe.
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.
@@ -41,6 +44,11 @@ PROBE_KEYS = (
     "updated_at",
 )
 PROBE = returns_object(*PROBE_KEYS, schema="Probe")
+
+
+REPORT_KEYS = ("project", "k", "budget_usd", "weeks", "unprobed", "fixes")
+DEFAULT_WEEKS = 2
+MAX_WEEKS = 52
 
 
 def _path(project: str, *parts: str, **params) -> str:
@@ -139,8 +147,56 @@ def cmd_probe_retire(args) -> int:
     return 0
 
 
+@client_command
+def cmd_probe_report(args) -> int:
+    hub, _ = signed_in()
+    project = project_of_args(args)
+    asked = {"weeks": args.weeks, **({"week": args.week} if args.week else {})}
+    found = hub.call("GET", f"/v1/projects/{quote(project, safe='')}/curator/probe-report?{urlencode(asked)}")
+    if args.json:
+        print_json(found)
+        return 0
+    cap = (
+        f"{found['budget_usd']:.2f} USD a week"
+        if found["budget_usd"] is not None
+        else "none (probes.budget_usd is null)"
+    )
+    print(f"probes of {project}: k {found['k']}, budget {cap}")
+    for week in found["weeks"]:
+        totals = week["totals"]
+        state = "" if week["complete"] else " (in progress)"
+        print()
+        print(
+            f"week of {week['week']}{state}: {totals['holds']} holds, {totals['recurring']} recurring, "
+            f"{totals['not_reproduced']} not reproduced, {totals['stale']} stale, {totals['unmeasured']} unmeasured; "
+            f"cost {week['cost_usd']:.2f} USD"
+        )
+        rows = [
+            (
+                f"#{item['probe_id']}",
+                f"#{item['change_id']}",
+                f"{item['runtime']}{' ' + item['model'] if item['model'] else ''}",
+                f"{item['on']['failed']}/{item['on']['runs']}",
+                f"{item['off']['failed']}/{item['off']['runs']}",
+                item["status"],
+                item["previous"] or "-",
+            )
+            for item in week["probes"]
+        ]
+        if rows:
+            table(("PROBE", "CHANGE", "MODEL", "ON FAILED", "OFF FAILED", "STATUS", "WEEK BEFORE"), rows)
+    if found["unprobed"]:
+        print()
+        print(f"changes born of a correction without a probe: {len(found['unprobed'])}")
+        for item in found["unprobed"]:
+            print(f"  #{item['change_id']} {item['title']}: {item['reason']}")
+    for fix in found["fixes"]:
+        print(f"fix proposal #{fix['proposal_id']} of change #{fix['change_id']} ({fix['state']}): {fix['title']}")
+    return 0
+
+
 def register_probe(csub, with_project) -> None:
-    """``curator probe list|show|add|retire``."""
+    """``curator probe list|show|add|retire|report``."""
     probe = csub.add_parser("probe", help="the probes of the Curator's proposals and changes")
     psub = probe.add_subparsers(dest="probe_command", required=True, metavar="COMMAND")
 
@@ -181,3 +237,17 @@ def register_probe(csub, with_project) -> None:
     retired.add_argument("--note", help="why it is retired")
     json_option(retired, PROBE)
     retired.set_defaults(func=cmd_probe_retire)
+
+    report = psub.add_parser("report", help="the weekly report of the probes: arm on and off, status, cost")
+    with_project(report)
+    report.add_argument(
+        "--weeks",
+        type=int,
+        default=DEFAULT_WEEKS,
+        choices=range(1, MAX_WEEKS + 1),
+        metavar="N",
+        help=f"the newest weeks, the one in progress first; 1 to {MAX_WEEKS}, default {DEFAULT_WEEKS}",
+    )
+    report.add_argument("--week", metavar="YYYY-MM-DD", help="a day of the newest week to show; default today")
+    json_option(report, returns_object(*REPORT_KEYS, schema="ProbeWeekly"))
+    report.set_defaults(func=cmd_probe_report)

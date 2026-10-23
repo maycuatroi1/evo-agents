@@ -448,6 +448,29 @@ REVIEW_TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "curator_probe_report",
+        "description": (
+            "The weekly report of the project's probes, the week in progress first: for each probe of a Curator's "
+            "change and each runtime and model, the sessions and failures of arm on (the change's rule in place) and "
+            "arm off (its diff taken off), their 1 - pass^k, the status (holds, recurring, not_reproduced, stale, "
+            "unmeasured) and the week before's; the week's cost against probes.budget_usd; the merged changes born of "
+            "a correction that have no probe, with why; the fix proposals of recurring probes. No verify is in it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "weeks": {"type": "integer", "minimum": 1, "maximum": 52, "default": 2, "description": "the newest"},
+                "week": {
+                    "type": "string",
+                    "pattern": DATE_PATTERN,
+                    "description": "YYYY-MM-DD, a day of the newest week; default today",
+                },
+                "project": _PROJECT,
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
 
 _SINCE = {"type": "string", "pattern": DATE_PATTERN, "description": "YYYY-MM-DD, UTC: from this day on"}
