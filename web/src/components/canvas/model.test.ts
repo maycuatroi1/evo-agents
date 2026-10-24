@@ -11,6 +11,7 @@ const CONTENT: CanvasContent = {
   text: "Shop owners lose a sale when checkout takes more than two minutes",
   status: "assumption",
   confidence: "low",
+  delivery: "code",
   test_card: {
     hypothesis: "Owners pay for one-click checkout",
     test: "Offer it to 20 shops",
@@ -69,6 +70,12 @@ describe("an edit of a claim", () => {
     expect(change?.signal_keys).toEqual([]);
   });
 
+  it("sends delivery only when it differs from the claim's", () => {
+    const held = { content: CONTENT, code: "CL-3", rev: 2 };
+    expect(changeOf({ ...formOf(CONTENT), delivery: "action" }, held)).toMatchObject({ delivery: "action" });
+    expect(changeOf(formOf(CONTENT), held)).toBeNull();
+  });
+
   it("makes a new claim from every field, with no test card while its fields are empty", () => {
     const form = { ...emptyForm("channels"), text: "  Shops find us through accountants  " };
     expect(changeOf(form, null)).toEqual({
@@ -76,6 +83,7 @@ describe("an edit of a claim", () => {
       text: "Shops find us through accountants",
       status: "assumption",
       confidence: "low",
+      delivery: "code",
       test_card: null,
       use_cases: [],
       signal_keys: [],

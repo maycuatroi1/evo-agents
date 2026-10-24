@@ -132,9 +132,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 35 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 38 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`problem_list` and `problem_show` (the project's problems), `ask_member` (a question of a local session,
+`problem_list`, `problem_show` and `problem_evidence` (the project's problems and their evidence), `intake_list` and `intake_show` (its intakes, `docs/problems.md`), `ask_member` (a question of a local session,
 `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
 what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`, `decision_list`,
 `curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), `curator_probe_report` (the
@@ -1999,7 +1999,18 @@ evo-agents hub problem close P-1 --status solved --reason "fuzzy search shipped"
 evo-agents hub problem set P-1 --reopen --project demo
 ```
 
-The MCP tools `problem_list` and `problem_show` read the same. The web lists a project's problems at
+```sh
+evo-agents hub problem evidence add P-1 --source-kind hub_chat --source-uri hub://demo/chats/12 --locator "message 40" \
+  --excerpt "Searches for an old name find nothing." --signal complaint --label internal --project demo
+evo-agents hub problem evidence list P-1 --project demo        # E-1, E-2, ... with who confirmed each
+evo-agents hub problem evidence confirm P-1 E-1 --project demo
+evo-agents hub intake start --source messenger:internal:"Shop group" --project demo   # I-<next>
+evo-agents hub intake put I-1 result.json --project demo       # an evo-intake/1 document; see docs/intake.md
+evo-agents hub intake show I-1 --project demo
+evo-agents hub intake list --status open --project demo
+```
+
+`docs/intake.md` has the intakes and `docs/problems.md` the evidence. The MCP tools `problem_list` and `problem_show` read the same. The web lists a project's problems at
 `/p/{p}/problems` and shows one at `/p/{p}/problems/P-1`, where a writer adds, edits, closes and reopens it.
 
 ## Goals

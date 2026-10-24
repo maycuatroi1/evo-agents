@@ -38,10 +38,32 @@ MAX_WINDOW_DAYS = goals.MAX_WINDOW_DAYS
 MAX_TENANT_CHARS = goals.MAX_TENANT_CHARS
 CODE = re.compile(r"P-([1-9][0-9]{0,8})")
 REF = r"^P-[1-9][0-9]{0,8}$"  # a problem's code
+EVIDENCE_REF = r"^E-[1-9][0-9]{0,8}$"  # a line of a problem's evidence
 FIELDS = ("statement", "who", "when", "workaround", "metric", "rank", "owner", "status", "close_reason")  # a revision's
 TEXTS = ("statement", "who", "when", "workaround")  # the fields a problem always says something in
 CLEARABLE = ("metric", "close_reason")  # the fields a revision may leave empty
 METRIC_FIELDS = ("key", "aggregate", "window_days", "tenant")
+
+# The evidence of a problem (plan problem-intake, criterion a1): a line of a source that shows it hurts.
+SOURCE_KINDS = ("hub_chat", "messenger", "chat_fpt", "email", "file", "harness", "other")  # where a line was read
+SIGNALS = (
+    "complaint",
+    "workaround",
+    "repeated_request",
+    "blocker",
+    "commitment",
+    "proposed_solution",
+    "contradiction",
+    "decision_without_reason",
+)  # what the line shows
+EVIDENCE_LABELS = ("public", "internal")  # a line labelled personal stays on the member's machine
+MAX_EXCERPT_CHARS = 300
+MAX_URI_CHARS = 2000
+MAX_LOCATOR_CHARS = 500
+MAX_SPEAKER_CHARS = 200
+MAX_EVIDENCE = 200  # lines of one problem
+MAX_PROPOSED_EVIDENCE = 20  # lines one proposal of @builder carries
+EVIDENCE_FIELDS = ("source_kind", "source_uri", "locator", "speaker", "excerpt", "signal", "label")  # a line's own
 
 
 def code(number: int) -> str:
@@ -73,3 +95,14 @@ def metric_text(metric: Mapping | None) -> str:
 def status_text(problem: Mapping) -> str:
     """A problem's status, with the reason of a closed one: ``solved (the night shift runs it)``."""
     return problem["status"] + (f" ({problem['close_reason']})" if problem.get("close_reason") else "")
+
+
+def evidence_code(number: int) -> str:
+    """The code of line ``number`` of a problem's evidence: E-<number>."""
+    return f"E-{number}"
+
+
+def sources_of(lines) -> int:
+    """How many independent sources ``lines`` (each a mapping with source_kind and source_uri) come from: two lines of
+    one source, such as two messages of one chat, count once."""
+    return len({(line["source_kind"], line["source_uri"]) for line in lines})

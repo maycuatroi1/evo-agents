@@ -301,3 +301,32 @@ def test_canvas_read_names_the_problems_a_claim_links():
         "problems" in CLAIM_FIELDS and "problems" in tools.EDIT_SCHEMA["properties"]["changes"]["items"]["properties"]
     )
     assert tools.PROBLEM_REF == problem_model.REF
+
+
+def test_canvas_claim_delivery_is_code_unless_it_says_action_and_goes_through_edit_undo_export_and_import(client, hub):
+    """Plan problem-intake, criterion a3: a claim's delivery is code (the default) or action, written by an edit, kept
+    in its revs, undone with them, exported, and imported."""
+    made_one = edit(client, hub["alice"], problem())
+    assert made_one["claims"][0]["delivery"] == "code"
+    assert shown(client, hub["eve"], "CL-1")["delivery"] == "code"
+    changed = edit(client, hub["bao"], {"claim": "CL-1", "base_rev": 1, "cell": "solution", "delivery": "action"})
+    assert changed["claims"][0]["delivery"] == "action"
+    whole = client.get(f"{BASE}/canvases/{SLUG}/claims/CL-1", headers=hub["eve"]).json()
+    assert [rev["content"]["delivery"] for rev in whole["revs"]] == ["code", "action"]
+    refused(client, hub["alice"], {"claim": "CL-1", "base_rev": 2, "delivery": "robot"}, "")
+    undone = undo(client, hub["alice"], ("CL-1", 2))
+    assert shown(client, hub["eve"], "CL-1")["delivery"] == "code" and undone
+    edit(client, hub["alice"], {"claim": "CL-1", "base_rev": 3, "delivery": "action"})
+
+    exported = client.get(f"{BASE}/canvases/{SLUG}/export", headers=hub["eve"]).json()
+    assert [claim["delivery"] for claim in exported["claims"]] == ["action"]
+    file = copy.deepcopy(exported)
+    file["canvas"] = {"slug": "lumen-notes", "name": "Lumen Notes"}
+    file["claims"] = [
+        {"cell": "solution", "text": "Call each shop", "delivery": "action"},
+        {"cell": "solution", "text": "x"},
+    ]
+    done = client.post(f"{BASE}/canvases/import", json={"data": file}, headers=hub["alice"])
+    assert done.status_code == 200, done.text
+    assert shown(client, hub["eve"], "CL-2", slug="lumen-notes")["delivery"] == "action"
+    assert shown(client, hub["eve"], "CL-3", slug="lumen-notes")["delivery"] == "code"

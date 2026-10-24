@@ -634,6 +634,59 @@ def test_builder_proposal_of_a_problem_waits_for_a_writer_makes_it_writes_its_ne
     assert goal(client, hub["reader"], "G-1")["problem"] is None
 
 
+def lines_of(client, headers, ref: str) -> list[dict]:
+    response = client.get(f"/v1/projects/{PROJECT}/problems/{ref}/evidence", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_builder_proposal_of_a_problem_carries_evidence_made_with_it_or_alone_and_removed_on_rollback(client, hub):
+    run = started(client, hub, "@builder note the problem of the search")
+    line = {
+        "source_kind": "hub_chat",
+        "source_uri": "hub://lumen/chats/3",
+        "locator": "message 9",
+        "speaker": "Mira",
+        "excerpt": "Searches for a brand under its old name find nothing.",
+        "signal": "complaint",
+        "label": "internal",
+    }
+    for bad, said in (
+        ({**line, "label": "personal"}, "evidence"),
+        ({**line, "excerpt": "x" * 301}, "evidence"),
+    ):
+        text = proposed(client, run["agent"], kind="problem", summary="s", set=PROBLEM, evidence=[bad])
+        assert text.startswith("error:") and said in text, text
+    first = made_proposal(client, run["agent"], kind="problem", summary="Searches", set=PROBLEM, evidence=[line])
+    duplicate = proposed(client, run["agent"], kind="problem", summary="Twice", set=PROBLEM, evidence=[line, line])
+    assert duplicate.startswith("error:"), duplicate
+    assert "evidence" in shown(client, hub["reader"], first)["change"]
+    assert answer(client, hub["other"], first, "approve").json()["state"] == "applied"
+    made = lines_of(client, hub["reader"], "P-1")
+    assert [(e["code"], e["excerpt"], e["added_by"]) for e in made] == [("E-1", line["excerpt"], OTHER)]
+    assert (
+        problem(client, hub["reader"], "P-1")["evidence_count"],
+        problem(client, hub["reader"], "P-1")["source_count"],
+    ) == (1, 1)
+    # a proposal of lines alone names the problem, writes no revision and adds its lines
+    second = made_proposal(
+        client,
+        run["agent"],
+        kind="problem",
+        summary="More",
+        target={"problem": "P-1"},
+        evidence=[{**line, "source_uri": "hub://lumen/chats/4"}],
+    )
+    assert shown(client, hub["owner"], second)["base_version"] == 1
+    assert answer(client, hub["owner"], second, "approve").json()["applied_version"] == 1
+    assert problem(client, hub["reader"], "P-1")["revision"] == 1
+    assert [e["code"] for e in lines_of(client, hub["reader"], "P-1")] == ["E-1", "E-2"]
+    assert rollback(client, hub["owner"], second).json()["state"] == "rolled_back"
+    assert [e["code"] for e in lines_of(client, hub["reader"], "P-1")] == ["E-1"]
+    no_target = proposed(client, run["agent"], kind="problem", summary="Alone", evidence=[line])
+    assert no_target.startswith("error:"), no_target
+
+
 # Proposals of a hub admin, answered in the thread
 
 
@@ -785,3 +838,40 @@ def test_builder_proposals_table_refuses_a_row_whose_state_and_columns_disagree(
         ("agent", "rolled_back"),
         ("policy", "pending"),
     ]
+
+
+# Proposals an intake made (plan problem-intake): no run, no chat; approving one writes the problem and its lines
+
+
+def test_builder_proposals_of_an_intake_are_approved_like_any_other(client, hub):
+    base = f"/v1/projects/{PROJECT}/intakes"
+    sources = [{"kind": "messenger", "label": "internal", "name": "Shop group"}]
+    assert client.post(base, json={"sources": sources}, headers=hub["other"]).status_code == 201
+    line = {
+        "source_kind": "messenger",
+        "source_uri": "messenger://shop-group/1",
+        "excerpt": "We ring the depot every morning.",
+        "signal": "workaround",
+        "label": "internal",
+    }
+    candidate = {
+        "statement": "Shops cannot tell when a delivery comes",
+        "who": "shop owners",
+        "when": "before the delivery",
+        "workaround": "they ring the depot",
+        "basis": {
+            "statement": {"quote": "we ring the depot"},
+            "who": "inferred",
+            "when": "inferred",
+            "workaround": "inferred",
+        },
+        "evidence": [line, {**line, "source_kind": "email", "source_uri": "email://depot/42"}],
+    }
+    result = {"schema": "evo-intake/1", "candidates": [candidate], "promises": [], "questions": []}
+    put = client.put(f"{base}/I-1", json=result, headers=hub["other"])
+    assert put.status_code == 200, put.text
+    proposal_id = put.json()["outcome"]["proposals"][0]["proposal_id"]
+    assert shown(client, hub["reader"], proposal_id)["state"] == "pending"
+    assert answer(client, hub["owner"], proposal_id, "approve").json()["state"] == "applied"
+    found = problem(client, hub["reader"], "P-1")
+    assert (found["statement"], found["evidence_count"], found["source_count"]) == (candidate["statement"], 2, 2)

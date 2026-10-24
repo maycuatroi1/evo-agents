@@ -2,6 +2,7 @@ import {
   Ban,
   Binoculars,
   CircleCheck,
+  ClipboardCheck,
   CircleDot,
   CircleMinus,
   CirclePause,
@@ -55,6 +56,7 @@ export const KIND_ICONS: Record<ItemKind, LucideIcon> = {
   use_case: Route,
   build: FilePen,
   deliver: Truck,
+  act: ClipboardCheck,
 };
 
 /** A goal's status as a pill; a closed goal by why it is closed. */
@@ -163,13 +165,14 @@ export function chainsOf(items: readonly LoopItem[]): Chain[] {
 
 /**
  * What a work item is about, as its title names it: the goal of a brainstorm, the claim of a discover (a problem's claim
- * whose test card it runs) and of a use case, the use case of a build, the plan of a deliver.
+ * whose test card it runs), of an act (a task that delivers a solution without code) and of a use case, the use case of a build, the plan of a deliver.
  */
 export function subjectOf(item: Pick<LoopItem, "kind" | "goal" | "claim" | "use_case" | "plan">): string | null {
   switch (item.kind) {
     case "brainstorm":
       return item.goal;
     case "discover":
+    case "act":
       return item.claim?.code ?? item.goal;
     case "use_case":
       return item.claim?.code ?? item.use_case?.document ?? null;

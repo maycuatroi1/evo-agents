@@ -21,6 +21,7 @@ CELLS = (  # evo_agents.hub.tables_canvas.CELLS
 )
 AGENT_STATUSES = ("assumption", "testing", "invalidated", "retired")  # tables_canvas.STATUSES without validated
 CONFIDENCES = ("low", "medium", "high")  # tables_canvas.CONFIDENCES
+DELIVERIES = ("code", "action")  # tables_canvas.DELIVERIES
 DIRECTIONS = ("supports", "contradicts", "neutral")  # tables_canvas.DIRECTIONS
 AGENT_EVIDENCE_KINDS = ("interview", "market", "doc", "simulation")  # what an agent adds, a writer confirms
 AGGREGATES = ("last", "mean", "sum", "count", "p50", "p90")  # content.AGGREGATES
@@ -84,6 +85,11 @@ _CLAIM_FIELDS = {
     "text": _TEXT,
     "status": {"enum": list(AGENT_STATUSES), "description": "not for a new claim, which starts as an assumption"},
     "confidence": {"enum": list(CONFIDENCES)},
+    "delivery": {
+        "enum": list(DELIVERIES),
+        "description": "how a solution claim is delivered: code (a plan and a build, the default) or action (a task of "
+        "the project's plugin tasks, for a solution that needs no code)",
+    },
     "position": {"type": "integer", "minimum": 0, "description": "its place in the cell, 0 first"},
     "test_card": TEST_CARD,
     "archived": {"type": "boolean", "description": "true archives the claim, false brings it back"},

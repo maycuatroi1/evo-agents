@@ -63,6 +63,7 @@ function AskReview({ project, slug, code }: { project: string; slug: string; cod
 function ClaimView({ project, slug, claim }: { project: string; slug: string; claim: CanvasClaimDetail }) {
   const t = useTranslations("canvas.claim");
   const tCell = useTranslations("canvas.cell");
+  const tDelivery = useTranslations("canvas.delivery");
   const viewer = useCanvasViewer(project);
   const writer = canWrite(viewer);
   const [editing, setEditing] = useState(false);
@@ -77,6 +78,7 @@ function ClaimView({ project, slug, claim }: { project: string; slug: string; cl
           <>
             <Tag data-cell={claim.cell}>{tCell(claim.cell)}</Tag>
             <ConfidenceTag confidence={claim.confidence} />
+            <Tag data-delivery={claim.delivery}>{tDelivery(claim.delivery)}</Tag>
             {claim.archived ? <Tag data-testid="claim-archived">{t("archived")}</Tag> : null}
           </>
         }

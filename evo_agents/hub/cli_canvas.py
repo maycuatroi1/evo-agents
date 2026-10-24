@@ -47,6 +47,7 @@ CELLS = (
 )
 STATUSES = ("assumption", "testing", "validated", "invalidated", "retired")
 CONFIDENCES = ("low", "medium", "high")
+DELIVERIES = ("code", "action")  # tables_canvas.DELIVERIES
 ADDED_KINDS = ("interview", "experiment", "market", "doc", "simulation")
 DIRECTIONS = ("supports", "contradicts", "neutral")
 SUMMARY_KEYS = (
@@ -75,6 +76,7 @@ CLAIM_KEYS = (
     "use_cases",
     "signal_keys",
     "problems",
+    "delivery",
     "rev",
     "evidence_count",
     "real_support_count",
@@ -260,6 +262,7 @@ def _print_claim(claim: dict) -> None:
     print(f"{claim['code']} in {claim['canvas']}, cell {claim['cell']}: {claim['text']}")
     archived = ", archived" if claim["archived"] else ""
     print(f"  status {claim['status']}, confidence {claim['confidence']}, rev {claim['rev']}{archived}")
+    print(f"  delivery: {claim['delivery']}")
     for line in _card_lines(claim["test_card"]):
         print(line)
     print(f"  use cases: {', '.join(claim['use_cases']) or '-'}")
@@ -331,7 +334,7 @@ def _listed(given: str | None) -> list[str] | None:
 
 def _change(args) -> dict:
     """The one change the options of ``edit`` give."""
-    change = {name: getattr(args, name) for name in ("cell", "text", "status", "confidence", "position")}
+    change = {name: getattr(args, name) for name in ("cell", "text", "status", "confidence", "position", "delivery")}
     change |= {
         "use_cases": _listed(args.use_cases),
         "signal_keys": _listed(args.signal_keys),
@@ -557,6 +560,9 @@ def _edit_options(edit) -> None:
     edit.add_argument("--text", metavar="TEXT")
     edit.add_argument("--status", choices=STATUSES)
     edit.add_argument("--confidence", choices=CONFIDENCES)
+    edit.add_argument(
+        "--delivery", choices=DELIVERIES, help="code (the build path) or action (a task of the plugin tasks)"
+    )
     edit.add_argument("--position", type=int, metavar="N", help="its place in the cell, 0 first")
     edit.add_argument("--test-card", metavar="JSON", help="the whole test card, as a JSON object")
     edit.add_argument("--no-test-card", action="store_true", help="take the test card away")

@@ -66,6 +66,7 @@ class FileClaim(BaseModel):
     text: str
     status: str = "assumption"
     confidence: str = "medium"
+    delivery: str = "code"
     test_card: dict | None = None
     archived: bool = False
     use_cases: list = Field(default_factory=list, description="the codes of the use cases it links")
@@ -215,6 +216,7 @@ def _values(claim: FileClaim) -> dict:
         "text": claim.text,
         "status": claim.status,
         "confidence": claim.confidence,
+        "delivery": claim.delivery,
         "test_card": claim.test_card,
         "archived": claim.archived,
         "use_cases": claim.use_cases,

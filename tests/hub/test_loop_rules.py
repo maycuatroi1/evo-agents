@@ -505,3 +505,82 @@ def test_loop_rules2_replaying_a_chain_returns_the_same_keys():
     }
     for use_cases, wanted in expected.items():
         assert keys(chain, use_cases) == keys(chain, use_cases) == keys(renumbered, use_cases) == wanted
+
+
+# rules/2: a solution that needs no code is an act (plan problem-intake)
+
+ACT = "act:northwind-pantry:CL-1:b4"
+
+
+def act(state: str = "running", reason: str | None = None, **changes) -> ItemView:
+    item = ItemView(600, "act", ACT, state, reason, GOAL.id, claim_id=CLAIM.id, task_id=31)
+    return replace(item, **changes)
+
+
+def acting(**changes) -> View:
+    """The view with CL-1 a solution whose delivery is action."""
+    return view(**{"claims": {CLAIM.id: replace(CLAIM, delivery="action")}, **changes})
+
+
+def test_loop_rules2_a_solution_with_delivery_action_makes_an_act_whatever_the_project_uses():
+    detail = {"baseline": 4, "from": "assumption", "claim": "CL-1", "canvas": "northwind-pantry"}
+    for solution in ("solution", "unique_value_proposition"):
+        for use_cases in (True, False):
+            found = acting(use_cases=use_cases, claims={CLAIM.id: replace(CLAIM, cell=solution, delivery="action")})
+            (spec,) = R2.rules(baseline(moved("testing")), found)
+            assert spec == WorkSpec("act", ACT, GOAL.id, claim_id=21, detail=detail)
+    assert model.CYCLE_OF["act"] == "business" and "act" in model.KINDS
+    # delivery code, the default, goes the old way; another cell makes no act
+    (spec,) = R2.rules(baseline(moved("testing")), cell("solution", use_cases=False))
+    assert spec.kind == "build"
+    assert [e.kind for e in R2.rules(baseline(moved("testing")), cell("problem")) if isinstance(e, WorkSpec)] == [
+        "discover"
+    ]
+    problem = view(claims={CLAIM.id: replace(CLAIM, cell="problem", delivery="action")})
+    assert [e.kind for e in R2.rules(baseline(moved("testing")), problem) if isinstance(e, WorkSpec)] == ["discover"]
+    # rules/1 knows no delivery: the same claim is its use case
+    (spec,) = R1.rules(baseline(moved("testing")), acting())
+    assert spec.kind == "use_case"
+
+
+def test_loop_rules2_an_act_waits_out_the_stable_hours_then_is_done_with_its_task():
+    stable = {**POLICY, "stable_hours": 2}
+    found = acting(policy=stable)
+    (spec,) = R2.rules(baseline(moved("testing"), at=NOW - timedelta(hours=1)), found)
+    assert (spec.state, spec.reason) == ("watching", "stable")
+    waiting = act("watching", "stable", detail=spec.detail, task_id=None)
+    assert R2.reconcile(waiting, found) is None
+    assert R2.reconcile(waiting, replace(found, now=NOW + timedelta(hours=1))) == Transition(
+        waiting.id, "queued", "ready"
+    )
+    tasks = {31: TaskView(31, 7, "doing")}
+    assert R2.reconcile(act(), acting(tasks=tasks)) is None
+    done = {31: TaskView(31, 7, "done")}
+    assert R2.reconcile(act(), acting(tasks=done)) == Transition(600, "done", "done", detail={"task": 7})
+    assert R2.reconcile(act("queued", task_id=None), acting()) is None  # admission makes its task
+
+
+def test_loop_rules2_an_act_whose_task_is_cancelled_gone_or_overdue_is_a_failure_as_any_kind():
+    today = NOW.date()
+    for task in (TaskView(31, 7, "cancelled"), TaskView(31, 7, "doing", due_on=today - timedelta(days=1)), None):
+        tasks = {} if task is None else {31: task}
+        first = R2.reconcile(act(), acting(tasks=tasks))
+        assert (first.state, first.reason, first.failed) == ("queued", None, True)
+        assert first.detail["why"]
+        second = R2.reconcile(act(failures=1), acting(tasks=tasks))
+        assert (second.state, second.reason) == ("watching", "triage")
+        third = R2.reconcile(act(failures=2), acting(tasks=tasks))
+        assert (third.state, third.reason) == ("waiting_human", "loop_decision")
+    due_today = {31: TaskView(31, 7, "doing", due_on=today)}
+    assert R2.reconcile(act(), acting(tasks=due_today)) is None
+    assert R2.reconcile(act(), acting(goals={1: replace(GOAL, status="paused")})).reason == "goal_paused"
+    retired = view(claims={CLAIM.id: replace(CLAIM, delivery="action", status="retired")})
+    assert R2.reconcile(act(), retired).reason == "claim_retired"
+
+
+def test_loop_rules2_replaying_an_act_returns_the_same_key_and_old_work_items_read_as_before():
+    chain = [baseline(moved("testing"))]
+    keys = lambda events: [e.key for event in events for e in R2.rules(event, acting()) if isinstance(e, WorkSpec)]  # noqa: E731
+    assert keys(chain) == keys(chain) == keys([replace(chain[0], id=1050)]) == [ACT]
+    assert ClaimView(1, 2, "c", "CL-1", None).delivery == "code"  # a claim read with no delivery is a code claim
+    assert model.KINDS[:5] == ("brainstorm", "use_case", "build", "deliver", "discover"), "loop/1 only adds"

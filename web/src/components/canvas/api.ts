@@ -35,6 +35,7 @@ export type CanvasProvenance = Schemas["CanvasProvenance"];
 export type Cell = CanvasClaim["cell"];
 export type ClaimStatus = CanvasClaim["status"];
 export type Confidence = CanvasClaim["confidence"];
+export type Delivery = CanvasContent["delivery"];
 export type EvidenceKind = CanvasEvidence["kind"];
 export type AddedEvidenceKind = CanvasEvidenceIn["kind"];
 export type Direction = CanvasEvidence["direction"];

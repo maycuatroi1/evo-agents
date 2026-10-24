@@ -235,7 +235,7 @@ async def _claims(conn: AsyncConnection, ids: Iterable[int]) -> dict[int, ClaimV
     if not wanted:
         return {}
     c, k, b = tables.canvas.claims, tables.canvas.canvases, tables.canvas.baselines
-    columns = (c.c.id, c.c.canvas_id, k.c.slug, c.c.number, c.c.use_cases, c.c.cell)
+    columns = (c.c.id, c.c.canvas_id, k.c.slug, c.c.number, c.c.use_cases, c.c.cell, c.c.delivery)
     query = select(*columns).join_from(c, k, k.c.id == c.c.canvas_id)
     rows = list(await conn.execute(query.where(c.c.id.in_(wanted))))
     statuses: dict[int, str] = {}
@@ -250,7 +250,14 @@ async def _claims(conn: AsyncConnection, ids: Iterable[int]) -> dict[int, ClaimV
             statuses[entry["claim_id"]] = entry.get("status")
     return {
         row.id: ClaimView(
-            row.id, row.canvas_id, row.slug, f"CL-{row.number}", statuses.get(row.id), tuple(row.use_cases), row.cell
+            row.id,
+            row.canvas_id,
+            row.slug,
+            f"CL-{row.number}",
+            statuses.get(row.id),
+            tuple(row.use_cases),
+            row.cell,
+            row.delivery,
         )
         for row in rows
     }
@@ -277,13 +284,13 @@ async def _tasks(conn: AsyncConnection, project_id: int, items: Sequence[ItemVie
     groups = await status_groups(conn, plugin, project_id)
     t, sp = tables.tasks.items, tables.tasks.sprints
     query = (
-        select(t.c.id, t.c.number, t.c.status, t.c.external_key, sp.c.state.label("sprint"))
+        select(t.c.id, t.c.number, t.c.status, t.c.due_on, t.c.external_key, sp.c.state.label("sprint"))
         .select_from(t.outerjoin(sp, sp.c.id == t.c.sprint_id))
         .where(t.c.project_id == project_id, or_(t.c.id.in_(sorted(ids)), t.c.external_key.in_(sorted(frames))))
     )
     by_id, by_key = {}, {}
     for row in await conn.execute(query):
-        task = TaskView(row.id, row.number, groups.get(row.status), row.sprint == "active")
+        task = TaskView(row.id, row.number, groups.get(row.status), row.sprint == "active", row.due_on)
         by_id[row.id] = task
         if row.external_key in frames:
             by_key[row.external_key] = task
