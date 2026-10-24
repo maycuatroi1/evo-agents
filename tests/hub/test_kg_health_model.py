@@ -24,10 +24,12 @@ from evo_agents.hub.server import kg_health
 from evo_agents.kg.build import build_project
 from evo_agents.kg.health import is_test_path
 from evo_agents.kg.policy import Label
+from evo_agents.kg.review import RULES
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, git, make_project, write
+from tests.kg.test_clusters import needs_engine
 
 SHA = "4f1c2e7a9b3d5f60718293a4b5c6d7e8f9012345"
 NOW = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
@@ -265,9 +267,23 @@ def night(activity: int, **health) -> dict:
 
 def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
     assert list(review.LENSES)[-1] == "kg_health" and "kg_health" in review.FIGURE_KEYS
-    assert ledger.LENS_METRICS["kg_health"] == ("kg_behind", "kg_files_off", "kg_empty", "kg_fallbacks", "kg_misses")
+    queue = tuple(f"kg_review_{rule}" for rule in RULES)
+    assert ledger.LENS_METRICS["kg_health"] == (
+        "kg_behind",
+        "kg_files_off",
+        "kg_empty",
+        "kg_fallbacks",
+        "kg_misses",
+        *queue,
+    )
     before = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1)
-    assert [ledger.read_metric(before, key) for key in ledger.LENS_METRICS["kg_health"]] == [3.0, 3.0, 4.0, 2.0, 3.0]
+    values = [ledger.read_metric(before, key) for key in ledger.LENS_METRICS["kg_health"]]
+    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, *[0.0] * len(RULES)]  # no review queue measured yet
+    before["kg_health"]["review"] = {"build_id": 7, "open": {"dangling_mention": 2, "bulk_noise": 1}}
+    assert ledger.read_metric(before, "kg_review_dangling_mention") == 2.0
+    assert ledger.read_metric(before, "kg_review_bulk_noise") == 1.0
+    assert ledger.read_metric(before, "kg_review_possible_duplicate") == 0.0
+    assert ledger.metric_words("kg_review_unmentioned_document").startswith("open review items: documents")
     assert ledger.read_metric({}, "kg_behind") == 0.0 and ledger.read_metric({"kg_health": None}, "kg_misses") == 0.0
     trigger = ledger.trigger_of(before, "kg_health", ["code:a:x"], night="2026-10-18")
     assert [item["key"] for item in trigger["metrics"]] == list(ledger.LENS_METRICS["kg_health"])
@@ -292,6 +308,7 @@ def test_a_level_of_the_graph_compares_as_it_is_and_a_count_per_session_or_run()
         "kg_empty": "better",  # 4 empty lookups over twice the sessions
         "kg_fallbacks": "better",
         "kg_misses": "better",
+        **{f"kg_review_{rule}": "same" for rule in RULES},
     }
     assert outcome["result"] == "keep"
     lagging = night(4, behind=9, missing=8, empty=4, fallbacks=2, edited=4, in_top=1)
@@ -301,6 +318,23 @@ def test_a_level_of_the_graph_compares_as_it_is_and_a_count_per_session_or_run()
     emptier = night(4, behind=3, missing=2, empty=9, fallbacks=6, edited=4, in_top=1)
     emptier["kg_health"]["retrieval"]["evidence"] = ["session:s1", "run:4:1"]
     assert ledger.worse_evidence(emptier, ledger.outcome_of(trigger, emptier)) == ["session:s1", "run:4:1"]
+
+
+def test_open_review_items_are_a_level_of_the_graph_with_no_evidence_of_their_own():
+    before = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1)
+    before["kg_health"]["review"] = {"build_id": 7, "open": {"possible_duplicate": 2}}
+    trigger = ledger.trigger_of(before, "kg_health", ["code:a:x"])
+    after = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1)
+    after["kg_health"]["review"] = {"build_id": 8, "open": {"possible_duplicate": 9}}
+    after["kg_health"]["sources"][0]["evidence"] = ["code:app:lagging.py"]
+    outcome = ledger.outcome_of(trigger, after)
+    changes = {item["key"]: item["change"] for item in outcome["metrics"]}
+    assert changes["kg_review_possible_duplicate"] == "worse"  # 9 open against 2
+    assert changes["kg_behind"] == "same" and changes["kg_review_bulk_noise"] == "same"
+    assert outcome["result"] == "revert"
+    assert "kg_review_possible_duplicate" in ledger.LEVEL_METRICS
+    # the sources' evidence is for the sources' metrics, not for the queue's
+    assert ledger.worse_evidence(after, outcome) == []
 
 
 # The retrieval evaluation
@@ -403,6 +437,37 @@ def test_the_eval_reads_the_hubs_artifact_as_the_owner_through_the_hub_sink_and_
     monkeypatch.setattr(kg_health_eval, "score", no_score)
     again = kg_health._evaluate(cache, blobs, "demo", access, "agent", [built], plans, first)
     assert again == first and blobs.fetched == 1  # the cached artifact, and the score it had
+
+
+@needs_engine
+def test_the_review_counts_read_the_hubs_artifact_as_the_owner_and_leave_the_dismissed_aside(demo, tmp_path):
+    staged = tmp_path / "artifact.sqlite"
+    source, target = sqlite3.connect(f"{demo.graph.resolve().as_uri()}?mode=ro", uri=True), sqlite3.connect(staged)
+    source.backup(target)
+    source.close()
+    target.close()
+    copy = Store(staged)
+    copy.leave_wal()
+    stored = copy.review_items(demo.report.build_id)
+    copy.close()
+    assert stored, "the demo project's build has a review queue"
+    blobs = FileBlobs(staged)
+    built = BuiltGraph(7, blobs.sha256, len(blobs.data), demo.report.content_hash, 1, 1, NOW)
+    level = demo.project.policy.levels.index("internal")
+    access = SimpleNamespace(
+        max_level="internal",
+        rules=SimpleNamespace(
+            policy=demo.project.policy, ceiling=lambda max_level, sink: Label(level, 0, "U", frozenset())
+        ),
+    )
+    cache = GraphCache(tmp_path / "cache", keep=1)
+    found = kg_health._review(cache, blobs, "demo", access, "agent", [built], set())
+    assert found["build_id"] == 7 and set(found["open"]) == set(RULES)
+    assert 0 < sum(found["open"].values()) <= len(stored) == sum(demo.report.coverage["review"].values())
+    one = stored[0]
+    fewer = kg_health._review(cache, blobs, "demo", access, "agent", [built], {one["fingerprint"]})
+    assert fewer["open"][one["rule"]] == found["open"][one["rule"]] - 1
+    assert kg_coverage.review_open({"review": fewer}, one["rule"]) == fewer["open"][one["rule"]]
 
 
 # The command line

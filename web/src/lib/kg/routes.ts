@@ -2,11 +2,11 @@ import type { Route } from "next";
 
 import { projectHref } from "@/components/shell/nav";
 
-import type { Hops, KgNode } from "./types";
+import type { Hops, KgNode, ReviewRule } from "./types";
 
 /**
  * The knowledge graph's pages: `/p/{project}/kg` (status, search and the cluster map), `/p/{project}/kg/node?id=` (one
- * node) and `/p/{project}/kg/cluster?id=` (one cluster).
+ * node), `/p/{project}/kg/cluster?id=` (one cluster) and `/p/{project}/kg/review` (the review queue).
  */
 export const KG_SEGMENT = "kg";
 
@@ -53,4 +53,18 @@ export function mapOwner(node: Pick<KgNode, "id" | "kind" | "props">): string {
   const key = node.kind === "Symbol" ? "file" : node.kind === "Section" ? "item" : null;
   const owner = key ? node.props[key] : null;
   return typeof owner === "string" && owner ? owner : node.id;
+}
+
+/** What the review page lists: one rule, one cluster, and open, dismissed or all items. */
+export type ReviewState = "open" | "dismissed" | "all";
+export type ReviewFilter = { rule?: ReviewRule | null; cluster?: string | null; state?: ReviewState };
+
+/** The review queue, narrowed as `filter` says; the defaults (every rule and cluster, open items) stay out of the URL. */
+export function reviewHref(project: string, filter: ReviewFilter = {}): Route {
+  const params = new URLSearchParams();
+  if (filter.rule) params.set("rule", filter.rule);
+  if (filter.cluster) params.set("cluster", filter.cluster);
+  if (filter.state && filter.state !== "open") params.set("state", filter.state);
+  const query = params.toString();
+  return `${projectHref(project, KG_SEGMENT)}/review${query ? `?${query}` : ""}` as Route;
 }

@@ -1,7 +1,7 @@
 """What the hub's web pages read of a project's knowledge graph: node search, one node with its neighbours, the
 neighbourhood the graph view draws, how many visible nodes of each kind the graph holds, its shape (visible edges by
-source kind, edge type and target kind), the commit each source the member can see read, and the cluster map with one
-cluster and the compact whole graph (``evo_agents.hub.kg_map``).
+source kind, edge type and target kind), the commit each source the member can see read, the cluster map with one
+cluster and the compact whole graph (``evo_agents.hub.kg_map``), and the review queue (``evo_agents.hub.kg_review``).
 
 Each read opens the project's latest successful build the way the kg_* tools do (``evo_agents.hub.kg_graph``: the
 verified artifact cache, the fallback to a cached build when the blob store does not answer) and answers with the
@@ -31,7 +31,7 @@ from collections import deque
 from collections.abc import Callable
 from typing import TypeVar
 
-from evo_agents.hub import kg_map
+from evo_agents.hub import kg_map, kg_review
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
 from evo_agents.kg import freshness
@@ -161,6 +161,14 @@ class WebSession(HubSession):
             return {"nodes": [], "rels": [], "edges": [], "truncated": False}
         store, b = self._visible_store()
         return kg_map.whole(store, b, self.visible, limit)
+
+    def review(self) -> dict:
+        """The review queue as the member sees it (``evo_agents.hub.kg_review``): only items about nodes they can
+        read, each cut to those nodes."""
+        if self.error:
+            return {"computed": False, "reason": kg_map.NO_VISIBLE, "items": []}
+        store, b = self._visible_store()
+        return kg_review.queue(store, b, self.visible, self._degrees)
 
     def _degrees(self, store: Store, ids, b: int) -> dict[str, int]:
         """Visible edges of each node of ``ids``, by the same ceiling ``visible`` compares labels with."""

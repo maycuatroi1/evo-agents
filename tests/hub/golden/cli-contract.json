@@ -7726,6 +7726,115 @@
         ]
       }
     },
+    "hub kg review": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "dismiss"
+          ]
+        },
+        {
+          "name": "fingerprint",
+          "metavar": "FINGERPRINT",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rule"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "dangling_mention",
+            "unmentioned_document",
+            "cluster_without_knowledge",
+            "possible_duplicate",
+            "ambiguous_match",
+            "bulk_noise"
+          ]
+        },
+        {
+          "flags": [
+            "--cluster"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "dismissed",
+            "all"
+          ],
+          "default": "open"
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "graph",
+          "computed",
+          "reason",
+          "can_dismiss",
+          "counts",
+          "items"
+        ],
+        "schema": "ReviewQueue",
+        "with": {
+          "dismiss": {
+            "kind": "object",
+            "keys": [
+              "reason",
+              "by",
+              "at",
+              "build_id"
+            ],
+            "schema": "Dismissal"
+          }
+        }
+      }
+    },
     "hub kg scrub": {
       "positionals": [],
       "options": [
@@ -25778,6 +25887,278 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/WholeGraph"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/review": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Review Queue",
+          "description": "The items of the review queue you can see, grouped by rule, most connected first, with counts per rule.",
+          "operationId": "review_queue_v1_kg__project__review_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "rule",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "dangling_mention",
+                      "unmentioned_document",
+                      "cluster_without_knowledge",
+                      "possible_duplicate",
+                      "ambiguous_match",
+                      "bulk_noise"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the items of this rule",
+                "title": "Rule"
+              },
+              "description": "only the items of this rule"
+            },
+            {
+              "name": "cluster",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the items of this cluster",
+                "title": "Cluster"
+              },
+              "description": "only the items of this cluster"
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "enum": [
+                  "open",
+                  "dismissed",
+                  "all"
+                ],
+                "type": "string",
+                "description": "which items to list",
+                "default": "open",
+                "title": "State"
+              },
+              "description": "which items to list"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReviewQueue"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/review/{fingerprint}/dismiss": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Dismiss Item",
+          "description": "Dismiss an item of the review queue you can see, with a reason; it stays dismissed in later builds.",
+          "operationId": "dismiss_item_v1_kg__project__review__fingerprint__dismiss_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "fingerprint",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^r:[0-9a-f]{16}$",
+                "description": "an item's fingerprint",
+                "title": "Fingerprint"
+              },
+              "description": "an item's fingerprint"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DismissBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Dismissal"
                   }
                 }
               }
@@ -83838,6 +84219,59 @@
           ],
           "title": "Dimension"
         },
+        "DismissBody": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "DismissBody"
+        },
+        "Dismissal": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "by": {
+              "type": "string",
+              "title": "By",
+              "description": "the login of the writer who dismissed it"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id",
+              "description": "the build they saw the item in; null once that build is gone"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason",
+            "by",
+            "at",
+            "build_id"
+          ],
+          "title": "Dismissal"
+        },
         "Dispatch": {
           "properties": {
             "plan_id": {
@@ -107508,6 +107942,129 @@
           ],
           "title": "Results"
         },
+        "ReviewItem": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint",
+              "description": "the item's id, the same in every build that finds it"
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "action": {
+              "type": "string",
+              "title": "Action",
+              "description": "what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or exclude"
+            },
+            "cluster": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster",
+              "description": "the level-1 cluster of its first node you can see, if any"
+            },
+            "cluster_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster Label",
+              "description": "that cluster's label, as your map shows it"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/ReviewNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "the nodes the item is about that you can see"
+            },
+            "detail": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Detail",
+              "description": "what the rule found: count, and per rule mentions, samples, path, kind, where"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "the most edges you can see any of its nodes has; the queue's order"
+            },
+            "dismissal": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Dismissal"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null while the item is open"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "rule",
+            "action",
+            "cluster",
+            "cluster_label",
+            "nodes",
+            "detail",
+            "weight",
+            "dismissal"
+          ],
+          "title": "ReviewItem"
+        },
+        "ReviewNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name"
+          ],
+          "title": "ReviewNode"
+        },
         "ReviewProbe": {
           "properties": {
             "repo": {
@@ -107575,6 +108132,68 @@
           ],
           "title": "ReviewProbe",
           "description": "A probe the agent of a review run adds to a merged change that has none."
+        },
+        "ReviewQueue": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "computed": {
+              "type": "boolean",
+              "title": "Computed",
+              "description": "false when the build has no review queue; reason says why"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "can_dismiss": {
+              "type": "boolean",
+              "title": "Can Dismiss",
+              "description": "true for a writer of the project"
+            },
+            "counts": {
+              "items": {
+                "$ref": "#/components/schemas/RuleCount"
+              },
+              "type": "array",
+              "title": "Counts",
+              "description": "every rule, with the items you can see open and dismissed"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/ReviewItem"
+              },
+              "type": "array",
+              "title": "Items",
+              "description": "by rule, then most connected first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "computed",
+            "reason",
+            "can_dismiss",
+            "counts",
+            "items"
+          ],
+          "title": "ReviewQueue"
         },
         "ReviewRunSummary": {
           "properties": {
@@ -107927,6 +108546,37 @@
           "type": "object",
           "title": "Role",
           "description": "The runtime and model one role of the Curator runs on."
+        },
+        "RuleCount": {
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "open": {
+              "type": "integer",
+              "title": "Open"
+            },
+            "dismissed": {
+              "type": "integer",
+              "title": "Dismissed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rule",
+            "open",
+            "dismissed"
+          ],
+          "title": "RuleCount"
         },
         "Run": {
           "properties": {

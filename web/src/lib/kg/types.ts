@@ -31,6 +31,12 @@ export type ClusterDetail = Schemas["ClusterDetail"];
 export type ClusterNeighbour = Schemas["ClusterNeighbour"];
 export type WholeGraph = Schemas["WholeGraph"];
 export type WholeNode = Schemas["WholeNode"];
+export type ReviewQueue = Schemas["ReviewQueue"];
+export type ReviewItem = Schemas["ReviewItem"];
+export type ReviewNode = Schemas["ReviewNode"];
+export type RuleCount = Schemas["RuleCount"];
+export type Dismissal = Schemas["Dismissal"];
+export type ReviewRule = ReviewItem["rule"];
 
 /** The neighbourhood's bounds, as the API enforces them (`evo_agents.hub.kg_web`). */
 export const MAX_HOPS = 2;

@@ -126,6 +126,11 @@ CREATE INDEX IF NOT EXISTS clusters_id ON clusters(cluster_id, tx_from);
 CREATE INDEX IF NOT EXISTS cluster_members_node ON cluster_members(node_id, tx_from);
 CREATE INDEX IF NOT EXISTS cluster_members_cluster ON cluster_members(cluster_id, tx_from);
 CREATE INDEX IF NOT EXISTS cluster_links_id ON cluster_links(link_id, tx_from);
+CREATE TABLE IF NOT EXISTS review_items (
+    fingerprint TEXT NOT NULL, rule TEXT NOT NULL, cluster_id TEXT, evidence TEXT NOT NULL, clusters TEXT NOT NULL,
+    action TEXT NOT NULL, detail TEXT NOT NULL, content TEXT NOT NULL, tx_from INTEGER NOT NULL, tx_to INTEGER
+) STRICT;
+CREATE INDEX IF NOT EXISTS review_items_id ON review_items(fingerprint, tx_from);
 """
 
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
@@ -134,8 +139,9 @@ FTS_TABLES = ("node_fts", "node_fts_aud")  # the full-text rows of nodes without
 NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
 EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
 CLUSTER_TABLES = ("clusters", "cluster_members", "cluster_links")  # absent from a file written before clusters came
+REVIEW_TABLES = ("review_items",)  # absent from a file written before the review queue came
 # the tables whose rows carry tx_from, tx_to
-HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov", *CLUSTER_TABLES)
+HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov", *CLUSTER_TABLES, *REVIEW_TABLES)
 # Builds retention always keeps: the latest, and the one before it, which a reader that read the latest build id just
 # before a build landed may still be reading.
 KEEP_BUILDS = 2
@@ -193,6 +199,8 @@ class Graph:
     texts: dict[str, str] = field(default_factory=dict)  # node id -> the body of its searchable text
     paths: dict[str, str] = field(default_factory=dict)  # node id -> the path it is found by, when it has one
     clusters: Clusters | None = None  # None: not computed (``evo_agents.kg.clusters``)
+    mentions: dict[str, dict] = field(default_factory=dict)  # item id -> its dangling and ambiguous mentions, samples
+    review: list[dict] = field(default_factory=list)  # the review items of a build with clusters (``kg.review``)
 
 
 @dataclass
@@ -470,6 +478,7 @@ class Store:
                     wheres[f"{elem}\x1f{unit}\x1f{span}"] = {"elem_id": elem, "unit_id": unit, "span": span}
             self._diff("where_prov", None, b, wheres, ["elem_id", "unit_id", "span"])
             self._write_clusters(b, graph.clusters or Clusters())
+            self._write_review(b, graph.review)
             searched = self._write_search(graph)
             content_hash = self.content_hash(b, searched)
             stats = {**stats, "size": _size(graph), "top_label": _top_label(graph), **_top_audience(graph)}
@@ -522,6 +531,66 @@ class Store:
             },
             ["link_id", "level", "a", "b", "weight"],
         )
+
+    def _write_review(self, b: int, items: list[dict]) -> None:
+        """Bring the review items to ``items``; a graph without them closes the previous build's."""
+        self._diff(
+            "review_items",
+            "fingerprint",
+            b,
+            {
+                item["fingerprint"]: {
+                    "fingerprint": item["fingerprint"],
+                    "rule": item["rule"],
+                    "cluster_id": item["cluster"],
+                    "evidence": json.dumps(item["evidence"], ensure_ascii=False),
+                    "clusters": json.dumps(item["clusters"]),
+                    "action": item["action"],
+                    "detail": json.dumps(item["detail"], ensure_ascii=False, sort_keys=True),
+                }
+                for item in items
+            },
+            ["fingerprint", "rule", "cluster_id", "evidence", "clusters", "action", "detail"],
+        )
+
+    def has_review(self) -> bool:
+        """Whether the file has the review table: one written before the review queue came lacks it."""
+        sql = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?"
+        return self.db.execute(sql, REVIEW_TABLES).fetchone()[0] == 1
+
+    def review_items(self, b: int) -> list[dict]:
+        """The review items of build b (``evo_agents.kg.review``), whatever the reader, by fingerprint; none for a
+        build without them or a file written before them."""
+        if not self.has_review():
+            return []
+        rows = self.db.execute(
+            "SELECT fingerprint, rule, cluster_id, evidence, clusters, action, detail FROM review_items"
+            f" WHERE {LIVE} ORDER BY fingerprint",
+            {"b": b},
+        )
+        return [
+            {
+                "fingerprint": fp,
+                "rule": rule,
+                "cluster": cluster,
+                "evidence": json.loads(evidence),
+                "clusters": json.loads(clusters),
+                "action": action,
+                "detail": json.loads(detail),
+            }
+            for fp, rule, cluster, evidence, clusters, action, detail in rows
+        ]
+
+    def labels(self, ids, b: int) -> dict[str, tuple]:
+        """The label of each node of ``ids`` live at build b with an audience within ``reader``."""
+        return {nid: n["label"] for nid, n in self.nodes(ids, b).items()}
+
+    def edge_label(self, edge_id: str, b: int) -> tuple | None:
+        """The label of edge ``edge_id`` live at build b with an audience within ``reader``; None without one."""
+        row = self.db.execute(
+            f"SELECT {EDGE_COLUMNS} FROM edges WHERE edge_id = :id AND {LIVE} AND {SEEN}", {"id": edge_id, "b": b}
+        ).fetchone()
+        return _edge_row(row)["label"] if row else None
 
     def has_clusters(self) -> bool:
         """Whether the file has the cluster tables: one written before clusters came lacks them."""
@@ -665,6 +734,12 @@ class Store:
                 clustered.append([r[0] for r in rows])
         if any(clustered):
             parts.append(clustered)
+        # A build without review items hashes as before they came, for the same reason.
+        if self.has_review():
+            rows = self.db.execute(f"SELECT content FROM review_items WHERE {LIVE} ORDER BY fingerprint", {"b": b})
+            reviewed = [r[0] for r in rows]
+            if reviewed:
+                parts.append({"review": reviewed})
         return sha256(canonical_json(parts))
 
     # -- history -------------------------------------------------------------------------------
@@ -706,7 +781,8 @@ class Store:
         return out
 
     def _history_tables(self) -> tuple[str, ...]:
-        return HISTORY_TABLES if self.has_clusters() else tuple(t for t in HISTORY_TABLES if t not in CLUSTER_TABLES)
+        absent = (() if self.has_clusters() else CLUSTER_TABLES) + (() if self.has_review() else REVIEW_TABLES)
+        return tuple(t for t in HISTORY_TABLES if t not in absent)
 
     def counts(self, b: int) -> dict:
         out = {}

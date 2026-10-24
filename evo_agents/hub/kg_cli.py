@@ -16,7 +16,8 @@ artifacts of graphs older than each project's ``--keep`` newest leave the bucket
 (``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the kinds of secret, never a
 value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), and has the hub delete the old ones.
 ``clusters`` lists the clusters of a project's graph the caller can see, and ``clusters show ID`` one of them
-(``evo_agents.hub.kg_clusters_cli``).
+(``evo_agents.hub.kg_clusters_cli``). ``review`` lists the review queue the caller can see, and ``review dismiss FP``
+dismisses one item of it (``evo_agents.hub.kg_review_cli``).
 
 ``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
@@ -534,6 +535,10 @@ def register_kg(hsub) -> None:
     from evo_agents.hub import kg_clusters_cli
 
     kg_clusters_cli.register(ksub)
+
+    from evo_agents.hub import kg_review_cli
+
+    kg_review_cli.register(ksub)
 
 
 # The hub backend of kg serve and kg query

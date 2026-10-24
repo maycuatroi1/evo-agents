@@ -256,7 +256,7 @@ def test_cluster_store_written_before_clusters_still_opens(tmp_path, kg_env, mon
     report = sync_build(project)
     path = project.root / "graph.sqlite"
     db = sqlite3.connect(path)
-    for table in ("clusters", "cluster_members", "cluster_links"):
+    for table in ("clusters", "cluster_members", "cluster_links", "review_items"):  # neither came yet
         db.execute(f"DROP TABLE {table}")
     db.commit()
     db.close()

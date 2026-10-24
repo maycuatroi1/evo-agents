@@ -1399,6 +1399,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Queue
+         * @description The items of the review queue you can see, grouped by rule, most connected first, with counts per rule.
+         */
+        get: operations["review_queue_v1_kg__project__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/review/{fingerprint}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Item
+         * @description Dismiss an item of the review queue you can see, with a reason; it stays dismissed in later builds.
+         */
+        post: operations["dismiss_item_v1_kg__project__review__fingerprint__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/audit": {
         parameters: {
             query?: never;
@@ -14918,6 +14958,31 @@ export interface components {
              */
             reason: string;
         };
+        /** DismissBody */
+        DismissBody: {
+            /** Reason */
+            reason: string;
+        };
+        /** Dismissal */
+        Dismissal: {
+            /** Reason */
+            reason: string;
+            /**
+             * By
+             * @description the login of the writer who dismissed it
+             */
+            by: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Build Id
+             * @description the build they saw the item in; null once that build is gone
+             */
+            build_id: number | null;
+        };
         /** Dispatch */
         Dispatch: {
             /** Plan Id */
@@ -25162,6 +25227,62 @@ export interface components {
             /** Items */
             items: components["schemas"]["Found"][];
         };
+        /** ReviewItem */
+        ReviewItem: {
+            /**
+             * Fingerprint
+             * @description the item's id, the same in every build that finds it
+             */
+            fingerprint: string;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            /**
+             * Action
+             * @description what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or exclude
+             */
+            action: string;
+            /**
+             * Cluster
+             * @description the level-1 cluster of its first node you can see, if any
+             */
+            cluster: string | null;
+            /**
+             * Cluster Label
+             * @description that cluster's label, as your map shows it
+             */
+            cluster_label: string | null;
+            /**
+             * Nodes
+             * @description the nodes the item is about that you can see
+             */
+            nodes: components["schemas"]["ReviewNode"][];
+            /**
+             * Detail
+             * @description what the rule found: count, and per rule mentions, samples, path, kind, where
+             */
+            detail: {
+                [key: string]: unknown;
+            };
+            /**
+             * Weight
+             * @description the most edges you can see any of its nodes has; the queue's order
+             */
+            weight: number;
+            /** @description null while the item is open */
+            dismissal: components["schemas"]["Dismissal"] | null;
+        };
+        /** ReviewNode */
+        ReviewNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+        };
         /**
          * ReviewProbe
          * @description A probe the agent of a review run adds to a merged change that has none.
@@ -25194,6 +25315,33 @@ export interface components {
              * @description the change's active probe, not reproduced two weekly reports in a row, that this one replaces; the hub retires it
              */
             replaces?: number | null;
+        };
+        /** ReviewQueue */
+        ReviewQueue: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Computed
+             * @description false when the build has no review queue; reason says why
+             */
+            computed: boolean;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Can Dismiss
+             * @description true for a writer of the project
+             */
+            can_dismiss: boolean;
+            /**
+             * Counts
+             * @description every rule, with the items you can see open and dismissed
+             */
+            counts: components["schemas"]["RuleCount"][];
+            /**
+             * Items
+             * @description by rule, then most connected first
+             */
+            items: components["schemas"]["ReviewItem"][];
         };
         /**
          * ReviewRunSummary
@@ -25371,6 +25519,18 @@ export interface components {
              * @description as the runtime names it; null: the runtime's own choice
              */
             model?: string | null;
+        };
+        /** RuleCount */
+        RuleCount: {
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            /** Open */
+            open: number;
+            /** Dismissed */
+            dismissed: number;
         };
         /** Run */
         Run: {
@@ -37247,6 +37407,171 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WholeGraph"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    review_queue_v1_kg__project__review_get: {
+        parameters: {
+            query?: {
+                /** @description only the items of this rule */
+                rule?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise") | null;
+                /** @description only the items of this cluster */
+                cluster?: string | null;
+                /** @description which items to list */
+                state?: "open" | "dismissed" | "all";
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dismiss_item_v1_kg__project__review__fingerprint__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description an item's fingerprint */
+                fingerprint: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dismissal"];
                 };
             };
             /** @description Unauthorized */
