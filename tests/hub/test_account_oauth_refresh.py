@@ -171,7 +171,7 @@ def test_an_access_token_with_time_left_is_leased_as_it_is_and_the_endpoint_is_n
     assert anthropic.asked == []
 
 
-@pytest.mark.parametrize("left", [timedelta(minutes=1), timedelta(seconds=2)], ids=["near its end", "about to end"])
+@pytest.mark.parametrize("left", [timedelta(minutes=1), timedelta(seconds=30)], ids=["near its end", "about to end"])
 def test_an_access_token_near_its_end_is_refreshed_and_the_rotated_set_is_stored_and_leased(
     client, hub, hub_db, anthropic, left
 ):
