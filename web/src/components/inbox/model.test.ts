@@ -127,9 +127,9 @@ describe("the rest of the list by day and by run", () => {
     expect(groupInbox(page, "Asia/Ho_Chi_Minh").map((day) => day.key)).toEqual(["2026-10-24"]);
   });
 
-  it("opens by itself only an unread notice that asks something or is a brief", () => {
+  it("opens by itself only an unread notice that asks something of its reader", () => {
     expect(opensByItself(note(1, { notice_kind: "canvas_baseline" }))).toBe(true);
-    expect(opensByItself(note(1, { notice_kind: "curator_brief" }))).toBe(true);
+    expect(opensByItself(note(1, { notice_kind: "curator_brief" }))).toBe(false);
     expect(opensByItself(note(1, { notice_kind: "merge_default_branch", details: { ask: "sample", repo: "api" } }))).toBe(true);
     expect(opensByItself(note(1, { notice_kind: "canvas_baseline", read_at: "2026-10-05T08:00:00Z" }))).toBe(false);
     expect(opensByItself(note(1))).toBe(false);

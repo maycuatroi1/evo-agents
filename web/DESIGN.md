@@ -1119,8 +1119,8 @@ Shared pieces built on them:
   is the kind's icon, the title on one line (two on a phone) and, while unread, the first line of the body; the project
   (from 1024 px) and the time sit at its end. A notice opens in place (the row is one button, `aria-expanded`) to its
   kind's tag, its facts, its body and its links; one that asks something of its reader (an answer of the merge queue, a
-  baseline to review, a page that wants a sign-in) and the Curator's morning brief open by themselves while unread, and
-  so does the run's row that holds one. A decision or a proposal no longer open is a link to its sheet, with its state
+  baseline to review, a page that wants a sign-in) opens by itself while unread, and so does the run's row that holds
+  one; the Curator's morning brief of each project stays folded to its first line. A decision or a proposal no longer open is a link to its sheet, with its state
   as a pill. Mark as read sits at the end of each unread row (and of a run's row, for its unread ones), shown from
   768 px while the pointer or focus is on that row; Mark all as read is in the header (Mark these as read, by id, while
   a filter is on). J and K move focus from row to row. An unread notification has a `brand` dot, the word Unread for

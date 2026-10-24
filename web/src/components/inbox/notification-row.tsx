@@ -131,8 +131,8 @@ export type RowProps = {
 
 /**
  * One notification as a row. A notice opens in place (the row is one button, `aria-expanded`); one that asks something
- * of its reader, or the Curator's morning brief, opens by itself while unread (`opensByItself`). A decision or a proposal
- * no longer open is a link to its sheet, with its state as a pill.
+ * of its reader opens by itself while unread (`opensByItself`). A decision or a proposal no longer open is a link to its
+ * sheet, with its state as a pill.
  */
 export function NotificationRow({ notification, href, selected, onOpenDecision, onOpenProposal, onRead, reading, nested = false }: RowProps) {
   const t = useTranslations("inbox.item");

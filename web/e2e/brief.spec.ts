@@ -45,6 +45,9 @@ test("the morning brief reaches the owner's Inbox and the Curator's page names i
   await expect(item).toHaveCount(1);
   await expect(item.getByTestId("notice-kind")).toHaveText("Morning brief");
   await expect(item).toContainText(`Morning brief of ${project}: 0 runs, $0.00 of $2.00`);
+  // A brief a day for each project: it stays folded to its first line until opened.
+  await expect(item).toHaveAttribute("data-open", "false");
+  await item.getByTestId("notification-toggle").click();
   await expect(item.getByTestId("notification-body")).toContainText(`Worker ${live.worker.name}: online`);
   await expectNoSeriousViolations(page, "the Inbox with a morning brief");
 
