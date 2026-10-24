@@ -375,9 +375,10 @@ def test_the_graph_cache_keeps_two_checks_every_fetch_and_never_deletes_a_graph_
     held, first = cache.acquire(store, "alpha", newest_first(1))
     assert first.build_id == 1 and held.read_bytes() == payloads[1]
     for n in (2, 3):
+        # the cache orders graphs by modification time: apart enough that a coarse file clock never ties two of them
+        clock.sleep(0.05)
         path, _ = cache.acquire(store, "alpha", newest_first(n))
         cache.release(path)
-        clock.sleep(0.01)
     # build 1 is being read: it stays although it is not among the two installed last
     assert sorted(p.name for p in held.parent.iterdir()) == sorted(f"{graphs[n].sha256}.sqlite" for n in (1, 2, 3))
     cache.release(held)
