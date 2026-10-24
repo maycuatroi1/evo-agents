@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowLeft, FileQuestion } from "lucide-react";
-import dynamic from "next/dynamic";
+import { ArrowLeft, FileQuestion, Telescope } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
@@ -14,27 +13,17 @@ import { PageSkeleton, StatePanel } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { clusterIndex, filterMembers } from "@/lib/kg/map";
+import { OVERVIEW } from "@/lib/kg/explorer";
+import { filterMembers } from "@/lib/kg/map";
 import { kgClusterQuery } from "@/lib/kg/queries";
-import { clusterHref, KG_MAP_ID, kgHref, nodeHref } from "@/lib/kg/routes";
+import { clusterHref, explorerHref, nodeHref } from "@/lib/kg/routes";
 import type { ClusterDetail, MapNode } from "@/lib/kg/types";
 
 import { KindBadge } from "./badges";
 import { ClusterDecisions } from "./decisions";
 import { ClusterTable, kindsText, Swatch } from "./cluster-table";
-import type { CosmosData } from "./cosmos-canvas";
-
-const CosmosCanvas = dynamic(() => import("./cosmos-canvas").then((module) => module.CosmosCanvas), {
-  ssr: false,
-  loading: () => <Skeleton className="h-[360px] w-full rounded-md" />,
-});
-
-function mapLink(project: string) {
-  return `${kgHref(project)}#${KG_MAP_ID}` as ReturnType<typeof kgHref>;
-}
 
 function ClusterNotFound({ project, id }: { project: string; id: string }) {
   const t = useTranslations("kg.cluster");
@@ -46,22 +35,10 @@ function ClusterNotFound({ project, id }: { project: string; id: string }) {
       testId="state-not-found"
     >
       <Button asChild variant="outline">
-        <Link href={mapLink(project)}>{t("back")}</Link>
+        <Link href={explorerHref(project, OVERVIEW)}>{t("back")}</Link>
       </Button>
     </StatePanel>
   );
-}
-
-/** The members coloured by their level-2 cluster, when the cluster has parts; by the cluster itself otherwise. */
-function drawing(detail: ClusterDetail): CosmosData {
-  const parts = clusterIndex(detail.subclusters);
-  const whole = parts.size === 0;
-  return {
-    ids: detail.members.map((m) => m.id),
-    clusterOf: detail.members.map((m) => (whole ? 0 : m.sub ? parts.get(m.sub) : undefined)),
-    labels: whole ? [""] : detail.subclusters.map((c) => c.label),
-    links: detail.edges.flatMap(([a, b]) => [a ?? 0, b ?? 0]),
-  };
 }
 
 function Members({ project, detail }: { project: string; detail: ClusterDetail }) {
@@ -161,7 +138,6 @@ function Neighbours({ project, detail }: { project: string; detail: ClusterDetai
 function Cluster({ project, detail }: { project: string; detail: ClusterDetail }) {
   const t = useTranslations("kg.cluster");
   const { cluster } = detail;
-  const data = useMemo(() => drawing(detail), [detail]);
   return (
     <>
       <PageHeader
@@ -174,6 +150,14 @@ function Cluster({ project, detail }: { project: string; detail: ClusterDetail }
             </Tag>
             <Tag>{t("size", { count: cluster.size })}</Tag>
           </>
+        }
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href={explorerHref(project, { kind: "cluster", id: cluster.id })} data-testid="kg-cluster-explore">
+              <Telescope aria-hidden="true" />
+              {t("explore")}
+            </Link>
+          </Button>
         }
         sub={
           <span className="flex flex-col gap-1">
@@ -188,17 +172,11 @@ function Cluster({ project, detail }: { project: string; detail: ClusterDetail }
         }
       />
       <Button asChild variant="link" className="w-fit px-0">
-        <Link href={mapLink(project)}>
+        <Link href={explorerHref(project, OVERVIEW)}>
           <ArrowLeft aria-hidden="true" />
           {t("back")}
         </Link>
       </Button>
-      <section aria-labelledby="kg-cluster-drawing" className="flex flex-col gap-2">
-        <h2 id="kg-cluster-drawing" className="text-[15px] leading-[22px] font-semibold">
-          {t("drawing")}
-        </h2>
-        <CosmosCanvas data={data} label={t("canvasLabel")} testId="kg-cluster-canvas" height="h-[360px]" />
-      </section>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
           {detail.subclusters.length > 0 ? (
@@ -218,7 +196,7 @@ function Cluster({ project, detail }: { project: string; detail: ClusterDetail }
   );
 }
 
-/** /p/{project}/kg/cluster?id=: one cluster, its parts, its members (filterable), its neighbours and a drawing. */
+/** /p/{project}/kg/cluster?id=: one cluster, its parts, its members (filterable) and its neighbours; the explorer draws it. */
 export function KgClusterPage({ project, id, error }: { project: string; id: string; error: ApiErrorInfo | null }) {
   const state = useHubQuery({ ...kgClusterQuery(browserApi, project, id), enabled: id !== "" }, error);
   if (!id || (state.status === "error" && state.error.status === 404)) {

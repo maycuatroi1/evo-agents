@@ -1,13 +1,14 @@
 import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
-import { KgOverview } from "@/components/kg/kg-overview";
+import { KgExplorer } from "@/components/kg/kg-explorer";
 import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
-import { cleanQuery, kgBuildsQuery, kgFailedBuildsQuery, kgGraphQuery, kgSearchQuery, parseBuildFilter } from "@/lib/kg/queries";
+import { cleanQuery, kgBuildsQuery, kgGraphQuery, kgSearchQuery, parseBuildFilter } from "@/lib/kg/queries";
+import { buildsHref } from "@/lib/kg/routes";
 import { PROJECT_NAME } from "@/lib/queries";
 
 type Props = {
@@ -21,27 +22,28 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * /p/{project}/kg?q=&kind=&builds=: build status, queue, node search and the build history (`builds=failed` for the
- * failed builds only), prefetched with the visitor's cookie.
+ * /p/{project}/kg?cluster=&node=&q=&kind=: the explorer, with the builds, the graph's summary and the search the URL
+ * names prefetched with the visitor's cookie; the clusters, a cluster and a neighbourhood are read in the browser, so
+ * the page shows before the graph is drawn. The builds' filter lived here before the builds had a page of their own:
+ * `?builds=` goes there.
  */
 export default async function KgPage({ params, searchParams }: Props) {
   const project = decodeURIComponent((await params).project);
   if (!PROJECT_NAME.test(project)) notFound();
   const search = await searchParams;
+  if (search.builds !== undefined) redirect(buildsHref(project, parseBuildFilter(search.builds) === "failed"));
   const query = cleanQuery(search.q);
   const kind = cleanQuery(search.kind);
-  const failedOnly = parseBuildFilter(search.builds) === "failed";
   const api = await serverApi();
   const client = getQueryClient();
-  const [builds, graph, found, failed] = await Promise.all([
+  const [builds, graph, found] = await Promise.all([
     prefetch(client, kgBuildsQuery(() => api, project)),
     prefetch(client, kgGraphQuery(() => api, project)),
     query ? prefetch(client, kgSearchQuery(() => api, project, query, kind)) : Promise.resolve(null),
-    failedOnly ? prefetch(client, kgFailedBuildsQuery(() => api, project)) : Promise.resolve(null),
   ]);
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <KgOverview project={project} query={query} kind={kind} errors={{ builds, graph, search: found, failed }} />
+      <KgExplorer project={project} errors={{ builds, graph, search: found }} />
     </HydrationBoundary>
   );
 }

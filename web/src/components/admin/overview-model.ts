@@ -1,7 +1,7 @@
 import type { Route } from "next";
 
 import { filtersSearch } from "@/components/workers/model";
-import { BUILD_HISTORY_ID } from "@/lib/kg/queries";
+import { buildsHref } from "@/lib/kg/routes";
 
 import { type AdminOverview, type ProjectFailedBuilds, searchOf, tokensHref } from "./data";
 
@@ -21,9 +21,9 @@ export type Attention =
   | { kind: "notSignedIn"; tone: "neutral"; href: Route; count: number }
   | { kind: "deletions"; tone: "neutral"; href: null; count: number; bytes: number };
 
-/** A project's knowledge graph page with its build history showing the failed builds only. */
+/** A project's knowledge graph builds with their history showing the failed builds only. */
 export function failedBuildsHref(project: string): Route {
-  return `/p/${encodeURIComponent(project)}/kg?builds=failed#${BUILD_HISTORY_ID}` as Route;
+  return buildsHref(project, true);
 }
 
 /** The members list, of one project when given. */
