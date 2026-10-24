@@ -23,6 +23,14 @@ export type GraphEdge = Schemas["GraphEdge"];
 export type NeighbourGroup = Schemas["NeighbourGroup"];
 export type GraphShape = Schemas["GraphShape"];
 export type ShapeRow = Schemas["ShapeRow"];
+export type ClusterMap = Schemas["ClusterMap"];
+export type ClusterSummary = Schemas["ClusterSummary"];
+export type ClusterLink = Schemas["ClusterLink"];
+export type MapNode = Schemas["MapNode"];
+export type ClusterDetail = Schemas["ClusterDetail"];
+export type ClusterNeighbour = Schemas["ClusterNeighbour"];
+export type WholeGraph = Schemas["WholeGraph"];
+export type WholeNode = Schemas["WholeNode"];
 
 /** The neighbourhood's bounds, as the API enforces them (`evo_agents.hub.kg_web`). */
 export const MAX_HOPS = 2;

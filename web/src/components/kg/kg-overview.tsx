@@ -33,6 +33,10 @@ import { useNow } from "./use-now";
 // The graph's shape loads on demand too, with its own read (GET /v1/kg/{project}/shape), below the search.
 const Shape = dynamic(() => import("./graph-shape").then((module) => module.GraphShapeSection));
 
+// The cluster map loads on demand as well, with its own read (GET /v1/kg/{project}/clusters); cosmos.gl, which draws
+// it, loads later still, only once a canvas mounts.
+const ClusterMap = dynamic(() => import("./cluster-map").then((module) => module.ClusterMapSection));
+
 // The Commits read card loads on demand (next/dynamic): imported statically, its code sat in a chunk that both pages
 // of the graph, this one and the node page, load first, and put each over its budget in bundle-budget.json.
 const SourceCommits = dynamic(() => import("./source-commits").then((module) => module.SourceCommits));
@@ -197,7 +201,10 @@ function Status({ project, data, graphError }: { project: string; data: KgBuilds
   return <StatusTiles data={data} now={now} visible={graph.status === "success" ? graph.data.graph : null} />;
 }
 
-/** /p/{project}/kg: the graph's status, the commits its sources read, node search and the builds. Read-only. */
+/**
+ * /p/{project}/kg: the graph's status, the commits its sources read, node search, the cluster map, the graph's shape and
+ * the builds. Read-only.
+ */
 export function KgOverview({
   project,
   query,
@@ -249,6 +256,7 @@ export function KgOverview({
       </QueryView>
       <Commits project={project} error={errors.graph} />
       <SearchSection project={project} query={query} kind={kind} errors={errors} />
+      <ClusterMap project={project} />
       <Shape project={project} />
       <QueryView state={builds} loading={<TableSkeleton rows={4} />}>
         {(data) => <Builds project={project} data={data} failedError={errors.failed ?? null} />}

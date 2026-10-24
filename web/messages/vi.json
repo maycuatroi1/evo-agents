@@ -272,8 +272,7 @@
     "mergeQueueFigures": "Số liệu",
     "mergeQueuePolicy": "Policy",
     "org": "Sơ đồ tổ chức",
-    "browser": "Trình duyệt"
-,
+    "browser": "Trình duyệt",
     "groups": {
       "delivery": "Bàn giao",
       "improvement": "Cải tiến",
@@ -2016,6 +2015,62 @@
       },
       "empty": "Không có cạnh nào bạn đọc được trong đồ thị này.",
       "caption": "{count, plural, other {# tổ hợp loại node và loại cạnh}}"
+    },
+    "map": {
+      "title": "Bản đồ cụm",
+      "description": "Các nhóm node liên kết với nhau nhiều hơn với phần còn lại, đếm trên những gì bạn được đọc. Màu cho biết cụm; bấm một điểm để mở cụm của nó.",
+      "noClusters": "Không có cụm để hiện: {reason}",
+      "summary": "{clusters, plural, other {# cụm}}, {nodes, plural, other {# node}}, {links, plural, other {# liên kết giữa các cụm}}",
+      "canvasLabel": "Bản đồ các cụm của graph; bảng bên dưới liệt kê cùng các cụm đó",
+      "noWebgl": "Trình duyệt này không vẽ được bản đồ (không có WebGL2), nên các cụm được liệt kê bên dưới.",
+      "loading": "Đang vẽ bản đồ",
+      "whole": "Xem mọi node và cạnh",
+      "clusters": "Xem các cụm",
+      "wholeSummary": "{nodes, plural, other {# node}} và {edges, plural, other {# cạnh}} bạn được đọc",
+      "truncated": "Graph có nhiều node hơn số chế độ xem vẽ được; nó hiện {count} node đầu theo id.",
+      "focus": "Đang làm nổi: cụm của {node}",
+      "focusMissing": "{node} không thuộc cụm nào bạn thấy được.",
+      "clearFocus": "Bỏ",
+      "showOnMap": "Xem trên bản đồ",
+      "fit": "Vừa khung",
+      "table": {
+        "caption": "{count, plural, other {# cụm}}, lớn nhất trước",
+        "label": "Cụm",
+        "size": "Node",
+        "kinds": "Loại",
+        "subclusters": "Phần"
+      },
+      "matrix": {
+        "title": "Liên kết giữa các cụm",
+        "description": "Mỗi ô đếm số cạnh nối hai cụm; càng đậm càng nhiều.",
+        "cell": "{a} và {b}: {count, plural, other {# cạnh}}",
+        "hidden": "{count, plural, other {# cụm nhỏ hơn}} không có trong ma trận.",
+        "empty": "Không có cạnh nào bạn đọc được nối hai cụm."
+      }
+    },
+    "cluster": {
+      "title": "Cụm",
+      "back": "Bản đồ cụm",
+      "missingId": "Chưa chọn cụm: hãy mở một cụm từ bản đồ.",
+      "notFound": "Không có cụm nào với id đó mà bạn thấy được.",
+      "level": "{level, select, 1 {Cụm} other {Phần của một cụm}}",
+      "parent": "Thuộc {label}",
+      "size": "{count, plural, other {# node bạn được đọc}}",
+      "drawing": "Các thành viên và cạnh giữa chúng",
+      "canvasLabel": "Các thành viên của cụm; bảng liệt kê cùng các node đó",
+      "subclusters": "Các phần",
+      "neighbours": "Cụm lân cận",
+      "noNeighbours": "Không có cạnh nào bạn đọc được dẫn sang cụm khác.",
+      "neighbourWeight": "{count, plural, other {# cạnh}}",
+      "members": "Thành viên",
+      "filter": "Lọc thành viên",
+      "filterPlaceholder": "Tên, id hoặc loại",
+      "membersCaption": "{shown} trên {count, plural, other {# thành viên}}",
+      "columns": {
+        "node": "Node",
+        "kind": "Loại",
+        "part": "Phần"
+      }
     }
   },
   "workers": {

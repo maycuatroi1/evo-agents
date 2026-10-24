@@ -272,8 +272,7 @@
     "mergeQueueFigures": "Figures",
     "mergeQueuePolicy": "Policy",
     "org": "Org chart",
-    "browser": "Browser"
-,
+    "browser": "Browser",
     "groups": {
       "delivery": "Delivery",
       "improvement": "Improvement",
@@ -2016,6 +2015,62 @@
       },
       "empty": "No edge you can read in this graph.",
       "caption": "{count, plural, one {# combination of kinds and edge type} other {# combinations of kinds and edge type}}"
+    },
+    "map": {
+      "title": "Map of clusters",
+      "description": "Groups of nodes that link to each other more than to the rest, counted over what you can read. Colour marks the cluster; click a point to open its cluster.",
+      "noClusters": "No cluster to show: {reason}",
+      "summary": "{clusters, plural, one {# cluster} other {# clusters}}, {nodes, plural, one {# node} other {# nodes}}, {links, plural, one {# link between clusters} other {# links between clusters}}",
+      "canvasLabel": "Map of the graph's clusters; the table below lists the same clusters",
+      "noWebgl": "This browser cannot draw the map (no WebGL2), so the clusters are listed below.",
+      "loading": "Drawing the map",
+      "whole": "View all nodes and edges",
+      "clusters": "View clusters",
+      "wholeSummary": "{nodes, plural, one {# node} other {# nodes}} and {edges, plural, one {# edge} other {# edges}} you can read",
+      "truncated": "The graph holds more nodes than the view draws; it shows the first {count} by id.",
+      "focus": "Lit up: the cluster of {node}",
+      "focusMissing": "{node} is in no cluster you can see.",
+      "clearFocus": "Clear",
+      "showOnMap": "Show on map",
+      "fit": "Fit to view",
+      "table": {
+        "caption": "{count, plural, one {# cluster} other {# clusters}}, largest first",
+        "label": "Cluster",
+        "size": "Nodes",
+        "kinds": "Kinds",
+        "subclusters": "Parts"
+      },
+      "matrix": {
+        "title": "Links between clusters",
+        "description": "Each cell counts the edges joining two clusters; darker means more.",
+        "cell": "{a} and {b}: {count, plural, one {# edge} other {# edges}}",
+        "hidden": "{count, plural, one {# smaller cluster is} other {# smaller clusters are}} left out of the matrix.",
+        "empty": "No edge you can read joins two clusters."
+      }
+    },
+    "cluster": {
+      "title": "Cluster",
+      "back": "Map of clusters",
+      "missingId": "No cluster chosen: open one from the map.",
+      "notFound": "No cluster with that id is visible to you.",
+      "level": "{level, select, 1 {Cluster} other {Part of a cluster}}",
+      "parent": "Part of {label}",
+      "size": "{count, plural, one {# node you can read} other {# nodes you can read}}",
+      "drawing": "Members and the edges between them",
+      "canvasLabel": "The cluster's members; the table lists the same nodes",
+      "subclusters": "Parts",
+      "neighbours": "Neighbouring clusters",
+      "noNeighbours": "No edge you can read leads to another cluster.",
+      "neighbourWeight": "{count, plural, one {# edge} other {# edges}}",
+      "members": "Members",
+      "filter": "Filter members",
+      "filterPlaceholder": "Name, id or kind",
+      "membersCaption": "{shown} of {count, plural, one {# member} other {# members}}",
+      "columns": {
+        "node": "Node",
+        "kind": "Kind",
+        "part": "Part"
+      }
     }
   },
   "workers": {
