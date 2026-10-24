@@ -666,32 +666,35 @@ Shared pieces built on them:
   of old links redirects there); Failed reads the project's latest failed builds on their own, so a failure older
   than the latest builds still shows.
 - `components/kg/kg-explorer.tsx` and the `explorer-*` files beside it: the knowledge graph explorer,
-  `/p/{project}/kg`, where the sidebar's Knowledge graph lands, so a person sees the graph at once. Under the page head
-  (the h1, Read-only, then the tabs Explore, Builds and Review queue of `kg-header.tsx`) one bordered frame fills the
-  height left (`100dvh` less the top bar and the gutters) and only its columns scroll: the rail (280 px) with the
+  `/p/{project}/kg`, where the sidebar's Knowledge graph lands, so a person sees the graph at once. Under the page
+  head (the h1, Read-only, then the tabs Explore, Builds and Review queue of `kg-header.tsx`) one bordered frame fills
+  the height left (`100dvh` less the top bar and the gutters) and only its columns scroll: the rail (280 px) with the
   search on top (`SearchField`, `?q=` through `history.replaceState`, up to 25 nodes, best match first) and below it
   the graph's figures in one container (nodes, edges, clusters, the build it comes from; a pill only when the latest
-  build failed or one runs), its kinds as `aria-pressed` filters with their counts, and the scope's list; the canvas in
-  the middle with a 44 px toolbar (the trail Overview, the cluster, the node, each step a way back; the layouts the
+  build failed or one runs), its kinds as `aria-pressed` filters with their counts, and the scope's list; the canvas
+  in the middle with a 44 px toolbar (the trail Overview, the cluster, the node, each step a way back; the layouts the
   scope allows as the segmented control; full screen) over a dotted ground; the inspector (336 px) on the right while
   something is selected, closed with its X or Escape. Under 1024 px the parts stack: search, canvas (62 % of the
   height), inspector, rail. Three scopes, one canvas, the scope in the URL (`?cluster=`, `?node=`) through
   `history.pushState`, so back and forward walk the exploration and a view can be shared: the overview draws the
-  level-1 clusters as circles in their cluster colour sized by members (square root), joined by their links (width on a
-  log scale), each cluster keeping its three heaviest links and the others shown dashed while it is hovered or
-  selected; a cluster draws its members in their kinds' tones and shapes inside wells for its parts, the 600 most
-  linked when it holds more; a node draws itself and its direct neighbours (the six most linked of each group of edge
-  type, direction and kind, a dashed "+N kind" node for the rest) and each node the reader expands adds its own beside
-  it while the others keep their places (`lib/kg/explorer.ts` merges the neighbourhoods, up to 400 nodes). Cytoscape.js
-  with the fcose layout draws it (`explorer-canvas.tsx`, loaded once the canvas mounts; `explorer-layout.ts` and
-  `explorer-style.ts` hold its layouts and stylesheet, colours read from the tokens of the theme in use). A click
-  selects, a double click opens a cluster or expands a node, hovering lights a node's neighbourhood, dims the rest
-  and names it in a tooltip; on the focused canvas the arrows step through the nodes, Enter opens or expands,
-  Backspace goes up a scope, Delete hides a node, Escape clears, + and - zoom and 0 fits. The canvas is a labelled
-  `role="application"` described by the keys; the rail's lists and the inspector (a cluster's kinds, parts and linked
-  clusters; a node's facts and relations, each relation selecting its node or opening its group on the canvas) carry
-  the same data, and selections are said in a polite live region. The legend sits bottom left as a `details`: the
-  figures of the view, then what the marks mean.
+  level-1 clusters as circles in their cluster colour sized by members (square root), joined by their links (width on
+  a log scale), each cluster keeping its three heaviest links and the others shown dashed while it is hovered or
+  selected; a cluster with parts draws its parts the same way, joined by the edges between their members, and a part
+  (or a cluster without parts) its members in their kinds' tones and shapes, the 600 most linked when it holds more; a
+  node draws itself and its direct neighbours (the six most linked of each group of edge type, direction and kind, a
+  dashed "+N kind" node for the rest) and each node the reader expands adds its own beside it while the others keep
+  their places (`lib/kg/explorer.ts` merges the neighbourhoods, up to 400 nodes). Cytoscape.js with the fcose layout
+  draws it (`explorer-canvas.tsx`, loaded once the canvas mounts; `explorer-layout.ts` and `explorer-style.ts` hold
+  its layouts and stylesheet, colours read from the tokens of the theme in use). The 16 largest circles and the 24
+  most linked nodes keep their labels from a small zoom on, the others once zoomed past 2 (Cytoscape rounds the zoom
+  up to a power of two when it hides labels) or when looked at; the node a URL names by an alias reads as its own id
+  once read. A click selects, a double click opens a cluster or expands a node, hovering lights a node's
+  neighbourhood, dims the rest and names it in a tooltip; on the focused canvas the arrows step through the nodes,
+  Enter opens or expands, Backspace goes up a scope, Delete hides a node, Escape clears, + and - zoom and 0 fits. The
+  canvas is a labelled `role="application"` described by the keys; the rail's lists and the inspector (a cluster's
+  kinds, parts and linked clusters; a node's facts and relations, each relation selecting its node or opening its
+  group on the canvas) carry the same data, and selections are said in a polite live region. The legend sits bottom
+  left as a `details`: the figures of the view, then what the marks mean.
 - `components/feedback/toast.tsx` and `ui/sonner.tsx`: the kit's Toast through Sonner, mounted once in `providers.tsx`.
   Bottom right, 24 px from the edges (16 on phones), 380 px wide, z-index 60, on `surface-raised` inside a `border` edge
   with `shadow-popover` and 8 px corners: the tone's Lucide icon, a past-tense title in `body-strong` ("Run #13

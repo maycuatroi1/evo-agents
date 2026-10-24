@@ -58,24 +58,25 @@ export function mergeExpansions(
   const nodes = new Map<string, WorkingNode>();
   const edges = new Map<string, GraphEdge>();
   const more: WorkingSet["more"] = [];
-  const expandedIds = new Set(expansions.map((expansion) => expansion.id));
+  // An expansion stands for the node its neighbourhood is about: an alias asked for reads as the node's own id.
+  const expandedIds = new Set(expansions.flatMap((expansion, i) => [expansion.id, views[i]?.focus ?? expansion.id]));
   expansions.forEach((expansion, i) => {
     const view = views[i];
-    if (!view || hiddenNodes.has(expansion.id)) return;
+    if (!view || hiddenNodes.has(expansion.id) || hiddenNodes.has(view.focus)) return;
     for (const node of view.nodes) {
       if (hiddenNodes.has(node.id) || nodes.has(node.id)) continue;
-      nodes.set(node.id, { ...node, origin: expansion.id, expanded: expandedIds.has(node.id) });
+      nodes.set(node.id, { ...node, origin: view.focus, expanded: expandedIds.has(node.id) });
     }
     for (const edge of view.edges) edges.set(edge.id, edge);
     for (const group of view.groups) {
       const hidden = group.total - group.shown.length;
-      if (hidden > 0) more.push({ expansion: expansion.id, group, hidden });
+      if (hidden > 0) more.push({ expansion: view.focus, group, hidden });
     }
   });
   for (const [id, edge] of edges) {
     if (!nodes.has(edge.src) || !nodes.has(edge.dst)) edges.delete(id);
   }
-  return { seed, nodes, edges, more: more.filter((entry) => nodes.has(entry.expansion)) };
+  return { seed: views[0]?.focus ?? seed, nodes, edges, more: more.filter((entry) => nodes.has(entry.expansion)) };
 }
 
 /** `id` expanded, keeping the expansions before it; nothing changes when it already is. */
