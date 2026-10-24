@@ -54,8 +54,11 @@ export function NodeScope({ seed, project, hiddenKinds, layout, onLayout, search
   const working = useMemo(() => mergeExpansions(seed, expansions, results.views, hiddenNodes), [seed, expansions, results.views, hiddenNodes]);
   const elements = useMemo(() => workingElements(working, hiddenKinds), [working, hiddenKinds]);
   const canExpand = working.nodes.size < WORKING_CAP;
-  const effective: Selection = selection === undefined ? { type: "node", id: seed } : selection;
-  const expanded = (id: string) => expansions.some((e) => e.id === id);
+  // The node's own id once its neighbourhood is read: the URL may name it by an alias. Its expansion keeps the alias.
+  const root = working.seed;
+  const key = useCallback((id: string) => (id === root ? seed : id), [root, seed]);
+  const effective: Selection = selection === undefined ? { type: "node", id: root } : selection;
+  const expanded = (id: string) => expansions.some((e) => e.id === key(id));
   const name = (id: string) => {
     const node = working.nodes.get(id);
     return node ? displayName(node) : id;
@@ -64,40 +67,40 @@ export function NodeScope({ seed, project, hiddenKinds, layout, onLayout, search
   const select = useCallback((id: string | null) => setSelection(id ? { type: "node", id } : null), []);
   const hide = useCallback(
     (id: string) => {
-      if (id === seed) return;
+      if (id === root || id === seed) return;
       setHiddenNodes((now) => new Set([...now, id]));
       setExpansions((now) => collapse(now, id, seed));
       setSelection(null);
     },
-    [seed],
+    [root, seed],
   );
   const activate = useCallback(
     (id: string) => {
       const more = parseMoreId(id);
       if (more) {
-        setExpansions((now) => openGroup(now, more.expansion, more.group));
+        setExpansions((now) => openGroup(now, key(more.expansion), more.group));
         return;
       }
       setSelection({ type: "node", id });
       setExpansions((now) => {
-        if (now.some((e) => e.id === id)) return id === seed ? now : collapse(now, id, seed);
+        if (now.some((e) => e.id === key(id))) return key(id) === seed ? now : collapse(now, id, seed);
         return canExpand ? expand(now, id) : now;
       });
     },
-    [canExpand, seed],
+    [canExpand, seed, key],
   );
   const reveal = (relation: Relation, direction: "out" | "in") => {
     setHiddenNodes((now) => (now.has(relation.node) ? new Set([...now].filter((id) => id !== relation.node)) : now));
     if (!working.nodes.has(relation.node) && effective?.type === "node") {
       const from = effective.id;
-      setExpansions((now) => openGroup(now, from, relationGroupKey(direction, relation.rel, relation.kind)));
+      setExpansions((now) => openGroup(now, key(from), relationGroupKey(direction, relation.rel, relation.kind)));
     }
     setSelection({ type: "node", id: relation.node });
   };
   const actions: NodeActions = {
-    working: effective?.type === "node" ? { expanded: expanded(effective.id), seed: effective.id === seed, canExpand } : undefined,
-    onExpand: (id) => setExpansions((now) => expand(now, id)),
-    onCollapse: (id) => setExpansions((now) => collapse(now, id, seed)),
+    working: effective?.type === "node" ? { expanded: expanded(effective.id), seed: key(effective.id) === seed, canExpand } : undefined,
+    onExpand: (id) => setExpansions((now) => expand(now, key(id))),
+    onCollapse: (id) => setExpansions((now) => collapse(now, key(id), seed)),
     onHide: hide,
     onExplore: (id) => navigate({ kind: "node", id }),
     onRelation: reveal,
@@ -119,8 +122,8 @@ export function NodeScope({ seed, project, hiddenKinds, layout, onLayout, search
       selected={effective?.id ?? null}
       highlight={null}
       layout={layout}
-      root={seed}
-      label={t("canvasNode", { name: name(seed), nodes: working.nodes.size, edges: working.edges.size })}
+      root={root}
+      label={t("canvasNode", { name: name(root), nodes: working.nodes.size, edges: working.edges.size })}
       describedBy={HELP_ID}
       onSelect={select}
       onActivate={activate}
@@ -136,7 +139,10 @@ export function NodeScope({ seed, project, hiddenKinds, layout, onLayout, search
         <>
           {shared(results.views[0] ? new Set([...working.nodes.values()].map((node) => node.kind)) : null)}
           <ExpandedList
-            rows={expansions.map((e) => ({ id: e.id, name: name(e.id), kind: working.nodes.get(e.id)?.kind ?? "", seed: e.id === seed }))}
+            rows={expansions.map((e) => {
+              const id = e.id === seed ? root : e.id;
+              return { id, name: name(id), kind: working.nodes.get(id)?.kind ?? "", seed: e.id === seed };
+            })}
             hidden={hiddenNodes.size}
             selected={effective?.id ?? null}
             onSelect={(id) => setSelection({ type: "node", id })}
@@ -145,7 +151,7 @@ export function NodeScope({ seed, project, hiddenKinds, layout, onLayout, search
           />
         </>
       }
-      trail={<Trail crumbs={[{ label: t("overview"), onClick: () => navigate(OVERVIEW) }, { label: name(seed) }]} />}
+      trail={<Trail crumbs={[{ label: t("overview"), onClick: () => navigate(OVERVIEW) }, { label: name(root) }]} />}
       layout={layout}
       onLayout={onLayout}
       canvas={canvas}

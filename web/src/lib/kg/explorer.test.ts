@@ -120,7 +120,7 @@ describe("explorer cluster", () => {
     graph,
     cluster: { ...cluster("c0", 4), subclusters: 2 },
     subclusters: [
-      { ...cluster("c0.0", 2), level: 2, parent: "c0" },
+      { ...cluster("c0.0", 2, { File: 1, Document: 1 }), level: 2, parent: "c0" },
       { ...cluster("c0.1", 2), level: 2, parent: "c0" },
     ],
     members: [member("m1", "File", "c0.0"), member("m2", "Document", "c0.0"), member("m3", "File", "c0.1"), member("m4", "File", null)],
@@ -131,13 +131,25 @@ describe("explorer cluster", () => {
     neighbours: [],
   };
 
-  it("puts members in their parts, sized by their edges inside the cluster", () => {
-    const drawing = clusterElements(detail, new Set(["Document"]));
-    expect(drawing).toMatchObject({ drawn: 4, total: 4 });
+  it("draws a cluster with parts as its parts, joined by the edges between their members, and a loose member alone", () => {
+    const drawing = clusterElements(detail, new Set(["File"]));
+    expect(drawing).toMatchObject({ mode: "parts", drawn: 2, total: 4 });
     const byId = new Map(drawing.elements.map((e) => [e.data.id, e]));
-    expect(byId.get("c0.0")?.classes).toEqual(["part"]);
-    expect(byId.get("m1")?.data).toMatchObject({ parent: "c0.0", degree: 4, diameter: 30, tone: 3 });
-    expect(byId.get("m4")?.data.parent).toBeUndefined();
+    expect(byId.get("c0.0")?.classes).toEqual(["cluster", "major"]);
+    expect(byId.get("c0.0")?.data).toMatchObject({ size: 2, diameter: 92 });
+    expect(byId.get("c0.1")?.classes).toContain("filtered"); // its kinds are all File
+    expect(byId.get("m4")?.classes).toContain("member");
+    expect(byId.has("m1")).toBe(false);
+    const links = drawing.elements.filter((e) => e.group === "edges").map((e) => [e.data.source, e.data.target, e.data.weight]);
+    expect(links).toEqual([["c0.0", "c0.1", 1]]); // m1-m2 inside c0.0 is no link; m1-m3 joins the parts
+  });
+
+  it("draws a cluster without parts member by member, sized by their edges inside it", () => {
+    const drawing = clusterElements({ ...detail, subclusters: [] }, new Set(["Document"]));
+    expect(drawing).toMatchObject({ mode: "members", drawn: 4, total: 4 });
+    const byId = new Map(drawing.elements.map((e) => [e.data.id, e]));
+    expect(byId.get("m1")?.data).toMatchObject({ degree: 4, diameter: 30, tone: 3 });
+    expect(byId.get("m1")?.data.parent).toBeUndefined();
     expect(byId.get("m2")?.classes).toContain("kind-hidden");
     expect(drawing.elements.filter((e) => e.group === "edges")).toHaveLength(2);
   });
@@ -150,7 +162,7 @@ describe("explorer cluster", () => {
       edges: [[CLUSTER_DRAWN + 4, 0, 9]],
     };
     const drawing = clusterElements(many);
-    expect(drawing).toMatchObject({ drawn: CLUSTER_DRAWN, total: CLUSTER_DRAWN + 5 });
+    expect(drawing).toMatchObject({ mode: "members", drawn: CLUSTER_DRAWN, total: CLUSTER_DRAWN + 5 });
     const ids = new Set(drawing.elements.map((e) => e.data.id));
     expect(ids.has(`n${CLUSTER_DRAWN + 4}`)).toBe(true);
     expect(drawing.elements.filter((e) => e.group === "edges")).toHaveLength(1);
@@ -187,6 +199,14 @@ describe("explorer node: the working set", () => {
     expect(elements.find((e) => e.data.id === "d")?.data.anchor).toBe("a");
   });
 
+  it("reads a seed asked by an alias as the node its neighbourhood is about", () => {
+    const set = mergeExpansions("alias:s", [{ id: "alias:s", open: [] }], [seed]);
+    expect(set.seed).toBe("s");
+    expect(set.nodes.get("s")?.expanded).toBe(true);
+    expect(set.more).toEqual([{ expansion: "s", group: seed.groups[0], hidden: 8 }]);
+    expect(workingElements(set).find((e) => e.data.id === "s")?.classes).toContain("seed");
+  });
+
   it("leaves out a hidden node with its edges, and an expansion not read yet", () => {
     const set = mergeExpansions("s", [{ id: "s", open: [] }, { id: "a", open: [] }], [seed, undefined], new Set(["b"]));
     expect([...set.nodes.keys()]).toEqual(["s", "a"]);
@@ -210,14 +230,14 @@ describe("explorer node: the working set", () => {
     expect(parseMoreId("app:a.py")).toBeNull();
   });
 
-  it("steps through the nodes it draws, largest first, past parts and hidden kinds", () => {
+  it("steps through the nodes it draws, largest first, past hidden kinds", () => {
     const order = stepOrder([
-      { group: "nodes", data: { id: "p", label: "part", size: 9 }, classes: ["part"] },
+      { group: "nodes", data: { id: "p", label: "part", size: 9 }, classes: ["cluster"] },
       { group: "nodes", data: { id: "x", label: "x", degree: 2 }, classes: ["member"] },
       { group: "nodes", data: { id: "y", label: "y", degree: 5 }, classes: ["member"] },
       { group: "nodes", data: { id: "z", label: "z", degree: 9 }, classes: ["member", "kind-hidden"] },
       { group: "edges", data: { id: "e", source: "x", target: "y" } },
     ]);
-    expect(order).toEqual(["y", "x"]);
+    expect(order).toEqual(["p", "y", "x"]);
   });
 });

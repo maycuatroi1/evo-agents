@@ -15,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { OVERVIEW } from "@/lib/kg/explorer";
 import { filterMembers } from "@/lib/kg/map";
 import { kgClusterQuery } from "@/lib/kg/queries";
 import { clusterHref, explorerHref, nodeHref } from "@/lib/kg/routes";
@@ -35,7 +34,7 @@ function ClusterNotFound({ project, id }: { project: string; id: string }) {
       testId="state-not-found"
     >
       <Button asChild variant="outline">
-        <Link href={explorerHref(project, OVERVIEW)}>{t("back")}</Link>
+        <Link href={explorerHref(project, { kind: "overview" })}>{t("back")}</Link>
       </Button>
     </StatePanel>
   );
@@ -172,7 +171,7 @@ function Cluster({ project, detail }: { project: string; detail: ClusterDetail }
         }
       />
       <Button asChild variant="link" className="w-fit px-0">
-        <Link href={explorerHref(project, OVERVIEW)}>
+        <Link href={explorerHref(project, { kind: "overview" })}>
           <ArrowLeft aria-hidden="true" />
           {t("back")}
         </Link>

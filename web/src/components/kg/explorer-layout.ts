@@ -9,10 +9,10 @@ import type { ExplorerElement, Scope } from "@/lib/kg/explorer";
  */
 export type ExplorerLayout = "force" | "radial" | "tree";
 
-/** The layouts each scope offers: a cluster's parts only make sense to the force layout. */
+/** The layouts each scope offers: a tree needs a node to grow from. */
 export const SCOPE_LAYOUTS: Record<Scope["kind"], readonly ExplorerLayout[]> = {
   overview: ["force", "radial"],
-  cluster: ["force"],
+  cluster: ["force", "radial"],
   node: ["force", "radial", "tree"],
 };
 
@@ -55,36 +55,38 @@ export function layoutOptions(
   { incremental, animate, root }: { incremental: boolean; animate: boolean; root: string | null },
 ): cytoscape.LayoutOptions {
   const common = { animate, animationDuration: 350, fit: false, padding: FIT_PADDING } as const;
+  // Circles of the overview and of a cluster's parts stand by their size; the nodes of a node's view by their steps.
+  const bySize = kind !== "node";
   if (layout === "radial") {
     const depth = depths(cy, root);
-    const largest = Math.max(1, ...cy.nodes().map((node) => Number(node.data("size") ?? 0)));
+    const size = (node: cytoscape.NodeSingular) => Number(node.data("size") ?? node.data("degree") ?? 0);
+    const largest = Math.max(1, ...cy.nodes().map(size));
     return {
       name: "concentric",
       ...common,
-      concentric: (node: cytoscape.NodeSingular) =>
-        kind === "overview" ? Number(node.data("size") ?? 0) : 100 - (depth.get(node.id()) ?? 99),
-      levelWidth: () => (kind === "overview" ? largest / 4 : 1),
-      minNodeSpacing: kind === "overview" ? 36 : 18,
+      concentric: (node: cytoscape.NodeSingular) => (bySize ? size(node) : 100 - (depth.get(node.id()) ?? 99)),
+      levelWidth: () => (bySize ? largest / 4 : 1),
+      minNodeSpacing: bySize ? 28 : 18,
       startAngle: (3 / 2) * Math.PI,
     } as cytoscape.LayoutOptions;
   }
   if (layout === "tree") {
     return { name: "breadthfirst", ...common, roots: root ? [root] : undefined, directed: false, spacingFactor: 1.15 };
   }
+  // Tight enough that the view fits at a zoom where labels read (about 0.75 for the 37 clusters of evo-agents), with
+  // labels counted in each node's size so they do not cover each other.
   return {
     name: "fcose",
     ...common,
-    quality: kind === "overview" ? "proof" : "default",
+    quality: bySize ? "proof" : "default",
     randomize: !incremental,
-    nodeDimensionsIncludeLabels: kind === "overview",
+    nodeDimensionsIncludeLabels: true,
     packComponents: true,
-    nodeRepulsion: () => (kind === "overview" ? 14000 : 4500),
-    idealEdgeLength: () => (kind === "overview" ? 150 : kind === "cluster" ? 42 : 85),
+    nodeRepulsion: () => 4500,
+    idealEdgeLength: (edge: cytoscape.EdgeSingular) => (edge.hasClass("link") ? 70 : edge.hasClass("pair") ? 45 : 80),
     edgeElasticity: () => 0.45,
-    nestingFactor: 0.1,
-    gravity: kind === "cluster" ? 0.4 : 0.25,
-    gravityCompound: 1.2,
-    gravityRangeCompound: 1.5,
+    nodeSeparation: 75,
+    gravity: bySize ? 1 : 0.4,
     numIter: 2500,
     tile: true,
     tilingPaddingVertical: 12,
@@ -147,16 +149,10 @@ export function light(cy: cytoscape.Core, selected: string | null, focus: string
     if (!focus) return;
     const node = cy.getElementById(focus);
     if (node.empty() || !node.isNode()) return;
-    if (node.hasClass("part")) {
-      const inside = node.union(node.descendants());
-      cy.nodes().not(inside).addClass("dim");
-      cy.edges().filter((edge) => !inside.contains(edge.source()) || !inside.contains(edge.target())).addClass("dim");
-      return;
-    }
     const near = node.closedNeighborhood();
     near.nodes().addClass("labelled");
     node.connectedEdges().addClass("hl reveal");
-    cy.elements().not(near).not(near.nodes().ancestors()).addClass("dim");
+    cy.elements().not(near).addClass("dim");
   });
 }
 
