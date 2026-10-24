@@ -26,6 +26,18 @@ def code_line(code: dict) -> str:
     return f"code backend {code['backend']}: {code['items']} item(s); {used}"
 
 
+def cluster_line(clusters: dict | None) -> str:
+    """What the build's coverage says of its clusters (``evo_agents.kg.clusters``)."""
+    if clusters is None:
+        return "clusters: none, the build predates them: run evo-agents kg build"
+    if not clusters.get("computed"):
+        return f"clusters: none, {clusters.get('reason')}"
+    return (
+        f"clusters: {clusters['clusters']} clusters, {clusters['subclusters']} subclusters over"
+        f" {clusters['members']} nodes ({clusters['engine']})"
+    )
+
+
 def _age_seconds(stamp: str | None) -> float | None:
     if not stamp:
         return None
@@ -189,6 +201,7 @@ def render_status(status: dict, *, brief: bool = False) -> str:
                 )
                 if src.get("code"):
                     lines.append(f"          {code_line(src['code'])}")
+            lines.append(f"        {cluster_line(graph.get('coverage', {}).get('clusters'))}")
         else:
             lines.append(f"graph   {graph.get('error') or 'no ready build'}")
         lines += read_lines(status.get("reads") or [])

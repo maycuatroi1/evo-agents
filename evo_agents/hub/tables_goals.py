@@ -70,7 +70,7 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("deadline", Date),
         Column("canvas_id", BigInteger),
         Column("problem_id", BigInteger),  # 0134
-        Column("opportunity_id", BigInteger),  # 0143, never with a problem
+        Column("opportunity_id", BigInteger),  # 0145, never with a problem
         Column("rank", Integer, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
         Column("status", Text, nullable=False),

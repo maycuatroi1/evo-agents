@@ -1,5 +1,5 @@
 """The opportunities of a project, kept as revisions (plan opportunity-intake, criterion a1; the model in
-``evo_agents.hub.opportunities``). Tables opportunities, opportunity_revisions and opportunity_answers, schema 0141.
+``evo_agents.hub.opportunities``). Tables opportunities, opportunity_revisions and opportunity_answers, schema 0143.
 
 - GET /v1/projects/{project}/opportunities: the project's opportunities as they are now, by rank, for a member with a
   grant on the project; ``?status=`` keeps those of one status. GET .../opportunities/{ref}: one opportunity, by its

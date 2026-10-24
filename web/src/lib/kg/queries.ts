@@ -3,11 +3,14 @@ import { queryOptions } from "@tanstack/react-query";
 import { call } from "@/lib/api/client";
 import type { ApiSource } from "@/lib/queries";
 
-import type { Hops, KgBuilds } from "./types";
+import type { ReviewFilter } from "./routes";
+import { GROUP_SHOWN, type Hops, type KgBuilds } from "./types";
 
 /**
  * The knowledge graph pages' reads of the API, as TanStack Query options shared by the server (prefetch) and the
- * browser. All of them are reads: the web never queues a build.
+ * browser. All of them are reads: the web never queues a build. The review queue's read and its one write, a writer
+ * dismissing an item, are in `./review`, which only the review page loads; the decisions and a writer's steps on them
+ * are in `./decisions`.
  */
 export const BUILDS_SHOWN = 20;
 /** While a build waits or runs, the status page asks again this often (ms). */
@@ -20,8 +23,33 @@ export const kgKeys = {
   graph: (project: string) => ["kg", project, "graph"] as const,
   search: (project: string, query: string, kind: string) => ["kg", project, "search", query, kind] as const,
   node: (project: string, id: string) => ["kg", project, "node", id] as const,
-  neighbourhood: (project: string, id: string, hops: Hops) => ["kg", project, "neighbourhood", id, hops] as const,
+  neighbourhood: (project: string, id: string, hops: Hops, grouping?: Grouping) =>
+    grouping
+      ? (["kg", project, "neighbourhood", id, hops, grouping.group, ...openKeys(grouping)] as const)
+      : (["kg", project, "neighbourhood", id, hops] as const),
+  shape: (project: string) => ["kg", project, "shape"] as const,
+  clusters: (project: string) => ["kg", project, "clusters"] as const,
+  cluster: (project: string, id: string) => ["kg", project, "cluster", id] as const,
+  whole: (project: string) => ["kg", project, "whole"] as const,
+  review: (project: string) => ["kg", project, "review"] as const,
+  reviewList: (project: string, filter: ReviewFilter) =>
+    ["kg", project, "review", filter.rule ?? "", filter.cluster ?? "", filter.state ?? "open"] as const,
+  decisions: (project: string) => ["kg", project, "decisions"] as const,
 };
+
+/**
+ * How the node page asks for a neighbourhood: at most `group` direct neighbours of each (edge type, direction, kind)
+ * group, the most connected first, and the whole of the groups whose keys are in `open`.
+ */
+export type Grouping = { group: number; open: readonly string[] };
+
+/** The node page's grouping before the reader opens a group. */
+export const NODE_PAGE_GROUPING: Grouping = { group: GROUP_SHOWN, open: [] };
+
+/** The opened keys in one order, so the same set always makes the same query. */
+export function openKeys(grouping: Grouping): string[] {
+  return [...new Set(grouping.open)].sort();
+}
 
 /** Whether anything of the project's builds is still moving: a job in the queue, or a build queued or running. */
 export function buildsActive(data: KgBuilds | undefined): boolean {
@@ -91,16 +119,55 @@ export const kgNodeQuery = (api: ApiSource, project: string, id: string) =>
       call(api().GET("/v1/kg/{project}/node", { params: { path: { project }, query: { id } }, signal })),
   });
 
-export const kgNeighbourhoodQuery = (api: ApiSource, project: string, id: string, hops: Hops) =>
+/**
+ * The neighbourhood of a node; with `grouping`, as the node page draws it. Opening a group asks again, and the view
+ * of the same node and steps stays on screen until the answer comes; another node never shows the last one's.
+ */
+export const kgNeighbourhoodQuery = (api: ApiSource, project: string, id: string, hops: Hops, grouping?: Grouping) =>
   queryOptions({
-    queryKey: kgKeys.neighbourhood(project, id, hops),
+    queryKey: kgKeys.neighbourhood(project, id, hops, grouping),
     queryFn: ({ signal }) =>
       call(
         api().GET("/v1/kg/{project}/neighbourhood", {
-          params: { path: { project }, query: { id, hops } },
+          params: {
+            path: { project },
+            query: grouping ? { id, hops, group: grouping.group, open: openKeys(grouping) } : { id, hops },
+          },
           signal,
         }),
       ),
+    placeholderData: (previous, query) =>
+      query && query.queryKey[3] === id && query.queryKey[4] === hops ? previous : undefined,
+  });
+
+/** How many visible edges join each kind of node to each other, by edge type. */
+export const kgShapeQuery = (api: ApiSource, project: string) =>
+  queryOptions({
+    queryKey: kgKeys.shape(project),
+    queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/shape", { params: { path: { project } }, signal })),
+  });
+
+/** The level-1 clusters the reader can see, the links between them and their members, for the map. */
+export const kgClustersQuery = (api: ApiSource, project: string) =>
+  queryOptions({
+    queryKey: kgKeys.clusters(project),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/kg/{project}/clusters", { params: { path: { project }, query: { nodes: true } }, signal })),
+  });
+
+/** One cluster with its subclusters, members and neighbouring clusters. */
+export const kgClusterQuery = (api: ApiSource, project: string, id: string) =>
+  queryOptions({
+    queryKey: kgKeys.cluster(project, id),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/kg/{project}/cluster", { params: { path: { project }, query: { id } }, signal })),
+  });
+
+/** Every node and edge the reader can see, compact, asked for only when the reader opens the whole graph. */
+export const kgWholeQuery = (api: ApiSource, project: string) =>
+  queryOptions({
+    queryKey: kgKeys.whole(project),
+    queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/whole", { params: { path: { project } }, signal })),
   });
 
 /** A search query as the URL carries it: trimmed, at most what the API accepts. */

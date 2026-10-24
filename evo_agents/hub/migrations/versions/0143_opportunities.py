@@ -1,7 +1,7 @@
 """The opportunities of a project, kept as revisions, what they answer, their evidence, and @builder's proposals of one.
 
-Revision ID: 0141
-Revises: 0140
+Revision ID: 0143
+Revises: 0142
 Create Date: 2026-10-25
 
 The names below are copies of ``evo_agents.hub.tables_opportunities``, ``evo_agents.hub.opportunities`` and
@@ -31,8 +31,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0141"
-down_revision = "0140"
+revision = "0143"
+down_revision = "0142"
 branch_labels = None
 depends_on = None
 

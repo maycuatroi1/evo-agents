@@ -54,8 +54,10 @@ export const config = {
   matcher: [
     {
       // Pages only: not the API (/v1, /mcp, served by FastAPI), build assets, or files from public/ (the product
-      // page's images are under public/product/).
-      source: "/((?!v1/|mcp|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|robots.txt|product/).*)",
+      // page's images are under public/product/). The web app manifest and its icons pass too: the browser fetches
+      // them without the session cookie (app/manifest.ts).
+      source:
+        "/((?!v1/|mcp|_next/static|_next/image|favicon.ico|icon.svg|icon-192.png|icon-512.png|apple-icon.png|manifest.webmanifest|robots.txt|product/).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

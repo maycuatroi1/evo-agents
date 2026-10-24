@@ -1,7 +1,7 @@
 """The opportunity a goal answers, a claim links, and a work item of the Loop goes from.
 
-Revision ID: 0143
-Revises: 0142
+Revision ID: 0145
+Revises: 0144
 Create Date: 2026-10-25
 
 The names below are copies of ``evo_agents.hub.tables_goals``, ``tables_canvas`` and ``tables_loop`` as of this
@@ -29,8 +29,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0143"
-down_revision = "0142"
+revision = "0145"
+down_revision = "0144"
 branch_labels = None
 depends_on = None
 

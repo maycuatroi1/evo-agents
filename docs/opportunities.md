@@ -9,7 +9,7 @@ shows it is there is kept with it. A project with no opportunity works as before
 | --- | --- |
 | the model: codes, fields, signals | `evo_agents/hub/opportunities.py` |
 | the routes and the writes | `evo_agents/hub/server/opportunities.py`, `evo_agents/hub/server/opportunity_evidence.py` |
-| the tables | `evo_agents/hub/tables_opportunities.py` (schema 0141) |
+| the tables | `evo_agents/hub/tables_opportunities.py` (schema 0143) |
 | the commands | `evo_agents/hub/cli_opportunities.py` |
 | the MCP tools `opportunity_list`, `opportunity_show`, `opportunity_evidence` | `evo_agents/hub/mcp_tools.py`, `evo_agents/hub/server/opportunity_mcp.py` |
 | the knowledge graph | `evo_agents/hub/kg_opportunities.py`, `evo_agents/hub/kg_sources.py` |
@@ -84,7 +84,7 @@ The routes are under `/v1/projects/{project}/opportunities`. The MCP tools of `e
 
 The hub reminds the owner of an open opportunity that has a `window_until`, without the plugin pm. The job
 `hub.opportunity_deadlines` runs hourly in the hub's worker (`evo_agents/hub/server/opportunity_deadlines.py`) and, on
-the UTC date, sends the owner the notice `opportunity_window` (web and every channel of theirs, schema 0142):
+the UTC date, sends the owner the notice `opportunity_window` (web and every channel of theirs, schema 0144):
 
 | milestone | when | what it says |
 |---|---|---|

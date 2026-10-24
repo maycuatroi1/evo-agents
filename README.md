@@ -1,5 +1,41 @@
 # evo-agents
 
+evo-agents runs coding agents on your own workers and gives them a shared knowledge graph across repositories.
+
+## Trace a schema change across repos
+
+The `schemas` repo owns `schemas/event.yaml`. The `service` repo consumes events described by that schema in
+`consumer.py::consume`. With both repos indexed in your harness, add this to `bindings/schema.yaml`:
+
+```yaml
+version: 1
+bindings:
+  - from: service:consumer.py::consume
+    rel: depends_on
+    to: schemas:schemas/event.yaml
+```
+
+Build the graph, then ask what depends on the schema:
+
+```sh
+evo-agents kg sync --build
+evo-agents kg query kg_impact schemas:schemas/event.yaml --backend local
+```
+
+The result includes the consumer in the other repo:
+
+```text
+hop 1:
+  [service:consumer.py::consume] Symbol (parsed) line=1 -depends_on-> [schemas:schemas/event.yaml] (declared)
+```
+
+`declared` identifies the relationship you supplied. Without that relationship, this schema query does not flag
+the consumer. Python module-name resolution stays within one indexed source: a module with the same name in another
+repo is not evidence of a dependency. `kg_impact` lists code to check; it does not determine whether a schema change
+is breaking. [Build a graph](#building-a-knowledge-graph) or read the [resolution rules](docs/kg.md#cross-repo-bindings).
+
+## Run plans on your own workers
+
 evo-agents is open-source tooling for teams that hand their plans to coding agents. A worker on your own laptop or
 desktop takes a plan from your team's hub and has Claude Code, Codex CLI or opencode do its steps in the order the plan
 allows. As the agent reports a step, the worker runs the step's verify commands again, then commits and pushes. The

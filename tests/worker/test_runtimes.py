@@ -44,6 +44,7 @@ from evo_agents.worker.runtimes import opencode as opencode_module
 from evo_agents.worker.runtimes.claude_code import ClaudeCodeAdapter, events_of
 from evo_agents.worker.runtimes.codex import CodexAdapter
 from evo_agents.worker.runtimes.opencode import OpencodeAdapter, Server
+from tests.hub.test_digest import signature
 from tests.worker import fake_adapter
 
 try:  # the worker extra; without it the tests of the runtime that needs it skip
@@ -1063,6 +1064,7 @@ def test_claude_thinking_and_its_todo_list_come_out_as_thoughts_and_a_plan():
         content=[
             sdk.ThinkingBlock(thinking="", signature="kept by the API"),
             sdk.ThinkingBlock(thinking="Check the tests first.", signature="s"),
+            sdk.ThinkingBlock(thinking="Reading the adapter.", signature=signature("narration")),
             sdk.ToolUseBlock(
                 id="toolu_9",
                 name="TodoWrite",
@@ -1072,8 +1074,9 @@ def test_claude_thinking_and_its_todo_list_come_out_as_thoughts_and_a_plan():
         model="claude-opus-5-5",
     )
     events = events_of(message)
-    assert _kinds(events) == ["agent_thought_chunk", "tool_call", "plan"]
-    assert events[2].body == {
+    assert _kinds(events) == ["agent_thought_chunk", "agent_message_chunk", "tool_call", "plan"]
+    assert events[1].body["content"]["text"] == "Reading the adapter."  # a narration is the agent's words
+    assert events[3].body == {
         "entries": [{"content": "Write the adapter", "status": "in_progress", "priority": "medium"}]
     }
 

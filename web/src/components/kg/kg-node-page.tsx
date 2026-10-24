@@ -12,12 +12,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { nodeDeprecation } from "@/lib/kg/decisions";
 import { displayName } from "@/lib/kg/graph";
 import { kgNodeQuery } from "@/lib/kg/queries";
 import { kgHref } from "@/lib/kg/routes";
 import type { Hops, NodeDetail } from "@/lib/kg/types";
 
 import { KindShape, LabelBadge } from "./badges";
+import { NodeDecisions } from "./decisions";
 import { NeighbourhoodSection } from "./neighbourhood";
 import { NodeEvidence, NodeFacts, NodeRelations } from "./node-details";
 
@@ -46,6 +48,7 @@ function NodeNotFound({ project, id }: { project: string; id: string }) {
 function Node({ project, detail, hops, neighbourhoodError }: { project: string; detail: NodeDetail; hops: Hops; neighbourhoodError: ApiErrorInfo | null }) {
   const t = useTranslations("kg.node");
   const { node } = detail;
+  const deprecated = nodeDeprecation(node);
   return (
     <>
       <PageHeader
@@ -70,6 +73,11 @@ function Node({ project, detail, hops, neighbourhoodError }: { project: string; 
           <AlertDescription>{t("olderBuild", { id: detail.graph.build_id })}</AlertDescription>
         </Alert>
       ) : null}
+      {deprecated ? (
+        <Alert data-testid="kg-node-deprecated">
+          <AlertDescription>{t("deprecated", { reason: deprecated.reason, number: deprecated.decision })}</AlertDescription>
+        </Alert>
+      ) : null}
       <NeighbourhoodSection project={project} id={node.id} hops={hops} initialError={neighbourhoodError} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className="flex min-w-0 flex-col gap-6">
@@ -80,6 +88,7 @@ function Node({ project, detail, hops, neighbourhoodError }: { project: string; 
           <NodeRelations project={project} detail={detail} />
         </div>
       </div>
+      <NodeDecisions project={project} nodeId={node.id} />
     </>
   );
 }
