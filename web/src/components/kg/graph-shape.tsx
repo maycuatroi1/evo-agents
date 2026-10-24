@@ -12,7 +12,7 @@ import { kgShapeQuery } from "@/lib/kg/queries";
 import type { ShapeRow } from "@/lib/kg/types";
 
 import { KindBadge } from "./badges";
-import { NoGraph } from "./node-search";
+import { NoGraph } from "./no-graph";
 
 function ShapeTable({ rows, caption }: { rows: ShapeRow[]; caption: string }) {
   const t = useTranslations("kg.shape");

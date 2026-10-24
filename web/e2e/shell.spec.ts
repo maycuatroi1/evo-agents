@@ -226,6 +226,7 @@ test.describe("shell", () => {
       "nav-inbox",
       "nav-monitor",
       "nav-chats",
+      "nav-kg",
       "nav-overview",
       "nav-decide",
       "nav-plans",
@@ -242,7 +243,6 @@ test.describe("shell", () => {
       "nav-agents",
       "nav-memories",
       "nav-skills",
-      "nav-kg",
       "nav-browser",
       "nav-plugins",
       "nav-workers",
@@ -257,7 +257,7 @@ test.describe("shell", () => {
     const order = await links.evaluateAll((items) => items.map((link) => link.getAttribute("data-testid")));
     expect(order).toEqual(expected);
     // The areas opened less often sit in closed folds: the sidebar shows the daily ones and a row per fold.
-    await expect(sidebar.getByRole("link")).toHaveCount(13);
+    await expect(sidebar.getByRole("link")).toHaveCount(14);
     const folds = sidebar.locator('[data-testid^="nav-group-"]');
     expect(await folds.evaluateAll((items) => items.map((fold) => fold.getAttribute("data-testid")))).toEqual([
       "nav-group-delivery",

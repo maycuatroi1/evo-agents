@@ -13,19 +13,26 @@ The whole graph is every visible node, at most a cap of them by id, and every vi
 index pairs into the node list, with the level-1 cluster each node counts in (a Symbol in its file's, a Section in
 its document's), so the map can colour it.
 
+Counting a view walks every member and every member edge of the build, seconds on a graph of tens of thousands of
+nodes, and the explorer of the web asks for the map, a cluster and the whole graph in a row. ``ViewCache`` keeps the
+last views computed, each by the artifact it read and everything ``Session.visible`` compares with, so two readers who
+see differently never share one.
+
 Blocking, like ``evo_agents.hub.kg_web``: called from a WebSession method in the api's thread.
 """
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from collections.abc import Callable
+import threading
+from collections import Counter, OrderedDict, defaultdict
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
 
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.store import Store
 
 WHOLE_NODES = 20_000  # most nodes the whole-graph view takes
+VIEWS_KEPT = 8  # views ViewCache keeps, the latest used first
 NO_VISIBLE = "no cluster of this graph has a member you can read"
 NO_CLUSTERS = "this build has no clusters"
 
@@ -82,6 +89,38 @@ def view(store: Store, b: int, visible: Visible) -> View:
     out.pairs = dict(pairs)
     out.links = dict(links)
     return out
+
+
+class ViewCache:
+    """The last ``kept`` views, by a key that names the artifact read and the reader's view of it (the clearance, the
+    audience and whether the build holds nothing above them). A view is never changed once made, so callers share it.
+    Two calls missing the same key both count it; the second one's result is kept."""
+
+    def __init__(self, kept: int = VIEWS_KEPT):
+        self.kept = kept
+        self._views: OrderedDict[Hashable, View] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: Hashable, make: Callable[[], View]) -> View:
+        with self._lock:
+            found = self._views.get(key)
+            if found is not None:
+                self._views.move_to_end(key)
+                return found
+        made = make()
+        with self._lock:
+            self._views[key] = made
+            self._views.move_to_end(key)
+            while len(self._views) > self.kept:
+                self._views.popitem(last=False)
+        return made
+
+    def clear(self) -> None:
+        with self._lock:
+            self._views.clear()
+
+
+VIEWS = ViewCache()
 
 
 def _summary(found: View, cid: str) -> dict:
@@ -151,10 +190,11 @@ def cluster_detail(found: View, cid: str) -> dict | None:
     }
 
 
-def whole(store: Store, b: int, visible: Visible, limit: int) -> dict:
+def whole(store: Store, b: int, visible: Visible, limit: int, found: View | None = None) -> dict:
     """Every visible node, at most ``limit`` by id, with the level-1 cluster it counts in, and the visible edges between
-    two of them as [source index, target index, type index into ``rels``]."""
-    found = view(store, b, visible)
+    two of them as [source index, target index, type index into ``rels``]. ``found`` is the reader's view of build b,
+    counted here when not given."""
+    found = found if found is not None else view(store, b, visible)
     top = {n["id"]: n["cluster"] for n in found.nodes}
     nodes, edges = store.live_graph(b)
     shown = [n for n in nodes if visible(n["label"])]

@@ -15,7 +15,7 @@ import { BuildStatusBadge } from "./badges";
 import { BuildHistory, LatestBuild, latestSucceeded } from "./build-status";
 import { GraphShapeSection } from "./graph-shape";
 import { KgNodePage } from "./kg-node-page";
-import { KgOverview } from "./kg-overview";
+import { KgBuildsPage } from "./kg-builds";
 import { NeighbourhoodSection } from "./neighbourhood";
 import { SourceCommits } from "./source-commits";
 import { StatusTiles } from "./status-tiles";
@@ -198,7 +198,7 @@ describe("build status", () => {
 
 describe("knowledge graph pages", () => {
   it("shows the server error with its request id and a retry on a 5xx", () => {
-    withQueries(<KgOverview project="demo" query="" kind="" errors={{ builds: failure(503), graph: null, search: null }} />);
+    withQueries(<KgBuildsPage project="demo" errors={{ builds: failure(503), graph: null }} />);
     expect(screen.getByRole("heading", { level: 1, name: "Đồ thị tri thức" })).toBeInTheDocument();
     expect(screen.getByTestId("state-error")).toHaveTextContent("rid-77");
     expect(screen.getByRole("button", { name: "Thử lại" })).toBeInTheDocument();
@@ -206,12 +206,12 @@ describe("knowledge graph pages", () => {
 
   it("shows the no-access state on a 403 and the not-found state on a 404", () => {
     const { unmount } = withQueries(
-      <KgOverview project="demo" query="" kind="" errors={{ builds: failure(403), graph: null, search: null }} />,
+      <KgBuildsPage project="demo" errors={{ builds: failure(403), graph: null }} />,
     );
     expect(screen.getByTestId("state-forbidden")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
     unmount();
-    withQueries(<KgOverview project="demo" query="" kind="" errors={{ builds: failure(404), graph: null, search: null }} />);
+    withQueries(<KgBuildsPage project="demo" errors={{ builds: failure(404), graph: null }} />);
     expect(screen.getByTestId("state-not-found")).toHaveTextContent("Không tìm thấy dự án demo");
   });
 

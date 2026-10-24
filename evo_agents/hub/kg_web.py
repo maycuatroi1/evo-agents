@@ -137,20 +137,26 @@ class WebSession(HubSession):
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return [{"src_kind": k[0], "rel": k[1], "dst_kind": k[2], "count": count} for k, count in ordered]
 
+    def _map_view(self, store: Store, b: int) -> kg_map.View:
+        """The clusters of build b as this reader sees them, kept by the artifact and by everything ``visible``
+        compares with (``evo_agents.hub.kg_map.ViewCache``); call after ``_visible_store``, which sets ``sees_all``."""
+        key = (self.project.name, self.graph.sha256, b, self.sees_all, self.clearance, self.audience)
+        return kg_map.VIEWS.get(key, lambda: kg_map.view(store, b, self.visible))
+
     def cluster_map(self, with_nodes: bool = True) -> dict:
         """The visible level-1 clusters, the links between them and (``with_nodes``) their visible members
         (``evo_agents.hub.kg_map``); empty with a reason when the build has none or none is visible."""
         if self.error:
             return kg_map.cluster_map(kg_map.View(reason=kg_map.NO_VISIBLE), with_nodes)
         store, b = self._visible_store()
-        return kg_map.cluster_map(kg_map.view(store, b, self.visible), with_nodes)
+        return kg_map.cluster_map(self._map_view(store, b), with_nodes)
 
     def cluster(self, cluster_id: str) -> dict:
         """One visible cluster with its subclusters, members and neighbours. Raises NotVisible."""
         if self.error:
             raise NotVisible(cluster_id)
         store, b = self._visible_store()
-        found = kg_map.cluster_detail(kg_map.view(store, b, self.visible), cluster_id)
+        found = kg_map.cluster_detail(self._map_view(store, b), cluster_id)
         if found is None:
             raise NotVisible(cluster_id)
         return found
@@ -160,7 +166,7 @@ class WebSession(HubSession):
         if self.error:
             return {"nodes": [], "rels": [], "edges": [], "truncated": False}
         store, b = self._visible_store()
-        return kg_map.whole(store, b, self.visible, limit)
+        return kg_map.whole(store, b, self.visible, limit, self._map_view(store, b))
 
     def review(self) -> dict:
         """The review queue as the member sees it (``evo_agents.hub.kg_review``): only items about nodes they can

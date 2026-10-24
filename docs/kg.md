@@ -507,8 +507,10 @@ count in the content hash only when they hold rows, so a build without clusters 
 
 **On the hub.** The hub serves the clusters per reader: it recounts sizes, kinds, link weights and labels over the
 members and edges the reader can see and never serves the stored numbers, so a hidden node cannot leak through a
-count or a label word. The project's knowledge graph page draws the map; `docs/hub.md` (Memories, skills and
-knowledge graphs) lists the routes and `evo-agents hub kg clusters`.
+count or a label word. It keeps the last views it counted, by the artifact read and the reader's clearance and
+audience, so the explorer's reads of the map, a cluster and the whole graph count a view once
+(`evo_agents.hub.kg_map.ViewCache`). The project's knowledge graph explorer draws the map; `docs/hub.md` (Memories,
+skills and knowledge graphs) lists the routes and `evo-agents hub kg clusters`.
 
 ## Review
 

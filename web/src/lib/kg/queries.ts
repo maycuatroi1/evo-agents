@@ -28,9 +28,8 @@ export const kgKeys = {
       ? (["kg", project, "neighbourhood", id, hops, grouping.group, ...openKeys(grouping)] as const)
       : (["kg", project, "neighbourhood", id, hops] as const),
   shape: (project: string) => ["kg", project, "shape"] as const,
-  clusters: (project: string) => ["kg", project, "clusters"] as const,
+  clusterSummary: (project: string) => ["kg", project, "clusters", "summary"] as const,
   cluster: (project: string, id: string) => ["kg", project, "cluster", id] as const,
-  whole: (project: string) => ["kg", project, "whole"] as const,
   review: (project: string) => ["kg", project, "review"] as const,
   reviewList: (project: string, filter: ReviewFilter) =>
     ["kg", project, "review", filter.rule ?? "", filter.cluster ?? "", filter.state ?? "open"] as const,
@@ -147,12 +146,13 @@ export const kgShapeQuery = (api: ApiSource, project: string) =>
     queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/shape", { params: { path: { project } }, signal })),
   });
 
-/** The level-1 clusters the reader can see, the links between them and their members, for the map. */
-export const kgClustersQuery = (api: ApiSource, project: string) =>
+/** The level-1 clusters and the links between them without their members: what the explorer's overview draws. */
+export const kgClusterSummaryQuery = (api: ApiSource, project: string) =>
   queryOptions({
-    queryKey: kgKeys.clusters(project),
+    queryKey: kgKeys.clusterSummary(project),
     queryFn: ({ signal }) =>
-      call(api().GET("/v1/kg/{project}/clusters", { params: { path: { project }, query: { nodes: true } }, signal })),
+      call(api().GET("/v1/kg/{project}/clusters", { params: { path: { project }, query: { nodes: false } }, signal })),
+    staleTime: 60_000,
   });
 
 /** One cluster with its subclusters, members and neighbouring clusters. */
@@ -161,13 +161,6 @@ export const kgClusterQuery = (api: ApiSource, project: string, id: string) =>
     queryKey: kgKeys.cluster(project, id),
     queryFn: ({ signal }) =>
       call(api().GET("/v1/kg/{project}/cluster", { params: { path: { project }, query: { id } }, signal })),
-  });
-
-/** Every node and edge the reader can see, compact, asked for only when the reader opens the whole graph. */
-export const kgWholeQuery = (api: ApiSource, project: string) =>
-  queryOptions({
-    queryKey: kgKeys.whole(project),
-    queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/whole", { params: { path: { project } }, signal })),
   });
 
 /** A search query as the URL carries it: trimmed, at most what the API accepts. */

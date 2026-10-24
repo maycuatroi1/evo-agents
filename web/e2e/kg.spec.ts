@@ -2,6 +2,7 @@ import { cspSources } from "./support/csp";
 import { expect, test } from "./support/fixtures";
 import { newAccount } from "./support/hub";
 import {
+  buildsPath,
   changeKg,
   CONTRACT,
   DEALS_SHA,
@@ -27,8 +28,9 @@ test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy o
 
 /**
  * The knowledge graph pages against a graph the stack built from the synthetic fixture: build status with the
- * build's content hash, node search, the neighbour table beside the canvas (and its match with kg_context on the
- * same store), the cut at 150 nodes, label filtering for an internal reader, and the small-screen layout.
+ * build's content hash on the builds page, node search in the explorer, the neighbour table beside the canvas of a
+ * node's page (and its match with kg_context on the same store), the cut at 150 nodes, label filtering for an
+ * internal reader, and the small-screen layout. The explorer's own walk is in kg-explorer.spec.ts.
  */
 test.describe("knowledge graph", () => {
   test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "seeds a graph through the local stack");
@@ -38,9 +40,10 @@ test.describe("knowledge graph", () => {
     const reader = newAccount("kg-reader");
     await grantOn(kg.project, reader.login, "reader", "internal");
     await signInAs(reader);
-    await open(page, kgPath(kg.project));
+    await open(page, buildsPath(kg.project));
 
     await expect(page.getByRole("heading", { level: 1, name: "Đồ thị tri thức" })).toBeVisible();
+    await expect(page.getByTestId("kg-tab-builds")).toHaveAttribute("aria-current", "page");
     const latest = page.getByTestId("kg-latest-build");
     await expect(latest).toHaveAttribute("data-build-id", String(kg.build.id));
     await expect(latest.getByTestId("build-status")).toHaveText("Thành công");
@@ -67,7 +70,7 @@ test.describe("knowledge graph", () => {
     const reader = newAccount("kg-reader");
     await grantOn(kg.project, reader.login, "reader", "internal");
     await signInAs(reader);
-    await open(page, kgPath(kg.project));
+    await open(page, buildsPath(kg.project));
 
     const card = page.getByTestId("kg-commits");
     await expect(card.getByRole("heading", { level: 2, name: "Commit đã đọc" })).toBeVisible();
@@ -93,7 +96,7 @@ test.describe("knowledge graph", () => {
     const member = newAccount("kg-member");
     await grantOn(kg.project, member.login, "writer", "customer");
     await signInAs(member);
-    await open(page, kgPath(kg.project));
+    await open(page, buildsPath(kg.project));
 
     const rows = page.getByTestId("kg-commits").getByTestId("source-commit");
     await expect(rows).toHaveCount(2);
@@ -107,7 +110,7 @@ test.describe("knowledge graph", () => {
     await expect(deals.getByTestId("source-behind")).toHaveCount(0);
   });
 
-  test("search finds the fixture node and opens it", async ({ page, signInAs }) => {
+  test("search finds the fixture node, explores it and opens its page", async ({ page, signInAs }) => {
     const kg = await sharedKg();
     const reader = newAccount("kg-reader");
     await grantOn(kg.project, reader.login, "reader", "internal");
@@ -115,14 +118,17 @@ test.describe("knowledge graph", () => {
     await open(page, kgPath(kg.project));
     await expect(page.getByTestId("kg-kinds")).toContainText("Document");
 
-    await page.getByLabel("Từ khoá").fill("runbook");
-    await page.getByTestId("kg-search-form").getByRole("button", { name: "Tìm" }).click();
+    await page.getByLabel("Tìm trong graph").fill("runbook");
+    await page.getByLabel("Tìm trong graph").press("Enter");
     await page.waitForURL((url) => url.searchParams.get("q") === "runbook");
-    const first = page.getByTestId("kg-result-link").first();
+    const first = page.getByTestId("kg-result").first();
     await expect(first).toHaveAttribute("data-node-id", RUNBOOK);
-    await expect(page.getByTestId("kg-results-count")).toContainText("kết quả cho “runbook”");
+    await expect(page.getByTestId("kg-results-count")).toContainText("khớp “runbook”");
 
     await first.click();
+    await page.waitForURL((url) => url.searchParams.get("node") === RUNBOOK && url.searchParams.get("q") === "runbook");
+    await expect(page.getByTestId("kg-inspector-title")).toHaveText("runbook");
+    await page.getByTestId("kg-inspector-node-page").click();
     await page.waitForURL((url) => url.pathname.endsWith("/kg/node") && url.searchParams.get("id") === RUNBOOK);
     await expect(page.getByTestId("kg-node-title")).toHaveText("runbook");
     await expect(page.getByTestId("node-source")).toHaveText("docs");
@@ -197,18 +203,26 @@ test.describe("knowledge graph", () => {
     expect(refused).toEqual([]);
   });
 
-  test("a node with more than 150 neighbours says the graph was cut", async ({ page, signInAs }) => {
+  test("a node with more than 150 neighbours shows the most linked first, and says the graph was cut once opened", async ({
+    page,
+    signInAs,
+  }) => {
     const kg = await sharedKg();
     const reader = newAccount("kg-reader");
     await grantOn(kg.project, reader.login, "reader", "internal");
     await signInAs(reader);
     await open(page, nodePath(kg.project, HUB_NODE));
+    await graphReady(page);
+    // The group of its 160 notes shows the 5 most linked and a way to the rest.
+    const group = page.getByTestId("neighbour-group").first();
+    await expect(group).toHaveAttribute("data-hidden", String(NOTES - 5));
+    expect(await neighbourRows(page)).toHaveLength(5);
+    await expect(page.getByTestId("kg-truncated")).toHaveCount(0);
+    await group.getByTestId("neighbour-group-more").click();
     const cut = page.getByTestId("kg-truncated");
     await expect(cut).toBeVisible();
     await expect(cut).toContainText("150");
     await expect(cut).toContainText(`${NOTES} hàng xóm trực tiếp`);
-    await graphReady(page);
-    expect(await neighbourRows(page)).toHaveLength(149); // the node itself and 149 of its 160 neighbours
     // the full list is under the relations, by edge type
     await expect(page.getByTestId("relation-row")).toHaveCount(NOTES);
     await cut.getByRole("link").click();
@@ -222,7 +236,7 @@ test.describe("knowledge graph", () => {
     await signInAs(reader);
 
     await open(page, `${kgPath(kg.project)}?q=acme-contract`);
-    await expect(page.getByTestId("kg-results-count")).toContainText("Không có kết quả");
+    await expect(page.getByTestId("kg-results-count")).toContainText("Không có node nào khớp");
     await expect(page.locator(`[data-node-id^="deals:"]`)).toHaveCount(0);
     const found = await (await page.request.get(`/v1/kg/${kg.project}/nodes?q=acme`)).json();
     expect(found.results.filter((node: { id: string }) => node.id.startsWith("deals:"))).toEqual([]);
@@ -251,7 +265,7 @@ test.describe("knowledge graph", () => {
     const reader = newAccount("kg-reader");
     await admin.grant(project, reader.login, "reader", "internal");
     await signInAs(reader);
-    await open(page, kgPath(project));
+    await open(page, buildsPath(project));
 
     const latest = page.getByTestId("kg-latest-build");
     await expect(latest).toHaveAttribute("data-build-id", String(queued.id));
@@ -265,8 +279,10 @@ test.describe("knowledge graph", () => {
     await expect(failedRow.getByTestId("build-status")).toHaveText("Thất bại");
     await expect(failedRow).toContainText("has no knowledge config on the hub yet");
     await expect(page.getByTestId("tile-graph")).toContainText("Chưa có");
-    // No graph yet: search says so instead of failing.
-    await expect(page.getByTestId("kg-search")).toContainText("Dự án chưa có đồ thị");
+    // No graph yet: the explorer says so instead of failing, and its rail names the build that is waiting.
+    await open(page, kgPath(project));
+    await expect(page.getByTestId("kg-explorer")).toContainText("Dự án chưa có đồ thị");
+    await expect(page.getByTestId("kg-building")).toBeVisible();
   });
 
   test("a rebuild of the same content reuses the artifact, and a pruned build says so", async ({ page, admin, signInAs }) => {
@@ -284,7 +300,7 @@ test.describe("knowledge graph", () => {
     const reader = newAccount("kg-reader");
     await admin.grant(project, reader.login, "reader", "internal");
     await signInAs(reader);
-    await open(page, kgPath(project));
+    await open(page, buildsPath(project));
     const latest = page.getByTestId("kg-latest-build");
     await expect(latest).toHaveAttribute("data-build-id", String(changed.id));
     await expect(latest.getByTestId("build-artifact")).toHaveAttribute("data-state", "own");
@@ -296,10 +312,8 @@ test.describe("knowledge graph", () => {
       await expect(row.getByTestId("build-status")).toHaveText("Thành công");
     }
     // The pages read the build that kept its artifact.
-    await page.getByLabel("Từ khoá").fill("note-extra");
-    await page.getByTestId("kg-search-form").getByRole("button", { name: "Tìm" }).click();
-    await page.waitForURL((url) => url.searchParams.get("q") === "note-extra");
-    await expect(page.getByTestId("kg-result-link").first()).toHaveAttribute("data-node-id", "docs:doc:note-extra");
+    await open(page, `${kgPath(project)}?q=note-extra`);
+    await expect(page.getByTestId("kg-result").first()).toHaveAttribute("data-node-id", "docs:doc:note-extra");
   });
 
   test.describe("on a 375 px screen", () => {
@@ -310,7 +324,7 @@ test.describe("knowledge graph", () => {
       const reader = newAccount("kg-mobile");
       await grantOn(kg.project, reader.login, "reader", "internal");
       await signInAs(reader);
-      for (const path of [kgPath(kg.project), `${kgPath(kg.project)}?q=runbook`, nodePath(kg.project, SHARED_NODE)]) {
+      for (const path of [kgPath(kg.project), `${kgPath(kg.project)}?q=runbook`, buildsPath(kg.project), nodePath(kg.project, SHARED_NODE)]) {
         await open(page, path);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         const width = await page.evaluate(() => document.documentElement.scrollWidth);

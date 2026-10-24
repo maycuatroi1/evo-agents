@@ -9,6 +9,10 @@ export type Theme = {
   brand: string;
   ring: string;
   font: string;
+  /** Hairlines, the wells of the explorer's cluster parts and the line of an edge at rest. */
+  border: string;
+  sunken: string;
+  subtle: string;
 };
 
 const FALLBACK: Theme = {
@@ -19,6 +23,9 @@ const FALLBACK: Theme = {
   brand: "#2f4bd8",
   ring: "#2f4bd8",
   font: "sans-serif",
+  border: "#e4e4e7",
+  sunken: "#f4f4f5",
+  subtle: "#6b6b73",
 };
 
 export function readTheme(): Theme {
@@ -38,5 +45,8 @@ export function readTheme(): Theme {
     brand: token("--brand", FALLBACK.brand),
     ring: token("--ring", FALLBACK.ring),
     font: getComputedStyle(document.body).fontFamily || FALLBACK.font,
+    border: token("--border", FALLBACK.border),
+    sunken: token("--muted", FALLBACK.sunken),
+    subtle: token("--fg-subtle", FALLBACK.subtle),
   };
 }

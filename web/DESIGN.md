@@ -498,9 +498,10 @@ Shared pieces built on them:
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
-  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox, Monitor and Chats, the
+  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox, Monitor, Chats and the
+  current project's Knowledge graph (a project area marked `top`, the core of a project one click from anywhere), the
   current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases; Improvement: Goals,
-  Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Knowledge graph, Browser; Apps: the pages its
+  Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Browser; Apps: the pages its
   enabled plugins add and Plugins, section Plugins below), the hub (Workers, Org chart, My memories, Shared skills, then
   the fold Settings: Secrets, Accounts, Administration for a hub admin), and at the foot the fleet line and the account.
   A fold (`NAV_GROUPS`) keeps the areas opened less often under one row, so the sidebar fits a laptop screen: the
@@ -660,9 +661,37 @@ Shared pieces built on them:
   foot links Diagnostics (`/admin/diagnostics`, the Overview tab still selected): the rows of every table
   (`GET /v1/admin/stats`) in one DataCard, the name in mono, the area of the hub it belongs to (by prefix, so a table a
   later revision adds lands in one), the rows in tabular figures and the totals at its foot, a list under 768 px. The
-  pure parts are `admin/overview-model.ts`. The knowledge graph page's build history has All and Failed (the kit's
-  segmented control, `?builds=failed` through the History API); Failed reads the project's latest failed builds on
-  their own, so a failure older than the latest builds still shows.
+  pure parts are `admin/overview-model.ts`. The knowledge graph's Builds tab (`/p/{project}/kg/builds`) has its build
+  history with All and Failed (the kit's segmented control, `?builds=failed` through the History API; `/kg?builds=`
+  of old links redirects there); Failed reads the project's latest failed builds on their own, so a failure older
+  than the latest builds still shows.
+- `components/kg/kg-explorer.tsx` and the `explorer-*` files beside it: the knowledge graph explorer,
+  `/p/{project}/kg`, where the sidebar's Knowledge graph lands, so a person sees the graph at once. Under the page head
+  (the h1, Read-only, then the tabs Explore, Builds and Review queue of `kg-header.tsx`) one bordered frame fills the
+  height left (`100dvh` less the top bar and the gutters) and only its columns scroll: the rail (280 px) with the
+  search on top (`SearchField`, `?q=` through `history.replaceState`, up to 25 nodes, best match first) and below it
+  the graph's figures in one container (nodes, edges, clusters, the build it comes from; a pill only when the latest
+  build failed or one runs), its kinds as `aria-pressed` filters with their counts, and the scope's list; the canvas in
+  the middle with a 44 px toolbar (the trail Overview, the cluster, the node, each step a way back; the layouts the
+  scope allows as the segmented control; full screen) over a dotted ground; the inspector (336 px) on the right while
+  something is selected, closed with its X or Escape. Under 1024 px the parts stack: search, canvas (62 % of the
+  height), inspector, rail. Three scopes, one canvas, the scope in the URL (`?cluster=`, `?node=`) through
+  `history.pushState`, so back and forward walk the exploration and a view can be shared: the overview draws the
+  level-1 clusters as circles in their cluster colour sized by members (square root), joined by their links (width on a
+  log scale), each cluster keeping its three heaviest links and the others shown dashed while it is hovered or
+  selected; a cluster draws its members in their kinds' tones and shapes inside wells for its parts, the 600 most
+  linked when it holds more; a node draws itself and its direct neighbours (the six most linked of each group of edge
+  type, direction and kind, a dashed "+N kind" node for the rest) and each node the reader expands adds its own beside
+  it while the others keep their places (`lib/kg/explorer.ts` merges the neighbourhoods, up to 400 nodes). Cytoscape.js
+  with the fcose layout draws it (`explorer-canvas.tsx`, loaded once the canvas mounts; `explorer-layout.ts` and
+  `explorer-style.ts` hold its layouts and stylesheet, colours read from the tokens of the theme in use). A click
+  selects, a double click opens a cluster or expands a node, hovering lights a node's neighbourhood, dims the rest
+  and names it in a tooltip; on the focused canvas the arrows step through the nodes, Enter opens or expands,
+  Backspace goes up a scope, Delete hides a node, Escape clears, + and - zoom and 0 fits. The canvas is a labelled
+  `role="application"` described by the keys; the rail's lists and the inspector (a cluster's kinds, parts and linked
+  clusters; a node's facts and relations, each relation selecting its node or opening its group on the canvas) carry
+  the same data, and selections are said in a polite live region. The legend sits bottom left as a `details`: the
+  figures of the view, then what the marks mean.
 - `components/feedback/toast.tsx` and `ui/sonner.tsx`: the kit's Toast through Sonner, mounted once in `providers.tsx`.
   Bottom right, 24 px from the edges (16 on phones), 380 px wide, z-index 60, on `surface-raised` inside a `border` edge
   with `shadow-popover` and 8 px corners: the tone's Lucide icon, a past-tense title in `body-strong` ("Run #13
@@ -754,7 +783,7 @@ Shared pieces built on them:
   label in `fg-subtle` tabular figures and in words for screen readers, the pressed one on `surface-selected` inside
   a `brand` edge in a heavier weight. Under 768 px the field, the chips and the admin filters are 44 px, with 16 px
   text in fields so phones do not zoom, and the field takes the toolbar's row beside "Filters (n)". `/` focuses the page's search field (`search-shortcut.ts`, the first
-  registered one in document order; the knowledge graph's query field too) unless focus is in a field that takes
+  registered one in document order; the knowledge graph explorer's search too) unless focus is in a field that takes
   text or a dialog is open. Filters live in the URL and change it through `window.history.replaceState`, which
   Next.js syncs with `useSearchParams` without rendering the page on the server again.
 - `components/data/meter.tsx`, the kit's Meter: how much of a whole is used, 0 to 100, as a `rounded-full` bar 8 px

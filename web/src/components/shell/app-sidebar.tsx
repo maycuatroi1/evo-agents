@@ -237,7 +237,8 @@ function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
 
 /**
  * The sidebar of the kit's AppShell: the mark and name (the hub's branding's when it sets them), the project switcher,
- * Home, Inbox, Monitor and Chats, the selected project's areas and the pages its plugins add, the hub's areas, then the
+ * Home, Inbox, Monitor, Chats and the selected project's knowledge graph, the project's other areas and the pages its
+ * plugins add, the hub's areas, then the
  * fleet line and the account at the foot. An area whose feature a hub admin turned off, for the hub or the project
  * shown, is left out. 240 px wide, folding to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a
  * sheet under 768 px.
@@ -275,22 +276,29 @@ export function AppSidebar({ openGroups = [] }: { openGroups?: readonly NavGroup
     value: item.count ? counts[item.count] : null,
     group: item.group,
   });
-  const homeLinks = HOME_NAV.filter((item) => shown(item)).map(hubLink);
+  const projectLink = (item: (typeof PROJECT_NAV)[number], at: string): NavLink => {
+    const href = projectHref(at, item.segment);
+    return {
+      key: item.label,
+      testId: `nav-${item.label}`,
+      name: t(item.label),
+      icon: <item.icon aria-hidden="true" />,
+      href,
+      active: isActive(pathname, href, item.segment === ""),
+      shortcut: NAV_SHORTCUTS[item.label],
+      count: item.count,
+      value: item.count ? counts[item.count] : null,
+      group: item.group,
+    };
+  };
+  // The project's areas marked `top` (the knowledge graph) follow Home, Inbox, Monitor and Chats.
+  const homeLinks = [
+    ...HOME_NAV.filter((item) => shown(item)).map(hubLink),
+    ...(project ? PROJECT_NAV.filter((item) => item.top && shown(item, project)).map((item) => projectLink(item, project)) : []),
+  ];
   const projectLinks: NavLink[] = project
-    ? PROJECT_NAV.filter((item) => shown(item, project)).flatMap((item) => {
-        const href = projectHref(project, item.segment);
-        const link: NavLink = {
-          key: item.label,
-          testId: `nav-${item.label}`,
-          name: t(item.label),
-          icon: <item.icon aria-hidden="true" />,
-          href,
-          active: isActive(pathname, href, item.segment === ""),
-          shortcut: NAV_SHORTCUTS[item.label],
-          count: item.count,
-          value: item.count ? counts[item.count] : null,
-          group: item.group,
-        };
+    ? PROJECT_NAV.filter((item) => !item.top && shown(item, project)).flatMap((item) => {
+        const link = projectLink(item, project);
         // the pages the project's plugins add come after its own areas, before its Plugins, in its fold
         if (item.label !== "plugins") return [link];
         return [...pluginLinks.map((page) => ({ ...page, value: null, group: item.group })), link];

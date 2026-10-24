@@ -1,6 +1,6 @@
 "use client";
 
-import { FileQuestion } from "lucide-react";
+import { FileQuestion, Telescope } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -15,7 +15,7 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { nodeDeprecation } from "@/lib/kg/decisions";
 import { displayName } from "@/lib/kg/graph";
 import { kgNodeQuery } from "@/lib/kg/queries";
-import { kgHref } from "@/lib/kg/routes";
+import { explorerHref, kgHref } from "@/lib/kg/routes";
 import type { Hops, NodeDetail } from "@/lib/kg/types";
 
 import { KindShape, LabelBadge } from "./badges";
@@ -65,6 +65,14 @@ function Node({ project, detail, hops, neighbourhoodError }: { project: string; 
               {node.status}
             </span>
           </>
+        }
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href={explorerHref(project, { kind: "node", id: node.id })} data-testid="kg-node-explore">
+              <Telescope aria-hidden="true" />
+              {t("explore")}
+            </Link>
+          </Button>
         }
         sub={<span className="font-mono text-xs break-all">{node.id}</span>}
       />
