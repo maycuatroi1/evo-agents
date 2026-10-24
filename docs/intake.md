@@ -38,6 +38,26 @@ The schema is `evo_agents/harness/schemas/intake.schema.json`, and the hub valid
   whether evidence of delivery was seen).
 - `questions`: what the session could not decide, each a `text` (with its hypothesis) and `for`, the person to ask.
 
+## evo-intake/2
+
+The schema is `evo_agents/harness/schemas/intake2.schema.json`. A document of `evo-intake/1` is still accepted as it
+was; `evo-intake/2` is all of it plus `opportunities` (at most 50). Each candidate opportunity is either a match or new:
+
+- `matches: "O-n"`: only `evidence` (and `confirmed_by`); the lines become a pending proposal of lines alone for O-n.
+- New: `statement`, `beneficiary` and `leverage`, each with a `basis` (a quote of at most 300 characters, or
+  `inferred`), and optionally `window_until`, `window_note` (with a basis each) and `answers` (`P-3`, or
+  `<project>/P-3` of another project where the writer who puts the result holds a grant). The evidence lines may use the
+  signals of a problem plus `wish`, `external_demand`, `window`, `reusable_asset`, `pull`, `intro` and `idle_capacity`.
+
+A new candidate is refused with 422, naming the reason and writing nothing, unless it has a line of demand
+(`external_demand`, `pull`, `repeated_request`, `complaint`, `blocker` or `workaround`) or an `answers` code, and a line
+of leverage (`reusable_asset` or `idle_capacity`). `confirmed_by`, a member of the project, lifts both. A `window_until`
+needs a line of signal `window`. The rule of two sources does not apply to opportunities.
+
+A put makes a pending @builder proposal of kind `opportunity` for each new candidate (the next free `O-n`, in order)
+and a lines-only proposal for each match. `intake show` and the MCP tool `intake_show` list them under
+`outcome.opportunity_proposals`; `opportunities` counts the candidates.
+
 ## Sources and labels
 
 Each evidence line and each source has a label. `public` and `internal` may go to the hub. `personal` never does: the

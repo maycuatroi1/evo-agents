@@ -176,6 +176,8 @@ def intake_line(intake: dict) -> str:
     held = ""
     if intake["status"] == intakes.DONE:
         held = f"; {intake['candidates']} candidates, {intake['promises']} promises, {intake['questions']} questions"
+        if intake.get("opportunities"):
+            held += f", {intake['opportunities']} opportunities"
     return f"{intake['code']} {intake['status']}, asked by {intake['requested_by']}, {len(intake['sources'])} sources{held}"
 
 
@@ -193,10 +195,14 @@ def intake_lines(intake: dict) -> list[str]:
     lines.append(
         f"put by {intake['put_by']}: {intake['candidates']} candidates, {intake['promises']} promises, "
         f"{intake['questions']} questions"
+        + (f", {intake['opportunities']} opportunities" if intake.get("opportunities") else "")
     )
     for proposal in outcome["proposals"]:
         what = "a new problem" if proposal["kind"] == "new_problem" else "evidence for"
         lines.append(f"proposal {proposal['proposal_id']}: {what} {proposal['problem']}, {proposal['lines']} lines")
+    for proposal in outcome.get("opportunity_proposals") or []:
+        what = "a new opportunity" if proposal["kind"] == "new_opportunity" else "evidence for"
+        lines.append(f"proposal {proposal['proposal_id']}: {what} {proposal['opportunity']}, {proposal['lines']} lines")
     for task in outcome["tasks"]:
         due = f", due {task['due_on']}" if task["due_on"] else ""
         seen = "delivery evidence seen" if task["delivery_seen"] else "no delivery evidence"

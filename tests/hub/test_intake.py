@@ -309,3 +309,133 @@ def shown_task(client, headers, ref: str) -> dict:
 def PROJECT_ID(db) -> int:
     ((project_id,),) = sql(db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))
     return project_id
+
+
+# evo-intake/2: candidate opportunities (plan opportunity-intake, criterion a3)
+
+OPP_LINES = [
+    {**LINE, "signal": "external_demand", "source_uri": "email://partner/3", "source_kind": "email"},
+    {
+        **LINE,
+        "signal": "reusable_asset",
+        "source_uri": "file://notes.md",
+        "source_kind": "file",
+        "excerpt": "We own it",
+    },
+    {**LINE, "signal": "window", "source_uri": "email://partner/4", "source_kind": "email", "excerpt": "Fair in May"},
+]
+OPP = {
+    "statement": "A partner wants our depot map",
+    "beneficiary": "the partner shops",
+    "leverage": "the map we already drew",
+    "window_until": "2027-05-01",
+    "window_note": "the spring fair",
+    "basis": {
+        "statement": {"quote": "we want your map"},
+        "beneficiary": "inferred",
+        "leverage": "inferred",
+        "window_until": {"quote": "Fair in May"},
+        "window_note": "inferred",
+    },
+    "evidence": OPP_LINES,
+}
+RESULT_2 = {"schema": "evo-intake/2", "opportunities": [OPP]}
+
+
+def issues_2(document: dict) -> list[str]:
+    return [str(i) for i in json_schema.errors(json_schema.validate(document, load_schema("intake2")))]
+
+
+def test_the_schema_of_evo_intake_2_adds_opportunities_and_the_first_format_stays():
+    assert issues_2(RESULT_2) == [] and issues_2({**RESULT, "schema": "evo-intake/2"}) == []
+    assert issues(RESULT) == [] and issues({**RESULT, "opportunities": []})  # /1 knows no opportunities
+    assert issues_2({"schema": "evo-intake/2", "opportunities": [{"evidence": []}]})
+    odd = copy.deepcopy(RESULT_2)
+    odd["opportunities"][0]["basis"]["leverage"] = "guessed"
+    assert issues_2(odd)
+    odd = copy.deepcopy(RESULT_2)
+    odd["opportunities"][0]["evidence"][0]["signal"] = "luck"
+    assert issues_2(odd)
+    assert issues_2({"schema": "evo-intake/2", "opportunities": [{**OPP, "matches": "P-1"}]})
+    assert intakes.SCHEMA_FILES["evo-intake/2"] == "intake2"
+
+
+@needs_pg
+def test_a_put_of_evo_intake_2_makes_proposals_for_opportunities_and_evo_intake_1_is_unchanged(client, members, hub_db):
+    start(client, members["alice"])
+    start(client, members["alice"])
+    base = f"/v1/projects/{PROJECT}"
+    texts = {"statement": "Milk is late", "who": "shops", "when": "mornings", "workaround": "ring"}
+    assert client.put(f"{base}/problems/P-1", json=texts, headers=members["alice"]).status_code == 200
+    held = {"statement": "Held", "beneficiary": "b", "leverage": "l"}
+    assert client.put(f"{base}/opportunities/O-1", json=held, headers=members["alice"]).status_code == 200
+    matched = {"matches": "O-1", "evidence": [OPP_LINES[0]]}
+    own = {**OPP, "answers": ["P-1"]}
+    second = {**OPP, "statement": "Another", "window_until": None, "evidence": OPP_LINES[:2]}
+    second.pop("window_until"), second.pop("window_note")
+    second["basis"] = {k: v for k, v in OPP["basis"].items() if k in ("statement", "beneficiary", "leverage")}
+    body = {**RESULT_2, "candidates": [NEW], "opportunities": [own, matched, second]}
+    assert put(client, members["eve"], "I-1", body).status_code == 403
+    done = put(client, members["alice"], "I-1", body)
+    assert done.status_code == 200, done.text
+    result = done.json()
+    assert (result["candidates"], result["opportunities"]) == (1, 3)
+    kinds = [(p["kind"], p["opportunity"], p["lines"]) for p in result["outcome"]["opportunity_proposals"]]
+    assert kinds == [("new_opportunity", "O-2", 3), ("evidence", "O-1", 1), ("new_opportunity", "O-3", 2)]
+    assert [p["problem"] for p in result["outcome"]["proposals"]] == ["P-2"]
+    rows = [r for r in proposals(hub_db) if r[1] == "opportunity"]
+    assert [(r[2], r[3], r[5], r[6]) for r in rows] == [
+        ("pending", {"opportunity": "O-2"}, 0, None),
+        ("pending", {"opportunity": "O-1"}, 1, None),
+        ("pending", {"opportunity": "O-3"}, 0, None),
+    ]
+    assert rows[0][4]["set"]["answers"] == ["P-1"] and rows[0][4]["set"]["window_until"] == "2027-05-01"
+    assert rows[1][4]["set"] == {} and len(rows[2][4]["evidence"]) == 2
+    shown_again = client.get(f"{base}/intakes/I-1", headers=members["eve"]).json()
+    assert shown_again["outcome"]["opportunity_proposals"][0]["proposal_id"] == rows[0][0]
+    old = put(client, members["alice"], "I-2", RESULT)  # an evo-intake/1 document, as before
+    assert old.status_code == 200, old.text
+    assert old.json()["opportunities"] == 0 and old.json()["outcome"]["opportunity_proposals"] == []
+    audit = [row[1] for row in audit_rows(hub_db, "intake")]
+    assert any("opportunities=3" in text for text in audit)
+
+
+@needs_pg
+def test_a_new_opportunity_needs_demand_and_leverage_or_a_member_and_the_put_writes_nothing(client, members, hub_db):
+    start(client, members["alice"])
+    base = f"/v1/projects/{PROJECT}"
+    texts = {"statement": "Milk is late", "who": "shops", "when": "mornings", "workaround": "ring"}
+    assert client.put(f"{base}/problems/P-1", json=texts, headers=members["alice"]).status_code == 200
+    no_leverage = {**OPP, "evidence": [OPP_LINES[0], OPP_LINES[2]]}
+    no_demand = {**OPP, "evidence": OPP_LINES[1:]}
+    no_window = {**OPP, "evidence": OPP_LINES[:2]}
+    cases = (
+        (no_leverage, "no leverage"),
+        (no_demand, "no demand"),
+        (no_window, "window_until 2027-05-01 needs a line of signal window"),
+        ({**OPP, "matches": "O-9"}, "has no opportunity O-9"),
+        ({**OPP, "answers": ["P-9"], "evidence": OPP_LINES}, "P-9"),
+        ({**OPP, "answers": ["nowhere/P-1"]}, "nowhere/P-1"),
+        ({**OPP, "basis": {"statement": "inferred"}}, "say where beneficiary, leverage come from"),
+        ({**OPP, "window_until": "2027-02-30"}, "not a calendar date"),
+        ({k: v for k, v in OPP.items() if k != "leverage"}, "a new opportunity says leverage"),
+        ({**OPP, "evidence": [{**OPP_LINES[0], "label": "personal"}]}, "evidence[0].label"),
+        ({**OPP, "confirmed_by": "carol"}, "confirmed_by carol holds no grant"),
+    )
+    for candidate, reason in cases:
+        refused = put(client, members["alice"], "I-1", {**RESULT_2, "opportunities": [candidate]})
+        text = refused.json().get("message", "")
+        assert refused.status_code == 422 and reason in text, (reason, refused.text)
+        assert text.endswith("nothing changed")
+    both = put(client, members["alice"], "I-1", {**RESULT_2, "opportunities": [no_leverage, no_demand]})
+    assert (
+        "opportunity 1: no leverage" in both.json()["message"] and "opportunity 2: no demand" in both.json()["message"]
+    )
+    assert proposals(hub_db) == []
+    assert client.get(f"{base}/intakes/I-1", headers=members["eve"]).json()["status"] == "open"
+    # an answers code stands for demand; a member who confirms stands for demand and leverage
+    answers = {**OPP, "answers": ["P-1"], "evidence": [OPP_LINES[1], OPP_LINES[2]]}
+    confirmed = {**OPP, "confirmed_by": "bao", "evidence": [{**OPP_LINES[2]}]}
+    done = put(client, members["alice"], "I-1", {**RESULT_2, "opportunities": [answers, confirmed]})
+    assert done.status_code == 200, done.text
+    assert len([r for r in proposals(hub_db) if r[1] == "opportunity"]) == 2

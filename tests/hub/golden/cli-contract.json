@@ -7247,6 +7247,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -7303,6 +7304,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -7352,6 +7354,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -7409,6 +7412,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -70552,7 +70556,7 @@
             "intake"
           ],
           "summary": "Put Intake",
-          "description": "Put the result of an intake, once, as an evo-intake/1 document (see the module).",
+          "description": "Put the result of an intake, once, as an evo-intake/1 or evo-intake/2 document (see the module).",
           "operationId": "put_intake_v1_projects__project__intakes__ref__put",
           "parameters": [
             {
@@ -88645,6 +88649,18 @@
               ],
               "title": "Questions"
             },
+            "opportunities": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunities",
+              "description": "how many candidate opportunities the result held (evo-intake/2); null while it is open"
+            },
             "outcome": {
               "anyOf": [
                 {
@@ -88677,6 +88693,46 @@
           "title": "Intake",
           "description": "An intake of a project."
         },
+        "IntakeOpportunityProposal": {
+          "properties": {
+            "candidate": {
+              "type": "integer",
+              "title": "Candidate",
+              "description": "the candidate opportunity's place in the result, from 1"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "new_opportunity",
+                "evidence"
+              ],
+              "title": "Kind"
+            },
+            "opportunity": {
+              "type": "string",
+              "title": "Opportunity",
+              "description": "O-<number>: the code a new opportunity would take, or the one the lines join"
+            },
+            "proposal_id": {
+              "type": "integer",
+              "title": "Proposal Id",
+              "description": "the pending proposal of @builder a writer approves"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines"
+            }
+          },
+          "type": "object",
+          "required": [
+            "candidate",
+            "kind",
+            "opportunity",
+            "proposal_id",
+            "lines"
+          ],
+          "title": "IntakeOpportunityProposal"
+        },
         "IntakeOutcome": {
           "properties": {
             "proposals": {
@@ -88692,6 +88748,14 @@
               },
               "type": "array",
               "title": "Tasks"
+            },
+            "opportunity_proposals": {
+              "items": {
+                "$ref": "#/components/schemas/IntakeOpportunityProposal"
+              },
+              "type": "array",
+              "title": "Opportunity Proposals",
+              "description": "the proposals made for the candidate opportunities of an evo-intake/2 result"
             },
             "tasks_skipped": {
               "anyOf": [
