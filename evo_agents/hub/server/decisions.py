@@ -34,6 +34,12 @@ heartbeat counts it and the worker hands it to the agent like any message of the
 
 The audit row decision.answer names the decision, its run and the option, never the text.
 
+An option the agent marks ``waits`` says not yet (``worker ask --wait-option``): choosing it leaves the decision open
+with ``held_at`` set and its notification read, and sends nothing to the agent, so the run goes on waiting, or parked,
+for a later answer (``_hold``); words with such an option are 422, since no agent would read them. A decision of
+category wait is a wait of the agent's (``run_waits``): the hub answers it when its time or its event comes, and the
+person asked may answer it sooner like any other.
+
 A decision of category release is the hub's own, asked of the owner of a release cycle that stopped, on the cycle's
 last run (``release_cycles``): its answer names one of its options, which ``release_answer`` does (go on, close the
 cycle, or pause the schedule) whatever the state of that run, and goes to no inbox. So is a decision of category loop,
@@ -105,6 +111,11 @@ class OptionIn(BaseModel):
     key: OptionKey
     label: str = Field(min_length=1, max_length=LABEL_CHARS, pattern=LINE, description="one line")
     description: str | None = Field(None, min_length=1, max_length=DESCRIPTION_CHARS)
+    waits: bool | None = Field(
+        None,
+        description="true when the option says not yet: choosing it leaves the decision open and the run waiting, and "
+        "no answer goes to the agent",
+    )
 
 
 class DecisionAsk(BaseModel):
@@ -135,6 +146,8 @@ class DecisionAsk(BaseModel):
             raise ValueError("each option of a decision needs a key of its own")
         if self.recommended is not None and self.recommended not in keys:
             raise ValueError(f"the recommended option {self.recommended!r} is not one of {', '.join(keys)}")
+        if all(option.waits for option in self.options):
+            raise ValueError("a decision needs an option that answers it: every option of this one waits")
         if len(json.dumps(self.stored_options(), ensure_ascii=False).encode()) > MAX_OPTIONS_BYTES:
             raise ValueError(f"the options of a decision take at most {MAX_OPTIONS_BYTES} bytes of JSON")
         return self
@@ -147,6 +160,8 @@ class DecisionAsk(BaseModel):
                 entry["description"] = option.description
             if option.key == self.recommended:
                 entry["recommended"] = True
+            if option.waits:
+                entry["waits"] = True
             stored.append(entry)
         return stored
 
@@ -156,6 +171,12 @@ class DecisionOption(BaseModel):
     label: str
     description: str | None
     recommended: bool
+    waits: bool = Field(False, description="choosing it leaves the decision open: the person answers later")
+
+
+class WakeOn(BaseModel):
+    kind: str = Field(description="the kind of hub event the wait wakes on, such as canvas.baseline")
+    contains: dict = Field(description="what the event's payload contains, as JSONB containment reads it")
 
 
 class Decision(BaseModel):
@@ -188,6 +209,13 @@ class Decision(BaseModel):
     asked_at: datetime
     answered_at: datetime | None
     delivered_at: datetime | None = Field(description="when the worker handed the answer to the agent")
+    held_at: datetime | None = Field(
+        None, description="when the person asked last chose an option that waits, leaving the decision open"
+    )
+    wake_at: datetime | None = Field(
+        None, description="a wait (category wait): when the hub answers it at the latest, its time come"
+    )
+    wake_on: WakeOn | None = Field(None, description="a wait: the event of the hub that answers it sooner")
     outputs: list[RunOutput] = Field(
         default_factory=list,
         description="the files of its run it carries, oldest first, each with the decision's URL of its bytes",
@@ -257,6 +285,9 @@ def _decisions():
         d.c.asked_at,
         d.c.answered_at,
         d.c.delivered_at,
+        d.c.held_at,
+        d.c.wake_at,
+        d.c.wake_on,
     ).select_from(
         d.join(p, p.c.id == d.c.project_id)
         .join(r, r.c.id == d.c.run_id)
@@ -309,11 +340,14 @@ def _decision(row) -> Decision:
             label=option["label"],
             description=option.get("description"),
             recommended=option.get("recommended") is True,
+            waits=option.get("waits") is True,
         )
         for option in fields.pop("options")
     ]
     recommended = next((option.key for option in shown if option.recommended), None)
-    return Decision(**fields, options=shown, recommended=recommended)
+    wake_on = fields.pop("wake_on")
+    shown_wake = None if wake_on is None else WakeOn(kind=wake_on["kind"], contains=wake_on.get("contains") or {})
+    return Decision(**fields, options=shown, recommended=recommended, wake_on=shown_wake)
 
 
 async def decision_view(conn: AsyncConnection, decision_id: int) -> Decision:
@@ -477,11 +511,14 @@ async def _notify_asked(
     )
 
 
-async def store_decision(conn: AsyncConnection, run_id: int, row, body: DecisionAsk) -> Decision:
+async def store_decision(
+    conn: AsyncConnection, run_id: int, row, body: DecisionAsk, *, wake: dict | None = None
+) -> Decision:
     """Store the decision ``body`` asks for run ``run_id``, whose row the caller holds locked, in the caller's
     transaction, with the outputs of the run it names, notify the run's owner and log it: ``row`` is what
     ``held_plan_run`` reads, or for a local run (``local_runs``) the same columns. 409 past MAX_OPEN_DECISIONS open,
-    422 for a step the plan does not have or an output of another run."""
+    422 for a step the plan does not have or an output of another run. A wait (``run_waits``) gives ``wake``, its
+    columns wake_at and wake_on, and notifies nobody: it asks nobody anything."""
     d = tables.decisions
     opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
     if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
@@ -503,12 +540,14 @@ async def store_decision(conn: AsyncConnection, run_id: int, row, body: Decision
             context=body.context,
             options=body.stored_options(),
             asked_of=asked,
+            **(wake or {}),
         )
         .returning(d.c.id)
     )
     decision_id = (await conn.execute(stored)).scalar_one()
     await link_decision(conn, run_id, decision_id, body.output_ids)
-    await _notify_asked(conn, row, run_id, decision_id, key, body, asked)
+    if wake is None:
+        await _notify_asked(conn, row, run_id, decision_id, key, body, asked)
     shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
     await write_event(
         conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}
@@ -635,19 +674,21 @@ async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decisi
 
 
 async def resume_parked(
-    conn: AsyncConnection, user: Principal, parked_id: int, why: str, *, woken_by: str | None = None
+    conn: AsyncConnection, user: Principal | None, parked_id: int, why: str, *, woken_by: str | None = None
 ) -> int:
     """Queue the run that resumes parked run ``parked_id``, whose row the caller holds locked (for a plan run, under
     the plan's lock), and end the parked one done; the new run's id. ``why`` ends the new run's first event, such as
     "as owner answered decision #3". The parked run's decisions still open go to the new run, and for an author run,
     the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
     parked, which its agent reads in the new run's first turn. ``woken_by``, the answer or the message that resumes
-    it, titles the new run of a chat run (``chat_runs.go_on_parked``); any other keeps the parked run's title."""
+    it, titles the new run of a chat run (``chat_runs.go_on_parked``); any other keeps the parked run's title.
+    ``user`` is None when the hub resumes it itself, as the reaper, for a wait that woke (``run_waits``)."""
+    token_id = None if user is None else user.token_id
     kind = (await conn.execute(select(tables.runs.c.kind).where(tables.runs.c.id == parked_id))).scalar_one()
     if kind == "chat":  # a chat run goes on in its thread's session: the run is made as chat_runs makes one
         from evo_agents.hub.server.chat_runs import go_on_parked  # it queues runs through the routes that import this
 
-        return await go_on_parked(conn, parked_id, why, woken_by=woken_by, token_id=user.token_id)
+        return await go_on_parked(conn, parked_id, why, woken_by=woken_by, token_id=token_id)
     reserved = select(func.nextval(func.pg_get_serial_sequence("runs", "id")))
     new_id = (await conn.execute(reserved)).scalar_one()
     # The parked run leaves the active states first: a plan has one active plan run at a time.
@@ -656,9 +697,9 @@ async def resume_parked(
         parked_id,
         "parked",
         "done",
-        "owner",
+        "owner" if user is not None else "reaper",
         reason=f"resumed as #{new_id}",
-        token_id=user.token_id,
+        token_id=token_id,
         decisions=None,
     )
     await conn.execute(_resume_run(new_id, parked_id))
@@ -673,7 +714,7 @@ async def resume_parked(
     return new_id
 
 
-async def _lock_run_of(conn: AsyncConnection, project_id: int, plan_id: str | None, decision_id: int):
+async def lock_run_of(conn: AsyncConnection, project_id: int, plan_id: str | None, decision_id: int):
     """Lock the run decision ``decision_id`` belongs to, and the decision's plan for one with a plan; (run id, its
     state, its kind). A decision of a plan is answered under the plan's dispatch lock, which its run's moves to another
     run (a resume) take too; one without a plan, under its run's row lock, which a resume holds: when the decision
@@ -735,7 +776,7 @@ async def answer_decision(
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
-    run_id, run_state, kind = await _lock_run_of(conn, access.project_id, plan_id, decision_id)
+    run_id, run_state, kind = await lock_run_of(conn, access.project_id, plan_id, decision_id)
     locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
     state, category, question, options = (await conn.execute(locked.with_for_update())).one()
     if state != "open":
@@ -756,6 +797,9 @@ async def answer_decision(
     elif run_state != "parked" and run_state not in runs.MESSAGE_STATES:
         raise HTTPException(409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer")
     await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
+    if chosen is not None and chosen.get("waits") is True:
+        target = answer_target(project, plan_id, key, decision_id, run_id, body.option, kind) + " held"
+        return await _hold(conn, user, access.project_id, decision_id, run_id, chosen, body, target, via)
     await conn.execute(
         update(d)
         .values(
@@ -801,6 +845,52 @@ async def answer_decision(
         project_id=access.project_id,
     )
     return Answered(await decision_view(conn, decision_id), run_id, inbox_run)
+
+
+async def _hold(
+    conn: AsyncConnection,
+    user: Principal,
+    project_id: int,
+    decision_id: int,
+    run_id: int,
+    chosen: dict,
+    body: AnswerIn,
+    target: str,
+    via: str | None,
+) -> Answered:
+    """The person asked chose ``chosen``, an option that waits: the decision stays open with ``held_at`` now, its
+    notification is read, nothing goes to the agent and the run goes on waiting (or parked) for a later answer. The
+    run's log and the audit row decision.answer (its target ending ``held``) say so. 422 with words of their own: words
+    go to the agent, which an option that waits does not reach."""
+    if body.text is not None:
+        raise HTTPException(
+            422,
+            f"option {chosen['key']} of decision {decision_id} leaves it open for a later answer, and the agent hears "
+            "nothing of it: send your words with another option, or alone",
+        )
+    d, n = tables.decisions, tables.notifications
+    await conn.execute(update(d).values(held_at=func.now()).where(d.c.id == decision_id))
+    await conn.execute(
+        update(n)
+        .values(read_at=func.now())
+        .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
+    )
+    shown = (
+        f"{user.login} chose {one_line(chosen['label'], 80)} on decision #{decision_id}: it stays open, and the run "
+        "waits for a later answer"
+    )
+    await write_event(conn, run_id, {"text": shown, "decision": {"id": decision_id, "held": chosen["key"]}})
+    if via is not None:
+        target += f" via={via}"
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=audit.DECISION_ANSWER,
+        target=target,
+        project_id=project_id,
+    )
+    return Answered(await decision_view(conn, decision_id), run_id, run_id)
 
 
 async def _hub_does(conn: AsyncConnection, user: Principal, decision_id: int, category: str, option: str) -> None:

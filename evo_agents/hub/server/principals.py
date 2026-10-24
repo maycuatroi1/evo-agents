@@ -23,7 +23,7 @@ from datetime import timedelta
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import autonomy_card, org, tables
+from evo_agents.hub import autonomy_card, org, runs, tables
 from evo_agents.hub.server import run_autonomy
 
 ESCALATE_AFTER = timedelta(hours=24)  # an intern's decision open this long goes to the leads of their unit too
@@ -110,6 +110,7 @@ async def escalate(engine: AsyncEngine) -> int:
             .join_from(d, r, r.c.id == d.c.run_id)
             .where(
                 d.c.state == "open",
+                d.c.category != runs.WAIT_DECISION_CATEGORY,  # a wait asks nobody: the hub answers it
                 d.c.asked_of.is_not(None),
                 r.c.principal_id.is_not(None),
                 d.c.asked_of != r.c.principal_id,

@@ -1,14 +1,16 @@
 """What the commands of a run's agent read (``evo_agents.worker.cli``): a text from a file or stdin, within a bound,
-an option of a decision, the evidence specs of a finding or a proposal (``evo_agents.hub.review.parse_evidence``) and
-the code evidence checked against the run's worktrees (``attest``), and the draft plan or the promotion of a proposal
-from a YAML or JSON file (``plan_file``, ``promotion_file``). A problem is a WorkerStateError, which the command prints
-as one ``error:`` line."""
+an option of a decision, the time and the event a wait wakes on (``wait_until``, ``payload_contains``), the evidence
+specs of a finding or a proposal (``evo_agents.hub.review.parse_evidence``) and the code evidence checked against the
+run's worktrees (``attest``), and the draft plan or the promotion of a proposal from a YAML or JSON file
+(``plan_file``, ``promotion_file``). A problem is a WorkerStateError, which the command prints as one ``error:``
+line."""
 
 from __future__ import annotations
 
 import json
 import re
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from evo_agents.hub import runs
@@ -36,6 +38,46 @@ def decision_option(text: str) -> dict:
             f"--option takes KEY=LABEL[:DESCRIPTION], KEY being letters, digits, _ and - (at most 32), not {text!r}"
         )
     return {"key": key, "label": label, **({"description": description} if description else {})}
+
+
+RELATIVE = re.compile(r"^\+(\d{1,5})([mhd])$")  # +90m, +6h, +5d: a wait's time from now
+UNITS = {"m": "minutes", "h": "hours", "d": "days"}
+
+
+def wait_until(text: str, now: datetime) -> str:
+    """``--until`` of ``worker wait`` as an ISO 8601 time in UTC: a time with a timezone (``2026-10-30T09:00Z``), or a
+    span from ``now`` such as ``+6h``, ``+90m`` or ``+5d``."""
+    relative = RELATIVE.fullmatch(text.strip())
+    if relative:
+        at = now + timedelta(**{UNITS[relative[2]]: int(relative[1])})
+    else:
+        try:
+            at = datetime.fromisoformat(text.strip().replace("Z", "+00:00").replace("z", "+00:00"))
+        except ValueError:
+            at = None
+        if at is None or at.utcoffset() is None:
+            raise WorkerStateError(
+                f"--until takes a time with a timezone, such as 2026-10-30T09:00Z, or a span such as +6h, not {text!r}"
+            )
+    return at.astimezone(now.tzinfo).isoformat(timespec="seconds")
+
+
+def payload_contains(texts: list[str]) -> dict:
+    """``--contains KEY=VALUE`` of ``worker wait``, each VALUE read as JSON when it is (a number, true, a list), else as
+    the text it is, as the object the event's payload must contain."""
+    found: dict = {}
+    for text in texts:
+        key, sep, value = text.partition("=")
+        key = key.strip()
+        if not sep or not key:
+            raise WorkerStateError(f"--contains takes KEY=VALUE, such as canvas=evo-agents, not {text!r}")
+        if key in found:
+            raise WorkerStateError(f"--contains names {key} twice")
+        try:
+            found[key] = json.loads(value)
+        except ValueError:
+            found[key] = value
+    return found
 
 
 def evidence_items(texts: list[str]) -> list[dict]:

@@ -16,16 +16,23 @@ import {
 
 /**
  * The Inbox's pure parts: its filters in the URL, how a page of notifications splits into the decisions waiting for an
- * answer and everything else, the facts a notice carries, and what the answer form allows.
+ * answer and everything else, how everything else groups by day and by run, the facts a notice carries, and what the
+ * answer form allows.
  */
 
 /** The most pages the URL may name: 50 a page up to the API's largest offset. */
 const MAX_PAGE = 2000;
+/** `MAX_QUERY_CHARS` of the API: the words the list searches the titles and bodies for. */
+export const MAX_QUERY_CHARS = 200;
 
 export type InboxFilters = {
   kind: NotificationKind | null;
   project: string | null;
   unread: boolean;
+  /** Words of the title or the body, as `?q=` names them; empty for none. */
+  q: string;
+  /** Only the notifications of this run, as `?run=ID` names it. */
+  run: number | null;
   page: number;
   /** The decision shown in the sheet over the list, as `/inbox?decision=ID` names it. */
   decision: number | null;
@@ -33,7 +40,16 @@ export type InboxFilters = {
   proposal: number | null;
 };
 
-export const NO_FILTERS: InboxFilters = { kind: null, project: null, unread: false, page: 1, decision: null, proposal: null };
+export const NO_FILTERS: InboxFilters = {
+  kind: null,
+  project: null,
+  unread: false,
+  q: "",
+  run: null,
+  page: 1,
+  decision: null,
+  proposal: null,
+};
 
 function isKind(value: string | null): value is NotificationKind {
   return (NOTIFICATION_KINDS as readonly string[]).includes(value ?? "");
@@ -47,6 +63,8 @@ export function readInboxFilters(source: ParamSource): InboxFilters {
     kind: isKind(kind) ? kind : null,
     project: PROJECT_NAME.test(project) ? project : null,
     unread: source.get("unread") === "1",
+    q: [...(source.get("q")?.trim() ?? "")].slice(0, MAX_QUERY_CHARS).join("").trim(),
+    run: parseRunId(source.get("run")?.trim() ?? ""),
     page: Number.isInteger(page) && page >= 1 && page <= MAX_PAGE ? page : 1,
     decision: parseRunId(source.get("decision")?.trim() ?? ""),
     proposal: parseRunId(source.get("proposal")?.trim() ?? ""),
@@ -61,6 +79,8 @@ export function inboxSearch(filters: InboxFilters): string {
   if (filters.kind) params.set("kind", filters.kind);
   if (filters.project) params.set("project", filters.project);
   if (filters.unread) params.set("unread", "1");
+  if (filters.run !== null) params.set("run", String(filters.run));
+  if (filters.q) params.set("q", filters.q);
   if (filters.page > 1) params.set("page", String(filters.page));
   const text = params.toString();
   return text ? `?${text}` : "";
@@ -68,7 +88,7 @@ export function inboxSearch(filters: InboxFilters): string {
 
 /** Whether the list is narrowed by a filter (the page and the decision or proposal shown are not filters). */
 export function isFiltered(filters: InboxFilters): boolean {
-  return filters.kind !== null || filters.project !== null || filters.unread;
+  return filters.kind !== null || filters.project !== null || filters.unread || filters.q !== "" || filters.run !== null;
 }
 
 /** What the API is asked for the list a set of filters shows. */
@@ -77,6 +97,8 @@ export function inboxQuery(filters: InboxFilters): InboxQuery {
     kind: filters.kind,
     project: filters.project,
     unread: filters.unread,
+    q: filters.q,
+    run: filters.run,
     limit: INBOX_PAGE,
     offset: (filters.page - 1) * INBOX_PAGE,
   };
@@ -106,6 +128,87 @@ export function splitInbox(notifications: readonly Notification[]): { waiting: N
   const rest: Notification[] = [];
   for (const notification of notifications) (isWaiting(notification) ? waiting : rest).push(notification);
   return { waiting, rest };
+}
+
+/** A day of the calendar of `timeZone` (the one the page formats dates in) as `YYYY-MM-DD`. */
+export function dayKey(iso: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(iso));
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+/** How many days `key` lies before `today`, both `YYYY-MM-DD`: 0 today, 1 yesterday. */
+export function daysBefore(key: string, today: string): number {
+  return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${key}T00:00:00Z`)) / 86_400_000);
+}
+
+/**
+ * One line of the list below what waits for an answer: a notification alone, or the notifications one run sent on
+ * one day, newest first, which show as one line that opens to each of them.
+ */
+export type InboxEntry =
+  | { type: "single"; notification: Notification }
+  | { type: "run"; key: string; project: string | null; runId: number; notifications: Notification[]; unread: number };
+
+export type InboxDay = { key: string; entries: InboxEntry[]; total: number; unread: number };
+
+/**
+ * The notices and the decisions and proposals no longer open, as the Inbox lists them: by day of `timeZone`, newest
+ * first, and within a day the notifications of one run together, where the newest of them stands. The order of the
+ * page (newest first) is kept.
+ */
+export function groupInbox(notifications: readonly Notification[], timeZone: string): InboxDay[] {
+  const days = new Map<string, { key: string; entries: (InboxEntry & { type: "run" })[]; total: number; unread: number }>();
+  const runs = new Map<string, InboxEntry & { type: "run" }>();
+  for (const notification of notifications) {
+    const key = dayKey(notification.created_at, timeZone);
+    let day = days.get(key);
+    if (!day) {
+      day = { key, entries: [], total: 0, unread: 0 };
+      days.set(key, day);
+    }
+    const unread = notification.read_at === null ? 1 : 0;
+    day.total += 1;
+    day.unread += unread;
+    // A notification of no run stands alone: a key no other one shares.
+    const runKey = notification.run_id !== null ? `${key}/${notification.project ?? ""}#${notification.run_id}` : `${key}/id${notification.id}`;
+    const found = runs.get(runKey);
+    if (found) {
+      found.notifications.push(notification);
+      found.unread += unread;
+      continue;
+    }
+    const entry = { type: "run" as const, key: runKey, project: notification.project, runId: notification.run_id ?? 0, notifications: [notification], unread };
+    runs.set(runKey, entry);
+    day.entries.push(entry);
+  }
+  return [...days.values()].map((day) => ({
+    ...day,
+    entries: day.entries.map((entry): InboxEntry =>
+      entry.notifications.length === 1 ? { type: "single", notification: entry.notifications[0] } : entry,
+    ),
+  }));
+}
+
+/**
+ * Whether a notice opens in the list by itself while unread: it asks something of its reader (an answer of the merge
+ * queue, a baseline to review, a page that wants a sign-in). Everything else, the Curator's morning brief of each
+ * project included, shows its title and the first line of its body until opened.
+ */
+export function opensByItself(notification: Pick<Notification, "kind" | "notice_kind" | "details" | "project" | "read_at">): boolean {
+  if (notification.kind !== "notice" || notification.read_at !== null) return false;
+  if (mergeAsk(notification) !== null) return true;
+  return notification.notice_kind === "canvas_baseline" || notification.notice_kind === "browser_needs_login";
+}
+
+/** The first line of a body with words in it, without Markdown's marks at its start, for the line under a title. */
+export function snippet(body: string | null): string | null {
+  if (!body) return null;
+  const line = body
+    .split("\n")
+    .map((text) => text.replace(/^\s*(?:[#>*-]+|\d+\.)\s*/, "").replace(/[*_`]/g, "").trim())
+    .find((text) => text !== "");
+  return line ?? null;
 }
 
 /** The notifications of a page not read yet, at most as many as one request marks read. */
@@ -167,8 +270,16 @@ export function bellNumber(unread: number): string {
   return unread > 99 ? "99+" : String(unread);
 }
 
-/** Why an answer cannot be sent as it stands: nothing chosen or written, or words over 4 KiB of UTF-8. */
-export type AnswerProblem = "empty" | "option" | "long" | null;
+/**
+ * Why an answer cannot be sent as it stands: nothing chosen or written, no option for a decision of the hub's, words
+ * with an option that keeps the decision open (the agent would never read them), or words over 4 KiB of UTF-8.
+ */
+export type AnswerProblem = "empty" | "option" | "waits" | "long" | null;
+
+/** Whether option `key` of `decision` says not yet: choosing it keeps the decision open and tells the agent nothing. */
+export function optionWaits(decision: Pick<Decision, "options">, key: string | null): boolean {
+  return key !== null && decision.options.some((option) => option.key === key && option.waits === true);
+}
 
 /** Whether the hub itself does what the answer of `decision` chooses (`runs.HUB_DECISION_CATEGORIES`). */
 export function isHubDecision(decision: Pick<Decision, "category">): boolean {
@@ -182,10 +293,14 @@ export function runLinkWords(decision: Pick<Decision, "category" | "plan_id">) {
   return decision.plan_id === null ? ("authorRunLink" as const) : ("runLink" as const);
 }
 
-/** What keeps an answer from going: nothing chosen or written, no option for a decision of the hub's, words too long. */
-export function answerProblem(option: string | null, text: string, hub = false): AnswerProblem {
+/**
+ * What keeps an answer from going: nothing chosen or written, no option for a decision of the hub's, words with an
+ * option that keeps the decision open (`waits`), words too long.
+ */
+export function answerProblem(option: string | null, text: string, hub = false, waits = false): AnswerProblem {
   if (option === null && text.trim() === "") return "empty";
   if (option === null && hub) return "option";
+  if (waits && text.trim() !== "") return "waits";
   if (utf8Bytes(text.trim()) > MAX_ANSWER_BYTES) return "long";
   return null;
 }

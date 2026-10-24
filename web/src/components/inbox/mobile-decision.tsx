@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 import { agentDigest, type DigestLine } from "./agent-digest";
 import { DecisionCategoryBadge } from "./badges";
+import { AnsweredBy } from "./answered-by";
 import {
   AnswerFields,
   AnswerHint,
@@ -42,7 +43,6 @@ import {
   DecisionStatePill,
   DecisionWhere,
   FoldedContext,
-  TakeOverButton,
   useAnswerForm,
 } from "./decision-view";
 import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
@@ -51,6 +51,7 @@ import { useInboxViewer, useParksAt } from "./hooks";
 import { InboxBell } from "./inbox-bell";
 import { type AnswerAccess, answerAccess, runLinkWords } from "./model";
 import { type Decision, decisionQuery } from "./queries";
+import { TakeOverButton } from "./take-over-button";
 import { type DecisionTarget, useTargetDecision } from "./target-decision";
 
 /**
@@ -117,7 +118,6 @@ function ScreenLead({
   parksAt: string | null;
   headingRef: Ref<HTMLHeadingElement>;
 }) {
-  const t = useTranslations("inbox.decision");
   const open = decision.state === "open";
   return (
     <>
@@ -133,10 +133,7 @@ function ScreenLead({
           <AskedTiming decision={decision} parksAt={parksAt} className="text-[13px] leading-[18px] text-fg-subtle" />
         ) : decision.state === "answered" ? (
           <p className="text-[13px] leading-[18px] text-fg-subtle" data-testid="decision-answered-by">
-            {t.rich("answeredBy", {
-              login: decision.answered_by ?? decision.owner,
-              who: (chunks) => <span className="font-mono text-foreground">{chunks}</span>,
-            })}
+            <AnsweredBy decision={decision} />
             {decision.answered_at ? (
               <>
                 {","} <Ago value={decision.answered_at} never="-" />

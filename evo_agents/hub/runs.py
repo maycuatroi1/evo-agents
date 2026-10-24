@@ -291,9 +291,9 @@ TRANSITIONS: dict[str, dict[str, frozenset[str]]] = {
     # the agent's turn ended with a decision open: the answer sets it going again, DECISION_WAIT_SECONDS parks it
     "waiting": {"running": _W, "parked": _R, **_HELD_EXITS},
     "review": {"done": _O, "cancelled": _O},
-    # no worker holds it: the owner's answer queues the run that resumes it, and this one is done; PARKED_DAYS, or the
-    # owner, cancel it
-    "parked": {"done": _O, "cancelled": _O | _R},
+    # no worker holds it: the owner's answer queues the run that resumes it, and this one is done, as does the reaper
+    # when a wait of the run wakes (``server.run_waits``); PARKED_DAYS, or the owner, cancel it
+    "parked": {"done": _O | _R, "cancelled": _O | _R},
     **{state: {} for state in TERMINAL_STATES},
 }
 
@@ -312,7 +312,17 @@ LOOP_DECISION_CATEGORY = "loop"
 AUTONOMY_DECISION_CATEGORY = "autonomy"
 # the hub does what the answer chooses
 HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY, AUTONOMY_DECISION_CATEGORY)
-SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES, "login")
+# what the agent of a plan run opens with `evo-agents worker wait` to wait for a time or an event of the hub rather than
+# for its owner (``server.run_waits``): the hub answers it when either comes, the owner may answer it sooner
+WAIT_DECISION_CATEGORY = "wait"
+MAX_WAIT_DAYS = PARKED_DAYS  # the latest a wait wakes; a run parked a day after it asked is still there to wake
+SHOWN_DECISION_CATEGORIES = (
+    *LOCAL_DECISION_CATEGORIES,
+    CHAT_DECISION_CATEGORY,
+    *HUB_DECISION_CATEGORIES,
+    "login",
+    WAIT_DECISION_CATEGORY,
+)
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -832,6 +842,19 @@ _PUSH_RULE = (
 )
 
 
+# How the agent of a plan run waits for a time or an event of the hub (``server.run_waits``) instead of asking.
+WAIT_RULE = (
+    "- When the work waits for a time, or for something that happens on the hub (a baseline of a canvas approved, a "
+    "claim or a task changing, signals posted), wait for it rather than ask the owner to tell you when it came: "
+    "`evo-agents worker wait --reason TEXT --until TIME --on KIND --contains KEY=VALUE --step {step}`, then end your "
+    f"turn. TIME is 2026-10-30T09:00Z or a span such as +6h, at most {MAX_WAIT_DAYS} days ahead; KIND is "
+    "canvas.baseline, canvas.claim, tasks.status, signal.posted or srs.version.approved, and each --contains a key of "
+    "the event's payload with its value. Give --until, --on or both. The hub wakes this session with a message naming "
+    "the wait when the first of them comes. An option of a decision that only means not yet goes with `--wait-option "
+    "KEY` of `evo-agents worker ask`: choosing it leaves the decision open, and you hear nothing until a real answer."
+)
+
+
 def _plan_rules(autonomy) -> list[str]:
     fewest, most = DECISION_OPTIONS
     return [
@@ -848,6 +871,7 @@ def _plan_rules(autonomy) -> list[str]:
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
+        WAIT_RULE.format(step="KEY"),
         ATTACH_RULE,
         "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
         "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
@@ -983,6 +1007,7 @@ def _step_session_rules(key: str, autonomy) -> list[str]:
         "prints the decision's id. Go on with the work of the step that does not depend on the answer; when none is "
         "left, end your turn. The answer comes back in this session as a message naming the decision's id, and the "
         "time you wait does not count toward the run's timeout.",
+        WAIT_RULE.format(step=key),
         ATTACH_RULE,
         _PUSH_RULE,
         OUTPUTS_RULE,
