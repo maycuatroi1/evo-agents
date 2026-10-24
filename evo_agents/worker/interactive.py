@@ -496,8 +496,8 @@ async def follow_pane(path: Path, stop: asyncio.Event, poll: float = PANE_POLL) 
 
 
 def claude_transcript_events(record: dict) -> list[AgentEvent]:
-    """The hub's events for one record of Claude Code's transcript (``<session>.jsonl``): the assistant's text,
-    thinking and tool calls, the results of the tools, and what the person typed (``output``)."""
+    """The hub's events for one record of Claude Code's transcript (``<session>.jsonl``): the assistant's text (a
+    narration too), thinking and tool calls, the results of the tools, and what the person typed (``output``)."""
     kind = record.get("type")
     message = record.get("message") if isinstance(record.get("message"), dict) else {}
     content = message.get("content")
@@ -510,7 +510,7 @@ def claude_transcript_events(record: dict) -> list[AgentEvent]:
             if block_type == "text" and block.get("text"):
                 events.append(common.message_chunk(str(block["text"])))
             elif block_type == "thinking" and str(block.get("thinking") or "").strip():
-                events.append(common.thought_chunk(str(block["thinking"])))
+                events.append(claude_code.thinking_event(str(block["thinking"]), block.get("signature")))
             elif block_type in ("tool_use", "server_tool_use"):
                 name = str(block.get("name") or "tool")
                 tool_input = block.get("input")
