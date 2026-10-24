@@ -11,7 +11,7 @@
     "src/components/runs/queries.ts": 427,
     "src/components/runs/trace-model.ts": 548,
     "src/components/secrets/secret-dialog.tsx": 474,
-    "src/components/shell/shortcuts.tsx": 487,
+    "src/components/shell/shortcuts.tsx": 477,
     "src/components/ui/sidebar.tsx": 712,
     "src/components/workers/register-dialog.tsx": 726
   },
@@ -168,8 +168,7 @@
       "src/components/curator/badges.tsx",
       "src/components/curator/queries.ts",
       "src/components/plans/prose.tsx",
-      "src/components/runs/queries.ts",
-      "src/components/workers/ago.tsx"
+      "src/components/runs/queries.ts"
     ],
     "src/components/inbox/proposal-sheet.tsx": [
       "src/components/curator/answer-dialog.tsx",
@@ -408,9 +407,6 @@
       "src/components/inbox/inbox-bell.tsx",
       "src/components/palette/palette-trigger.tsx",
       "src/components/workers/hooks.ts"
-    ],
-    "src/components/workers/ago.tsx": [
-      "src/components/kg/use-now.ts"
     ],
     "src/components/workers/confirm-by-name.tsx": [
       "src/components/admin/notice.tsx"

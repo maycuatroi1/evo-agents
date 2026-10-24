@@ -4,13 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Bell, CheckCheck, Inbox, Lightbulb, MessageCircleQuestionMark, SearchX } from "lucide-react";
 import type { Route } from "next";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTimeZone, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { Pager } from "@/components/admin/pager";
 import { usePagedQuery } from "@/components/admin/use-paged-query";
-import { FacetGroup } from "@/components/data/facet-group";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView } from "@/components/states/query-view";
 import { EmptyState, TableSkeleton } from "@/components/states/states";
@@ -22,6 +21,8 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { DecisionSheet } from "./decision-sheet";
 import { useInboxViewer, useMarkRead, useReadFailure } from "./hooks";
 import {
+  groupInbox,
+  type InboxEntry,
   type InboxFilters,
   inboxQuery,
   inboxSearch,
@@ -34,6 +35,9 @@ import {
   unreadIds,
 } from "./model";
 import { NotificationItem } from "./notification-item";
+import { InboxDays, NotificationRow, RunGroup } from "./notification-row";
+import { InboxToolbar } from "./inbox-toolbar";
+import { useRowKeys } from "./row-keys";
 import { ProposalSheet } from "./proposal-sheet";
 import { NoticeSettingsButton } from "./notice-settings";
 import { TelegramButton } from "./telegram-dialog";
@@ -64,11 +68,14 @@ function ListSection({
   title,
   count,
   testId,
+  list = true,
   children,
 }: {
   title: string;
   count: number;
   testId: string;
+  /** Whether the children are the items of one list; the days of the rest bring lists of their own. */
+  list?: boolean;
   children: ReactNode;
 }) {
   const t = useTranslations("inbox");
@@ -82,15 +89,20 @@ function ListSection({
         </span>
         <span className="sr-only">{` (${t("count", { count })})`}</span>
       </h2>
-      <ul className="flex flex-col gap-2.5">{children}</ul>
+      {list ? <ul className="flex flex-col gap-2.5">{children}</ul> : children}
     </section>
   );
 }
 
+/** What a mark read in flight is for: a notification's id, "all", or `run:KEY` for the unread ones of a run's row. */
+type ReadMarker = number | "all" | `run:${string}`;
+
 /**
  * The member's Inbox: the decisions the agents of their plan runs ask them and the tier 2 proposals of their projects'
- * Curator, open ones first, then the notices (a push or merge into a default branch with its repo, branch and commits, a
- * plan finished, a run failed) and the decisions and proposals already answered, expired or cancelled, newest first. A
+ * Curator, open ones first as cards, then the notices (a push or merge into a default branch with its repo, branch and
+ * commits, a plan finished, a run failed) and the decisions and proposals already answered, expired or cancelled, newest
+ * first, as rows by day with each run's folded into one (`notification-row.tsx`). Words of the title or body and a run
+ * narrow the list too (`inbox-toolbar.tsx`), and J and K move from row to row (`row-keys.ts`). A
  * proposal opens in a sheet of its own (`/inbox?proposal=ID`) with its evidence and, for an admin, its answers. Filters
  * by kind, project and unread live in the URL; a decision opens in a sheet over the list (`/inbox?decision=ID`) with
  * its answer form, a screen of its own on a phone (the kit's MobileDecision), and closes back to the list where it was.
@@ -105,19 +117,20 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
   const count = useQuery(notificationCountQuery(browserApi));
   const markRead = useMarkRead();
   const readFailure = useReadFailure();
-  const [reading, setReading] = useState<number | "all" | null>(null);
+  // What is being marked read: one notification (its id), all of them, or the unread ones of a run's row (its key).
+  const [reading, setReading] = useState<ReadMarker | null>(null);
   const list: NotificationList | null = state.status === "success" ? state.data : null;
   const selected = filters.decision;
   const selectedNotification = selected !== null && list ? notificationOfDecision(list.notifications, selected) : null;
   const selectedProposal = filters.proposal;
   const proposalNotification = selectedProposal !== null && list ? notificationOfProposal(list.notifications, selectedProposal) : null;
 
-  const read = (target: { ids: number[] } | { all: true }, marker: number | "all") => {
+  const read = (target: { ids: number[] } | { all: true }, marker: ReadMarker) => {
     setReading(marker);
     markRead.mutate(target, {
       onSettled: () => setReading(null),
       onSuccess: (result) =>
-        void notify({ tone: "success", text: marker === "all" ? t("markedAll", { count: result.read }) : t("markedOne") }),
+        void notify({ tone: "success", text: typeof marker === "number" ? t("markedOne") : t("markedAll", { count: result.read }) }),
       onError: (error) => void notifyFailure(t("markFailed"), readFailure(error)),
     });
   };
@@ -145,6 +158,7 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
   const pageUnread = list ? unreadIds(list.notifications, MAX_READ_IDS) : [];
   const nothingToRead = filtered ? pageUnread.length === 0 : (counts?.unread ?? 0) === 0;
   const projects = viewer.projects;
+  useRowKeys();
 
   return (
     <>
@@ -200,47 +214,7 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
           <h2 id="inbox-list-title" className="sr-only">
             {t("listTitle")}
           </h2>
-          <div className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4" role="search" aria-label={t("filters.label")} data-testid="inbox-filters">
-            <FacetGroup
-              label={t("filters.show")}
-              options={[
-                { value: null, label: t("filters.everything") },
-                { value: "unread", label: t("filters.unread") },
-              ]}
-              selected={filters.unread ? "unread" : null}
-              onSelect={(value) => setFilters({ ...filters, unread: value === "unread", page: 1 })}
-              countLabel={(n) => t("count", { count: n })}
-              testId="inbox-facet-unread"
-            />
-            <FacetGroup
-              label={t("filters.kind")}
-              options={[
-                { value: null, label: t("filters.allKinds") },
-                { value: "decision", label: t("filters.decisions"), icon: MessageCircleQuestionMark },
-                { value: "notice", label: t("filters.notices"), icon: Bell },
-                { value: "proposal", label: t("filters.proposals"), icon: Lightbulb },
-              ]}
-              selected={filters.kind}
-              onSelect={(value) =>
-                setFilters({ ...filters, kind: value === "decision" || value === "notice" || value === "proposal" ? value : null, page: 1 })
-              }
-              countLabel={(n) => t("count", { count: n })}
-              testId="inbox-facet-kind"
-            />
-            {projects.length > 1 || filters.project !== null ? (
-              <FacetGroup
-                label={t("filters.project")}
-                options={[
-                  { value: null, label: t("filters.allProjects") },
-                  ...[...new Set([...projects, ...(filters.project ? [filters.project] : [])])].sort().map((name) => ({ value: name, label: name, mono: true })),
-                ]}
-                selected={filters.project}
-                onSelect={(value) => setFilters({ ...filters, project: value, page: 1 })}
-                countLabel={(n) => t("count", { count: n })}
-                testId="inbox-facet-project"
-              />
-            ) : null}
-          </div>
+          <InboxToolbar filters={filters} projects={projects} onChange={setFilters} />
           <QueryView state={state} loading={<TableSkeleton rows={4} />}>
             {(page) => (
               <InboxList
@@ -250,6 +224,8 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
                 selected={selected}
                 selectedProposal={selectedProposal}
                 reading={reading}
+                onReadMany={(ids, marker) => read({ ids }, marker)}
+                onOnlyRun={(run) => setFilters({ ...filters, run, page: 1 })}
                 decisionHref={(id) => href({ ...filters, decision: id, proposal: null })}
                 proposalHref={(id) => href({ ...filters, proposal: id, decision: null })}
                 onOpenDecision={openDecision}
@@ -284,6 +260,8 @@ function InboxList({
   selected,
   selectedProposal,
   reading,
+  onReadMany,
+  onOnlyRun,
   decisionHref,
   proposalHref,
   onOpenDecision,
@@ -297,7 +275,9 @@ function InboxList({
   stale: boolean;
   selected: number | null;
   selectedProposal: number | null;
-  reading: number | "all" | null;
+  reading: ReadMarker | null;
+  onReadMany: (ids: number[], marker: ReadMarker) => void;
+  onOnlyRun: (run: number) => void;
   decisionHref: (id: number) => Route;
   proposalHref: (id: number) => Route;
   onOpenDecision: (id: number) => void;
@@ -307,29 +287,41 @@ function InboxList({
   onPage: (page: number) => void;
 }) {
   const t = useTranslations("inbox");
+  const timeZone = useTimeZone() ?? "UTC";
   const { waiting, rest } = splitInbox(page.notifications);
+  const days = groupInbox(rest, timeZone);
   const filtered = isFiltered(filters);
-  const item = (notification: Notification) => (
-    <NotificationItem
-      key={notification.id}
-      notification={notification}
-      href={
-        notification.kind === "proposal" && notification.proposal_id != null
-          ? proposalHref(notification.proposal_id)
-          : notification.decision_id !== null
-            ? decisionHref(notification.decision_id)
-            : null
-      }
-      selected={
-        (notification.kind === "decision" && notification.decision_id === selected) ||
-        (notification.kind === "proposal" && notification.proposal_id === selectedProposal)
-      }
-      onOpenDecision={onOpenDecision}
-      onOpenProposal={onOpenProposal}
-      onRead={onRead}
-      reading={reading === notification.id || reading === "all"}
-    />
-  );
+  const props = (notification: Notification) => ({
+    notification,
+    href:
+      notification.kind === "proposal" && notification.proposal_id != null
+        ? proposalHref(notification.proposal_id)
+        : notification.decision_id !== null
+          ? decisionHref(notification.decision_id)
+          : null,
+    selected:
+      (notification.kind === "decision" && notification.decision_id === selected) ||
+      (notification.kind === "proposal" && notification.proposal_id === selectedProposal),
+    onOpenDecision,
+    onOpenProposal,
+    onRead,
+    reading: reading === notification.id || reading === "all",
+  });
+  const item = (notification: Notification) => <NotificationItem key={notification.id} {...props(notification)} />;
+  const row = (notification: Notification, nested = false) => <NotificationRow key={notification.id} {...props(notification)} nested={nested} />;
+  const entry = (one: InboxEntry) =>
+    one.type === "single" ? (
+      row(one.notification)
+    ) : (
+      <RunGroup
+        key={one.key}
+        entry={one}
+        row={(notification) => row(notification, true)}
+        onReadMany={(ids) => onReadMany(ids, `run:${one.key}`)}
+        onOnlyRun={onOnlyRun}
+        reading={reading === `run:${one.key}` || reading === "all"}
+      />
+    );
   return (
     <div className="flex flex-col gap-4" aria-busy={stale || undefined}>
       <p aria-live="polite" className="text-sm text-muted-foreground" data-testid="inbox-summary">
@@ -353,8 +345,8 @@ function InboxList({
             </ListSection>
           ) : null}
           {rest.length > 0 ? (
-            <ListSection title={waiting.length > 0 ? t("restTitle") : t("allTitle")} count={rest.length} testId="inbox-rest">
-              {rest.map(item)}
+            <ListSection title={waiting.length > 0 ? t("restTitle") : t("allTitle")} count={rest.length} testId="inbox-rest" list={false}>
+              <InboxDays days={days} entry={entry} />
             </ListSection>
           ) : null}
         </>

@@ -23,6 +23,7 @@ import {
   startRun,
   type WorkerEvent,
 } from "./support/runs";
+import { expandInbox } from "./support/inbox";
 import { toast } from "./support/toast";
 
 /**
@@ -371,6 +372,7 @@ test("a question carries its screenshot to the run page and the Inbox, and a not
   await open(page, "/inbox");
   const asked = main(page).getByTestId("inbox-waiting").getByTestId("notification").filter({ hasText: "Deploy this build to staging?" });
   await expect(asked.getByTestId("notification-files").getByTestId("output-chip")).toHaveCount(1);
+  await expandInbox(main(page));
   const notice = main(page).getByTestId("notification").filter({ has: page.getByTestId("notice-kind").filter({ hasText: "Files from a run" }) });
   // The file the question carries is told with the question; the notice tells the other one.
   await expect(notice.getByTestId("notification-files").getByTestId("output-chip")).toHaveAccessibleName(/^Open build\.log/);
