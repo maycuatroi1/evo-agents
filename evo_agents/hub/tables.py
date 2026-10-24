@@ -991,6 +991,7 @@ credential_shares, credential_share_projects = tables_accounts.share_tables(meta
 invites = tables_invites.invite_tables(metadata)  # the invite links (0110)
 browser_identities = tables_browser.browser_tables(metadata)  # the browser identities of projects and members (0117)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
+kg_review_dismissals = tables_kg.review_dismissals(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )

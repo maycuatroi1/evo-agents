@@ -27,6 +27,7 @@ from pathlib import Path
 from evo_agents import __version__
 from evo_agents.kg import audit
 from evo_agents.kg import clusters as kg_clusters
+from evo_agents.kg import review as kg_review
 from evo_agents.kg import search as text_search
 from evo_agents.kg import store as kg_store
 from evo_agents.kg.corpus import Corpus
@@ -222,6 +223,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     stats: dict[str, dict] = defaultdict(lambda: {"items": 0, "issues": 0, **dict.fromkeys(STAT_KEYS, 0)})
     samples: dict[str, dict[str, list]] = defaultdict(lambda: {"ambiguous": [], "dangling": []})
     rejected: set[tuple[str, str]] = set()
+    item_mentions: dict[str, dict] = {}  # item id -> its dangling and ambiguous mentions, for the review queue
     for rec in records:
         stats[rec.source]["items"] += 1
         for f in first[rec.item_id] + second[rec.item_id]:
@@ -259,6 +261,11 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             elif t == "stats":
                 for k in STAT_KEYS:
                     stats[rec.source][k] += f.get(k, 0)
+                if f.get("dangling") or f.get("ambiguous"):
+                    found = item_mentions.setdefault(rec.item_id, {"dangling": 0, "ambiguous": 0, "samples": {}})
+                    for k in ("dangling", "ambiguous"):
+                        found[k] += f.get(k, 0)
+                        found["samples"].setdefault(k, []).extend((f.get("samples") or {}).get(k) or [])
                 for k, values in (f.get("samples") or {}).items():
                     bucket = samples[rec.source][k]
                     bucket.extend(v for v in values if len(bucket) < 30 and v not in bucket)
@@ -316,6 +323,8 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     node_label: dict[str, Label] = {}
     for nid in merged_nodes:
         node_label[nid] = any_of(_deriv_label(d, unit_labels, node_label) for d in _dedupe(derivs[nid]))
+    for item_id, found in item_mentions.items():
+        graph.mentions.setdefault(remap(item_id), found)
     for nid, n in merged_nodes.items():
         graph.nodes[nid] = {**n, "label": node_label[nid], "aliases": sorted(aliases.get(nid, []))}
         graph.derivations[nid] = _dedupe(derivs[nid])
@@ -591,6 +600,7 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         target = project.root / "graph.sqlite"
         warm = previous_clusters(store, target)
         add_clusters(project, graph, coverage, warm)
+        add_review(graph, coverage)
         if store is None:
             found = Store.stored_schema(target)
             if found not in (None, kg_store.SCHEMA_VERSION):
@@ -636,6 +646,15 @@ def add_clusters(project: Project, graph: Graph, coverage: dict, warm: Clusters 
         coverage["clusters"] = {"computed": False, "reason": f"clustering failed: {type(exc).__name__}: {exc}"}
         return
     coverage["clusters"] = {**kg_clusters.coverage(graph.clusters), "warm": warm is not None}
+
+
+def add_review(graph: Graph, coverage: dict) -> None:
+    """Compute the review items of a graph with clusters (``evo_agents.kg.review``) and count them per rule in
+    ``coverage["review"]``; a graph without clusters has none, and its coverage says nothing of them."""
+    if graph.clusters is None:
+        return
+    graph.review = kg_review.compute(graph)
+    coverage["review"] = kg_review.counts(graph.review)
 
 
 def previous_clusters(
@@ -709,6 +728,7 @@ def verify_build(
         if errors:
             return {"match": False, "errors": errors[:10]}
         add_clusters(project, graph, coverage, warm)
+        add_review(graph, coverage)
         b = store.write(graph, state_digest=corpus.state_digest(), coverage=coverage, stats={}, policy=project.policy)
         got = store.build_row(b)["content_hash"]
         store.close()

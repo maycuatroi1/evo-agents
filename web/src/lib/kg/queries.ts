@@ -3,11 +3,13 @@ import { queryOptions } from "@tanstack/react-query";
 import { call } from "@/lib/api/client";
 import type { ApiSource } from "@/lib/queries";
 
+import type { ReviewFilter } from "./routes";
 import { GROUP_SHOWN, type Hops, type KgBuilds } from "./types";
 
 /**
  * The knowledge graph pages' reads of the API, as TanStack Query options shared by the server (prefetch) and the
- * browser. All of them are reads: the web never queues a build.
+ * browser. All of them are reads: the web never queues a build. The review queue's read and its one write, a writer
+ * dismissing an item, are in `./review`, which only the review page loads.
  */
 export const BUILDS_SHOWN = 20;
 /** While a build waits or runs, the status page asks again this often (ms). */
@@ -28,6 +30,9 @@ export const kgKeys = {
   clusters: (project: string) => ["kg", project, "clusters"] as const,
   cluster: (project: string, id: string) => ["kg", project, "cluster", id] as const,
   whole: (project: string) => ["kg", project, "whole"] as const,
+  review: (project: string) => ["kg", project, "review"] as const,
+  reviewList: (project: string, filter: ReviewFilter) =>
+    ["kg", project, "review", filter.rule ?? "", filter.cluster ?? "", filter.state ?? "open"] as const,
 };
 
 /**

@@ -1,7 +1,8 @@
 "use client";
 
-import { Eye } from "lucide-react";
+import { Eye, ListChecks } from "lucide-react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -10,6 +11,7 @@ import { Segmented } from "@/components/data/segmented";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState, TableSkeleton } from "@/components/states/states";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
@@ -23,6 +25,7 @@ import {
   kgGraphQuery,
   parseBuildFilter,
 } from "@/lib/kg/queries";
+import { reviewHref } from "@/lib/kg/routes";
 import type { KgBuilds } from "@/lib/kg/types";
 
 import { BuildHistory, BuildQueue, LatestBuild, NoBuilds } from "./build-status";
@@ -237,6 +240,14 @@ export function KgOverview({
           <Eye aria-hidden="true" />
           {t("readOnly")}
         </Tag>
+      }
+      actions={
+        <Button asChild variant="outline" size="sm">
+          <Link href={reviewHref(project)} data-testid="kg-review-link">
+            <ListChecks aria-hidden="true" />
+            {t("review.open")}
+          </Link>
+        </Button>
       }
     />
   );
