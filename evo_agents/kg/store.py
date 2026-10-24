@@ -201,6 +201,9 @@ class Graph:
     clusters: Clusters | None = None  # None: not computed (``evo_agents.kg.clusters``)
     mentions: dict[str, dict] = field(default_factory=dict)  # item id -> its dangling and ambiguous mentions, samples
     review: list[dict] = field(default_factory=list)  # the review items of a build with clusters (``kg.review``)
+    # The deprecations a curation item declared (``evo_agents.kg.pipeline.curation``): applied to the props of the
+    # nodes and edges they name before the graph is written, never written themselves.
+    deprecations: list[dict] = field(default_factory=list)
 
 
 @dataclass

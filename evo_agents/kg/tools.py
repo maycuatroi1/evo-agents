@@ -10,6 +10,11 @@ from __future__ import annotations
 
 IMPACT_LIMIT = 20  # dependents kg_impact lists per hop, and a quarter as many documents, unless a call passes limit
 IMPACT_MAX_LIMIT = 500
+DEPRECATED = {  # the argument that shows what a writer deprecated on the hub too (``evo_agents.kg.pipeline.curation``)
+    "type": "boolean",
+    "default": False,
+    "description": "also show nodes and edges a decision deprecated",
+}
 
 INSTRUCTIONS = (
     "Knowledge graph of the bound project: repos, files, symbols, documents and sections, plans and steps, "
@@ -19,7 +24,8 @@ INSTRUCTIONS = (
     "strings and code you just edited. Before editing, renaming or changing the signature of a symbol or file, call "
     "kg_impact (ids, repo:path or a diff) and check every dependent it lists, then grep for what its coverage note "
     "says the seed's language lacks. kg_path traces a requirement to its steps, code and tests, a plan step to the "
-    "files its commits changed, or shows how two nodes connect. Ids read repo:path, repo:path::Symbol and repo:path#section. Status 'parsed' was read from a "
+    "files its commits changed, or shows how two nodes connect. Search, context, impact and path leave out what "
+    "a decision deprecated unless deprecated is true. Ids read repo:path, repo:path::Symbol and repo:path#section. Status 'parsed' was read from a "
     "source; 'resolved' matched a name to one target and can be wrong. The graph can lag the sources: read the live "
     "file (kg_node gives its uri) before quoting or editing it."
 )
@@ -37,6 +43,7 @@ TOOLS = [
                 "query": {"type": "string", "description": "name, id, path, code or words"},
                 "kinds": {"type": "array", "items": {"type": "string"}, "description": "e.g. Plan, Symbol, Section"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10},
+                "deprecated": DEPRECATED,
             },
             "required": ["query"],
         },
@@ -60,13 +67,21 @@ TOOLS = [
                     "description": "size of the whole text, as UTF-8 bytes / 3",
                 },
                 "hops": {"type": "integer", "minimum": 1, "maximum": 3, "default": 2},
+                "deprecated": DEPRECATED,
             },
         },
     },
     {
         "name": "kg_node",
-        "description": "One node: properties, status, label, evidence (source, revision, span, uri) and its edges.",
-        "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+        "description": (
+            "One node: properties, status, label, evidence (source, revision, span, uri) and its edges; a node a "
+            "decision deprecated says so, with its reason."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}, "deprecated": DEPRECATED},
+            "required": ["id"],
+        },
     },
     {
         "name": "kg_impact",
@@ -97,6 +112,7 @@ TOOLS = [
                     "default": IMPACT_LIMIT,
                     "description": "dependents listed per hop, and a quarter as many documents; the rest are counted",
                 },
+                "deprecated": DEPRECATED,
             },
         },
     },
@@ -112,6 +128,7 @@ TOOLS = [
                 "from": {"type": "string"},
                 "to": {"type": "string"},
                 "max_hops": {"type": "integer", "minimum": 1, "maximum": 6, "default": 6},
+                "deprecated": DEPRECATED,
             },
             "required": ["from"],
         },

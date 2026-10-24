@@ -164,7 +164,7 @@ MENTIONS_PER_HIT = 3
 
 
 def with_mentions(
-    store, b: int, hits: list[dict], limit: int, visible: Callable[[tuple], bool], kinds: list[str] | None = None
+    store, b: int, hits: list[dict], limit: int, visible: Callable[[dict], bool], kinds: list[str] | None = None
 ) -> tuple[list[dict], dict[str, dict]]:
     """``hits`` (visible nodes, best first) cut at ``limit``, each step, section or document followed by up to
     MENTIONS_PER_HIT files, symbols, documents and sections it mentions through visible edges, not listed yet and of
@@ -191,14 +191,12 @@ def with_mentions(
 
 def _mentioned(store, b: int, hit: dict, listed: set[str], visible, kinds) -> list[tuple[dict, tuple]]:
     """Up to MENTIONS_PER_HIT (node, edge label) that ``hit`` mentions: visible nodes of MENTIONED not in ``listed``."""
-    edges = [
-        e for e in store.edges_of(hit["id"], b, "out", limit=400) if e["rel"] == "mentions" and visible(e["label"])
-    ]
+    edges = [e for e in store.edges_of(hit["id"], b, "out", limit=400) if e["rel"] == "mentions" and visible(e)]
     targets = store.nodes([e["dst"] for e in edges if e["dst"] not in listed], b)
     found: list[tuple[dict, tuple]] = []
     for e in edges:
         node = targets.get(e["dst"])
-        if node is None or node["kind"] not in MENTIONED or not visible(node["label"]):
+        if node is None or node["kind"] not in MENTIONED or not visible(node):
             continue
         if (kinds and node["kind"] not in kinds) or any(n["id"] == node["id"] for n, _ in found):
             continue
