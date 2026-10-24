@@ -279,7 +279,8 @@
       "knowledge": "Tri thức",
       "apps": "Ứng dụng",
       "settings": "Cài đặt"
-    }
+    },
+    "opportunities": "Cơ hội"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -6080,7 +6081,8 @@
       "browser_needs_login": "Một danh tính trình duyệt cần đăng nhập lại",
       "autonomy": "Việc hub đã làm theo mức tự chủ của bạn",
       "worker_doctor": "Doctor của một worker được chia phát hiện mức high",
-      "curator_probe_report": "Báo cáo probe hằng tuần của Curator"
+      "curator_probe_report": "Báo cáo probe hằng tuần của Curator",
+      "opportunity_window": "Hạn của một cơ hội sắp đóng"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -10103,6 +10105,7 @@
       "factsTitle": "Chi tiết",
       "problem": "Bài toán",
       "noProblem": "Không có",
+      "opportunity": "Cơ hội",
       "deadline": "Hạn",
       "noDeadline": "Không có",
       "owner": "Chủ",
@@ -10416,6 +10419,215 @@
       "done": "{code} đã mở lại",
       "conflict": "Một writer khác đã đổi {code} sau khi bạn mở. Hãy đọc revision của họ rồi mở lại.",
       "refused": "Hub từ chối mở lại bài toán."
+    }
+  },
+  "opportunities": {
+    "status": {
+      "open": "Đang mở",
+      "captured": "Đã nắm được",
+      "missed": "Đã lỡ",
+      "dropped": "Đã bỏ"
+    },
+    "answers": {
+      "label": "Bài toán nó trả lời",
+      "link": "Bài toán {code}",
+      "hidden": "{count, plural, other {+# bài toán của dự án bạn không đọc được}}"
+    },
+    "window": {
+      "none": "Chưa biết hạn",
+      "left": "{count, plural, other {Còn # ngày}}",
+      "today": "Đóng hôm nay",
+      "past": "{count, plural, other {Đã đóng # ngày trước}}"
+    },
+    "fields": {
+      "statement": "điều có thể thắng",
+      "beneficiary": "ai hưởng lợi",
+      "leverage": "điều giúp với tới được",
+      "window_until": "hạn đóng",
+      "window_note": "ghi chú hạn",
+      "answers": "bài toán nó trả lời",
+      "metric": "chỉ số",
+      "rank": "thứ hạng",
+      "owner": "chủ",
+      "status": "trạng thái",
+      "close_reason": "lý do đóng"
+    },
+    "signals": {
+      "complaint": "Phàn nàn",
+      "workaround": "Cách xoay xở",
+      "repeated_request": "Yêu cầu lặp lại",
+      "blocker": "Điều chặn đường",
+      "commitment": "Cam kết",
+      "proposed_solution": "Giải pháp đề xuất",
+      "contradiction": "Mâu thuẫn",
+      "decision_without_reason": "Quyết định không có lý do",
+      "wish": "Mong muốn",
+      "external_demand": "Nhu cầu từ bên ngoài",
+      "window": "Khung thời gian",
+      "reusable_asset": "Tài sản dùng lại",
+      "pull": "Lực kéo",
+      "intro": "Lời giới thiệu",
+      "idle_capacity": "Năng lực nhàn rỗi"
+    },
+    "evidence": {
+      "title": "Bằng chứng",
+      "counts": "{lines, plural, other {# dòng}} từ {sources, plural, other {# nguồn}}",
+      "none": "Chưa có dòng bằng chứng nào. Writer thêm bằng evo-agents hub opportunity evidence add, hoặc skill intake đề xuất.",
+      "signalLabel": "Bằng chứng: {signal}",
+      "speaker": "do {speaker} nói",
+      "labels": {
+        "public": "công khai",
+        "internal": "nội bộ"
+      },
+      "confirmed": "{by} đã xác nhận",
+      "unconfirmed": "chưa xác nhận"
+    },
+    "list": {
+      "title": "Cơ hội",
+      "meta": "Cơ hội của {project}",
+      "caption": "Cơ hội của dự án {project}",
+      "search": "Cơ hội của dự án",
+      "new": "Cơ hội mới",
+      "emptyTitle": "Chưa có cơ hội",
+      "emptyText": "Cơ hội nói dự án có thể thắng điều gì: ai hưởng lợi, điều gì giúp với tới được ngay bây giờ và khi nào hạn đóng. Bài toán nó trả lời, goal và claim của canvas trỏ về nó, và Loop đi từ nó.",
+      "all": "Tất cả",
+      "statusLabel": "Trạng thái",
+      "count": "{count, plural, other {# cơ hội}}",
+      "noMatch": "Không cơ hội nào có trạng thái này",
+      "beneficiary": "Hưởng lợi: {who}",
+      "noWindow": "Không có hạn",
+      "noAnswers": "Chưa có",
+      "mobileMeta": "Đóng {until}, hưởng lợi: {who}",
+      "columns": {
+        "opportunity": "Cơ hội",
+        "status": "Trạng thái",
+        "closes": "Đóng",
+        "answers": "Trả lời",
+        "owner": "Chủ"
+      }
+    },
+    "page": {
+      "meta": "{code} của {project}",
+      "back": "Cơ hội",
+      "edit": "Sửa",
+      "close": "Đóng cơ hội",
+      "reopen": "Mở lại",
+      "readerTitle": "Bạn chỉ đọc cơ hội này",
+      "readerText": "Writer của dự án sửa, đóng và mở lại cơ hội.",
+      "capturedTitle": "Đã nắm được",
+      "missedTitle": "Đã lỡ",
+      "droppedTitle": "Đã bỏ",
+      "closedBy": "Do {by} đóng,",
+      "wonTitle": "Điều có thể thắng",
+      "beneficiary": "Ai hưởng lợi",
+      "leverage": "Điều giúp với tới được ngay bây giờ",
+      "window": "Hạn",
+      "detailsTitle": "Chi tiết",
+      "owner": "Chủ",
+      "rank": "Thứ hạng",
+      "revision": "Revision",
+      "revisionText": "{revision}, bởi {by}",
+      "changed": "Đổi lúc",
+      "metric": "Chỉ số",
+      "closeReason": "Lý do đóng",
+      "note": "Ghi chú của revision này",
+      "answersTitle": "Bài toán nó trả lời",
+      "noAnswers": "Cơ hội này chưa trả lời bài toán nào.",
+      "goalsTitle": "Goal trả lời nó",
+      "noGoals": "Chưa goal nào trả lời cơ hội này. Admin của dự án gắn nó vào một goal bằng evo-agents hub goal set --opportunity.",
+      "loopTitle": "Chuỗi Loop",
+      "openLoop": "Mở Loop",
+      "noItems": "Loop chưa tạo work item nào cho cơ hội này.",
+      "notFoundTitle": "Không có cơ hội {code}",
+      "notFoundText": "Dự án không có cơ hội nào mang mã đó."
+    },
+    "history": {
+      "title": "Lịch sử",
+      "revision": "Revision {revision}",
+      "created": "{by} viết",
+      "changed": "{by} đổi {fields}",
+      "nothing": "không gì"
+    },
+    "form": {
+      "required": "(bắt buộc)",
+      "cancel": "Huỷ",
+      "newTitle": "Cơ hội mới",
+      "newText": "Nói dự án có thể thắng điều gì. Cơ hội nhận mã kế tiếp của dự án.",
+      "create": "Thêm cơ hội",
+      "creating": "Đang thêm",
+      "editTitle": "Sửa {code}",
+      "editText": "Bạn sửa revision {revision}. Trạng thái giữ nguyên: Đóng và Mở lại mới đổi nó.",
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "statement": "Điều có thể thắng",
+      "statementHelp": "Chiến thắng, không phải công việc: một pilot với chuỗi khu vực trước khi hội chợ đóng.",
+      "beneficiary": "Ai hưởng lợi",
+      "beneficiaryHelp": "Người, nhóm hay khách hàng được lợi.",
+      "leverage": "Điều giúp với tới được ngay bây giờ",
+      "leverageHelp": "Tài sản, lời giới thiệu hay thời điểm mà dự án dựa vào.",
+      "windowUntil": "Hạn đóng",
+      "windowUntilHelp": "Ngày cuối còn thắng được. Để trống: chưa biết ngày.",
+      "windowNote": "Hạn này là gì",
+      "windowNoteHelp": "Hội chợ, vòng ngân sách, đợt ưu đãi. Không bắt buộc.",
+      "answers": "Bài toán nó trả lời",
+      "answersHelp": "Các mã cách nhau bằng dấu phẩy hoặc dấu cách: P-3, hoặc lumen/P-3 cho dự án khác. Tối đa {max}.",
+      "rank": "Thứ hạng",
+      "rankNewHelp": "Để trống: xếp sau các cơ hội đang mở.",
+      "rankHelp": "1 là đầu tiên. Để trống thì giữ nguyên.",
+      "owner": "Chủ",
+      "ownerNewHelp": "Login có vai trò writer trở lên. Để trống: bạn.",
+      "ownerHelp": "Login có vai trò writer trở lên. Để trống thì giữ chủ hiện tại.",
+      "note": "Ghi chú (không bắt buộc)",
+      "noteHelp": "Vì sao, để lưu vào lịch sử.",
+      "wrong": "{count, plural, other {# trường cần sửa}} trước khi lưu.",
+      "errors": {
+        "statement": "Hãy nói có thể thắng điều gì.",
+        "beneficiary": "Hãy nói ai hưởng lợi.",
+        "leverage": "Hãy nói điều gì giúp với tới được ngay bây giờ.",
+        "windowUntil": "Một ngày dạng YYYY-MM-DD.",
+        "answers": "Mã như P-3 hoặc lumen/P-3, tối đa 20.",
+        "rank": "Một số nguyên từ 1 tới 10000.",
+        "owner": "Một login: chữ, số, - và _."
+      },
+      "created": "Đã thêm {code}",
+      "open": "Mở nó",
+      "saved": "Đã lưu {code} thành revision {revision}",
+      "unchanged": "{code} đã đúng như vậy: không có gì thay đổi",
+      "createConflict": "Một writer khác vừa thêm cơ hội cùng lúc. Hãy lưu lại: cơ hội của bạn sẽ nhận mã kế tiếp.",
+      "editConflict": "Một writer khác đã đổi {code} sau khi bạn mở. Biểu mẫu giờ chứa revision của họ: hãy sửa lại rồi lưu.",
+      "refused": "Hub từ chối cơ hội như đã viết."
+    },
+    "close": {
+      "title": "Đóng {code}",
+      "text": "Cơ hội đã đóng vẫn còn, kèm lý do đóng, và có thể mở lại. Các goal trả lời nó vẫn giữ nó.",
+      "how": "Kết thúc thế nào",
+      "hints": {
+        "captured": "Dự án đã nắm được nó.",
+        "missed": "Hạn đã đóng trước khi dự án kịp làm.",
+        "dropped": "Không còn đáng theo đuổi nữa, hoặc nó chưa từng có thật."
+      },
+      "reason": "Lý do",
+      "required": "(bắt buộc)",
+      "reasonHelp": "Một hai câu, lưu cùng cơ hội.",
+      "reasonMissing": "Hãy nói vì sao đóng.",
+      "note": "Ghi chú (không bắt buộc)",
+      "cancel": "Huỷ",
+      "submit": "{status, select, captured {Đóng: đã nắm được} missed {Đóng: đã lỡ} dropped {Đóng: bỏ} other {Đóng}}",
+      "closing": "Đang đóng",
+      "done": "{status, select, captured {{code} đã nắm được} missed {{code} đã lỡ} dropped {{code} đã bỏ} other {{code} đã đóng}}",
+      "conflict": "Một writer khác đã đổi {code} sau khi bạn mở. Hãy đọc revision của họ rồi đóng lại.",
+      "refused": "Hub từ chối đóng cơ hội."
+    },
+    "reopen": {
+      "title": "Mở lại {code}?",
+      "text": "{status, select, captured {Nó đã nắm được: {reason}} missed {Nó đã lỡ: {reason}} dropped {Nó đã bị bỏ: {reason}} other {Nó đã đóng: {reason}}}. Mở lại thì nó mở như trước, và lý do đóng vẫn nằm trong lịch sử.",
+      "note": "Ghi chú (không bắt buộc)",
+      "cancel": "Huỷ",
+      "submit": "Mở lại",
+      "reopening": "Đang mở lại",
+      "done": "{code} đã mở lại",
+      "conflict": "Một writer khác đã đổi {code} sau khi bạn mở. Hãy đọc revision của họ rồi mở lại.",
+      "refused": "Hub từ chối mở lại cơ hội."
     }
   },
   "browser": {

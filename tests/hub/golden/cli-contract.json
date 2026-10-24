@@ -3302,6 +3302,14 @@
         },
         {
           "flags": [
+            "--opportunities"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--archive"
           ],
           "value": null,
@@ -3995,6 +4003,7 @@
               "use_cases",
               "signal_keys",
               "problems",
+              "opportunities",
               "delivery",
               "rev",
               "evidence_count",
@@ -6812,6 +6821,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -6870,6 +6880,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -7020,6 +7031,22 @@
         },
         {
           "flags": [
+            "--opportunity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-opportunity"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--rank"
           ],
           "value": "integer",
@@ -7092,6 +7119,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -7153,6 +7181,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -7247,6 +7276,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -7303,6 +7333,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -7352,6 +7383,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -7409,6 +7441,7 @@
           "candidates",
           "promises",
           "questions",
+          "opportunities",
           "outcome"
         ],
         "schema": "Intake"
@@ -9411,6 +9444,684 @@
         }
       ],
       "json": null
+    },
+    "hub opportunity close": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "captured",
+            "missed",
+            "dropped"
+          ]
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "beneficiary",
+          "leverage",
+          "window_until",
+          "window_note",
+          "answers",
+          "hidden_answers",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "ProjectOpportunityWritten"
+      }
+    },
+    "hub opportunity evidence add": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--source-kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "hub_chat",
+            "messenger",
+            "chat_fpt",
+            "email",
+            "file",
+            "harness",
+            "other"
+          ]
+        },
+        {
+          "flags": [
+            "--source-uri"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--locator"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--speaker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--excerpt"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--signal"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "complaint",
+            "workaround",
+            "repeated_request",
+            "blocker",
+            "commitment",
+            "proposed_solution",
+            "contradiction",
+            "decision_without_reason",
+            "wish",
+            "external_demand",
+            "window",
+            "reusable_asset",
+            "pull",
+            "intro",
+            "idle_capacity"
+          ]
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "public",
+            "internal",
+            "personal"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "opportunity",
+          "code",
+          "number",
+          "source_kind",
+          "source_uri",
+          "locator",
+          "speaker",
+          "excerpt",
+          "signal",
+          "label",
+          "added_by",
+          "added_at",
+          "confirmed_by",
+          "confirmed_at",
+          "proposal_id"
+        ],
+        "schema": "OpportunityEvidence"
+      }
+    },
+    "hub opportunity evidence confirm": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "evidence",
+          "metavar": "EVIDENCE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "opportunity",
+          "code",
+          "number",
+          "source_kind",
+          "source_uri",
+          "locator",
+          "speaker",
+          "excerpt",
+          "signal",
+          "label",
+          "added_by",
+          "added_at",
+          "confirmed_by",
+          "confirmed_at",
+          "proposal_id"
+        ],
+        "schema": "OpportunityEvidence"
+      }
+    },
+    "hub opportunity evidence list": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "project",
+          "opportunity",
+          "code",
+          "number",
+          "source_kind",
+          "source_uri",
+          "locator",
+          "speaker",
+          "excerpt",
+          "signal",
+          "label",
+          "added_by",
+          "added_at",
+          "confirmed_by",
+          "confirmed_at",
+          "proposal_id"
+        ],
+        "schema": "OpportunityEvidence"
+      }
+    },
+    "hub opportunity list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "captured",
+            "missed",
+            "dropped"
+          ]
+        },
+        {
+          "flags": [
+            "--closing-within"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "beneficiary",
+          "leverage",
+          "window_until",
+          "window_note",
+          "answers",
+          "hidden_answers",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "ProjectOpportunity"
+      }
+    },
+    "hub opportunity set": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--statement"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--beneficiary"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--leverage"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--window-until"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--window-note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-window"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--answers"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-answers"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--metric"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--aggregate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "last",
+            "mean",
+            "sum",
+            "count",
+            "p50",
+            "p90"
+          ]
+        },
+        {
+          "flags": [
+            "--window-days"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--tenant"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-metric"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rank"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reopen"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "beneficiary",
+          "leverage",
+          "window_until",
+          "window_note",
+          "answers",
+          "hidden_answers",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "ProjectOpportunityWritten"
+      }
+    },
+    "hub opportunity show": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "revision",
+          "statement",
+          "beneficiary",
+          "leverage",
+          "window_until",
+          "window_note",
+          "answers",
+          "hidden_answers",
+          "metric",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "evidence_count",
+          "source_count"
+        ],
+        "schema": "ProjectOpportunityShown"
+      }
     },
     "hub org seat add": {
       "positionals": [
@@ -18865,7 +19576,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.42.1"
+      "version": "0.43.0"
     },
     "paths": {
       "/v1/health": {
@@ -70260,6 +70971,836 @@
           }
         }
       },
+      "/v1/projects/{project}/opportunities": {
+        "get": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "List Opportunities",
+          "description": "The project's opportunities as they are now, by rank, then by code.",
+          "operationId": "list_opportunities_v1_projects__project__opportunities_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "captured",
+                      "missed",
+                      "dropped"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "those of this status alone",
+                "title": "Status"
+              },
+              "description": "those of this status alone"
+            },
+            {
+              "name": "closing_within",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 3650,
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the open ones whose window ends within this many days (one already past included), nearest end first; with it, status is open",
+                "title": "Closing Within"
+              },
+              "description": "the open ones whose window ends within this many days (one already past included), nearest end first; with it, status is open"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectOpportunity"
+                    },
+                    "title": "Response List Opportunities V1 Projects  Project  Opportunities Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/opportunities/{ref}": {
+        "get": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "Show Opportunity",
+          "description": "One opportunity of the project, at its newest revision or at ``revision``, with its evidence counted.",
+          "operationId": "show_opportunity_v1_projects__project__opportunities__ref__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^O-[1-9][0-9]{0,8}$",
+                "description": "O-<number>",
+                "title": "Ref"
+              },
+              "description": "O-<number>"
+            },
+            {
+              "name": "revision",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an older revision",
+                "title": "Revision"
+              },
+              "description": "an older revision"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectOpportunityShown"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "Write Opportunity",
+          "description": "Write an opportunity whole as its next revision, made when the project has none of code ``ref``; a writer of\nthe project may.",
+          "operationId": "write_opportunity_v1_projects__project__opportunities__ref__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^O-[1-9][0-9]{0,8}$",
+                "description": "O-<number>",
+                "title": "Ref"
+              },
+              "description": "O-<number>"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOpportunityWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectOpportunityWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/opportunities/{ref}/revisions": {
+        "get": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "Opportunity Revisions",
+          "description": "Every revision of an opportunity, the newest first, each with the fields whose value it changed.",
+          "operationId": "opportunity_revisions_v1_projects__project__opportunities__ref__revisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^O-[1-9][0-9]{0,8}$",
+                "description": "O-<number>",
+                "title": "Ref"
+              },
+              "description": "O-<number>"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/OpportunityRevision"
+                    },
+                    "title": "Response Opportunity Revisions V1 Projects  Project  Opportunities  Ref  Revisions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/opportunities/{ref}/close": {
+        "post": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "Close Opportunity",
+          "description": "Close an opportunity as captured, missed or dropped, for a reason, as its next revision; a writer of the\nproject may.",
+          "operationId": "close_opportunity_v1_projects__project__opportunities__ref__close_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^O-[1-9][0-9]{0,8}$",
+                "description": "O-<number>",
+                "title": "Ref"
+              },
+              "description": "O-<number>"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOpportunityClose"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectOpportunityWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/opportunities/{ref}/evidence": {
+        "get": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "List Evidence",
+          "description": "The evidence of an opportunity by number, for a member with a grant on the project.",
+          "operationId": "list_evidence_v1_projects__project__opportunities__ref__evidence_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^O-[1-9][0-9]{0,8}$",
+                "description": "O-<number>",
+                "title": "Ref"
+              },
+              "description": "O-<number>"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/OpportunityEvidence"
+                    },
+                    "title": "Response List Evidence V1 Projects  Project  Opportunities  Ref  Evidence Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "Add Evidence",
+          "description": "Add a line of evidence to an opportunity; a writer of the project may. 422 for a personal label or an excerpt of\nmore than 300 characters, 409 for a line the opportunity has already.",
+          "operationId": "add_evidence_v1_projects__project__opportunities__ref__evidence_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^O-[1-9][0-9]{0,8}$",
+                "description": "O-<number>",
+                "title": "Ref"
+              },
+              "description": "O-<number>"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityEvidenceWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpportunityEvidence"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/opportunities/{ref}/evidence/{code}/confirm": {
+        "post": {
+          "tags": [
+            "opportunities"
+          ],
+          "summary": "Confirm Evidence",
+          "description": "Confirm a line of evidence, once; a writer of the project may.",
+          "operationId": "confirm_evidence_v1_projects__project__opportunities__ref__evidence__code__confirm_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^O-[1-9][0-9]{0,8}$",
+                "description": "O-<number>",
+                "title": "Ref"
+              },
+              "description": "O-<number>"
+            },
+            {
+              "name": "code",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^E-[1-9][0-9]{0,8}$",
+                "description": "E-<number>",
+                "title": "Code"
+              },
+              "description": "E-<number>"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpportunityEvidence"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/intakes": {
         "get": {
           "tags": [
@@ -70542,7 +72083,7 @@
             "intake"
           ],
           "summary": "Put Intake",
-          "description": "Put the result of an intake, once, as an evo-intake/1 document (see the module).",
+          "description": "Put the result of an intake, once, as an evo-intake/1 or evo-intake/2 document (see the module).",
           "operationId": "put_intake_v1_projects__project__intakes__ref__put",
           "parameters": [
             {
@@ -70930,6 +72471,25 @@
                 "title": "Problem"
               },
               "description": "a problem's code: the work items that go from it"
+            },
+            {
+              "name": "opportunity",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O-[1-9][0-9]{0,8}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an opportunity's code: the work items that go from it",
+                "title": "Opportunity"
+              },
+              "description": "an opportunity's code: the work items that go from it"
             },
             {
               "name": "X-Evo-Sink",
@@ -76896,7 +78456,8 @@
                 "agent",
                 "policy",
                 "problem",
-                "goal"
+                "goal",
+                "opportunity"
               ],
               "title": "Kind"
             },
@@ -78016,6 +79577,22 @@
               ],
               "title": "Problems",
               "description": "the codes of the problems of the project it answers, as P-3, each open or solved when a change adds it: the whole list, [] for none"
+            },
+            "opportunities": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunities",
+              "description": "the codes of the opportunities of the project it links, as O-3, each open, captured or missed when a change adds it: the whole list, [] for none"
             }
           },
           "type": "object",
@@ -78124,6 +79701,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             },
             "rev": {
               "type": "integer",
@@ -78300,6 +79885,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             },
             "rev": {
               "type": "integer",
@@ -78493,6 +80086,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             }
           },
           "type": "object",
@@ -79098,6 +80699,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             },
             "code": {
               "type": "string",
@@ -88966,6 +90575,18 @@
               ],
               "title": "Questions"
             },
+            "opportunities": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunities",
+              "description": "how many candidate opportunities the result held (evo-intake/2); null while it is open"
+            },
             "outcome": {
               "anyOf": [
                 {
@@ -88998,6 +90619,46 @@
           "title": "Intake",
           "description": "An intake of a project."
         },
+        "IntakeOpportunityProposal": {
+          "properties": {
+            "candidate": {
+              "type": "integer",
+              "title": "Candidate",
+              "description": "the candidate opportunity's place in the result, from 1"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "new_opportunity",
+                "evidence"
+              ],
+              "title": "Kind"
+            },
+            "opportunity": {
+              "type": "string",
+              "title": "Opportunity",
+              "description": "O-<number>: the code a new opportunity would take, or the one the lines join"
+            },
+            "proposal_id": {
+              "type": "integer",
+              "title": "Proposal Id",
+              "description": "the pending proposal of @builder a writer approves"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines"
+            }
+          },
+          "type": "object",
+          "required": [
+            "candidate",
+            "kind",
+            "opportunity",
+            "proposal_id",
+            "lines"
+          ],
+          "title": "IntakeOpportunityProposal"
+        },
         "IntakeOutcome": {
           "properties": {
             "proposals": {
@@ -89013,6 +90674,14 @@
               },
               "type": "array",
               "title": "Tasks"
+            },
+            "opportunity_proposals": {
+              "items": {
+                "$ref": "#/components/schemas/IntakeOpportunityProposal"
+              },
+              "type": "array",
+              "title": "Opportunity Proposals",
+              "description": "the proposals made for the candidate opportunities of an evo-intake/2 result"
             },
             "tasks_skipped": {
               "anyOf": [
@@ -92394,6 +94063,18 @@
               ],
               "title": "Problem",
               "description": "the code (P-<number>) of the problem it goes from: the one its goal answered when it was made"
+            },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of the opportunity it goes from: the one its goal answered when it was made, or its parent's"
             },
             "claim": {
               "anyOf": [
@@ -96119,7 +97800,8 @@
                     "autonomy",
                     "worker_doctor",
                     "browser_needs_login",
-                    "curator_probe_report"
+                    "curator_probe_report",
+                    "opportunity_window"
                   ]
                 },
                 {
@@ -96455,6 +98137,264 @@
           ],
           "title": "OAuthTokens",
           "description": "The tokens beside the access token (which is the secret's value) that PUT /v1/secrets/{name} takes for an\naccount of OAuth; never shown again."
+        },
+        "OpportunityEvidence": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "opportunity": {
+              "type": "string",
+              "title": "Opportunity",
+              "description": "O-<number>"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "E-<number>, unique in the opportunity"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "source_kind": {
+              "type": "string",
+              "title": "Source Kind"
+            },
+            "source_uri": {
+              "type": "string",
+              "title": "Source Uri"
+            },
+            "locator": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locator"
+            },
+            "speaker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speaker"
+            },
+            "excerpt": {
+              "type": "string",
+              "title": "Excerpt"
+            },
+            "signal": {
+              "type": "string",
+              "title": "Signal"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label"
+            },
+            "added_by": {
+              "type": "string",
+              "title": "Added By"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            },
+            "confirmed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmed By",
+              "description": "the writer who confirmed it; null before"
+            },
+            "confirmed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmed At"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id",
+              "description": "the proposal of @builder that made it; null for a line a writer added"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "opportunity",
+            "code",
+            "number",
+            "source_kind",
+            "source_uri",
+            "locator",
+            "speaker",
+            "excerpt",
+            "signal",
+            "label",
+            "added_by",
+            "added_at",
+            "confirmed_by",
+            "confirmed_at",
+            "proposal_id"
+          ],
+          "title": "OpportunityEvidence",
+          "description": "A line of the evidence of an opportunity."
+        },
+        "OpportunityEvidenceWrite": {
+          "properties": {
+            "source_kind": {
+              "type": "string",
+              "title": "Source Kind",
+              "description": "where it was read: hub_chat, messenger, chat_fpt, email, file, harness, other"
+            },
+            "source_uri": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Source Uri",
+              "description": "the source's URI or path"
+            },
+            "locator": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locator",
+              "description": "where in the source: a message id, a time, a page"
+            },
+            "speaker": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speaker",
+              "description": "who spoke, when someone did"
+            },
+            "excerpt": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Excerpt",
+              "description": "at most 300 characters of the source"
+            },
+            "signal": {
+              "type": "string",
+              "title": "Signal",
+              "description": "what it shows: complaint, workaround, repeated_request, blocker, commitment, proposed_solution, contradiction, decision_without_reason, wish, external_demand, window, reusable_asset, pull, intro, idle_capacity"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label",
+              "description": "public or internal; a personal line stays on the member's machine"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "source_kind",
+            "source_uri",
+            "excerpt",
+            "signal",
+            "label"
+          ],
+          "title": "OpportunityEvidenceWrite",
+          "description": "One line of evidence of an opportunity, as a writer adds it or @builder proposes it: a problem's line, whose\nsignal may also be one of an opportunity's."
+        },
+        "OpportunityRevision": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "captured",
+                "missed",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Changed",
+              "description": "the fields whose value differs from the revision before"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "status",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "OpportunityRevision"
         },
         "OptionIn": {
           "properties": {
@@ -103668,6 +105608,18 @@
               "title": "Problem",
               "description": "the code (P-<number>) of the problem of the project it answers; null: none"
             },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both"
+            },
             "rank": {
               "type": "integer",
               "title": "Rank",
@@ -103850,6 +105802,19 @@
               "title": "Problem",
               "description": "the code (P-<number>) of a problem of the project that is not dropped; null: none"
             },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^O-[1-9][0-9]{0,8}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of an opportunity of the project that is not dropped; null: none. Not with a problem"
+            },
             "rank": {
               "anyOf": [
                 {
@@ -104020,6 +105985,18 @@
               ],
               "title": "Problem",
               "description": "the code (P-<number>) of the problem of the project it answers; null: none"
+            },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both"
             },
             "rank": {
               "type": "integer",
@@ -104254,6 +106231,721 @@
           ],
           "title": "ProjectLoop",
           "description": "A project's Loop as it stands."
+        },
+        "ProjectOpportunity": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "O-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement",
+              "description": "what the project could win"
+            },
+            "beneficiary": {
+              "type": "string",
+              "title": "Beneficiary",
+              "description": "who benefits"
+            },
+            "leverage": {
+              "type": "string",
+              "title": "Leverage",
+              "description": "what makes it reachable now"
+            },
+            "window_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Until",
+              "description": "the date after which it is gone; null: none known"
+            },
+            "window_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Note",
+              "description": "what the window is"
+            },
+            "answers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Answers",
+              "description": "the problems it answers that the reader sees: P-<n>, or <project>/P-<n> for another project's"
+            },
+            "hidden_answers": {
+              "type": "integer",
+              "title": "Hidden Answers",
+              "description": "the problems of other projects it answers that the reader holds no grant on"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's opportunities, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "captured",
+                "missed",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was captured, missed or dropped; null while it is open"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "revision",
+            "statement",
+            "beneficiary",
+            "leverage",
+            "window_until",
+            "window_note",
+            "answers",
+            "hidden_answers",
+            "metric",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at"
+          ],
+          "title": "ProjectOpportunity",
+          "description": "An opportunity of a project at one revision."
+        },
+        "ProjectOpportunityClose": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "captured",
+                "missed",
+                "dropped"
+              ],
+              "title": "Status",
+              "description": "captured, missed or dropped"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the opportunity is at this revision now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "status",
+            "reason"
+          ],
+          "title": "ProjectOpportunityClose"
+        },
+        "ProjectOpportunityShown": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "O-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement",
+              "description": "what the project could win"
+            },
+            "beneficiary": {
+              "type": "string",
+              "title": "Beneficiary",
+              "description": "who benefits"
+            },
+            "leverage": {
+              "type": "string",
+              "title": "Leverage",
+              "description": "what makes it reachable now"
+            },
+            "window_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Until",
+              "description": "the date after which it is gone; null: none known"
+            },
+            "window_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Note",
+              "description": "what the window is"
+            },
+            "answers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Answers",
+              "description": "the problems it answers that the reader sees: P-<n>, or <project>/P-<n> for another project's"
+            },
+            "hidden_answers": {
+              "type": "integer",
+              "title": "Hidden Answers",
+              "description": "the problems of other projects it answers that the reader holds no grant on"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's opportunities, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "captured",
+                "missed",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was captured, missed or dropped; null while it is open"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "evidence_count": {
+              "type": "integer",
+              "title": "Evidence Count",
+              "description": "the lines of evidence of the opportunity"
+            },
+            "source_count": {
+              "type": "integer",
+              "title": "Source Count",
+              "description": "the independent sources those lines come from: a source is a kind and an address"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "revision",
+            "statement",
+            "beneficiary",
+            "leverage",
+            "window_until",
+            "window_note",
+            "answers",
+            "hidden_answers",
+            "metric",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at",
+            "evidence_count",
+            "source_count"
+          ],
+          "title": "ProjectOpportunityShown"
+        },
+        "ProjectOpportunityWrite": {
+          "properties": {
+            "statement": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Statement",
+              "description": "what could be won"
+            },
+            "beneficiary": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Beneficiary",
+              "description": "who benefits"
+            },
+            "leverage": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Leverage",
+              "description": "what makes it reachable now"
+            },
+            "window_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Until",
+              "description": "the date after which it is gone"
+            },
+            "window_note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Note"
+            },
+            "answers": {
+              "items": {
+                "type": "string",
+                "maxLength": 120,
+                "pattern": "^(?:[a-z0-9][a-z0-9-]{0,99}/)?P-[1-9][0-9]{0,8}$"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Answers",
+              "description": "the problems it answers: P-3, or <project>/P-3 for another project's; the whole list"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rank": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rank",
+              "description": "null: kept, or after the project's open opportunities for a new one"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "a member with the writer role or above; null: kept, or the writer for a new opportunity"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "captured",
+                "missed",
+                "dropped"
+              ],
+              "title": "Status",
+              "default": "open"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was captured, missed or dropped, for a closed opportunity and only for one"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why, for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the opportunity is at this revision now; 0: new only"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "statement",
+            "beneficiary",
+            "leverage"
+          ],
+          "title": "ProjectOpportunityWrite",
+          "description": "The next revision of an opportunity: the whole of it, as its writer wants it."
+        },
+        "ProjectOpportunityWritten": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "O-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement",
+              "description": "what the project could win"
+            },
+            "beneficiary": {
+              "type": "string",
+              "title": "Beneficiary",
+              "description": "who benefits"
+            },
+            "leverage": {
+              "type": "string",
+              "title": "Leverage",
+              "description": "what makes it reachable now"
+            },
+            "window_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Until",
+              "description": "the date after which it is gone; null: none known"
+            },
+            "window_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Note",
+              "description": "what the window is"
+            },
+            "answers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Answers",
+              "description": "the problems it answers that the reader sees: P-<n>, or <project>/P-<n> for another project's"
+            },
+            "hidden_answers": {
+              "type": "integer",
+              "title": "Hidden Answers",
+              "description": "the problems of other projects it answers that the reader holds no grant on"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's opportunities, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "captured",
+                "missed",
+                "dropped"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it was captured, missed or dropped; null while it is open"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the newest revision is this opportunity already: nothing was written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "revision",
+            "statement",
+            "beneficiary",
+            "leverage",
+            "window_until",
+            "window_note",
+            "answers",
+            "hidden_answers",
+            "metric",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "ProjectOpportunityWritten"
         },
         "ProjectPlugin": {
           "properties": {

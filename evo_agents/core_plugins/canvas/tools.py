@@ -38,6 +38,7 @@ MAX_SIGNAL_DAYS = 400  # the hub keeps signals 400 days by default (EVO_HUB_SIGN
 MAX_LINKS = 20  # content.MAX_LINKS
 MAX_CODE_CHARS = 100  # tables_srs.MAX_CODE_CHARS
 PROBLEM_REF = "^P-[1-9][0-9]{0,8}$"  # evo_agents.hub.problems.REF
+OPPORTUNITY_REF = "^O-[1-9][0-9]{0,8}$"  # evo_agents.hub.opportunities.REF
 
 STRATEGIST_INSTRUCTIONS = (
     "You are @strategist, the agent of this project's Lean Canvases on the evo-agents hub. You read the canvases and "
@@ -113,6 +114,13 @@ _CLAIM_FIELDS = {
         "items": {"type": "string", "pattern": PROBLEM_REF},
         "description": "the codes of the problems of the project the claim answers, as problem_list of evo-hub lists "
         "them (P-3), each open or solved: the whole list, [] for none",
+    },
+    "opportunities": {
+        "type": "array",
+        "maxItems": MAX_LINKS,
+        "items": {"type": "string", "pattern": OPPORTUNITY_REF},
+        "description": "the codes of the opportunities of the project the claim links, as opportunity_list of evo-hub "
+        "lists them (O-3), each open, captured or missed: the whole list, [] for none",
     },
 }
 _CHANGE = {"type": "object", "additionalProperties": False, "properties": _CLAIM_FIELDS}

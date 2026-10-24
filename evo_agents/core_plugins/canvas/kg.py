@@ -92,6 +92,8 @@ def _claim_text(row: store.ClaimRow) -> str:
         lines.append(f"Signal keys: {', '.join(row.signal_keys)}.")
     if row.problems:
         lines.append(f"Problems: {', '.join(row.problems)}.")
+    if row.opportunities:
+        lines.append(f"Opportunities: {', '.join(row.opportunities)}.")
     return "\n".join(lines)
 
 

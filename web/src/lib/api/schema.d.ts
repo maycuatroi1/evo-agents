@@ -9090,6 +9090,137 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Opportunities
+         * @description The project's opportunities as they are now, by rank, then by code.
+         */
+        get: operations["list_opportunities_v1_projects__project__opportunities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/opportunities/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Opportunity
+         * @description One opportunity of the project, at its newest revision or at ``revision``, with its evidence counted.
+         */
+        get: operations["show_opportunity_v1_projects__project__opportunities__ref__get"];
+        /**
+         * Write Opportunity
+         * @description Write an opportunity whole as its next revision, made when the project has none of code ``ref``; a writer of
+         *     the project may.
+         */
+        put: operations["write_opportunity_v1_projects__project__opportunities__ref__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/opportunities/{ref}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Opportunity Revisions
+         * @description Every revision of an opportunity, the newest first, each with the fields whose value it changed.
+         */
+        get: operations["opportunity_revisions_v1_projects__project__opportunities__ref__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/opportunities/{ref}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Opportunity
+         * @description Close an opportunity as captured, missed or dropped, for a reason, as its next revision; a writer of the
+         *     project may.
+         */
+        post: operations["close_opportunity_v1_projects__project__opportunities__ref__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/opportunities/{ref}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evidence
+         * @description The evidence of an opportunity by number, for a member with a grant on the project.
+         */
+        get: operations["list_evidence_v1_projects__project__opportunities__ref__evidence_get"];
+        put?: never;
+        /**
+         * Add Evidence
+         * @description Add a line of evidence to an opportunity; a writer of the project may. 422 for a personal label or an excerpt of
+         *     more than 300 characters, 409 for a line the opportunity has already.
+         */
+        post: operations["add_evidence_v1_projects__project__opportunities__ref__evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/opportunities/{ref}/evidence/{code}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Evidence
+         * @description Confirm a line of evidence, once; a writer of the project may.
+         */
+        post: operations["confirm_evidence_v1_projects__project__opportunities__ref__evidence__code__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/intakes": {
         parameters: {
             query?: never;
@@ -9128,7 +9259,7 @@ export interface paths {
         get: operations["show_intake_v1_projects__project__intakes__ref__get"];
         /**
          * Put Intake
-         * @description Put the result of an intake, once, as an evo-intake/1 document (see the module).
+         * @description Put the result of an intake, once, as an evo-intake/1 or evo-intake/2 document (see the module).
          */
         put: operations["put_intake_v1_projects__project__intakes__ref__put"];
         post?: never;
@@ -11501,7 +11632,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity";
             /**
              * Target
              * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy
@@ -11930,6 +12061,11 @@ export interface components {
              * @description the codes of the problems of the project it answers, as P-3, each open or solved when a change adds it: the whole list, [] for none
              */
             problems?: string[] | null;
+            /**
+             * Opportunities
+             * @description the codes of the opportunities of the project it links, as O-3, each open, captured or missed when a change adds it: the whole list, [] for none
+             */
+            opportunities?: string[] | null;
         };
         /**
          * CanvasClaim
@@ -11990,6 +12126,11 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project it answers, by number
              */
             problems: string[];
+            /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
             /**
              * Rev
              * @description the rev it is at: an edit names it as base_rev
@@ -12084,6 +12225,11 @@ export interface components {
              */
             problems: string[];
             /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
+            /**
              * Rev
              * @description the rev it is at: an edit names it as base_rev
              */
@@ -12177,6 +12323,11 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project it answers, by number
              */
             problems: string[];
+            /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
         };
         /**
          * CanvasDetail
@@ -12435,6 +12586,11 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project it answers, by number
              */
             problems: string[];
+            /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
             /** Code */
             code: string;
             /** Rev */
@@ -16744,8 +16900,38 @@ export interface components {
             promises: number | null;
             /** Questions */
             questions: number | null;
+            /**
+             * Opportunities
+             * @description how many candidate opportunities the result held (evo-intake/2); null while it is open
+             */
+            opportunities?: number | null;
             /** @description what the hub made of the result; null while it is open */
             outcome: components["schemas"]["IntakeOutcome"] | null;
+        };
+        /** IntakeOpportunityProposal */
+        IntakeOpportunityProposal: {
+            /**
+             * Candidate
+             * @description the candidate opportunity's place in the result, from 1
+             */
+            candidate: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "new_opportunity" | "evidence";
+            /**
+             * Opportunity
+             * @description O-<number>: the code a new opportunity would take, or the one the lines join
+             */
+            opportunity: string;
+            /**
+             * Proposal Id
+             * @description the pending proposal of @builder a writer approves
+             */
+            proposal_id: number;
+            /** Lines */
+            lines: number;
         };
         /**
          * IntakeOutcome
@@ -16756,6 +16942,11 @@ export interface components {
             proposals: components["schemas"]["IntakeProposal"][];
             /** Tasks */
             tasks: components["schemas"]["IntakeTask"][];
+            /**
+             * Opportunity Proposals
+             * @description the proposals made for the candidate opportunities of an evo-intake/2 result
+             */
+            opportunity_proposals?: components["schemas"]["IntakeOpportunityProposal"][];
             /**
              * Tasks Skipped
              * @description why the promises made no task (the plugin tasks is not enabled in the project); null otherwise
@@ -18222,6 +18413,11 @@ export interface components {
              * @description the code (P-<number>) of the problem it goes from: the one its goal answered when it was made
              */
             problem?: string | null;
+            /**
+             * Opportunity
+             * @description the code (O-<number>) of the opportunity it goes from: the one its goal answered when it was made, or its parent's
+             */
+            opportunity?: string | null;
             claim: components["schemas"]["LoopClaimRef"] | null;
             use_case: components["schemas"]["LoopUseCaseRef"] | null;
             /**
@@ -19783,7 +19979,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -19919,6 +20115,125 @@ export interface components {
              * @description the Claude account's address
              */
             email?: string | null;
+        };
+        /**
+         * OpportunityEvidence
+         * @description A line of the evidence of an opportunity.
+         */
+        OpportunityEvidence: {
+            /** Project */
+            project: string;
+            /**
+             * Opportunity
+             * @description O-<number>
+             */
+            opportunity: string;
+            /**
+             * Code
+             * @description E-<number>, unique in the opportunity
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Source Kind */
+            source_kind: string;
+            /** Source Uri */
+            source_uri: string;
+            /** Locator */
+            locator: string | null;
+            /** Speaker */
+            speaker: string | null;
+            /** Excerpt */
+            excerpt: string;
+            /** Signal */
+            signal: string;
+            /** Label */
+            label: string;
+            /** Added By */
+            added_by: string;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /**
+             * Confirmed By
+             * @description the writer who confirmed it; null before
+             */
+            confirmed_by: string | null;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /**
+             * Proposal Id
+             * @description the proposal of @builder that made it; null for a line a writer added
+             */
+            proposal_id: number | null;
+        };
+        /**
+         * OpportunityEvidenceWrite
+         * @description One line of evidence of an opportunity, as a writer adds it or @builder proposes it: a problem's line, whose
+         *     signal may also be one of an opportunity's.
+         */
+        OpportunityEvidenceWrite: {
+            /**
+             * Source Kind
+             * @description where it was read: hub_chat, messenger, chat_fpt, email, file, harness, other
+             */
+            source_kind: string;
+            /**
+             * Source Uri
+             * @description the source's URI or path
+             */
+            source_uri: string;
+            /**
+             * Locator
+             * @description where in the source: a message id, a time, a page
+             */
+            locator?: string | null;
+            /**
+             * Speaker
+             * @description who spoke, when someone did
+             */
+            speaker?: string | null;
+            /**
+             * Excerpt
+             * @description at most 300 characters of the source
+             */
+            excerpt: string;
+            /**
+             * Signal
+             * @description what it shows: complaint, workaround, repeated_request, blocker, commitment, proposed_solution, contradiction, decision_without_reason, wish, external_demand, window, reusable_asset, pull, intro, idle_capacity
+             */
+            signal: string;
+            /**
+             * Label
+             * @description public or internal; a personal line stays on the member's machine
+             */
+            label: string;
+        };
+        /** OpportunityRevision */
+        OpportunityRevision: {
+            /** Revision */
+            revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "captured" | "missed" | "dropped";
+            /** Note */
+            note: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description the fields whose value differs from the revision before
+             */
+            changed: string[];
         };
         /** OptionIn */
         OptionIn: {
@@ -23203,6 +23518,11 @@ export interface components {
              */
             problem: string | null;
             /**
+             * Opportunity
+             * @description the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both
+             */
+            opportunity?: string | null;
+            /**
              * Rank
              * @description its place among the project's goals, 1 first
              */
@@ -23274,6 +23594,11 @@ export interface components {
              */
             problem?: string | null;
             /**
+             * Opportunity
+             * @description the code (O-<number>) of an opportunity of the project that is not dropped; null: none. Not with a problem
+             */
+            opportunity?: string | null;
+            /**
              * Rank
              * @description null: kept, or after the project's other goals for a new one
              */
@@ -23339,6 +23664,11 @@ export interface components {
              * @description the code (P-<number>) of the problem of the project it answers; null: none
              */
             problem: string | null;
+            /**
+             * Opportunity
+             * @description the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both
+             */
+            opportunity?: string | null;
             /**
              * Rank
              * @description its place among the project's goals, 1 first
@@ -23434,6 +23764,362 @@ export interface components {
             items: {
                 [key: string]: number;
             };
+        };
+        /**
+         * ProjectOpportunity
+         * @description An opportunity of a project at one revision.
+         */
+        ProjectOpportunity: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description O-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Statement
+             * @description what the project could win
+             */
+            statement: string;
+            /**
+             * Beneficiary
+             * @description who benefits
+             */
+            beneficiary: string;
+            /**
+             * Leverage
+             * @description what makes it reachable now
+             */
+            leverage: string;
+            /**
+             * Window Until
+             * @description the date after which it is gone; null: none known
+             */
+            window_until: string | null;
+            /**
+             * Window Note
+             * @description what the window is
+             */
+            window_note: string | null;
+            /**
+             * Answers
+             * @description the problems it answers that the reader sees: P-<n>, or <project>/P-<n> for another project's
+             */
+            answers: string[];
+            /**
+             * Hidden Answers
+             * @description the problems of other projects it answers that the reader holds no grant on
+             */
+            hidden_answers: number;
+            /** @description null: no metric */
+            metric: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description its place among the project's opportunities, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "captured" | "missed" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was captured, missed or dropped; null while it is open
+             */
+            close_reason: string | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ProjectOpportunityClose */
+        ProjectOpportunityClose: {
+            /**
+             * Status
+             * @description captured, missed or dropped
+             * @enum {string}
+             */
+            status: "captured" | "missed" | "dropped";
+            /**
+             * Reason
+             * @description why
+             */
+            reason: string;
+            /**
+             * Note
+             * @description for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the opportunity is at this revision now
+             */
+            if_revision?: number | null;
+        };
+        /** ProjectOpportunityShown */
+        ProjectOpportunityShown: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description O-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Statement
+             * @description what the project could win
+             */
+            statement: string;
+            /**
+             * Beneficiary
+             * @description who benefits
+             */
+            beneficiary: string;
+            /**
+             * Leverage
+             * @description what makes it reachable now
+             */
+            leverage: string;
+            /**
+             * Window Until
+             * @description the date after which it is gone; null: none known
+             */
+            window_until: string | null;
+            /**
+             * Window Note
+             * @description what the window is
+             */
+            window_note: string | null;
+            /**
+             * Answers
+             * @description the problems it answers that the reader sees: P-<n>, or <project>/P-<n> for another project's
+             */
+            answers: string[];
+            /**
+             * Hidden Answers
+             * @description the problems of other projects it answers that the reader holds no grant on
+             */
+            hidden_answers: number;
+            /** @description null: no metric */
+            metric: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description its place among the project's opportunities, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "captured" | "missed" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was captured, missed or dropped; null while it is open
+             */
+            close_reason: string | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Evidence Count
+             * @description the lines of evidence of the opportunity
+             */
+            evidence_count: number;
+            /**
+             * Source Count
+             * @description the independent sources those lines come from: a source is a kind and an address
+             */
+            source_count: number;
+        };
+        /**
+         * ProjectOpportunityWrite
+         * @description The next revision of an opportunity: the whole of it, as its writer wants it.
+         */
+        ProjectOpportunityWrite: {
+            /**
+             * Statement
+             * @description what could be won
+             */
+            statement: string;
+            /**
+             * Beneficiary
+             * @description who benefits
+             */
+            beneficiary: string;
+            /**
+             * Leverage
+             * @description what makes it reachable now
+             */
+            leverage: string;
+            /**
+             * Window Until
+             * @description the date after which it is gone
+             */
+            window_until?: string | null;
+            /** Window Note */
+            window_note?: string | null;
+            /**
+             * Answers
+             * @description the problems it answers: P-3, or <project>/P-3 for another project's; the whole list
+             */
+            answers?: string[];
+            metric?: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description null: kept, or after the project's open opportunities for a new one
+             */
+            rank?: number | null;
+            /**
+             * Owner
+             * @description a member with the writer role or above; null: kept, or the writer for a new opportunity
+             */
+            owner?: string | null;
+            /**
+             * Status
+             * @default open
+             * @enum {string}
+             */
+            status: "open" | "captured" | "missed" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was captured, missed or dropped, for a closed opportunity and only for one
+             */
+            close_reason?: string | null;
+            /**
+             * Note
+             * @description why, for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the opportunity is at this revision now; 0: new only
+             */
+            if_revision?: number | null;
+        };
+        /** ProjectOpportunityWritten */
+        ProjectOpportunityWritten: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description O-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Statement
+             * @description what the project could win
+             */
+            statement: string;
+            /**
+             * Beneficiary
+             * @description who benefits
+             */
+            beneficiary: string;
+            /**
+             * Leverage
+             * @description what makes it reachable now
+             */
+            leverage: string;
+            /**
+             * Window Until
+             * @description the date after which it is gone; null: none known
+             */
+            window_until: string | null;
+            /**
+             * Window Note
+             * @description what the window is
+             */
+            window_note: string | null;
+            /**
+             * Answers
+             * @description the problems it answers that the reader sees: P-<n>, or <project>/P-<n> for another project's
+             */
+            answers: string[];
+            /**
+             * Hidden Answers
+             * @description the problems of other projects it answers that the reader holds no grant on
+             */
+            hidden_answers: number;
+            /** @description null: no metric */
+            metric: components["schemas"]["ProblemMetric"] | null;
+            /**
+             * Rank
+             * @description its place among the project's opportunities, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "captured" | "missed" | "dropped";
+            /**
+             * Close Reason
+             * @description why it was captured, missed or dropped; null while it is open
+             */
+            close_reason: string | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description false when the newest revision is this opportunity already: nothing was written
+             */
+            changed: boolean;
         };
         /**
          * ProjectPlugin
@@ -67127,6 +67813,542 @@ export interface operations {
             };
         };
     };
+    list_opportunities_v1_projects__project__opportunities_get: {
+        parameters: {
+            query?: {
+                /** @description those of this status alone */
+                status?: ("open" | "captured" | "missed" | "dropped") | null;
+                /** @description the open ones whose window ends within this many days (one already past included), nearest end first; with it, status is open */
+                closing_within?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOpportunity"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_opportunity_v1_projects__project__opportunities__ref__get: {
+        parameters: {
+            query?: {
+                /** @description an older revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description O-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOpportunityShown"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_opportunity_v1_projects__project__opportunities__ref__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description O-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectOpportunityWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOpportunityWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    opportunity_revisions_v1_projects__project__opportunities__ref__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description O-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_opportunity_v1_projects__project__opportunities__ref__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description O-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectOpportunityClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOpportunityWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_evidence_v1_projects__project__opportunities__ref__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description O-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityEvidence"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_evidence_v1_projects__project__opportunities__ref__evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description O-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpportunityEvidenceWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityEvidence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirm_evidence_v1_projects__project__opportunities__ref__evidence__code__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description O-<number> */
+                ref: string;
+                /** @description E-<number> */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityEvidence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_intakes_v1_projects__project__intakes_get: {
         parameters: {
             query?: {
@@ -67531,6 +68753,8 @@ export interface operations {
                 limit?: number;
                 /** @description a problem's code: the work items that go from it */
                 problem?: string | null;
+                /** @description an opportunity's code: the work items that go from it */
+                opportunity?: string | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;

@@ -17,6 +17,9 @@ session made of them once, as an ``evo-intake/1`` document (``evo_agents/harness
 - Each candidate becomes a pending proposal of @builder, kind ``problem``, without a chat: a new problem takes the next
   free code (the codes of one put follow each other), a candidate that matches a problem proposes its lines as
   evidence of it. A writer approves them as any proposal of @builder; the agent of a run never puts a result.
+- ``evo-intake/2`` adds ``opportunities``: candidate opportunities, checked and proposed by
+  ``evo_agents.hub.server.intake_opportunities`` (a pending proposal of @builder, kind ``opportunity``, for each); a
+  document of ``evo-intake/1`` is accepted as before.
 - Each promise becomes a task of the plugin tasks when the project enabled it: due on the date the session inferred,
   assigned to the promiser when they hold a grant on the project and to the member who asked for the intake otherwise,
   its description saying who promised, from which source and whether the session saw evidence that it was delivered.
@@ -43,7 +46,8 @@ from evo_agents import schema as json_schema
 from evo_agents.harness import load_schema
 from evo_agents.hub import intakes, problems, tables, task_status
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, intake_opportunities
+from evo_agents.hub.server import opportunities as project_opportunities
 from evo_agents.hub.server import problem_evidence as evidence
 from evo_agents.hub.server import problems as project_problems
 from evo_agents.hub.server.admin import ProjectName
@@ -109,6 +113,14 @@ class IntakeProposal(BaseModel):
     lines: int
 
 
+class IntakeOpportunityProposal(BaseModel):
+    candidate: int = Field(description="the candidate opportunity's place in the result, from 1")
+    kind: Literal["new_opportunity", "evidence"]
+    opportunity: str = Field(description="O-<number>: the code a new opportunity would take, or the one the lines join")
+    proposal_id: int = Field(description="the pending proposal of @builder a writer approves")
+    lines: int
+
+
 class IntakeTask(BaseModel):
     promise: int = Field(description="the promise's place in the result, from 1")
     task: str = Field(description="the task's code, such as T-12")
@@ -122,6 +134,9 @@ class IntakeOutcome(BaseModel):
 
     proposals: list[IntakeProposal]
     tasks: list[IntakeTask]
+    opportunity_proposals: list[IntakeOpportunityProposal] = Field(
+        default_factory=list, description="the proposals made for the candidate opportunities of an evo-intake/2 result"
+    )
     tasks_skipped: str | None = Field(
         description="why the promises made no task (the plugin tasks is not enabled in the project); null otherwise"
     )
@@ -144,6 +159,9 @@ class Intake(BaseModel):
     candidates: int | None = Field(description="how many candidates the result held; null while it is open")
     promises: int | None
     questions: int | None
+    opportunities: int | None = Field(
+        None, description="how many candidate opportunities the result held (evo-intake/2); null while it is open"
+    )
     outcome: IntakeOutcome | None = Field(description="what the hub made of the result; null while it is open")
 
 
@@ -174,6 +192,7 @@ def view(project: str, row) -> Intake:
         candidates=len(result.get("candidates") or []) if done else None,
         promises=len(result.get("promises") or []) if done else None,
         questions=len(result.get("questions") or []) if done else None,
+        opportunities=len(result.get("opportunities") or []) if done else None,
         outcome=row.outcome,
     )
 
@@ -215,7 +234,8 @@ class _Wrong(Exception):
 
 
 def _schema_reasons(document: Any) -> list[str]:
-    found = json_schema.errors(json_schema.validate(document, load_schema("intake")))
+    name = intakes.SCHEMA_FILES.get(document.get("schema") if isinstance(document, dict) else None, "intake")
+    found = json_schema.errors(json_schema.validate(document, load_schema(name)))
     reasons = [f"{issue.path or 'result'}: {issue.message}" for issue in found]
     if reasons:
         return reasons
@@ -223,6 +243,7 @@ def _schema_reasons(document: Any) -> list[str]:
         ("candidates", intakes.MAX_CANDIDATES),
         ("promises", intakes.MAX_PROMISES),
         ("questions", intakes.MAX_QUESTIONS),
+        ("opportunities", intakes.MAX_OPPORTUNITIES),
     ):
         if len(document.get(name) or []) > limit:
             reasons.append(f"{name}: at most {limit}")
@@ -235,6 +256,9 @@ def _schema_reasons(document: Any) -> list[str]:
     for at, candidate in enumerate(document.get("candidates") or [], start=1):
         if len(candidate["evidence"]) > problems.MAX_PROPOSED_EVIDENCE:
             reasons.append(f"candidate {at}: at most {problems.MAX_PROPOSED_EVIDENCE} lines of evidence")
+    for at, candidate in enumerate(document.get("opportunities") or [], start=1):
+        if len(candidate["evidence"]) > problems.MAX_PROPOSED_EVIDENCE:
+            reasons.append(f"opportunity {at}: at most {problems.MAX_PROPOSED_EVIDENCE} lines of evidence")
     return reasons
 
 
@@ -577,7 +601,7 @@ async def start_intake(request: Request, project: ProjectName, body: IntakeStart
 
 @router.put("/{project}/intakes/{ref}", response_model=Intake, responses=WRITE_REFUSALS)
 async def put_intake(request: Request, project: ProjectName, ref: IntakeRef, body: dict, user: CurrentUser) -> Intake:
-    """Put the result of an intake, once, as an evo-intake/1 document (see the module)."""
+    """Put the result of an intake, once, as an evo-intake/1 or evo-intake/2 document (see the module)."""
     i = tables.intakes
     try:
         async with request.app.state.engine.begin() as conn:
@@ -589,8 +613,19 @@ async def put_intake(request: Request, project: ProjectName, ref: IntakeRef, bod
             reasons = _schema_reasons(body)
             if reasons:
                 raise _Wrong(reasons)
-            candidates = await _candidates(conn, access, body)
+            await project_opportunities._lock(conn, access.project_id)
+            reasons, candidates, chosen = [], [], []
+            try:
+                candidates = await _candidates(conn, access, body)
+            except _Wrong as exc:
+                reasons += exc.reasons
+            logins = {c["confirmed_by"] for c in body.get("opportunities") or [] if c.get("confirmed_by")}
+            members = await _members(conn, access, logins)
+            chosen = await intake_opportunities.checked(conn, user, access, body, members, reasons)
+            if reasons:
+                raise _Wrong(reasons)
             made = await _propose(conn, user, access, ref, candidates)
+            made_opportunities = await intake_opportunities.propose(conn, user, access, ref, chosen)
             promises = body.get("promises") or []
             skipped = None
             made_tasks: list[IntakeTask] = []
@@ -604,7 +639,11 @@ async def put_intake(request: Request, project: ProjectName, ref: IntakeRef, bod
                 else:
                     made_tasks = await _make_tasks(conn, user, access, ref, config, promises)
             outcome = IntakeOutcome(
-                proposals=made, tasks=made_tasks, tasks_skipped=skipped, questions=body.get("questions") or []
+                proposals=made,
+                opportunity_proposals=[IntakeOpportunityProposal(**m) for m in made_opportunities],
+                tasks=made_tasks,
+                tasks_skipped=skipped,
+                questions=body.get("questions") or [],
             )
             stamp = {
                 "status": intakes.DONE,
@@ -615,7 +654,9 @@ async def put_intake(request: Request, project: ProjectName, ref: IntakeRef, bod
             }
             await conn.execute(update(i).where(i.c.id == row.id).values(stamp))
             what = f"put candidates={len(candidates)} promises={len(promises)} questions={len(outcome.questions)}"
-            what += f" proposals={','.join(str(m.proposal_id) for m in made) or '-'} tasks={len(made_tasks)}"
+            what += f" opportunities={len(chosen)}" if chosen else ""
+            proposed = [str(m.proposal_id) for m in made] + [str(m["proposal_id"]) for m in made_opportunities]
+            what += f" proposals={','.join(proposed) or '-'} tasks={len(made_tasks)}"
             await _audit(conn, user, access, audit.INTAKE_PUT, row.number, what)
             done = await _one(conn, access, ref)
     except _Wrong as exc:

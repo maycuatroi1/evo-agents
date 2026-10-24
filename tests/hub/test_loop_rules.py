@@ -435,6 +435,27 @@ def test_loop_rules2_work_items_carry_the_problem_their_goal_answers():
     assert spec.problem_id is None
 
 
+def test_loop_rules2_work_items_carry_the_opportunity_their_goal_answers():
+    answers = {GOAL.id: replace(GOAL, opportunity_id=7)}
+    (brainstorm,) = R2.scheduled(view(goals=answers))
+    assert (brainstorm.key, brainstorm.opportunity_id, brainstorm.problem_id) == ("brainstorm:G-1:r3", 7, None)
+    for name, use_cases in (("solution", True), ("solution", False), ("problem", True)):
+        (spec,) = R2.rules(baseline(moved("testing")), cell(name, use_cases=use_cases, goals=answers))
+        assert (spec.opportunity_id, spec.problem_id) == (7, None)
+    (spec,) = R2.rules(baseline(moved("testing")), cell("problem"))
+    assert spec.opportunity_id is None  # a goal that answers none
+    # the build of a use case carries the opportunity of the use case it comes of, else its goal's
+    case = use_case("running", run_id=500, runs=(499, 500), opportunity_id=8)
+    _, build_spec = R2.rules(approved(), view(items=(case,), versions={42: 499}, tasks_on=True, goals=answers))
+    assert (build_spec.parent_id, build_spec.opportunity_id) == (100, 8)
+    case = replace(case, opportunity_id=None)
+    _, build_spec = R2.rules(approved(), view(items=(case,), versions={42: 499}, tasks_on=True, goals=answers))
+    assert build_spec.opportunity_id == 7
+    # rules/1 carries none
+    (spec,) = R1.rules(baseline(moved("testing")), cell("solution", goals=answers))
+    assert spec.opportunity_id is None
+
+
 def test_loop_rules2_a_claim_build_goes_to_its_author_run_and_a_deliver_of_its_plan():
     queued = claim_build()
     assert queued.from_claim and not build().from_claim

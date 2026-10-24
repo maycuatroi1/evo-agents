@@ -220,3 +220,35 @@ def test_problem_evidence_joins_the_graph_as_edges_of_the_problem_with_the_label
     assert path["structuredContent"]["found"] and [e["rel"] for e in path["structuredContent"]["edges"]] == [
         "evidences"
     ]
+
+
+# Opportunities (plan opportunity-intake, criterion a1)
+
+DEPOT = {
+    "statement": "Sell the shelf scanner to the depot",
+    "beneficiary": "the night shift of the depot",
+    "leverage": "the depot asked for a demo twice",
+    "window_until": "2026-12-01",
+    "answers": ["P-1"],
+}
+
+
+def test_opportunity_graph_on_the_hub_finds_an_opportunity_by_code_or_text_and_links_it_to_the_problem_it_answers(
+    hub, tmp_path
+):
+    made = hub.client.put(f"/v1/projects/{PROJECT}/problems/P-1", json=STOCK_OUTS, headers=hub.alice)
+    assert made.status_code == 200, made.text
+    machine(hub, tmp_path)
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    put = hub.client.put(f"/v1/projects/{PROJECT}/opportunities/O-1", json=DEPOT, headers=hub.alice)
+    assert put.status_code == 200, put.text
+    assert queued(hub) == 1  # an opportunity's write queues a build
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert build_rows(hub)[0]["status"] == "succeeded", build_rows(hub)[0].get("error")
+    found = node(hub, "opportunity:O-1")
+    assert (found["kind"], found["name"], found["label"]["level"]) == ("Opportunity", "O-1", "internal")
+    by_text = tool_ok(hub, "kg_search", {"query": "night shift of the depot"})["structuredContent"]["results"]
+    assert "plugin.hub_opportunities:doc:opportunities#O-1" in [hit["id"] for hit in by_text]
+    path = tool_ok(hub, "kg_path", {"from": "opportunity:O-1", "to": PROBLEM})["structuredContent"]
+    assert path["found"] and [edge["rel"] for edge in path["edges"]] == ["answers"]
+    assert call_tool(hub, "kg_node", {"id": "opportunity:O-1"}, member="carol").json()["isError"]  # below the label

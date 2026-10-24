@@ -108,6 +108,7 @@ from evo_agents.hub.server import (
     kg_decisions,
     local_runs,
     memories,
+    opportunity_mcp,
     plans,
     plugin_tools,
     probe_report,
@@ -404,6 +405,9 @@ class HubMcp(MCPServer):
             "problem_list": self._problem_list,
             "problem_show": self._problem_show,
             "problem_evidence": self._problem_evidence,
+            "opportunity_list": self._opportunity_tool("opportunity_list"),
+            "opportunity_show": self._opportunity_tool("opportunity_show"),
+            "opportunity_evidence": self._opportunity_tool("opportunity_evidence"),
             "intake_list": self._intake_list,
             "intake_show": self._intake_show,
             "ask_member": self._ask_member,
@@ -758,6 +762,15 @@ class HubMcp(MCPServer):
         sources = problem_model.sources_of(lines)
         summary = f"{len(lines)} lines of evidence from {sources} sources"
         return text, {"project": project, "problem": arguments["code"], "evidence": lines, "summary": summary}
+
+    def _opportunity_tool(self, name: str):
+        """The handler of an opportunity tool (``evo_agents.hub.server.opportunity_mcp``)."""
+
+        async def handle(caller: Caller, arguments: dict) -> tuple[str, dict]:
+            access = await self._readable(caller, self._project(caller, arguments))
+            return await opportunity_mcp.answer(self.hub.state.engine, caller.user, access, name, arguments)
+
+        return handle
 
     async def _intake_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)

@@ -4,7 +4,8 @@ is the engine ``rules/1`` (``rules``) with the changes below, three pure functio
 
 - Each work item it makes carries the problem of the project its goal answers (``WorkSpec.problem_id``, from
   ``GoalView.problem_id``); one that comes of another work item (the build of a use case, the deliver of a build)
-  carries that one's problem when it has one. The brainstorm of a goal that answers a problem names the problem, its
+  carries that one's problem when it has one. The same holds for the opportunity a goal answers
+  (``WorkSpec.opportunity_id``, plan opportunity-intake): a goal answers a problem or an opportunity, never both. The brainstorm of a goal that answers a problem names the problem, its
   metric and the claims that link it (``texts.brainstorm_task``).
 - ``canvas.baseline`` moving a claim to testing makes a work item by the claim's cell, when the claim serves an active
   goal with a metric (``View.goal_of_canvas``):
@@ -79,7 +80,7 @@ from evo_agents.hub.server.loop.rules import (
 STABLE = "stable"
 ACTION = "action"  # canvas_claims.delivery: the claim is delivered by a task, not by code
 
-# The problem a work item goes from
+# The problem or opportunity a work item goes from
 
 
 def _problem(spec: WorkSpec, view: View) -> int | None:
@@ -92,15 +93,29 @@ def _problem(spec: WorkSpec, view: View) -> int | None:
     return None if goal is None else goal.problem_id
 
 
+def _opportunity(spec: WorkSpec, view: View) -> int | None:
+    """The opportunity of the work item ``spec`` comes of when it has one, else the one its goal answers now."""
+    if spec.parent_id is not None:
+        parent = next((item for item in view.items if item.id == spec.parent_id), None)
+        if parent is not None and parent.opportunity_id is not None:
+            return parent.opportunity_id
+    goal = view.goals.get(spec.goal_id) if spec.goal_id is not None else None
+    return None if goal is None else goal.opportunity_id
+
+
 def _stamped(spec: WorkSpec, view: View) -> WorkSpec:
-    if spec.problem_id is not None:
-        return spec
-    problem = _problem(spec, view)
-    return spec if problem is None else replace(spec, problem_id=problem)
+    if spec.problem_id is None:
+        problem = _problem(spec, view)
+        spec = spec if problem is None else replace(spec, problem_id=problem)
+    if spec.opportunity_id is None:
+        opportunity = _opportunity(spec, view)
+        spec = spec if opportunity is None else replace(spec, opportunity_id=opportunity)
+    return spec
 
 
 def stamp(effect: Effect, view: View) -> Effect:
-    """``effect`` with the problem its work items go from: the one it makes, or those a transition spawns."""
+    """``effect`` with the problem or opportunity its work items go from: the one it makes, or those a transition
+    spawns."""
     if isinstance(effect, WorkSpec):
         return _stamped(effect, view)
     if isinstance(effect, Transition) and effect.spawn:

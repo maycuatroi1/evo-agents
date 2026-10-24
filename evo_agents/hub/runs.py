@@ -376,6 +376,7 @@ NOTICE_KINDS = (
     "worker_doctor",  # the doctor of a worker narrowed to units found something high (``server.worker_doctor``)
     "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser_logins``)
     PROBE_REPORT_NOTICE,
+    "opportunity_window",  # the window of an open opportunity closes or closed (``server.opportunity_deadlines``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it

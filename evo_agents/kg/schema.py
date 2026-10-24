@@ -33,6 +33,7 @@ HUB_KINDS = {
     "SignalKey": "a key of a project's registry of signals on the hub: what a product measures, as kb.search.latency",
     "Problem": "a problem of a project on the hub, by its code (P-3): what hurts, before any solution",
     "Goal": "a goal of a project on the hub, by its code (G-1): what the Loop works toward",
+    "Opportunity": "an opportunity of a project on the hub, by its code (O-3): what it could win, for whom, and why now",
 }
 
 HUB_RELATIONS = {
@@ -62,6 +63,7 @@ HUB_RELATIONS = {
     "measured_by": ("Claim", "SignalKey"),  # a claim of a Lean Canvas to a signal key that measures it
     "addresses": ("*", "Problem"),  # a plan, a claim or a goal to a problem of the hub it answers
     "evidences": ("*", "Problem"),  # a line of evidence of the hub to the problem it shows hurts
+    "answers": ("Opportunity", "Problem"),  # an opportunity of the hub to a problem of its own project it answers
 }
 
 ITEM_KIND_TO_NODE = {

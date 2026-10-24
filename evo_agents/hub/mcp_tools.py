@@ -30,6 +30,8 @@ from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN
 from evo_agents.hub.intakes import REF as INTAKE_REF
 from evo_agents.hub.intakes import STATUSES as INTAKE_STATUSES
 from evo_agents.hub.memory import MAX_AUDIENCE, TYPES
+from evo_agents.hub.opportunities import REF as OPPORTUNITY_REF
+from evo_agents.hub.opportunities import STATUSES as OPPORTUNITY_STATUSES
 from evo_agents.hub.plans import AREAS, STEP_STATUSES
 from evo_agents.hub.problems import REF as PROBLEM_REF
 from evo_agents.hub.problems import STATUSES as PROBLEM_STATUSES
@@ -299,6 +301,56 @@ HUB_TOOLS = [
             "type": "object",
             "properties": {
                 "code": {"type": "string", "pattern": PROBLEM_REF, "description": "P-<number>"},
+                "project": _PROJECT,
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "opportunity_list",
+        "description": (
+            "The opportunities of a project on the hub by rank, each with its code (O-<number>), status (open, "
+            "captured, missed, dropped), owner and window: what the project could win. opportunity_show reads one "
+            "whole; opportunity_evidence reads the lines that show it is there."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project": _PROJECT, "status": {"type": "string", "enum": list(OPPORTUNITY_STATUSES)}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "opportunity_show",
+        "description": (
+            "One opportunity of a project on the hub by its code: what could be won, who benefits, the leverage, the "
+            "window, the problems it answers (the number of those of projects you hold no grant on, not their codes), "
+            "its metric, rank, owner, status, revision, and the count of its lines of evidence and independent sources."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "pattern": OPPORTUNITY_REF, "description": "O-<number>"},
+                "revision": {"type": "integer", "minimum": 1, "maximum": MAX_REVISION, "description": "an older one"},
+                "project": _PROJECT,
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "opportunity_evidence",
+        "description": (
+            "The evidence of an opportunity of a project on the hub by its code (plan opportunity-intake): each line "
+            "(E-<number>) names the kind and address of its source, where in it, who spoke, an excerpt of at most 300 "
+            "characters, the signal it shows (the eight of a problem, and wish, external_demand, window, "
+            "reusable_asset, pull, intro, idle_capacity), its label, who added it and who confirmed it, with the count "
+            "of independent sources."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "pattern": OPPORTUNITY_REF, "description": "O-<number>"},
                 "project": _PROJECT,
             },
             "required": ["code"],

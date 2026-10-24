@@ -406,6 +406,7 @@ hub's /mcp with a kind, a target, the fields it sets and those it unsets, and a 
 | `agent` | `{"agent": handle}` | the next version of the profile (name, description, instructions, packs) | an admin of the project |
 | `policy` | none | the next revision of the project's autonomy policy, each key by its dotted path (`repos.<repo>.mode`) | an admin of the project |
 | `problem` | `{"problem": "P-<number>"}`, none for a new problem (the hub picks its code) | the next revision of the problem (statement, who, when, workaround, metric, rank, owner, status, close_reason; `docs/problems.md`); rolled back, a new problem is dropped | a writer of the project |
+| `opportunity` | `{"opportunity": "O-<number>"}`, none for a new opportunity (the hub picks its code) | the next revision of the opportunity (statement, beneficiary, leverage, window_until, window_note, answers, metric, rank, owner, status, close_reason) and the lines of `evidence` it carries; rolled back, a new opportunity is dropped; `docs/opportunities.md` | a writer of the project |
 | `goal` | `{"goal": "G-<number>"}`, none for a new goal (the hub picks its code) | the next revision of the goal (statement, metric, deadline, canvas, problem, rank, owner, status); rolled back, a new goal is closed | an admin of the project |
 
 The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched, and for

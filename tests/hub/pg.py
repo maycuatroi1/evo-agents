@@ -212,6 +212,10 @@ PROBE_RUN_TABLES = frozenset({"curator_probe_runs"})  # each probe measured once
 PROBLEM_TABLES = frozenset({"problems", "problem_revisions"})
 PROBLEM_EVIDENCE_TABLES = frozenset({"problem_evidence"})  # migration 0137 (plan problem-intake)
 INTAKE_TABLES = frozenset({"intakes"})  # migration 0138 (plan problem-intake)
+# migration 0143: the opportunities of a project, their revisions, answers and evidence (plan opportunity-intake)
+OPPORTUNITY_TABLES = frozenset(
+    {"opportunities", "opportunity_revisions", "opportunity_answers", "opportunity_evidence"}
+)
 KG_REVIEW_TABLES = frozenset({"kg_review_dismissals"})  # migration 0141 (plan kg-map-and-review)
 KG_DECISION_TABLES = frozenset({"kg_decisions", "kg_decision_events"})  # migration 0142 (plan kg-map-and-review)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest

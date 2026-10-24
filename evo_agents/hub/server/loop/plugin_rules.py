@@ -178,6 +178,9 @@ def _work(rule: Rule, raw: dict, view: View) -> WorkSpec | str:
     goal = view.goals.get(ancestors["goal_id"]) if ancestors["goal_id"] is not None else None
     problem = None if goal is None else goal.problem_id  # the problem its goal answers, as a core work item's
     spec = WorkSpec(kind=kind, key=f"{rule.plugin}:{key}", use_case=use_case, detail=detail, **ancestors)
+    opportunity = None if goal is None else goal.opportunity_id
+    if opportunity is not None:
+        spec = replace(spec, opportunity_id=opportunity)
     return spec if problem is None else replace(spec, problem_id=problem)
 
 
