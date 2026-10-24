@@ -19,7 +19,7 @@ from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment
-from evo_agents.hub.server.runs.models.browser import BrowserReport
+from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, BrowserInstallRequest, BrowserReport
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     PlanCopy,
@@ -758,6 +758,7 @@ class HeartbeatRequest(BaseModel):
         "heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off",
     )
     browser: BrowserReport | None = Field(None, description=browser_help.REPORT_HELP)
+    browser_install: BrowserInstallReport | None = Field(None, description=browser_help.INSTALL_REPORT_HELP)
 
     def stored(self) -> tuple[dict, dict]:
         """runtimes and checkouts as workers keeps them and GET /v1/workers/{id} shows them: every key present."""
@@ -872,6 +873,9 @@ class HeartbeatAnswer(BaseModel):
         exclude_if=_absent,
         description="the owner asked the daemon to update itself now: claim no new run, let the held ones end, update "
         "to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now",
+    )
+    browser_install: BrowserInstallRequest | None = Field(
+        None, exclude_if=_absent, description=browser_help.INSTALL_REQUEST_HELP
     )
 
 

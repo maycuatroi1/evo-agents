@@ -2734,6 +2734,33 @@
         "stale": "Older than 48 h",
         "none": "None yet"
       }
+    },
+    "browserInstall": {
+      "title": "Browser",
+      "installedDetail": "Chromium {version}, headless, {max, plural, one {# browser} other {# browsers}} at once, {sandbox, select, on {its own sandbox} other {no sandbox}}",
+      "notInstalled": "No Chromium: it takes no run dispatched with a browser.",
+      "available": "Available",
+      "missing": "Missing",
+      "button": "Install browser",
+      "pending": "Asking…",
+      "cancel": "Cancel",
+      "cancelPending": "Cancelling…",
+      "ready": "Its daemon downloads Chromium into its own cache, no sudo, and checks that it starts. Its runs go on meanwhile.",
+      "tooOld": "Its daemon is too old to install a browser from the hub. Update it, or run `evo-agents worker browser install` on the machine.",
+      "phase": {
+        "offline": "Install browser asked: it waits for the worker to come back online.",
+        "installing": "Installing Chromium on the worker. This line goes once its heartbeat reports the browser."
+      },
+      "requested": "Asked",
+      "failed": "The last install failed: {reason}",
+      "impossible": "The last install couldn't happen: {reason}",
+      "asked": "{name} installs a browser",
+      "askedText": "Its daemon downloads Chromium and checks that it starts; runs dispatched with a browser can go to it once its heartbeat reports it.",
+      "cancelled": "Install browser of {name} cancelled",
+      "cancelledText": "An install its daemon already began goes on to its end.",
+      "askFailed": "Couldn't ask {name} to install a browser",
+      "cancelFailed": "Couldn't cancel the Install browser of {name}",
+      "refused": "The hub refused it; its reason follows. The page was reloaded."
     }
   },
   "secrets": {
@@ -10797,7 +10824,7 @@
       "sharedWorkers": "Shared workers",
       "sharedWorker": "{name} (shared by {owner})",
       "workerHint": "The profile stays on this worker. Only workers with a browser installed are listed.",
-      "noWorkers": "No worker has a browser. Run `evo-agents worker browser install` on one and restart its daemon.",
+      "noWorkers": "No worker has a browser. Install one from a worker's page (Install browser under Detected runtimes), or run `evo-agents worker browser install` on it.",
       "workerRequired": "Pick a worker.",
       "owner": "Owner",
       "ownerMember": "Me",

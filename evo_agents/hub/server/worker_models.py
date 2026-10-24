@@ -98,6 +98,18 @@ class WorkerUpdateNow(BaseModel):
     reason: str | None = Field(description="why it failed or was impossible, as the daemon or the hub said")
 
 
+class WorkerBrowserInstall(BaseModel):
+    """The last Install browser of a worker: open while ended_at is null (POST /v1/workers/{id}/browser-install)."""
+
+    requested_at: datetime = Field(description="when its owner or a hub admin asked for it")
+    ended_at: datetime | None = Field(description="when it ended; null while the daemon installs")
+    outcome: Literal[runs.BROWSER_INSTALL_OUTCOMES] | None = Field(
+        description="how it ended: installed, its heartbeat lists the feature browser; cancelled; failed, the install "
+        "failed (reason says how); impossible, its daemon no longer says browser_install; null while open"
+    )
+    reason: str | None = Field(description="why it failed or was impossible, as the daemon or the hub said")
+
+
 class Worker(BaseModel):
     id: int
     name: str
@@ -138,6 +150,10 @@ class Worker(BaseModel):
     browser: BrowserReport | None = Field(None, description=WORKER_HELP)
     update_now: WorkerUpdateNow | None = Field(
         description="the last Update now its owner or a hub admin asked for, open or ended; null when none was"
+    )
+    browser_install: WorkerBrowserInstall | None = Field(
+        None,
+        description="the last Install browser its owner or a hub admin asked for, open or ended; null when none was",
     )
     nightly: NightlyRead | None = Field(
         description="where the tag nightly pointed when the hub last read it, the same for every worker; null until "

@@ -51,12 +51,15 @@ they are now. A worker shows what its last heartbeat said of its daemon's instal
 evo-agents it was built from, and self_update, what the daemon found of updating itself (``runs.SELF_UPDATE_STATES``),
 with since, when the hub first got that state; kg_sync, what a daemon on duty for night shifts last did for their
 projects' graphs, the error of each sync that failed included (``evo_agents.worker.kg_sync``); update_now, its last
-Update now (``update_now``); and nightly, where the tag nightly pointed when the hub last read it.
+Update now (``update_now``); browser_install, its last Install browser (``browser_install``); and nightly, where the
+tag nightly pointed when the hub last read it.
 
 POST /v1/workers/{id}/update-now asks the worker's daemon to update itself to nightly now, and POST
-/v1/workers/{id}/update-now/cancel withdraws that, with the rights and refusals of drain (``update_now``).
+/v1/workers/{id}/update-now/cancel withdraws that, with the rights and refusals of drain (``update_now``). POST
+/v1/workers/{id}/browser-install asks the daemon to install Chromium, and POST .../browser-install/cancel withdraws
+that, with the same rights (``browser_install``).
 
-Every pairing, join, registration, drain, undrain, Update now and its cancel, change of dispatch_from or of settings
+Every pairing, join, registration, drain, undrain, Update now, Install browser and their cancels, change of dispatch_from or of settings
 and revocation adds an audit row naming the pairing or worker, never the code or the token, and neither ever reaches
 a log line.
 """
@@ -81,7 +84,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.server import audit, credentials, update_now
+from evo_agents.hub.server import audit, browser_install, credentials, update_now
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -266,6 +269,7 @@ def _listed(*where):
             w.c.kg_sync,
             w.c.browser,
             *update_now.update_columns(),
+            *browser_install.columns(),
             *update_now.nightly_columns(),
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
             w.c.runtimes,
@@ -294,6 +298,7 @@ def _worker(row) -> Worker:
     report, since = fields.pop("self_update"), fields.pop("self_update_since")
     fields["self_update"] = None if report is None else {**report, "since": since}
     update_now.shown(fields)
+    browser_install.shown(fields)
     status = runs.worker_status(
         last_heartbeat_at=fields["last_heartbeat_at"],
         drained_at=fields["drained_at"],
@@ -806,6 +811,29 @@ async def ask_update_now(request: Request, worker_id: WorkerId, user: CurrentUse
 async def cancel_update_now(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Withdraw the worker's open Update now; the daemon claims runs again."""
     return await _set_update_now(request, user, worker_id, False)
+
+
+async def _set_browser_install(request: Request, user: Principal, worker_id: int, open_it: bool) -> Worker:
+    async with request.app.state.engine.begin() as conn:
+        _, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
+        if revoked_at is not None:
+            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
+        await browser_install.set_request(conn, user, worker_id, _target(worker_id, name, owner), open_it=open_it)
+        return await _one_worker(conn, worker_id)
+
+
+@router.post("/{worker_id}/browser-install", response_model=Worker, responses=REFUSALS)
+async def ask_browser_install(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
+    """Ask the worker's daemon to install Chromium for the runs dispatched with a browser, as `evo-agents worker
+    browser install` does on the machine; its runs and claims go on meanwhile. 409 with why when its daemon is too old
+    or has Chromium already."""
+    return await _set_browser_install(request, user, worker_id, True)
+
+
+@router.post("/{worker_id}/browser-install/cancel", response_model=Worker, responses=REFUSALS)
+async def cancel_browser_install(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
+    """Withdraw the worker's open Install browser; an install the daemon began goes on to its end."""
+    return await _set_browser_install(request, user, worker_id, False)
 
 
 DISPATCH_FROM_SESSION = (

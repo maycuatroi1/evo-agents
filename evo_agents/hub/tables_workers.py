@@ -16,6 +16,9 @@ doctor_at, when the hub took it; doctor_high and doctor_medium, its findings of 
 findings (code, severity, detail). hub_nightly (0065) is one row, the commit the tag nightly pointed to when the hub last read it and when
 that was (``evo_agents.hub.nightly``), absent until the hub first read it. browser (0119) is what its last heartbeat
 said of the Chromium its daemon starts for a run (``evo_agents.worker.browser``), NULL when it said nothing of one.
+The columns of 0146 keep its owner's Install browser as those of 0065 keep Update now: browser_install_requested_at,
+browser_install_ended_at, browser_install_outcome (``runs.BROWSER_INSTALL_OUTCOMES``) and browser_install_reason
+(``evo_agents.hub.server.browser_install``).
 worker_projects lists the projects a worker takes runs of; worker_pairings holds the pairing codes a member creates
 for a machine to join with.
 """
@@ -95,6 +98,10 @@ def workers_table(metadata: MetaData) -> Table:
         Column("update_outcome", Text),  # 0065
         Column("update_reason", Text),  # 0065
         Column("browser", JSONB),  # 0119
+        _when("browser_install_requested_at"),  # 0146
+        _when("browser_install_ended_at"),  # 0146
+        Column("browser_install_outcome", Text),  # 0146
+        Column("browser_install_reason", Text),  # 0146
         _when("doctor_at"),  # 0108
         Column("doctor_high", SmallInteger),  # 0108
         Column("doctor_medium", SmallInteger),  # 0108
