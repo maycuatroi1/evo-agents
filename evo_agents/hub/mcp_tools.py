@@ -284,6 +284,25 @@ HUB_TOOLS = [
         },
     },
     {
+        "name": "problem_evidence",
+        "description": (
+            "The evidence of a problem of a project on the hub by its code (plan problem-intake): each line (E-<number>) "
+            "names the kind and address of its source, where in it, who spoke, an excerpt of at most 300 characters, "
+            "the signal it shows (complaint, workaround, repeated_request, blocker, commitment, proposed_solution, "
+            "contradiction, decision_without_reason), its label, who added it and who confirmed it, with the count of "
+            "independent sources."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "pattern": PROBLEM_REF, "description": "P-<number>"},
+                "project": _PROJECT,
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "ask_member",
         "description": (
             "Ask the person who runs this session a question that has 2 to 6 options, in a session of a project on "

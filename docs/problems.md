@@ -146,6 +146,32 @@ A writer adds, edits, closes and reopens a problem there; a reader sees a note. 
 statement and opens it, shows on the plans list and a plan's head, a goal's head and a claim's links, and a chain's
 rail on the Loop's pages starts from its problem.
 
+## Evidence
+
+A problem holds lines of evidence: something a source says that shows it hurts. A line has the kind of its source
+(`hub_chat`, `messenger`, `chat_fpt`, `email`, `file`, `harness`, `other`), the source's URI or path, a place in it (a
+message id, a time, a page), the speaker if there is one, an excerpt of at most 300 characters, a signal (`complaint`,
+`workaround`, `repeated_request`, `blocker`, `commitment`, `proposed_solution`, `contradiction`,
+`decision_without_reason`), a label (`public` or `internal`), who added it, and who confirmed it and when. Lines are
+numbered within the problem (E-1, E-2). The hub answers 422 for a `personal` label and for an excerpt over 300
+characters: such text stays on the member's machine. The same source, place and excerpt twice is a 409.
+
+```
+evo-agents hub problem evidence add P-1 --source-kind hub_chat --source-uri hub://northwind/chats/12 \
+  --locator "message 40" --speaker Mira --excerpt "Searches for an old brand name find nothing." \
+  --signal complaint --label internal
+evo-agents hub problem evidence list P-1 --json
+evo-agents hub problem evidence confirm P-1 E-1
+```
+
+Routes: `GET|POST /v1/projects/{project}/problems/{ref}/evidence` and `POST .../evidence/{code}/confirm`; the tool
+`problem_evidence` lists a problem's lines. A writer adds and confirms, a reader of the project reads, and a member
+without a grant gets 404. `problem show` counts the lines and the independent sources they come from (a source is a
+kind and an address). A @builder proposal of kind `problem` may carry an `evidence` list; approving it makes the lines
+together with the problem, and rolling it back removes them. A proposal of lines alone names `target.problem` and
+writes no revision. The graph holds each line as a `doc:evidence` item of the problem (`P-1/E-2`) with an `evidences`
+edge to the problem's node, at the project's label. Schema 0137 adds the table `problem_evidence`.
+
 ## Tables
 
 `problems` holds one row per problem of a project: its number and its newest revision. `problem_revisions` holds every

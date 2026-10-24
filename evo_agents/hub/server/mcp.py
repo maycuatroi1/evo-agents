@@ -29,7 +29,7 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 35 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+The 36 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project whose audience the caller still holds
@@ -73,6 +73,7 @@ from sqlalchemy import exc as sa_exc
 from starlette.requests import Request
 
 from evo_agents import __version__
+from evo_agents.hub import problems as problem_model
 from evo_agents.hub import runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
@@ -108,6 +109,7 @@ from evo_agents.hub.server import (
     plans,
     plugin_tools,
     probe_report,
+    problem_evidence,
     problems,
     projects,
     proposals,
@@ -124,6 +126,7 @@ from evo_agents.hub.server.mcp_text import (
     TEXT_CHARS,
     digest_json,
     event_lines,
+    evidence_lines,
     fit_digest,
     memory_about,
     memory_line,
@@ -396,6 +399,7 @@ class HubMcp(MCPServer):
             "plan_step": self._plan_step,
             "problem_list": self._problem_list,
             "problem_show": self._problem_show,
+            "problem_evidence": self._problem_evidence,
             "ask_member": self._ask_member,
             "skill_list": self._skill_list,
             "hub_projects": self._hub_projects,
@@ -736,6 +740,17 @@ class HubMcp(MCPServer):
         data = shown.model_dump(mode="json")
         lines = problem_lines(project, data)
         return "\n".join(lines), {"project": project, "problem": data, "summary": f"problem {shown.code}"}
+
+    async def _problem_evidence(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        project = self._project(caller, arguments)
+        access = await self._readable(caller, project)
+        async with self.hub.state.engine.begin() as conn:
+            found = await problem_evidence.listed(conn, access, arguments["code"])
+        lines = [line.model_dump(mode="json") for line in found]
+        text = "\n".join(evidence_lines(arguments["code"], project, lines))
+        sources = problem_model.sources_of(lines)
+        summary = f"{len(lines)} lines of evidence from {sources} sources"
+        return text, {"project": project, "problem": arguments["code"], "evidence": lines, "summary": summary}
 
     async def _ask_member(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         """Ask the member who runs this local session a question as a decision (Inbox, Telegram, web, the run's page,

@@ -37,6 +37,20 @@ KINDS = (
     "problem",
     "goal",
 )  # tables_settings.PROPOSAL_KINDS
+# The vocabulary of a line of evidence, copies of evo_agents.hub.problems (this package is read for its manifest alone;
+# tests.hub.test_builder keeps them equal).
+EVIDENCE_SOURCE_KINDS = ["hub_chat", "messenger", "chat_fpt", "email", "file", "harness", "other"]
+EVIDENCE_SIGNALS = [
+    "complaint",
+    "workaround",
+    "repeated_request",
+    "blocker",
+    "commitment",
+    "proposed_solution",
+    "contradiction",
+    "decision_without_reason",
+]
+EVIDENCE_LABELS = ["public", "internal"]
 MAX_SUMMARY_CHARS = 500
 MAX_FIELDS = 50  # fields one proposal sets or unsets
 
@@ -94,6 +108,26 @@ PROPOSE_SCHEMA = {
             },
         },
         "set": {"type": "object", "description": "field -> new value"},
+        "evidence": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "problem only: lines of sources that show the problem hurts, made with the problem when a "
+            "writer approves; with target.problem and no set or unset, they are added to that problem",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["source_kind", "source_uri", "excerpt", "signal", "label"],
+                "properties": {
+                    "source_kind": {"enum": EVIDENCE_SOURCE_KINDS},
+                    "source_uri": {"type": "string", "minLength": 1, "maxLength": 2000},
+                    "locator": {"type": "string", "minLength": 1, "maxLength": 500},
+                    "speaker": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "excerpt": {"type": "string", "minLength": 1, "maxLength": 300},
+                    "signal": {"enum": EVIDENCE_SIGNALS},
+                    "label": {"enum": EVIDENCE_LABELS},
+                },
+            },
+        },
         "unset": {"type": "array", "items": {"type": "string"}, "description": "fields the layer stops setting"},
     },
 }

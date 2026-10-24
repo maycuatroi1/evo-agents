@@ -138,6 +138,7 @@ TABLES |= pg.GROWTH_TABLES  # migration 0127
 TABLES |= pg.PROBE_TABLES  # migration 0130
 TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
 TABLES |= pg.PROBLEM_TABLES  # migration 0134
+TABLES |= pg.PROBLEM_EVIDENCE_TABLES  # migration 0137
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -3288,3 +3289,41 @@ def test_0136_keeps_the_problem_of_a_work_item_and_the_kind_discover_and_going_b
         conn.execute(insert(i).values({**item, "key": "discover:c:CL-3:b1", "kind": "discover"}))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0136") :]
+
+
+def test_0137_keeps_the_evidence_of_a_problem_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0136")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0137")
+    t = hub_tables
+    e = t.problem_evidence
+    assert "problem_evidence" in tables(hub_db)
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        texts = {"statement": "Shops run out of milk", "who": "shop owners", "when": "before a delivery"}
+        row = {**texts, "workaround": "they buy it retail", "revision": 1, "rank": 1, "owner_id": ids["user"]}
+        row |= {"status": "open", "created_by": ids["user"]}
+        p = t.problems
+        problem_id = one(conn, insert(p).values(project_id=ids["project"], number=1, revision=1).returning(p.c.id))
+        conn.execute(insert(t.problem_revisions).values({**row, "problem_id": problem_id}))
+        line = {
+            "problem_id": problem_id,
+            "number": 1,
+            "source_kind": "email",
+            "source_uri": "mailto:a@northwind.example",
+        }
+        line |= {"excerpt": "We ring the depot.", "signal": "workaround", "label": "internal", "added_by": ids["user"]}
+        conn.execute(insert(e).values(line))
+        for bad in (
+            {**line, "number": 2, "label": "personal"},
+            {**line, "number": 3, "excerpt": "x" * 301},
+            {**line, "number": 4, "signal": "rumour"},
+            {**line, "number": 5, "source_kind": "tweet"},
+            {**line, "number": 1},
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(insert(e).values(bad))
+    move_to(hub_db, "0136", down=True)
+    assert "problem_evidence" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0137") :]
