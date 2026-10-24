@@ -59,11 +59,11 @@ export function SharedSwitch({ worker, locked = null, className }: { worker: Wor
         <label htmlFor={`${id}-switch`} className="cursor-pointer text-sm font-medium">
           {t("label")}
         </label>
-        <p id={`${id}-hint`} className="text-xs leading-4 text-pretty text-fg-subtle">
+        <p id={`${id}-hint`} className="max-w-[80ch] text-xs leading-4 text-pretty text-fg-subtle">
           {t("hint")}
         </p>
         {blocked ? (
-          <p id={`${id}-lock`} className="text-xs leading-4 text-pretty text-attention" data-testid="worker-shared-locked">
+          <p id={`${id}-lock`} className="max-w-[80ch] text-xs leading-4 text-pretty text-attention" data-testid="worker-shared-locked">
             {t("locked", { reason: locked ?? "" })}
           </p>
         ) : null}

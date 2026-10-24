@@ -2167,7 +2167,6 @@
       "facts": "{os} {arch} trên {hostname}. Chủ {owner}. Daemon evo-agents {version}, đăng ký {date}.",
       "notFoundTitle": "Không tìm thấy worker",
       "notFoundDescription": "Worker này không tồn tại, hoặc thuộc về thành viên khác.",
-      "actionsHelp": "Ngừng nhận việc: worker chạy xong các run đang giữ rồi không nhận run mới. Thu hồi: token của worker hết hiệu lực ngay, và các run nó đang giữ quay lại queue.",
       "asAdmin": "Bạn đang xem worker này với tư cách quản trị viên hub. Bạn được cho ngừng nhận việc hoặc thu hồi; chỉ {owner} cho nó nhận việc lại hoặc dispatch run tới nó.",
       "revoked": "Đã thu hồi {time}. Token của worker không còn hiệu lực, và tên này dùng được cho worker mới.",
       "draining": "Ngừng nhận việc từ {time}. Worker chạy xong các run đang giữ và không nhận run mới cho tới khi bạn cho nhận việc lại.",
@@ -2209,8 +2208,11 @@
       "checkouts": {
         "title": "Checkout",
         "description": "Các repo heartbeat gần nhất tìm thấy; mỗi run làm việc trong một worktree của một repo.",
+        "descriptionIn": "Các repo heartbeat gần nhất tìm thấy, đều nằm trong <code>{path}</code>; mỗi run làm việc trong một worktree của một repo.",
         "empty": "Hiện sau heartbeat đầu tiên.",
-        "none": "Heartbeat gần nhất không báo checkout nào."
+        "none": "Heartbeat gần nhất không báo checkout nào.",
+        "showAll": "Hiện cả {count} checkout",
+        "showFewer": "Thu gọn"
       },
       "heartbeat": {
         "title": "Heartbeat, 60 phút gần nhất",
