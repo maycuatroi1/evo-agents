@@ -32,6 +32,7 @@ import {
   Signpost,
   Sparkles,
   Tags,
+  Telescope,
   TrendingUp,
   UserRoundCog,
 } from "lucide-react";
@@ -65,6 +66,7 @@ export type NavLabel =
   | "insights"
   | "signals"
   | "problems"
+  | "opportunities"
   | "goals"
   | "loop"
   | "curator"
@@ -149,6 +151,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "mergeQueue", icon: GitMerge, segment: "merge-queue", group: "delivery" },
   { label: "releases", icon: Tags, segment: "releases", group: "delivery" },
   { label: "problems", icon: Bandage, segment: "problems", group: "improvement" },
+  { label: "opportunities", icon: Telescope, segment: "opportunities", group: "improvement" },
   { label: "goals", icon: Goal, segment: "goals", group: "improvement" },
   { label: "signals", icon: RadioTower, segment: "signals", group: "improvement" },
   { label: "loop", icon: IterationCw, segment: "loop", group: "improvement" },
