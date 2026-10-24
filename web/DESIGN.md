@@ -785,7 +785,13 @@ Shared pieces built on them:
   3 px `neutral-solid` stub), one image named with the counts. On a worker's page its owner flips "Only runs
   dispatched from the web" (`dispatch_from`) with a switch in the Scope card; the switch moves once the hub answered
   and the worker was read again, the result is a toast, and nobody else sees the switch, only the value in "Who
-  dispatches". The Version card (`version-card.tsx`, the fourth card: two columns from `lg`, four from `2xl`) gives
+  dispatches". A worker's page reads top down: the header with Drain, Resume and Revoke (their confirm dialogs say what
+  each does, so no note above the cards repeats it), notes only for what is unusual, then the facts in two columns from
+  `lg` (Scope on the left beside Runtimes over Version, so the three end level), Recent runs, the heartbeat strip and
+  Checkouts at the full width, and for its owner Sharing and Settings last. Checkouts (`checkout-list.tsx`) groups the
+  repositories by project (`project/repo` in the heartbeat), in two columns from `sm` and three from `2xl`; the
+  directory they all sit in is said once under the heading and a row keeps only what differs, and a list longer than
+  16 shows its first 12 and "Show all". The Version card (`version-card.tsx`) gives
   the release, the commit its daemon's install was built from as an `Identifier` chip linking to the commit on GitHub
   with a copy button, and one line on its updates: locked, or what the daemon last said of the tag nightly (the commit
   it waits to install, since when). Its owner locks the version with "Lock version", a switch at the foot of the
