@@ -189,6 +189,7 @@ class FakeHub:
                 web.put("/v1/worker/runs/{id}/plan", self._put_plan),
                 post("/v1/worker/runs/{id}/steps/{key}", self._step),
                 post("/v1/worker/runs/{id}/decisions", self._decision),
+                post("/v1/worker/runs/{id}/waits", self._wait),
                 post("/v1/worker/runs/{id}/notices", self._notice),
                 post("/v1/worker/runs/{id}/backups", self._backup),
                 post("/v1/worker/runs/{id}/autonomy-acts", self._autonomy_act),
@@ -1293,6 +1294,26 @@ class FakeHub:
         decision_id = next(self._decision_ids)
         self.decisions[decision_id] = {"id": decision_id, "run_id": run_id, "state": "open", **body}
         return web.json_response({"id": decision_id, "run_id": run_id, "state": "open"}, status=201)
+
+    async def _wait(self, request: web.Request) -> web.Response:
+        """A wait of a plan run's agent, as a decision of category wait the test wakes with ``answer``."""
+        run_id, _ = self._held_plan_run(request)
+        body = await request.json()
+        if not body.get("reason") or not (body.get("until") or body.get("on")):
+            return _error(422, "invalid", "a wait has a reason, and until, on or both")
+        decision_id = next(self._decision_ids)
+        wake_at = body.get("until") or "2026-10-31T09:00:00+00:00"
+        options = [{"key": "now", "label": "Go on now"}, {"key": "stop", "label": "Stop waiting"}]
+        self.decisions[decision_id] = {
+            "id": decision_id,
+            "run_id": run_id,
+            "state": "open",
+            "category": "wait",
+            "question": body["reason"],
+            "options": options,
+            **body,
+        }
+        return web.json_response({"id": decision_id, "run_id": run_id, "state": "open", "wake_at": wake_at}, status=201)
 
     async def _notice(self, request: web.Request) -> web.Response:
         run_id, _ = self._held_plan_run(request)

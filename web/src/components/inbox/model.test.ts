@@ -4,6 +4,7 @@ import {
   answerAccess,
   answerBody,
   answerProblem,
+  optionWaits,
   bellNumber,
   chosenOption,
   daysBefore,
@@ -195,6 +196,13 @@ describe("answers", () => {
     // The hub does what an option of its own decisions says: words alone are not an answer to one.
     expect(answerProblem(null, "close it", true)).toBe("option");
     expect(answerProblem("close", "", true)).toBeNull();
+    expect(answerProblem("later", "after the 30th", false, true)).toBe("waits");
+    expect(answerProblem("later", "  ", false, true)).toBeNull();
+    const options = [
+      { key: "yes", label: "Approved", description: null, recommended: true, waits: false },
+      { key: "later", label: "Not yet", description: null, recommended: false, waits: true },
+    ];
+    expect([optionWaits({ options }, "later"), optionWaits({ options }, "yes"), optionWaits({ options }, null)]).toEqual([true, false, false]);
   });
 
   it("sends the option and the trimmed words, leaving out what is empty", () => {
@@ -237,8 +245,8 @@ describe("answers", () => {
 
   it("names the option an answer chose", () => {
     const options = [
-      { key: "deploy", label: "Deploy now", description: null, recommended: true },
-      { key: "wait", label: "Wait", description: null, recommended: false },
+      { key: "deploy", label: "Deploy now", description: null, recommended: true, waits: false },
+      { key: "wait", label: "Wait", description: null, recommended: false, waits: false },
     ];
     expect(chosenOption({ options, answer_option: "wait" })?.label).toBe("Wait");
     expect(chosenOption({ options, answer_option: null })).toBeNull();
@@ -247,8 +255,8 @@ describe("answers", () => {
 
 describe("the decision card", () => {
   const options = [
-    { key: "deploy", label: "Deploy", description: null, recommended: true },
-    { key: "wait", label: "Wait", description: null, recommended: false },
+    { key: "deploy", label: "Deploy", description: null, recommended: true, waits: false },
+    { key: "wait", label: "Wait", description: null, recommended: false, waits: false },
   ];
 
   it("picks the agent's pick for the owner, and nothing when it names no option offered", () => {

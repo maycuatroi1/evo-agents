@@ -1,7 +1,6 @@
 "use client";
 
-import { ChevronDown, CircleCheck, Eraser, Terminal } from "lucide-react";
-import type { Route } from "next";
+import { ChevronDown, CircleCheck, Eraser } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type KeyboardEvent, type Ref, useEffect, useId, useRef, useState } from "react";
@@ -26,6 +25,7 @@ import { cn } from "@/lib/utils";
 
 import { answerNotice } from "./answer-notice";
 import { DecisionCategoryBadge } from "./badges";
+import { AnsweredBy } from "./answered-by";
 import { ClosedNote, DecisionFiles, DeliveryNote, NoFormNote } from "./decision-notes";
 import { type HeadingLevel, OptionCard, OptionList, Question } from "./decision-options";
 import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
@@ -34,6 +34,7 @@ import {
   answerAccess,
   answerBody,
   answerProblem,
+  optionWaits,
   isHubDecision,
   runLinkWords,
   type AnswerProblem,
@@ -42,6 +43,7 @@ import {
   parkTiming,
 } from "./model";
 import { type Decision, MAX_ANSWER_BYTES } from "./queries";
+import { TakeOverButton } from "./take-over-button";
 
 /**
  * The kit's DecisionCard (web/DESIGN.md, components/inbox): an agent's question to the owner of its plan run, the
@@ -66,13 +68,17 @@ function useShortDuration() {
   };
 }
 
-/** "asked 6 minutes ago, parks in 23 h 54 min", or "parked 3 hours ago" once the run has parked. */
+/**
+ * "asked 6 minutes ago, parks in 23 h 54 min", or "parked 3 hours ago" once the run has parked; and, once the person
+ * asked chose an option that keeps it open, when they said not yet.
+ */
 export function AskedTiming({ decision, parksAt, className = "ml-auto" }: { decision: Decision; parksAt: string | null; className?: string }) {
   const t = useTranslations("inbox.decision");
   const duration = useShortDuration();
   const counting = decision.state === "open" && decision.run_state === "waiting" && parksAt !== null;
   const now = useNow(counting);
   const timing = parkTiming(decision, parksAt, now);
+  const held = decision.state === "open" ? (decision.held_at ?? null) : null;
   return (
     <span className={cn("inline-flex flex-wrap items-center gap-x-1 tabular-nums", className)} data-testid="decision-timing">
       <span>
@@ -83,6 +89,11 @@ export function AskedTiming({ decision, parksAt, className = "ml-auto" }: { deci
         <span data-testid="decision-parks">{t("parksIn", { duration: duration(timing.ms) })}</span>
       ) : timing?.kind === "parked" ? (
         <span data-testid="decision-parks">{t.rich("parked", { time: () => <Ago value={timing.at} never="-" /> })}</span>
+      ) : null}
+      {held ? (
+        <span data-testid="decision-held">
+          {","} {t.rich("held", { time: () => <Ago value={held} never="-" /> })}
+        </span>
       ) : null}
     </span>
   );
@@ -160,10 +171,7 @@ function DecisionHead({ decision, where, access, parksAt }: { decision: Decision
       ) : null}
       {decision.state === "answered" ? (
         <span className="ml-auto" data-testid="decision-answered-by">
-          {t.rich("answeredBy", {
-            login: decision.answered_by ?? decision.owner,
-            who: (chunks) => <span className="font-mono text-foreground">{chunks}</span>,
-          })}
+          <AnsweredBy decision={decision} />
           {decision.answered_at ? (
             <>
               {","} <Ago value={decision.answered_at} never="-" />
@@ -273,38 +281,6 @@ export function AnswerSummary({ decision }: { decision: Decision }) {
   );
 }
 
-/** Take over, for the owner who may open the run's terminal now: the run page's Terminal tab, or `onTakeOver` there. */
-export function TakeOverButton({
-  decision,
-  href,
-  onTakeOver,
-  className,
-}: {
-  decision: Decision;
-  href: Route;
-  onTakeOver?: () => void;
-  className?: string;
-}) {
-  const t = useTranslations("inbox.answer");
-  const label = t("takeOverLabel", { run: decision.run_id });
-  if (onTakeOver) {
-    return (
-      <Button type="button" variant="outline" onClick={onTakeOver} aria-label={label} className={className} data-testid="decision-takeover">
-        <Terminal aria-hidden="true" />
-        {t("takeOver")}
-      </Button>
-    );
-  }
-  return (
-    <Button asChild variant="outline" className={className}>
-      <Link href={href} aria-label={label} data-testid="decision-takeover">
-        <Terminal aria-hidden="true" />
-        {t("takeOver")}
-      </Link>
-    </Button>
-  );
-}
-
 /**
  * The owner's answer, as state a layout renders: the options with the agent's pick chosen, so one click on Send answer
  * (or Cmd or Ctrl with Enter anywhere in the form) answers with it; Clear the choice leaves words alone as the answer.
@@ -336,11 +312,11 @@ export function useAnswerForm(
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (answer.isPending) return;
-    const found = answerProblem(option, text, isHubDecision(decision));
+    const found = answerProblem(option, text, isHubDecision(decision), optionWaits(decision, option));
     setProblem(found);
     // Focus goes where the answer needs work: the first option, or the field (`AnswerFields` gives them these ids).
     if (found === "empty" || found === "option") return document.getElementById(`${ids}-options`)?.querySelector<HTMLInputElement>("input")?.focus();
-    if (found === "long") return document.getElementById(`${ids}-text`)?.focus();
+    if (found === "long" || found === "waits") return document.getElementById(`${ids}-text`)?.focus();
     answer.mutate(answerBody(option, text));
   };
 
@@ -447,7 +423,13 @@ export function AnswerFields({ form, screen = false }: { form: AnswerFormState; 
       </div>
       {problem ? (
         <p id={problemId} className="text-sm font-medium text-danger" role="alert" data-testid="decision-problem">
-          {problem === "empty" ? t("empty") : problem === "option" ? t("option") : t("long", { max: format.number(MAX_ANSWER_BYTES) })}
+          {problem === "empty"
+            ? t("empty")
+            : problem === "option"
+              ? t("option")
+              : problem === "waits"
+                ? t("waitsWords")
+                : t("long", { max: format.number(MAX_ANSWER_BYTES) })}
         </p>
       ) : null}
     </div>

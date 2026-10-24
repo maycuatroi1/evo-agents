@@ -180,12 +180,13 @@ def test_the_agent_asks_a_decision_of_its_plan_run_and_the_owner_is_notified(cli
         "category": "architecture",
     }
     assert found["options"] == [
-        {"key": "sqlite", "label": "Keep SQLite", "description": None, "recommended": False},
+        {"key": "sqlite", "label": "Keep SQLite", "description": None, "recommended": False, "waits": False},
         {
             "key": "postgres",
             "label": "Move to Postgres",
             "description": "One more service to run.",
             "recommended": True,
+            "waits": False,
         },
     ]
     assert (found["recommended"], found["state"], found["owner"], found["answer_run_id"]) == (

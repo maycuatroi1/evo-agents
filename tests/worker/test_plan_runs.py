@@ -23,6 +23,7 @@ import os
 import secrets
 import signal
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -919,6 +920,65 @@ def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_wai
     assert steps == {"1": "done", "2": "done"}
 
 
+def test_a_wait_for_a_time_or_an_event_takes_the_run_to_waiting_until_the_hub_wakes_it(machine):
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"cli": ["step", "1", "in_progress"]},
+                {
+                    "cli": [
+                        "wait",
+                        "--reason",
+                        "Baseline W44 is approved on the 30th.",
+                        "--until",
+                        "+6h",
+                        "--on",
+                        "canvas.baseline",
+                        "--contains",
+                        "canvas=evo-agents",
+                        "--contains",
+                        "number=2",
+                        "--step",
+                        "1",
+                    ]
+                },
+            ],
+            f"plan:{PLAN}/2": [
+                {"write": {"alpha/a.txt": "a\n"}},
+                {"cli": ["step", "1", "done", "--verify", "true"]},
+                {"write": {"beta/b.txt": "b\n"}},
+                {"cli": ["step", "2", "done", "--verify", "test -f b.txt"]},
+                {"result": {"summary": "Both steps done once the baseline came."}},
+            ],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        assert await hub.wait_state(run_id, "waiting", "done", "failed") == "waiting", hub.texts(run_id)
+        wait = hub.decisions[1]
+        assert (wait["run_id"], wait["category"], wait["step_key"]) == (run_id, "wait", "1")
+        assert (wait["on"], wait["contains"]) == ("canvas.baseline", {"canvas": "evo-agents", "number": 2})
+        until = datetime.fromisoformat(wait["until"]) - datetime.now(UTC)
+        assert timedelta(hours=5, minutes=59) < until <= timedelta(hours=6)
+        await asyncio.sleep(1.0)  # a few heartbeats: the run keeps waiting, its agent does not start again
+        assert hub.runs[run_id]["state"] == "waiting" and len(machine.starts()) == 1
+        hub.answer(1, "now")
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    assert hub.moves(run_id) == ["leased", "running", "waiting", "running", "verifying", "done"]
+    waited = machine.commands()[1]
+    assert waited["exit"] == 0, waited
+    assert "Wait #1 is open" in waited["stdout"] and "or sooner on an event canvas.baseline" in waited["stdout"]
+    assert json.loads(machine.home.decisions_path(run_id).read_text(encoding="utf-8"))["id"] == 1
+    first, second = machine.starts()
+    assert second["resume"] == first["session"] and "Answer to decision #1 (wait)" in second["prompt"]
+
+
 def test_what_the_runtime_leaves_out_for_a_leased_oauth_token_is_noted_once_a_run_of_two_turns(machine):
     """The daemon's side of step 9 of the worker-credentials plan: the agent's context names what the leases set, and
     the runtime's notes of the agent's environment (``Adapter.environment_notes``; Claude Code's API_KEY_NOTE) reach
@@ -1059,8 +1119,9 @@ def test_a_plan_run_hands_each_agent_what_its_session_spent_and_its_log_names_th
         ["ask", "--category", "deploy", "--question", "Now?", "--option", "a=A", "--option", "b=B"],
         ["notify", "--kind", "push_default_branch", "--title", "Pushed main"],
         ["plan"],
+        ["wait", "--reason", "The baseline", "--until", "+1h"],
     ],
-    ids=["step", "ask", "notify", "plan"],
+    ids=["step", "ask", "notify", "plan", "wait"],
 )
 def test_the_four_commands_refuse_to_run_outside_a_plan_run(argv, tmp_path, monkeypatch, capsys):
     for key in [key for key in os.environ if key.startswith("EVO_RUN_")]:

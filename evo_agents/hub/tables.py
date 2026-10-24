@@ -576,6 +576,9 @@ decisions = Table(
     _when("answered_at"),
     _when("delivered_at"),
     Column("asked_of", BigInteger),  # who answers it, as the run's principal routes it; NULL before 0115: its owner
+    _when("wake_at"),  # a wait (category wait, 0140): when the hub answers it at the latest
+    Column("wake_on", JSONB),  # and the event of hub_events it wakes on sooner: kind, contains, after (0140)
+    _when("held_at"),  # when the person asked last chose an option that leaves it open (0140)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
