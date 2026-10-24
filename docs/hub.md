@@ -2011,6 +2011,15 @@ evo-agents hub intake show I-1 --project demo
 evo-agents hub intake list --status open --project demo
 ```
 
+```sh
+evo-agents hub opportunity list --project demo                  # by rank; --closing-within 14 for windows that close soon
+evo-agents hub opportunity show O-1 --project demo
+evo-agents hub opportunity set --statement "..." --beneficiary "..." --leverage "..." --window-until 2026-12-01 --project demo
+evo-agents hub opportunity close O-1 --status captured --reason "..." --project demo
+```
+
+`docs/opportunities.md` has the opportunities (O-n), their answers to problems of other projects, the reminders of the window and the evidence.
+
 `docs/intake.md` has the intakes and `docs/problems.md` the evidence. The MCP tools `problem_list` and `problem_show` read the same. The web lists a project's problems at
 `/p/{p}/problems` and shows one at `/p/{p}/problems/P-1`, where a writer adds, edits, closes and reopens it.
 
