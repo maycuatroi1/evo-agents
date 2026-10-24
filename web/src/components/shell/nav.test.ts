@@ -9,8 +9,8 @@ describe("nav", () => {
     expect(tagged.map((item) => [item.label, item.feature])).toEqual([
       ["monitor", "monitor"],
       ["chats", "chats"],
-      ["curator", "curator"],
       ["kg", "kg"],
+      ["curator", "curator"],
     ]);
   });
 
@@ -37,6 +37,7 @@ describe("nav", () => {
     ]);
     expect(PROJECT_NAV.map((item) => [item.label, item.group ?? null])).toEqual([
       ["overview", null],
+      ["kg", null],
       ["decide", null],
       ["plans", null],
       ["runs", null],
@@ -52,13 +53,14 @@ describe("nav", () => {
       ["agents", "knowledge"],
       ["memories", "knowledge"],
       ["skills", "knowledge"],
-      ["kg", "knowledge"],
       ["browser", "knowledge"],
       ["plugins", "apps"],
     ]);
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
+    // The knowledge graph sits with Home, Inbox, Monitor and Chats, for the project shown.
+    expect(PROJECT_NAV.filter((item) => item.top).map((item) => item.label)).toEqual(["kg"]);
     expect(HUB_NAV.map((item) => [item.label, item.group ?? null])).toEqual([
       ["workers", null],
       ["org", null],

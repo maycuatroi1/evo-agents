@@ -37,7 +37,7 @@ import { promotionNight, seedCurator } from "./support/curator";
 import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
-import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
+import { buildsPath, explorerReady, graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, markAgentMemory, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { dayFromNow, seatByApi, seatOf, unitByApi } from "./support/org";
@@ -624,12 +624,31 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "knowledge graph status and search",
+    name: "knowledge graph explorer and search",
     open: async ({ page, me }) => {
       const kg = await sharedKg();
       await grantOn(kg.project, me.login, "reader", "customer");
       await open(page, `${kgPath(kg.project)}?q=runbook`);
       await expect(page.getByTestId("kg-results")).toBeVisible();
+      await explorerReady(page, "overview");
+    },
+  },
+  {
+    name: "knowledge graph explorer at a node",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await open(page, `${kgPath(kg.project)}?node=${encodeURIComponent("requirement:KB-01")}`);
+      await explorerReady(page, "node");
+      await expect(page.getByTestId("kg-inspector-relations")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph builds",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await open(page, buildsPath(kg.project));
       await expect(page.getByTestId("kg-latest-build")).toBeVisible();
       // the commit each source read: a link out with its own name, a copy button, a badge for docs behind main
       await expect(page.getByTestId("kg-commits").getByTestId("source-commit")).toHaveCount(2);
@@ -643,7 +662,8 @@ const PAGES: Entry[] = [
       await grantOn(kg.project, me.login, "reader", "customer");
       await open(page, nodePath(kg.project, HUB_NODE));
       await graphReady(page);
-      await expect(page.getByTestId("kg-truncated")).toBeVisible();
+      // the group of its 160 notes, cut to the most linked with a way to the rest (kg.spec.ts opens it)
+      await expect(page.getByTestId("neighbour-group-more").first()).toBeVisible();
     },
   },
   {

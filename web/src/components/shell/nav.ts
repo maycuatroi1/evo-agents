@@ -49,6 +49,10 @@ import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
  * messages/en.json. Icons follow the Iconography table of web/DESIGN.md. An item that names a `feature` leaves the
  * sidebar and the palette while a hub admin has that feature off, for the hub or for the project shown.
  *
+ * A project area marked `top` sits in the first group, after Home, Inbox, Monitor and Chats, for the project shown: the
+ * knowledge graph, the core of a project, one click from anywhere. The palette and the breadcrumb still name it as the
+ * project's area it is.
+ *
  * An item that names a `group` sits in that fold of the sidebar (NAV_GROUPS) instead of on its own row, so the
  * sidebar keeps to the places a visitor opens every day: the fold opens on a click, by itself when the page shown is
  * one of its items, and stays as the visitor left it (the cookie NAV_GROUPS_COOKIE). An item with a count never sits
@@ -118,6 +122,8 @@ export type ProjectNavItem = {
   feature?: FeatureId;
   /** The fold the item sits in; none for a row of its own. */
   group?: NavGroup;
+  /** Shown in the first group, after HOME_NAV, rather than among the project's areas. */
+  top?: boolean;
 };
 
 export type HubNavItem = {
@@ -145,6 +151,7 @@ export const HOME_NAV: readonly HubNavItem[] = [
 
 export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "overview", icon: FolderKanban, segment: "" },
+  { label: "kg", icon: Network, segment: "kg", feature: "kg", top: true },
   { label: "decide", icon: Signpost, segment: "decide" },
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
@@ -160,7 +167,6 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "agents", icon: Bot, segment: "agents", group: "knowledge" },
   { label: "memories", icon: BookOpen, segment: "memories", group: "knowledge" },
   { label: "skills", icon: Sparkles, segment: "skills", group: "knowledge" },
-  { label: "kg", icon: Network, segment: "kg", feature: "kg", group: "knowledge" },
   { label: "browser", icon: Globe, segment: "browser", group: "knowledge" },
   { label: "plugins", icon: Puzzle, segment: "plugins", group: "apps" },
 ];

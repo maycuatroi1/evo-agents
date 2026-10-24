@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ListChecks } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
@@ -10,7 +10,6 @@ import { NAME_LINK, Tag } from "@/components/data/identifier";
 import { When } from "@/components/data/when";
 import { InlineError, useWriteFailure, type WriteFailure } from "@/components/feedback/notice";
 import { notify } from "@/components/feedback/toast";
-import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { PageSkeleton, StatePanel } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
@@ -21,11 +20,12 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { kgKeys } from "@/lib/kg/queries";
 import { dismissReviewItem, groupReview, kgReviewQuery, MAX_REASON, nodeNames, REVIEW_RULES, type ReviewGroup } from "@/lib/kg/review";
-import { clusterHref, kgHref, nodeHref, type ReviewFilter, type ReviewState, reviewHref } from "@/lib/kg/routes";
+import { clusterHref, nodeHref, type ReviewFilter, type ReviewState, reviewHref } from "@/lib/kg/routes";
 import type { ReviewItem, ReviewQueue } from "@/lib/kg/types";
 
 import { KindBadge } from "./badges";
 import { ReviewDecisions } from "./decisions";
+import { KgHeader } from "./kg-header";
 
 const STATES: readonly ReviewState[] = ["open", "dismissed", "all"];
 
@@ -234,13 +234,11 @@ export function KgReviewPage({ project, filter, error }: { project: string; filt
   const state = useHubQuery(kgReviewQuery(browserApi, project, filter), error);
   return (
     <>
-      <PageHeader title={t("title")} sub={t("intro")} />
-      <Button asChild variant="link" className="w-fit px-0">
-        <Link href={kgHref(project)}>
-          <ArrowLeft aria-hidden="true" />
-          {t("back")}
-        </Link>
-      </Button>
+      <KgHeader project={project} current="review" />
+      <div className="flex flex-col gap-1">
+        <h2 className="text-[15px] leading-[22px] font-semibold">{t("title")}</h2>
+        <p className="max-w-3xl text-sm text-pretty text-muted-foreground">{t("intro")}</p>
+      </div>
       <QueryView state={state} loading={<PageSkeleton />}>
         {(queue) => <Queue project={project} filter={filter} queue={queue} />}
       </QueryView>

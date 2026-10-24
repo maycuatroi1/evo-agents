@@ -81,10 +81,10 @@ describe("what needs an admin", () => {
   it("lists the pressing things first, each with the page that lists it filtered, and leaves zeros out", () => {
     const items = attentionItems(BUSY);
     expect(items.map((item) => [item.kind, item.tone, item.href])).toEqual([
-      ["builds", "danger", "/p/evo-agents/kg?builds=failed#build-history"],
+      ["builds", "danger", "/p/evo-agents/kg/builds?builds=failed#build-history"],
       ["offline", "danger", "/workers?status=offline"],
       ["expiring", "attention", "/admin/tokens?state=expiring"],
-      ["builds", "neutral", "/p/fixed/kg?builds=failed#build-history"],
+      ["builds", "neutral", "/p/fixed/kg/builds?builds=failed#build-history"],
       ["unused", "neutral", "/admin/tokens?state=unused"],
       ["notSignedIn", "neutral", "/admin/members"],
       ["deletions", "neutral", null],
@@ -95,7 +95,7 @@ describe("what needs an admin", () => {
   it("links a project's members and failed builds by its name", () => {
     expect(membersHref("evo-agents")).toBe("/admin/members?project=evo-agents");
     expect(membersHref()).toBe("/admin/members");
-    expect(failedBuildsHref("evo-agents")).toBe("/p/evo-agents/kg?builds=failed#build-history");
+    expect(failedBuildsHref("evo-agents")).toBe("/p/evo-agents/kg/builds?builds=failed#build-history");
   });
 });
 
@@ -127,7 +127,7 @@ describe("the overview page", () => {
     const rows = within(attention).getAllByTestId("attention-item");
     expect(rows.map((row) => row.dataset.kind)).toEqual(["builds", "offline", "expiring", "builds", "unused", "notSignedIn", "deletions"]);
     expect(rows[0]).toHaveTextContent("2 lần build đồ thị lỗi ở evo-agents");
-    expect(within(rows[0]).getByRole("link")).toHaveAttribute("href", "/p/evo-agents/kg?builds=failed#build-history");
+    expect(within(rows[0]).getByRole("link")).toHaveAttribute("href", "/p/evo-agents/kg/builds?builds=failed#build-history");
     expect(rows[3]).toHaveTextContent("Build mới nhất #41 đã thành công");
     expect(rows[6]).toHaveTextContent("Tổng 3 MB; lần dọn tiếp theo sẽ thử lại");
     expect(within(rows[6]).queryByRole("link")).toBeNull(); // no page lists pending deletions
