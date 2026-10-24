@@ -23,8 +23,12 @@ and, once for the project, ``eval``: the retrieval evaluation of the latest buil
 plans the schedule's owner may read, asked as that owner reads the graph through the project's hub sink. The same
 questions of the same graph keep the score of the measure before, so a quiet day asks nothing again.
 
+It also holds ``review``: per rule, the items of the latest build's review queue (``evo_agents.hub.kg_review``) open
+to that owner through the hub sink, those a writer dismissed aside, with the build they were counted in; or why there
+are none (a build without clusters has no queue).
+
 ``figures`` counts the night's ``kg_health`` over [since, until): the latest measure before ``until`` (its time, its
-build, its sources and eval); ``coverage``, what the latest successful build before ``until`` covers
+build, its sources, eval and review); ``coverage``, what the latest successful build before ``until`` covers
 (``kg_coverage.build_coverage``); ``builds``, the builds that finished in the span, how many succeeded, failed or
 changed nothing (a build whose content an earlier build had, ``artifact_reused_from``), with their coverage over time,
 the latest first; and ``retrieval``, what agents got from the graph (``kg_coverage.retrieval``) in the sessions of the
@@ -52,7 +56,7 @@ from sqlalchemy import case, exists, func, insert, literal, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import kg_coverage, kg_health_eval, tables
+from evo_agents.hub import kg_coverage, kg_health_eval, kg_review, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.kg_build import kg_root
 from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph
@@ -262,19 +266,28 @@ async def _previous_eval(conn: AsyncConnection, project_id: int):
     return (await conn.execute(query)).scalar_one_or_none()
 
 
+async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None, graphs) -> tuple:
+    """(the access of ``row``'s owner, the project's hub sink, None), or (None, None, why the graph cannot be read
+    as the owner reads it)."""
+    if not graphs:
+        return None, None, "the project has no graph on the hub yet"
+    if blobs is None or data_dir is None:
+        return None, None, "this process has no blob store and cache to read the graph from"
+    access = await owner_access(conn, row.owner_id, row.owner, row.project)
+    if access is None:
+        return None, None, f"{row.owner}, who owns the night shift, holds no grant on the project"
+    sink = access.rules.hub_sink.sink if access.rules.hub_sink else None
+    if sink is None:
+        return None, None, "the project declares no hub sink to read its graph through"
+    return access, sink, None
+
+
 async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs) -> dict:
     """The eval of the measure of ``row``'s project (a row of ``_due``)."""
-    if not graphs:
-        return {"why": "the project has no graph on the hub yet"}
-    if blobs is None or data_dir is None:
-        return {"why": "this process has no blob store and cache to read the graph from"}
     async with engine.begin() as conn:
-        access = await owner_access(conn, row.owner_id, row.owner, row.project)
-        if access is None:
-            return {"why": f"{row.owner}, who owns the night shift, holds no grant on the project"}
-        sink = access.rules.hub_sink.sink if access.rules.hub_sink else None
-        if sink is None:
-            return {"why": "the project declares no hub sink to read its graph through"}
+        access, sink, why = await _owner_reads(conn, row, blobs, data_dir, graphs)
+        if why is not None:
+            return {"why": why}
         plans = await _plans(conn, access)
         previous = await _previous_eval(conn, row.project_id)
     cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
@@ -285,6 +298,49 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
     except Exception as exc:  # the measure of the sources stands without a score
         log.exception("the retrieval evaluation of a graph failed", extra={"project": row.project})
         return {"why": f"the evaluation failed: {type(exc).__name__}"}
+
+
+# The review queue
+
+
+def _review(cache: GraphCache, blobs, project: str, access: ProjectAccess, sink: str, graphs, dismissed: set[str]):
+    """The review of a measure (see the module). Blocking: run it in a thread."""
+    ceiling = access.rules.ceiling(access.max_level, sink)
+    path, graph = cache.acquire(blobs, project, graphs)
+    try:
+        store = open_graph(path, project, graph)
+        try:
+            session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
+            if session.error:
+                return {"why": session.error}
+            found, b = session._store()
+            if found.clusters(b) is None and not found.review_items(b):
+                return {"why": kg_review.NO_REVIEW, "build_id": graph.build_id}
+            counts = kg_review.open_counts(found, b, session.visible, dismissed)
+            return {"build_id": graph.build_id, "open": counts}
+        finally:
+            store.close()
+    finally:
+        cache.release(path)
+
+
+async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs) -> dict:
+    """The open items per rule of the review queue of ``row``'s project, as its owner reads them through the hub
+    sink, the dismissed ones aside (``evo_agents.hub.kg_review``)."""
+    d = tables.kg_review_dismissals
+    async with engine.begin() as conn:
+        access, sink, why = await _owner_reads(conn, row, blobs, data_dir, graphs)
+        if why is not None:
+            return {"why": why}
+        dismissed = set((await conn.execute(select(d.c.fingerprint).where(d.c.project_id == row.project_id))).scalars())
+    cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
+    try:
+        return await asyncio.to_thread(_review, cache, blobs, row.project, access, sink, graphs, dismissed)
+    except (GraphUnavailable, ArtifactMismatch) as exc:
+        return {"why": str(exc)}
+    except Exception as exc:  # the measure stands without the queue's counts
+        log.exception("counting the review queue of a graph failed", extra={"project": row.project})
+        return {"why": f"counting the review queue failed: {type(exc).__name__}"}
 
 
 # The measure
@@ -315,7 +371,12 @@ async def measure_project(engine: AsyncEngine, row, *, github_app, blobs, data_d
         if latest
         else None
     )
-    body = {"build": build, "sources": sources, "eval": await measure_eval(engine, row, blobs, data_dir, graphs)}
+    body = {
+        "build": build,
+        "sources": sources,
+        "eval": await measure_eval(engine, row, blobs, data_dir, graphs),
+        "review": await measure_review(engine, row, blobs, data_dir, graphs),
+    }
     return body, latest.build_id if latest else None
 
 
@@ -440,6 +501,7 @@ async def figures(
         "build": body.get("build"),
         "sources": sources,
         "eval": body.get("eval"),
+        "review": body.get("review"),
         "coverage": coverage,
         "builds": _builds(rows),
         "retrieval": kg_coverage.retrieval(bodies),

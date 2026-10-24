@@ -22,6 +22,11 @@
             "minimum": 1,
             "maximum": 25,
             "default": 10
+          },
+          "deprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "also show nodes and edges a decision deprecated"
           }
         },
         "required": [
@@ -56,18 +61,28 @@
             "minimum": 1,
             "maximum": 3,
             "default": 2
+          },
+          "deprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "also show nodes and edges a decision deprecated"
           }
         }
       }
     },
     {
       "name": "kg_node",
-      "description": "One node: properties, status, label, evidence (source, revision, span, uri) and its edges.",
+      "description": "One node: properties, status, label, evidence (source, revision, span, uri) and its edges; a node a decision deprecated says so, with its reason.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string"
+          },
+          "deprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "also show nodes and edges a decision deprecated"
           }
         },
         "required": [
@@ -113,6 +128,11 @@
             "maximum": 500,
             "default": 20,
             "description": "dependents listed per hop, and a quarter as many documents; the rest are counted"
+          },
+          "deprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "also show nodes and edges a decision deprecated"
           }
         }
       }
@@ -134,6 +154,11 @@
             "minimum": 1,
             "maximum": 6,
             "default": 6
+          },
+          "deprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "also show nodes and edges a decision deprecated"
           }
         },
         "required": [
@@ -724,6 +749,64 @@
             "description": "a project on the hub (see hub_projects); default: the session's project"
           }
         },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "kg_propose",
+      "description": "Propose a decision on the project's knowledge graph for a writer to accept or reject: deprecate a node (id) or an edge (id, rel, to), merge two node ids that mean the same (id, to), or link two nodes with a relation the ontology knows (id, rel, to). Writes a proposal only; nothing changes until a writer accepts it and the next build applies it. base_rev is the project's decision revision you read: pass 0 at first, and on a refusal for a stale revision pass the revision it names.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "deprecate",
+              "merge",
+              "link"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "a node id or alias"
+          },
+          "rel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "an edge type"
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "the other node"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "why, for the writer"
+          },
+          "base_rev": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "reason",
+          "base_rev"
+        ],
         "additionalProperties": false
       }
     },

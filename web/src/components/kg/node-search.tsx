@@ -18,7 +18,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { displayName } from "@/lib/kg/graph";
 import { kgSearchQuery, MAX_QUERY } from "@/lib/kg/queries";
-import { kgHref, nodeHref } from "@/lib/kg/routes";
+import { kgHref, mapHref, mapOwner, nodeHref } from "@/lib/kg/routes";
 import type { KgNode, KindCount, NodeSearch } from "@/lib/kg/types";
 import { cn } from "@/lib/utils";
 
@@ -131,8 +131,19 @@ export function KindSummary({ kinds, project }: { kinds: KindCount[]; project: s
 
 const NARROW = { label: "hidden md:table-cell", source: "hidden lg:table-cell", status: "hidden sm:table-cell" };
 
-function ResultsTable({ project, results, caption }: { project: string; results: KgNode[]; caption: string }) {
+function ResultsTable({
+  project,
+  search,
+  results,
+  caption,
+}: {
+  project: string;
+  search: { q: string; kind: string };
+  results: KgNode[];
+  caption: string;
+}) {
   const t = useTranslations("kg.search");
+  const tMap = useTranslations("kg.map");
   const columns = useMemo(() => {
     const helper = dataTableColumns<KgNode>();
     return helper.columns([
@@ -153,6 +164,13 @@ function ResultsTable({ project, results, caption }: { project: string; results:
             <span className="font-mono text-xs break-all whitespace-normal text-muted-foreground">
               {info.row.original.id}
             </span>
+            <Link
+              href={mapHref(project, mapOwner(info.row.original), search)}
+              className="w-fit text-xs text-brand underline-offset-4 hover:underline"
+              data-testid="kg-result-map"
+            >
+              {tMap("showOnMap")}
+            </Link>
           </div>
         ),
       }),
@@ -180,7 +198,7 @@ function ResultsTable({ project, results, caption }: { project: string; results:
         cell: (info) => <span className="font-mono text-xs">{info.getValue() || "-"}</span>,
       }),
     ]);
-  }, [t, project]);
+  }, [t, tMap, project, search]);
   return (
     <DataTable
       data={results}
@@ -213,7 +231,7 @@ function Results({ project, query, kind, data }: { project: string; query: strin
           ) : null}
         </EmptyState>
       ) : (
-        <ResultsTable project={project} results={data.results} caption={summary} />
+        <ResultsTable project={project} search={{ q: query, kind }} results={data.results} caption={summary} />
       )}
     </div>
   );

@@ -1,16 +1,6 @@
 "use client";
 
-import {
-  Archive,
-  CircleAlert,
-  Hourglass,
-  ListChecks,
-  type LucideIcon,
-  Network,
-  Recycle,
-  ScanText,
-  TriangleAlert,
-} from "lucide-react";
+import { Archive, CircleAlert, Network, Recycle, TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo } from "react";
 
@@ -70,87 +60,6 @@ export function ArtifactNote({ build, now }: { build: KgBuild; now: number | nul
       ) : null}
       {state === "own" ? <span>{t("own")}</span> : null}
     </span>
-  );
-}
-
-function Tile({
-  icon: Icon,
-  label,
-  children,
-  detail,
-  testId,
-}: {
-  icon: LucideIcon;
-  label: string;
-  children: ReactNode;
-  detail?: ReactNode;
-  testId?: string;
-}) {
-  return (
-    <Card className="gap-2 py-4" data-testid={testId}>
-      <CardHeader className="px-4">
-        <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Icon className="size-4" aria-hidden="true" />
-          {label}
-        </p>
-      </CardHeader>
-      <CardContent className="flex min-w-0 flex-col gap-1 px-4">
-        <div className="min-w-0 text-xl font-semibold tracking-tight tabular-nums">{children}</div>
-        {detail ? <div className="text-xs text-muted-foreground">{detail}</div> : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Four tiles: the graph the pages read, its size, its content hash, and the queue. */
-export function StatusTiles({ data, now }: { data: KgBuilds; now: number | null }) {
-  const t = useTranslations("kg.tiles");
-  const graph = latestSucceeded(data.builds);
-  const waiting = data.jobs.filter((job) => job.status === "todo").length;
-  const running = data.jobs.filter((job) => job.status === "doing").length;
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-testid="kg-tiles">
-      <Tile
-        icon={Network}
-        label={t("graph")}
-        testId="tile-graph"
-        detail={graph ? <When iso={graph.finished_at} now={now} /> : t("noGraphDetail")}
-      >
-        {graph ? t("build", { id: graph.id }) : <span className="text-muted-foreground">{t("noGraph")}</span>}
-      </Tile>
-      <Tile
-        icon={ScanText}
-        label={t("size")}
-        testId="tile-size"
-        detail={graph ? t("edges", { count: graph.edges ?? 0 }) : undefined}
-      >
-        {graph ? t("nodes", { count: graph.nodes ?? 0 }) : <span className="text-muted-foreground">-</span>}
-      </Tile>
-      <Tile icon={ListChecks} label={t("contentHash")} testId="tile-hash" detail={graph ? t("hashDetail") : undefined}>
-        {graph?.content_hash ? (
-          <span className="flex items-center gap-1">
-            <span className="truncate font-mono text-base" title={graph.content_hash}>
-              {shortHash(graph.content_hash)}
-            </span>
-            <CopyButton value={graph.content_hash} label={t("copyHash")} />
-          </span>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        )}
-      </Tile>
-      <Tile
-        icon={Hourglass}
-        label={t("queue")}
-        testId="tile-queue"
-        detail={data.jobs.length > 0 ? t("refreshing") : undefined}
-      >
-        {data.jobs.length === 0 ? (
-          <span className="text-base font-medium text-muted-foreground">{t("queueEmpty")}</span>
-        ) : (
-          <span className="text-base">{t("queueCounts", { waiting, running })}</span>
-        )}
-      </Tile>
-    </div>
   );
 }
 

@@ -7498,6 +7498,256 @@
         "schema": "Builds"
       }
     },
+    "hub kg clusters": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "show"
+          ]
+        },
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "level",
+          "parent",
+          "label",
+          "size",
+          "kinds",
+          "subclusters"
+        ],
+        "schema": "ClusterSummary",
+        "with": {
+          "show": {
+            "kind": "object",
+            "keys": [
+              "graph",
+              "cluster",
+              "subclusters",
+              "members",
+              "edges",
+              "neighbours"
+            ],
+            "schema": "ClusterDetail"
+          }
+        }
+      }
+    },
+    "hub kg decisions": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "deprecate",
+            "merge",
+            "link",
+            "accept",
+            "reject",
+            "undo"
+          ]
+        },
+        {
+          "name": "target",
+          "metavar": "TARGET",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "proposed",
+            "active",
+            "rejected",
+            "undone",
+            "orphan"
+          ]
+        },
+        {
+          "flags": [
+            "--rel"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--to"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--base-rev"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "number",
+          "kind",
+          "state",
+          "src",
+          "rel",
+          "dst",
+          "history"
+        ],
+        "schema": "KgDecision",
+        "with": {
+          "deprecate": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "merge": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "link": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "accept": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "reject": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "undo": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          }
+        }
+      }
+    },
     "hub kg forget-source": {
       "positionals": [],
       "options": [
@@ -7664,6 +7914,115 @@
           "ok",
           "projects"
         ]
+      }
+    },
+    "hub kg review": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "dismiss"
+          ]
+        },
+        {
+          "name": "fingerprint",
+          "metavar": "FINGERPRINT",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rule"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "dangling_mention",
+            "unmentioned_document",
+            "cluster_without_knowledge",
+            "possible_duplicate",
+            "ambiguous_match",
+            "bulk_noise"
+          ]
+        },
+        {
+          "flags": [
+            "--cluster"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "dismissed",
+            "all"
+          ],
+          "default": "open"
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "graph",
+          "computed",
+          "reason",
+          "can_dismiss",
+          "counts",
+          "items"
+        ],
+        "schema": "ReviewQueue",
+        "with": {
+          "dismiss": {
+            "kind": "object",
+            "keys": [
+              "reason",
+              "by",
+              "at",
+              "build_id"
+            ],
+            "schema": "Dismissal"
+          }
+        }
       }
     },
     "hub kg scrub": {
@@ -18506,7 +18865,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.41.0"
+      "version": "0.42.1"
     },
     "paths": {
       "/v1/health": {
@@ -25021,6 +25380,100 @@
           }
         }
       },
+      "/v1/kg/{project}/shape": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Graph Shape",
+          "description": "How many edges the member can see join each kind of node to each other, by edge type, most first.",
+          "operationId": "graph_shape_v1_kg__project__shape_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GraphShape"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/nodes": {
         "get": {
           "tags": [
@@ -25324,6 +25777,48 @@
                 "default": 150,
                 "title": "Limit"
               }
+            },
+            {
+              "name": "group",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 150,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "direct neighbours shown of each group; all when absent",
+                "title": "Group"
+              },
+              "description": "direct neighbours shown of each group; all when absent"
+            },
+            {
+              "name": "open",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "keys of the groups shown whole (direction:rel:kind)",
+                "title": "Open"
+              },
+              "description": "keys of the groups shown whole (direction:rel:kind)"
             }
           ],
           "responses": {
@@ -25366,6 +25861,981 @@
                 }
               },
               "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/clusters": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Cluster Map",
+          "description": "The level-1 clusters of the graph you can see, the links between them and, for the map, their members.",
+          "operationId": "cluster_map_v1_kg__project__clusters_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "nodes",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "include the members and their edges, for the map",
+                "default": true,
+                "title": "Nodes"
+              },
+              "description": "include the members and their edges, for the map"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ClusterMap"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/cluster": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Show Cluster",
+          "description": "One cluster you can see a member of: its subclusters, members, their edges and its neighbouring clusters.",
+          "operationId": "show_cluster_v1_kg__project__cluster_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "id",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "a cluster id",
+                "title": "Id"
+              },
+              "description": "a cluster id"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ClusterDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/whole": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Whole Graph",
+          "description": "Every node you can see, at most ``limit``, and every edge you can see between two of them, compact.",
+          "operationId": "whole_graph_v1_kg__project__whole_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 20000,
+                "minimum": 1,
+                "default": 20000,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WholeGraph"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/review": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Review Queue",
+          "description": "The items of the review queue you can see, grouped by rule, most connected first, with counts per rule.",
+          "operationId": "review_queue_v1_kg__project__review_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "rule",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "dangling_mention",
+                      "unmentioned_document",
+                      "cluster_without_knowledge",
+                      "possible_duplicate",
+                      "ambiguous_match",
+                      "bulk_noise"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the items of this rule",
+                "title": "Rule"
+              },
+              "description": "only the items of this rule"
+            },
+            {
+              "name": "cluster",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the items of this cluster",
+                "title": "Cluster"
+              },
+              "description": "only the items of this cluster"
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "enum": [
+                  "open",
+                  "dismissed",
+                  "all"
+                ],
+                "type": "string",
+                "description": "which items to list",
+                "default": "open",
+                "title": "State"
+              },
+              "description": "which items to list"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReviewQueue"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/review/{fingerprint}/dismiss": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Dismiss Item",
+          "description": "Dismiss an item of the review queue you can see, with a reason; it stays dismissed in later builds.",
+          "operationId": "dismiss_item_v1_kg__project__review__fingerprint__dismiss_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "fingerprint",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^r:[0-9a-f]{16}$",
+                "description": "an item's fingerprint",
+                "title": "Fingerprint"
+              },
+              "description": "an item's fingerprint"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DismissBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Dismissal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/decisions": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Decisions",
+          "description": "The decisions on the graph you can see, newest first, with their history and the revision to write against.",
+          "operationId": "list_decisions_v1_kg__project__decisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "proposed",
+                      "active",
+                      "rejected",
+                      "undone",
+                      "orphan"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the decisions in this state",
+                "title": "State"
+              },
+              "description": "only the decisions in this state"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgDecisionList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Take Decision",
+          "description": "Deprecate a node or an edge, merge two node ids or link two nodes, with a reason: active at once.",
+          "operationId": "take_decision_v1_kg__project__decisions_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewKgDecision"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgDecision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/decisions/{number}/{step}": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Step Decision",
+          "description": "Accept or reject a proposal, or undo an active decision, with a reason.",
+          "operationId": "step_decision_v1_kg__project__decisions__number___step__post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 1,
+                "description": "the decision's number in the project",
+                "title": "Number"
+              },
+              "description": "the decision's number in the project"
+            },
+            {
+              "name": "step",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "enum": [
+                  "accept",
+                  "reject",
+                  "undo"
+                ],
+                "type": "string",
+                "description": "accept or reject a proposal, or undo an active decision",
+                "title": "Step"
+              },
+              "description": "accept or reject a proposal, or undo an active decision"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KgDecisionStep"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgDecision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
             },
             "502": {
               "content": {
@@ -81399,6 +82869,250 @@
           ],
           "title": "Clearance"
         },
+        "ClusterDetail": {
+          "properties": {
+            "graph": {
+              "$ref": "#/components/schemas/GraphRef"
+            },
+            "cluster": {
+              "$ref": "#/components/schemas/ClusterSummary"
+            },
+            "subclusters": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterSummary"
+              },
+              "type": "array",
+              "title": "Subclusters",
+              "description": "its level-2 clusters you can see, largest first"
+            },
+            "members": {
+              "items": {
+                "$ref": "#/components/schemas/MapNode"
+              },
+              "type": "array",
+              "title": "Members",
+              "description": "its members you can see, by id"
+            },
+            "edges": {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "the edges between two members, as [index, index, weight] into members"
+            },
+            "neighbours": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterNeighbour"
+              },
+              "type": "array",
+              "title": "Neighbours",
+              "description": "clusters of its level its edges reach, heaviest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "cluster",
+            "subclusters",
+            "members",
+            "edges",
+            "neighbours"
+          ],
+          "title": "ClusterDetail"
+        },
+        "ClusterLink": {
+          "properties": {
+            "a": {
+              "type": "string",
+              "title": "A"
+            },
+            "b": {
+              "type": "string",
+              "title": "B"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "the edges you can see joining members of the two clusters"
+            }
+          },
+          "type": "object",
+          "required": [
+            "a",
+            "b",
+            "weight"
+          ],
+          "title": "ClusterLink"
+        },
+        "ClusterMap": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "computed": {
+              "type": "boolean",
+              "title": "Computed",
+              "description": "false when there is no cluster to show; reason says why"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "clusters": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterSummary"
+              },
+              "type": "array",
+              "title": "Clusters",
+              "description": "the level-1 clusters you can see, largest first"
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterLink"
+              },
+              "type": "array",
+              "title": "Links",
+              "description": "level-1 clusters joined by edges you can see, heaviest first"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/MapNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "the members you can see, by id; empty with nodes=false"
+            },
+            "edges": {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "the edges you can see between two members, as [index, index, weight] into nodes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "computed",
+            "reason",
+            "clusters",
+            "links",
+            "nodes",
+            "edges"
+          ],
+          "title": "ClusterMap"
+        },
+        "ClusterNeighbour": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "the edges you can see joining it to the cluster"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "label",
+            "size",
+            "weight"
+          ],
+          "title": "ClusterNeighbour"
+        },
+        "ClusterSummary": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "level": {
+              "type": "integer",
+              "title": "Level",
+              "description": "1 for a cluster of the whole graph, 2 for a part of a large level-1 cluster"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the level-1 cluster of a level-2 cluster"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label",
+              "description": "its words by c-TF-IDF over the names and paths of the members you can see"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size",
+              "description": "its members you can see"
+            },
+            "kinds": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Kinds",
+              "description": "its members you can see, by kind"
+            },
+            "subclusters": {
+              "type": "integer",
+              "title": "Subclusters",
+              "description": "its level-2 clusters with a member you can see"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "level",
+            "parent",
+            "label",
+            "size",
+            "kinds",
+            "subclusters"
+          ],
+          "title": "ClusterSummary"
+        },
         "CommandCount": {
           "properties": {
             "command": {
@@ -83326,6 +85040,59 @@
             "verdict"
           ],
           "title": "Dimension"
+        },
+        "DismissBody": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "DismissBody"
+        },
+        "Dismissal": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "by": {
+              "type": "string",
+              "title": "By",
+              "description": "the login of the writer who dismissed it"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id",
+              "description": "the build they saw the item in; null once that build is gone"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason",
+            "by",
+            "at",
+            "build_id"
+          ],
+          "title": "Dismissal"
         },
         "Dispatch": {
           "properties": {
@@ -85290,6 +87057,11 @@
               "type": "boolean",
               "title": "Hub",
               "description": "left unexpanded: it has more than 150 visible edges"
+            },
+            "degree": {
+              "type": "integer",
+              "title": "Degree",
+              "description": "the node's visible edges in the whole graph"
             }
           },
           "type": "object",
@@ -85303,7 +87075,8 @@
             "props",
             "aliases",
             "hop",
-            "hub"
+            "hub",
+            "degree"
           ],
           "title": "GraphNode"
         },
@@ -85346,6 +87119,35 @@
             "latest"
           ],
           "title": "GraphRef"
+        },
+        "GraphShape": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "shape": {
+              "items": {
+                "$ref": "#/components/schemas/ShapeRow"
+              },
+              "type": "array",
+              "title": "Shape",
+              "description": "visible edges by source kind, edge type and target kind, most first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "shape"
+          ],
+          "title": "GraphShape"
         },
         "GraphSummary": {
           "properties": {
@@ -88223,6 +90025,203 @@
           ],
           "title": "KgConfig"
         },
+        "KgDecision": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "the decision's number in the project, from 1"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "deprecate",
+                "merge",
+                "link"
+              ],
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "active",
+                "rejected",
+                "undone",
+                "orphan"
+              ],
+              "title": "State"
+            },
+            "src": {
+              "type": "string",
+              "title": "Src",
+              "description": "the node deprecated, the first node merged, or the edge's source"
+            },
+            "rel": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rel",
+              "description": "the edge's type, for an edge deprecated or linked"
+            },
+            "dst": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dst",
+              "description": "the edge's target, or the node merged into src's id"
+            },
+            "history": {
+              "items": {
+                "$ref": "#/components/schemas/KgDecisionEvent"
+              },
+              "type": "array",
+              "title": "History",
+              "description": "oldest first; the first step says why it was taken"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "kind",
+            "state",
+            "src",
+            "rel",
+            "dst",
+            "history"
+          ],
+          "title": "KgDecision"
+        },
+        "KgDecisionEvent": {
+          "properties": {
+            "rev": {
+              "type": "integer",
+              "title": "Rev",
+              "description": "the project's decision revision this step made"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "propose",
+                "decide",
+                "accept",
+                "reject",
+                "undo"
+              ],
+              "title": "Action"
+            },
+            "by": {
+              "type": "string",
+              "title": "By",
+              "description": "the login of the member, or of the agent's owner, who took the step"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id",
+              "description": "the build the graph was at; null once that build is gone"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rev",
+            "action",
+            "by",
+            "at",
+            "reason",
+            "build_id"
+          ],
+          "title": "KgDecisionEvent"
+        },
+        "KgDecisionList": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "rev": {
+              "type": "integer",
+              "title": "Rev",
+              "description": "the project's decision revision: what a write names as base_rev"
+            },
+            "can_decide": {
+              "type": "boolean",
+              "title": "Can Decide",
+              "description": "true for a writer of the project"
+            },
+            "decisions": {
+              "items": {
+                "$ref": "#/components/schemas/KgDecision"
+              },
+              "type": "array",
+              "title": "Decisions",
+              "description": "newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "rev",
+            "can_decide",
+            "decisions"
+          ],
+          "title": "KgDecisionList"
+        },
+        "KgDecisionStep": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            },
+            "base_rev": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0,
+              "title": "Base Rev",
+              "description": "the decision revision you read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason",
+            "base_rev"
+          ],
+          "title": "KgDecisionStep"
+        },
         "KgDuty": {
           "properties": {
             "project": {
@@ -90777,6 +92776,55 @@
           ],
           "title": "LoopUseCaseRef"
         },
+        "MapNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "cluster": {
+              "type": "string",
+              "title": "Cluster",
+              "description": "its level-1 cluster"
+            },
+            "sub": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sub",
+              "description": "its level-2 cluster, if any"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "cluster",
+            "sub"
+          ],
+          "title": "MapNode"
+        },
         "MarketingBrowserClaim": {
           "properties": {
             "job": {
@@ -93324,6 +95372,55 @@
           ],
           "title": "NamedGroup"
         },
+        "NeighbourGroup": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "direction:rel:kind, as the open parameter names the group"
+            },
+            "rel": {
+              "type": "string",
+              "title": "Rel"
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "out",
+                "in"
+              ],
+              "title": "Direction"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "the kind of the neighbours"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "visible direct neighbours in the group"
+            },
+            "shown": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Shown",
+              "description": "the ids of those in nodes, most visible edges first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "rel",
+            "direction",
+            "kind",
+            "total",
+            "shown"
+          ],
+          "title": "NeighbourGroup"
+        },
         "Neighbourhood": {
           "properties": {
             "graph": {
@@ -93342,6 +95439,18 @@
               "type": "integer",
               "title": "Limit"
             },
+            "group": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group",
+              "description": "direct neighbours shown of each group not opened; null for all"
+            },
             "nodes": {
               "items": {
                 "$ref": "#/components/schemas/GraphNode"
@@ -93355,6 +95464,14 @@
               },
               "type": "array",
               "title": "Edges"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/components/schemas/NeighbourGroup"
+              },
+              "type": "array",
+              "title": "Groups",
+              "description": "the node's direct neighbours by edge type, direction and kind"
             },
             "neighbours": {
               "type": "integer",
@@ -93377,13 +95494,81 @@
             "focus",
             "hops",
             "limit",
+            "group",
             "nodes",
             "edges",
+            "groups",
             "neighbours",
             "left_out",
             "truncated"
           ],
           "title": "Neighbourhood"
+        },
+        "NewKgDecision": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            },
+            "base_rev": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0,
+              "title": "Base Rev",
+              "description": "the decision revision you read"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "deprecate",
+                "merge",
+                "link"
+              ],
+              "title": "Kind"
+            },
+            "src": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Src"
+            },
+            "rel": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rel"
+            },
+            "dst": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dst"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason",
+            "base_rev",
+            "kind",
+            "src"
+          ],
+          "title": "NewKgDecision"
         },
         "Night": {
           "properties": {
@@ -106855,6 +109040,129 @@
           ],
           "title": "Results"
         },
+        "ReviewItem": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint",
+              "description": "the item's id, the same in every build that finds it"
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "action": {
+              "type": "string",
+              "title": "Action",
+              "description": "what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or exclude"
+            },
+            "cluster": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster",
+              "description": "the level-1 cluster of its first node you can see, if any"
+            },
+            "cluster_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster Label",
+              "description": "that cluster's label, as your map shows it"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/ReviewNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "the nodes the item is about that you can see"
+            },
+            "detail": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Detail",
+              "description": "what the rule found: count, and per rule mentions, samples, path, kind, where"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "the most edges you can see any of its nodes has; the queue's order"
+            },
+            "dismissal": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Dismissal"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null while the item is open"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "rule",
+            "action",
+            "cluster",
+            "cluster_label",
+            "nodes",
+            "detail",
+            "weight",
+            "dismissal"
+          ],
+          "title": "ReviewItem"
+        },
+        "ReviewNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name"
+          ],
+          "title": "ReviewNode"
+        },
         "ReviewProbe": {
           "properties": {
             "repo": {
@@ -106922,6 +109230,68 @@
           ],
           "title": "ReviewProbe",
           "description": "A probe the agent of a review run adds to a merged change that has none."
+        },
+        "ReviewQueue": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "computed": {
+              "type": "boolean",
+              "title": "Computed",
+              "description": "false when the build has no review queue; reason says why"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "can_dismiss": {
+              "type": "boolean",
+              "title": "Can Dismiss",
+              "description": "true for a writer of the project"
+            },
+            "counts": {
+              "items": {
+                "$ref": "#/components/schemas/RuleCount"
+              },
+              "type": "array",
+              "title": "Counts",
+              "description": "every rule, with the items you can see open and dismissed"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/ReviewItem"
+              },
+              "type": "array",
+              "title": "Items",
+              "description": "by rule, then most connected first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "computed",
+            "reason",
+            "can_dismiss",
+            "counts",
+            "items"
+          ],
+          "title": "ReviewQueue"
         },
         "ReviewRunSummary": {
           "properties": {
@@ -107274,6 +109644,37 @@
           "type": "object",
           "title": "Role",
           "description": "The runtime and model one role of the Curator runs on."
+        },
+        "RuleCount": {
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "open": {
+              "type": "integer",
+              "title": "Open"
+            },
+            "dismissed": {
+              "type": "integer",
+              "title": "Dismissed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rule",
+            "open",
+            "dismissed"
+          ],
+          "title": "RuleCount"
         },
         "Run": {
           "properties": {
@@ -112359,6 +114760,34 @@
           "type": "object",
           "title": "SettingsWrite",
           "description": "The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."
+        },
+        "ShapeRow": {
+          "properties": {
+            "src_kind": {
+              "type": "string",
+              "title": "Src Kind"
+            },
+            "rel": {
+              "type": "string",
+              "title": "Rel"
+            },
+            "dst_kind": {
+              "type": "string",
+              "title": "Dst Kind"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count"
+            }
+          },
+          "type": "object",
+          "required": [
+            "src_kind",
+            "rel",
+            "dst_kind",
+            "count"
+          ],
+          "title": "ShapeRow"
         },
         "ShareWrite": {
           "properties": {
@@ -121905,6 +124334,105 @@
             "grants"
           ],
           "title": "WhoAmI"
+        },
+        "WholeGraph": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/WholeNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "the nodes you can see, by id, at most limit"
+            },
+            "rels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Rels",
+              "description": "the edge types edges index"
+            },
+            "edges": {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "[source index, target index, type index into rels]"
+            },
+            "truncated": {
+              "type": "boolean",
+              "title": "Truncated",
+              "description": "true when you can see more nodes than limit"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "nodes",
+            "rels",
+            "edges",
+            "truncated"
+          ],
+          "title": "WholeGraph"
+        },
+        "WholeNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "cluster": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster",
+              "description": "the level-1 cluster it counts in, if one you can see"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "cluster"
+          ],
+          "title": "WholeNode"
         },
         "Window": {
           "properties": {

@@ -1259,6 +1259,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/shape": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Graph Shape
+         * @description How many edges the member can see join each kind of node to each other, by edge type, most first.
+         */
+        get: operations["graph_shape_v1_kg__project__shape_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/nodes": {
         parameters: {
             query?: never;
@@ -1313,6 +1333,150 @@ export interface paths {
         get: operations["show_neighbourhood_v1_kg__project__neighbourhood_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/clusters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cluster Map
+         * @description The level-1 clusters of the graph you can see, the links between them and, for the map, their members.
+         */
+        get: operations["cluster_map_v1_kg__project__clusters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/cluster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Cluster
+         * @description One cluster you can see a member of: its subclusters, members, their edges and its neighbouring clusters.
+         */
+        get: operations["show_cluster_v1_kg__project__cluster_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/whole": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whole Graph
+         * @description Every node you can see, at most ``limit``, and every edge you can see between two of them, compact.
+         */
+        get: operations["whole_graph_v1_kg__project__whole_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Queue
+         * @description The items of the review queue you can see, grouped by rule, most connected first, with counts per rule.
+         */
+        get: operations["review_queue_v1_kg__project__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/review/{fingerprint}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Item
+         * @description Dismiss an item of the review queue you can see, with a reason; it stays dismissed in later builds.
+         */
+        post: operations["dismiss_item_v1_kg__project__review__fingerprint__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Decisions
+         * @description The decisions on the graph you can see, newest first, with their history and the revision to write against.
+         */
+        get: operations["list_decisions_v1_kg__project__decisions_get"];
+        put?: never;
+        /**
+         * Take Decision
+         * @description Deprecate a node or an edge, merge two node ids or link two nodes, with a reason: active at once.
+         */
+        post: operations["take_decision_v1_kg__project__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/decisions/{number}/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step Decision
+         * @description Accept or reject a proposal, or undo an active decision, with a reason.
+         */
+        post: operations["step_decision_v1_kg__project__decisions__number___step__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13901,6 +14065,126 @@ export interface components {
             /** Location */
             location?: string | null;
         };
+        /** ClusterDetail */
+        ClusterDetail: {
+            graph: components["schemas"]["GraphRef"];
+            cluster: components["schemas"]["ClusterSummary"];
+            /**
+             * Subclusters
+             * @description its level-2 clusters you can see, largest first
+             */
+            subclusters: components["schemas"]["ClusterSummary"][];
+            /**
+             * Members
+             * @description its members you can see, by id
+             */
+            members: components["schemas"]["MapNode"][];
+            /**
+             * Edges
+             * @description the edges between two members, as [index, index, weight] into members
+             */
+            edges: number[][];
+            /**
+             * Neighbours
+             * @description clusters of its level its edges reach, heaviest first
+             */
+            neighbours: components["schemas"]["ClusterNeighbour"][];
+        };
+        /** ClusterLink */
+        ClusterLink: {
+            /** A */
+            a: string;
+            /** B */
+            b: string;
+            /**
+             * Weight
+             * @description the edges you can see joining members of the two clusters
+             */
+            weight: number;
+        };
+        /** ClusterMap */
+        ClusterMap: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Computed
+             * @description false when there is no cluster to show; reason says why
+             */
+            computed: boolean;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Clusters
+             * @description the level-1 clusters you can see, largest first
+             */
+            clusters: components["schemas"]["ClusterSummary"][];
+            /**
+             * Links
+             * @description level-1 clusters joined by edges you can see, heaviest first
+             */
+            links: components["schemas"]["ClusterLink"][];
+            /**
+             * Nodes
+             * @description the members you can see, by id; empty with nodes=false
+             */
+            nodes: components["schemas"]["MapNode"][];
+            /**
+             * Edges
+             * @description the edges you can see between two members, as [index, index, weight] into nodes
+             */
+            edges: number[][];
+        };
+        /** ClusterNeighbour */
+        ClusterNeighbour: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Size */
+            size: number;
+            /**
+             * Weight
+             * @description the edges you can see joining it to the cluster
+             */
+            weight: number;
+        };
+        /** ClusterSummary */
+        ClusterSummary: {
+            /** Id */
+            id: string;
+            /**
+             * Level
+             * @description 1 for a cluster of the whole graph, 2 for a part of a large level-1 cluster
+             */
+            level: number;
+            /**
+             * Parent
+             * @description the level-1 cluster of a level-2 cluster
+             */
+            parent: string | null;
+            /**
+             * Label
+             * @description its words by c-TF-IDF over the names and paths of the members you can see
+             */
+            label: string;
+            /**
+             * Size
+             * @description its members you can see
+             */
+            size: number;
+            /**
+             * Kinds
+             * @description its members you can see, by kind
+             */
+            kinds: {
+                [key: string]: number;
+            };
+            /**
+             * Subclusters
+             * @description its level-2 clusters with a member you can see
+             */
+            subclusters: number;
+        };
         /** CommandCount */
         CommandCount: {
             /** Command */
@@ -14757,6 +15041,31 @@ export interface components {
              */
             reason: string;
         };
+        /** DismissBody */
+        DismissBody: {
+            /** Reason */
+            reason: string;
+        };
+        /** Dismissal */
+        Dismissal: {
+            /** Reason */
+            reason: string;
+            /**
+             * By
+             * @description the login of the writer who dismissed it
+             */
+            by: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Build Id
+             * @description the build they saw the item in; null once that build is gone
+             */
+            build_id: number | null;
+        };
         /** Dispatch */
         Dispatch: {
             /** Plan Id */
@@ -15608,6 +15917,11 @@ export interface components {
              * @description left unexpanded: it has more than 150 visible edges
              */
             hub: boolean;
+            /**
+             * Degree
+             * @description the node's visible edges in the whole graph
+             */
+            degree: number;
         };
         /** GraphRef */
         GraphRef: {
@@ -15629,6 +15943,16 @@ export interface components {
              * @description false when the blob store did not answer and an older cached build answered
              */
             latest: boolean;
+        };
+        /** GraphShape */
+        GraphShape: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Shape
+             * @description visible edges by source kind, edge type and target kind, most first
+             */
+            shape: components["schemas"]["ShapeRow"][];
         };
         /** GraphSummary */
         GraphSummary: {
@@ -16888,6 +17212,104 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** KgDecision */
+        KgDecision: {
+            /**
+             * Number
+             * @description the decision's number in the project, from 1
+             */
+            number: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "deprecate" | "merge" | "link";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "proposed" | "active" | "rejected" | "undone" | "orphan";
+            /**
+             * Src
+             * @description the node deprecated, the first node merged, or the edge's source
+             */
+            src: string;
+            /**
+             * Rel
+             * @description the edge's type, for an edge deprecated or linked
+             */
+            rel: string | null;
+            /**
+             * Dst
+             * @description the edge's target, or the node merged into src's id
+             */
+            dst: string | null;
+            /**
+             * History
+             * @description oldest first; the first step says why it was taken
+             */
+            history: components["schemas"]["KgDecisionEvent"][];
+        };
+        /** KgDecisionEvent */
+        KgDecisionEvent: {
+            /**
+             * Rev
+             * @description the project's decision revision this step made
+             */
+            rev: number;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "propose" | "decide" | "accept" | "reject" | "undo";
+            /**
+             * By
+             * @description the login of the member, or of the agent's owner, who took the step
+             */
+            by: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Build Id
+             * @description the build the graph was at; null once that build is gone
+             */
+            build_id: number | null;
+        };
+        /** KgDecisionList */
+        KgDecisionList: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Rev
+             * @description the project's decision revision: what a write names as base_rev
+             */
+            rev: number;
+            /**
+             * Can Decide
+             * @description true for a writer of the project
+             */
+            can_decide: boolean;
+            /**
+             * Decisions
+             * @description newest first
+             */
+            decisions: components["schemas"]["KgDecision"][];
+        };
+        /** KgDecisionStep */
+        KgDecisionStep: {
+            /** Reason */
+            reason: string;
+            /**
+             * Base Rev
+             * @description the decision revision you read
+             */
+            base_rev: number;
+        };
         /**
          * KgDuty
          * @description A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it.
@@ -17924,6 +18346,25 @@ export interface components {
              * @description the version of the document it was read from
              */
             version: number | null;
+        };
+        /** MapNode */
+        MapNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /**
+             * Cluster
+             * @description its level-1 cluster
+             */
+            cluster: string;
+            /**
+             * Sub
+             * @description its level-2 cluster, if any
+             */
+            sub: string | null;
         };
         /** MarketingBrowserClaim */
         MarketingBrowserClaim: {
@@ -18996,6 +19437,36 @@ export interface components {
             /** Description */
             description: string | null;
         };
+        /** NeighbourGroup */
+        NeighbourGroup: {
+            /**
+             * Key
+             * @description direction:rel:kind, as the open parameter names the group
+             */
+            key: string;
+            /** Rel */
+            rel: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "out" | "in";
+            /**
+             * Kind
+             * @description the kind of the neighbours
+             */
+            kind: string;
+            /**
+             * Total
+             * @description visible direct neighbours in the group
+             */
+            total: number;
+            /**
+             * Shown
+             * @description the ids of those in nodes, most visible edges first
+             */
+            shown: string[];
+        };
         /** Neighbourhood */
         Neighbourhood: {
             graph: components["schemas"]["GraphRef"];
@@ -19008,10 +19479,20 @@ export interface components {
             hops: number;
             /** Limit */
             limit: number;
+            /**
+             * Group
+             * @description direct neighbours shown of each group not opened; null for all
+             */
+            group: number | null;
             /** Nodes */
             nodes: components["schemas"]["GraphNode"][];
             /** Edges */
             edges: components["schemas"]["GraphEdge"][];
+            /**
+             * Groups
+             * @description the node's direct neighbours by edge type, direction and kind
+             */
+            groups: components["schemas"]["NeighbourGroup"][];
             /**
              * Neighbours
              * @description visible direct neighbours of the node
@@ -19024,6 +19505,27 @@ export interface components {
             left_out: number;
             /** Truncated */
             truncated: boolean;
+        };
+        /** NewKgDecision */
+        NewKgDecision: {
+            /** Reason */
+            reason: string;
+            /**
+             * Base Rev
+             * @description the decision revision you read
+             */
+            base_rev: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "deprecate" | "merge" | "link";
+            /** Src */
+            src: string;
+            /** Rel */
+            rel?: string | null;
+            /** Dst */
+            dst?: string | null;
         };
         /** Night */
         Night: {
@@ -24932,6 +25434,62 @@ export interface components {
             /** Items */
             items: components["schemas"]["Found"][];
         };
+        /** ReviewItem */
+        ReviewItem: {
+            /**
+             * Fingerprint
+             * @description the item's id, the same in every build that finds it
+             */
+            fingerprint: string;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            /**
+             * Action
+             * @description what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or exclude
+             */
+            action: string;
+            /**
+             * Cluster
+             * @description the level-1 cluster of its first node you can see, if any
+             */
+            cluster: string | null;
+            /**
+             * Cluster Label
+             * @description that cluster's label, as your map shows it
+             */
+            cluster_label: string | null;
+            /**
+             * Nodes
+             * @description the nodes the item is about that you can see
+             */
+            nodes: components["schemas"]["ReviewNode"][];
+            /**
+             * Detail
+             * @description what the rule found: count, and per rule mentions, samples, path, kind, where
+             */
+            detail: {
+                [key: string]: unknown;
+            };
+            /**
+             * Weight
+             * @description the most edges you can see any of its nodes has; the queue's order
+             */
+            weight: number;
+            /** @description null while the item is open */
+            dismissal: components["schemas"]["Dismissal"] | null;
+        };
+        /** ReviewNode */
+        ReviewNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+        };
         /**
          * ReviewProbe
          * @description A probe the agent of a review run adds to a merged change that has none.
@@ -24964,6 +25522,33 @@ export interface components {
              * @description the change's active probe, not reproduced two weekly reports in a row, that this one replaces; the hub retires it
              */
             replaces?: number | null;
+        };
+        /** ReviewQueue */
+        ReviewQueue: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Computed
+             * @description false when the build has no review queue; reason says why
+             */
+            computed: boolean;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Can Dismiss
+             * @description true for a writer of the project
+             */
+            can_dismiss: boolean;
+            /**
+             * Counts
+             * @description every rule, with the items you can see open and dismissed
+             */
+            counts: components["schemas"]["RuleCount"][];
+            /**
+             * Items
+             * @description by rule, then most connected first
+             */
+            items: components["schemas"]["ReviewItem"][];
         };
         /**
          * ReviewRunSummary
@@ -25141,6 +25726,18 @@ export interface components {
              * @description as the runtime names it; null: the runtime's own choice
              */
             model?: string | null;
+        };
+        /** RuleCount */
+        RuleCount: {
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            /** Open */
+            open: number;
+            /** Dismissed */
+            dismissed: number;
         };
         /** Run */
         Run: {
@@ -27488,6 +28085,17 @@ export interface components {
              * @description 409 unless the layer is at this version now
              */
             if_version?: number | null;
+        };
+        /** ShapeRow */
+        ShapeRow: {
+            /** Src Kind */
+            src_kind: string;
+            /** Rel */
+            rel: string;
+            /** Dst Kind */
+            dst_kind: string;
+            /** Count */
+            count: number;
         };
         /** ShareWrite */
         ShareWrite: {
@@ -31462,6 +32070,45 @@ export interface components {
             token: components["schemas"]["TokenInfo"];
             /** Grants */
             grants: components["schemas"]["GrantInfo"][];
+        };
+        /** WholeGraph */
+        WholeGraph: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Nodes
+             * @description the nodes you can see, by id, at most limit
+             */
+            nodes: components["schemas"]["WholeNode"][];
+            /**
+             * Rels
+             * @description the edge types edges index
+             */
+            rels: string[];
+            /**
+             * Edges
+             * @description [source index, target index, type index into rels]
+             */
+            edges: number[][];
+            /**
+             * Truncated
+             * @description true when you can see more nodes than limit
+             */
+            truncated: boolean;
+        };
+        /** WholeNode */
+        WholeNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /**
+             * Cluster
+             * @description the level-1 cluster it counts in, if one you can see
+             */
+            cluster: string | null;
         };
         /** Window */
         Window: {
@@ -36512,6 +37159,82 @@ export interface operations {
             };
         };
     };
+    graph_shape_v1_kg__project__shape_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphShape"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     search_nodes_v1_kg__project__nodes_get: {
         parameters: {
             query: {
@@ -36680,6 +37403,10 @@ export interface operations {
                 id: string;
                 hops?: number;
                 limit?: number;
+                /** @description direct neighbours shown of each group; all when absent */
+                group?: number | null;
+                /** @description keys of the groups shown whole (direction:rel:kind) */
+                open?: string[] | null;
             };
             header?: never;
             path: {
@@ -36718,6 +37445,677 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cluster_map_v1_kg__project__clusters_get: {
+        parameters: {
+            query?: {
+                /** @description include the members and their edges, for the map */
+                nodes?: boolean;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterMap"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_cluster_v1_kg__project__cluster_get: {
+        parameters: {
+            query: {
+                /** @description a cluster id */
+                id: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    whole_graph_v1_kg__project__whole_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeGraph"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    review_queue_v1_kg__project__review_get: {
+        parameters: {
+            query?: {
+                /** @description only the items of this rule */
+                rule?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise") | null;
+                /** @description only the items of this cluster */
+                cluster?: string | null;
+                /** @description which items to list */
+                state?: "open" | "dismissed" | "all";
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dismiss_item_v1_kg__project__review__fingerprint__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description an item's fingerprint */
+                fingerprint: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dismissal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_decisions_v1_kg__project__decisions_get: {
+        parameters: {
+            query?: {
+                /** @description only the decisions in this state */
+                state?: ("proposed" | "active" | "rejected" | "undone" | "orphan") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgDecisionList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    take_decision_v1_kg__project__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewKgDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgDecision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    step_decision_v1_kg__project__decisions__number___step__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the decision's number in the project */
+                number: number;
+                /** @description accept or reject a proposal, or undo an active decision */
+                step: "accept" | "reject" | "undo";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KgDecisionStep"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgDecision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

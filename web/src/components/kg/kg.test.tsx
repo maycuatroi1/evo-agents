@@ -6,17 +6,19 @@ import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { kgKeys } from "@/lib/kg/queries";
-import type { GraphNode, KgBuild, Neighbourhood, SourceRead } from "@/lib/kg/types";
+import { kgKeys, NODE_PAGE_GROUPING } from "@/lib/kg/queries";
+import type { GraphNode, GraphShape, KgBuild, KgBuilds, Neighbourhood, SourceRead } from "@/lib/kg/types";
 import { makeQueryClient } from "@/lib/query-client";
 import { renderVi } from "@/test/render";
 
 import { BuildStatusBadge } from "./badges";
 import { BuildHistory, LatestBuild, latestSucceeded } from "./build-status";
+import { GraphShapeSection } from "./graph-shape";
 import { KgNodePage } from "./kg-node-page";
 import { KgOverview } from "./kg-overview";
 import { NeighbourhoodSection } from "./neighbourhood";
 import { SourceCommits } from "./source-commits";
+import { StatusTiles } from "./status-tiles";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -25,7 +27,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const label = { level: "internal", location: "any", integrity: "U" };
-const node = (id: string, hop: number, name: string, kind = "Section"): GraphNode => ({
+const node = (id: string, hop: number, name: string, kind = "Section", degree = 1): GraphNode => ({
   id,
   kind,
   name,
@@ -36,6 +38,7 @@ const node = (id: string, hop: number, name: string, kind = "Section"): GraphNod
   aliases: [],
   hop,
   hub: false,
+  degree,
 });
 
 const VIEW: Neighbourhood = {
@@ -43,6 +46,7 @@ const VIEW: Neighbourhood = {
   focus: "requirement:KB-01",
   hops: 2,
   limit: 150,
+  group: 5,
   nodes: [
     node("requirement:KB-01", 0, "KB-01", "Requirement"),
     node("docs:doc:runbook#cài-đặt", 1, "Cài đặt"),
@@ -53,6 +57,16 @@ const VIEW: Neighbourhood = {
     { id: "e1", src: "docs:doc:runbook#cài-đặt", rel: "mentions", dst: "requirement:KB-01", status: "parsed" },
     { id: "e2", src: "docs:doc:runbook#sổ-tay", rel: "mentions", dst: "requirement:KB-01", status: "parsed" },
     { id: "e3", src: "docs:doc:runbook#cài-đặt", rel: "part_of", dst: "docs:doc:runbook", status: "parsed" },
+  ],
+  groups: [
+    {
+      key: "in:mentions:Section",
+      rel: "mentions",
+      direction: "in",
+      kind: "Section",
+      total: 2,
+      shown: ["docs:doc:runbook#cài-đặt", "docs:doc:runbook#sổ-tay"],
+    },
   ],
   neighbours: 2,
   left_out: 0,
@@ -255,7 +269,7 @@ describe("commits read", () => {
 
 describe("neighbourhood", () => {
   const seed = (view: Neighbourhood) => (client: ReturnType<typeof makeQueryClient>) =>
-    client.setQueryData(kgKeys.neighbourhood("demo", view.focus, 2), view);
+    client.setQueryData(kgKeys.neighbourhood("demo", view.focus, 2, NODE_PAGE_GROUPING), view);
 
   it("shows the table alone on a narrow screen, and the table follows the selection", async () => {
     withQueries(<NeighbourhoodSection project="demo" id={VIEW.focus} hops={2} initialError={null} />, seed(VIEW));
@@ -295,5 +309,128 @@ describe("neighbourhood", () => {
       "href",
       "/p/demo/kg/node?id=requirement%3AKB-01&hops=1",
     );
+  });
+
+  it("shows the most connected of each group first, says how many it holds back, and opens the group on a click", async () => {
+    const hub = (i: number) => `docs:doc:hub#${i}`;
+    const many: Neighbourhood = {
+      ...VIEW,
+      nodes: [
+        ...VIEW.nodes,
+        ...[1, 2, 3, 4, 5].map((i) => node(hub(i), 1, `Mục ${i}`, "Section", 10 - i)),
+      ],
+      edges: [
+        ...VIEW.edges,
+        ...[1, 2, 3, 4, 5].map((i) => ({ id: `h${i}`, src: VIEW.focus, rel: "defines", dst: hub(i), status: "parsed" })),
+      ],
+      groups: [
+        { key: "out:defines:Section", rel: "defines", direction: "out", kind: "Section", total: 8, shown: [1, 2, 3, 4, 5].map(hub) },
+        ...VIEW.groups,
+      ],
+      neighbours: 10,
+    };
+    const opened: Neighbourhood = {
+      ...many,
+      nodes: [...many.nodes, ...[6, 7, 8].map((i) => node(hub(i), 1, `Mục ${i}`, "Section", 10 - i))],
+      edges: [
+        ...many.edges,
+        ...[6, 7, 8].map((i) => ({ id: `h${i}`, src: VIEW.focus, rel: "defines", dst: hub(i), status: "parsed" })),
+      ],
+      groups: [{ ...many.groups[0], shown: [1, 2, 3, 4, 5, 6, 7, 8].map(hub) }, ...VIEW.groups],
+    };
+    withQueries(<NeighbourhoodSection project="demo" id={VIEW.focus} hops={2} initialError={null} />, (client) => {
+      client.setQueryData(kgKeys.neighbourhood("demo", VIEW.focus, 2, NODE_PAGE_GROUPING), many);
+      client.setQueryData(
+        kgKeys.neighbourhood("demo", VIEW.focus, 2, { ...NODE_PAGE_GROUPING, open: ["out:defines:Section"] }),
+        opened,
+      );
+    });
+    const groups = screen.getAllByTestId("neighbour-group");
+    expect(groups.map((group) => [group.getAttribute("data-key"), group.getAttribute("data-hidden")])).toEqual([
+      ["out:defines:Section", "3"],
+      ["in:mentions:Section", "0"],
+    ]);
+    expect(within(groups[0]).getByText("5 trên 8")).toBeInTheDocument();
+    expect(within(groups[0]).getAllByTestId("neighbour-row").map((row) => row.getAttribute("data-node-id"))).toEqual(
+      [1, 2, 3, 4, 5].map(hub),
+    );
+    expect(within(groups[1]).queryByTestId("neighbour-group-more")).toBeNull();
+
+    await userEvent.click(within(groups[0]).getByRole("button", { name: "Hiện thêm 3 (defines, Section)" }));
+    const whole = screen.getAllByTestId("neighbour-group")[0];
+    expect(whole).toHaveAttribute("data-hidden", "0");
+    expect(within(whole).getAllByTestId("neighbour-row")).toHaveLength(8);
+    expect(within(whole).getByText("8 trên 8")).toBeInTheDocument();
+  });
+});
+
+describe("knowledge graph overview", () => {
+  const hidden: KgBuild = {
+    id: 21,
+    status: "succeeded",
+    job_id: 3,
+    requested_by: null,
+    config_digest: null,
+    runs: 1,
+    artifact_sha256: "b".repeat(64),
+    artifact_size: 10,
+    artifact_reused_from: null,
+    artifact_pruned_at: null,
+    content_hash: "sha256:" + "c".repeat(64),
+    nodes: null,
+    edges: null,
+    error: null,
+    queued_at: "2026-10-04T10:00:00Z",
+    started_at: "2026-10-04T10:00:03Z",
+    finished_at: "2026-10-04T10:01:00Z",
+  };
+  const data = (build: KgBuild): KgBuilds => ({ builds: [build], jobs: [] });
+
+  it("sizes a graph that hides its totals by what the reader can read, and the build's totals otherwise", () => {
+    const visible = { ...VIEW.graph, build_id: 21, nodes: 42, edges: 17 };
+    const { unmount } = renderVi(<StatusTiles data={data(hidden)} now={null} visible={visible} />);
+    const tile = screen.getByTestId("tile-size");
+    expect(tile).toHaveTextContent("42 node");
+    expect(tile).toHaveTextContent("17 cạnh, trong phần bạn đọc được");
+    unmount();
+
+    const { unmount: again } = renderVi(<StatusTiles data={data(hidden)} now={null} visible={null} />);
+    expect(screen.getByTestId("tile-size")).toHaveTextContent("-");
+    again();
+
+    renderVi(<StatusTiles data={data({ ...hidden, nodes: 900, edges: 1200 })} now={null} visible={visible} />);
+    expect(screen.getByTestId("tile-size")).toHaveTextContent("900 node");
+    expect(screen.getByTestId("tile-size")).toHaveTextContent("1.200 cạnh");
+    expect(screen.getByTestId("tile-size")).not.toHaveTextContent("bạn đọc được");
+  });
+
+  it("lists the graph's shape, the most used kinds and edge type first", () => {
+    const shape: GraphShape = {
+      graph: VIEW.graph,
+      shape: [
+        { src_kind: "Section", rel: "part_of", dst_kind: "Document", count: 3 },
+        { src_kind: "Section", rel: "mentions", dst_kind: "Requirement", count: 11 },
+      ],
+    };
+    withQueries(<GraphShapeSection project="demo" />, (client) => client.setQueryData(kgKeys.shape("demo"), shape));
+    expect(screen.getByRole("heading", { name: "Hình dạng đồ thị" })).toBeInTheDocument();
+    const table = screen.getByTestId("kg-shape-table");
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map((row) => within(row).getAllByRole("cell").map((cell) => cell.textContent))).toEqual([
+      ["Section", "mentions", "Requirement", "11"],
+      ["Section", "part_of", "Document", "3"],
+    ]);
+  });
+
+  it("says when the reader can read no edge, and when there is no graph", () => {
+    const { unmount } = withQueries(<GraphShapeSection project="demo" />, (client) =>
+      client.setQueryData(kgKeys.shape("demo"), { graph: VIEW.graph, shape: [] }),
+    );
+    expect(screen.getByTestId("kg-shape-empty")).toBeInTheDocument();
+    unmount();
+    withQueries(<GraphShapeSection project="demo" />, (client) =>
+      client.setQueryData(kgKeys.shape("demo"), { graph: null, shape: [] }),
+    );
+    expect(screen.queryByTestId("kg-shape-table")).toBeNull();
   });
 });
