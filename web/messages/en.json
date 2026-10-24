@@ -2057,7 +2057,7 @@
       "back": "Map of clusters",
       "missingId": "No cluster chosen: open one from the map.",
       "notFound": "No cluster with that id is visible to you.",
-      "level": "{level, select, 1 {Cluster} other {Part of a cluster}}",
+      "level": "{level, select, 1 {A whole cluster} other {Part of a cluster}}",
       "parent": "Part of {label}",
       "size": "{count, plural, one {# node you can read} other {# nodes you can read}}",
       "drawing": "Members and the edges between them",
