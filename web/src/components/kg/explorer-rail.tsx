@@ -144,8 +144,15 @@ export function RailStats({
         {cells.map((cell) => (
           <div key={cell.id} className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2" data-testid={`kg-stat-${cell.id}`}>
             <dt className="text-xs text-muted-foreground">{cell.label}</dt>
-            <dd className="truncate text-[15px] leading-[22px] font-semibold tabular-nums">
-              {cell.value === undefined ? <Skeleton className="h-5 w-10" /> : format.number(cell.value)}
+            <dd
+              className="truncate text-[15px] leading-[22px] font-semibold tabular-nums"
+              title={cell.value === undefined ? undefined : format.number(cell.value)}
+            >
+              {cell.value === undefined ? (
+                <Skeleton className="h-5 w-10" />
+              ) : (
+                format.number(cell.value, cell.value >= 100_000 ? { notation: "compact", maximumFractionDigits: 1 } : {})
+              )}
             </dd>
           </div>
         ))}

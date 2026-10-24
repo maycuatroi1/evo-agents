@@ -7,7 +7,7 @@ import type { Theme } from "./graph-theme";
 /**
  * How the explorer's canvas draws each scope, from the design tokens of the theme in use. Clusters of the overview are
  * filled circles in their cluster's colour, sized by members; members and nodes take their kind's tone and shape, so
- * colour is never the only signal; a cluster's parts are wells. At rest edges are faint; the node under the pointer or
+ * colour is never the only signal; a cluster's parts are circles too. At rest edges are faint; the node under the pointer or
  * selected keeps its neighbourhood lit, names its edges' types and dims the rest. The most linked nodes of a view keep
  * their label from a small zoom on, the others once zoomed in, and the nodes the reader looks at always.
  */
@@ -45,33 +45,15 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
         height: "data(diameter)",
         "background-color": "data(colour)",
         "background-opacity": 0.92,
-        "font-size": 12,
+        "font-size": 14,
         "font-weight": 500,
         "text-wrap": "wrap",
-        "text-max-width": "150px",
-        "min-zoomed-font-size": 6,
+        "text-max-width": "140px",
+        "min-zoomed-font-size": 15,
       },
     },
+    { selector: "node.cluster.major", style: { "min-zoomed-font-size": 6 } },
     { selector: "node.cluster.filtered", style: { "background-opacity": 0.18, color: theme.subtle } },
-    {
-      selector: "node.part",
-      style: {
-        shape: "round-rectangle",
-        "background-color": theme.sunken,
-        "background-opacity": 0.7,
-        "border-width": 1,
-        "border-color": theme.border,
-        color: theme.muted,
-        "font-size": 11,
-        "font-weight": 500,
-        "text-valign": "top",
-        "text-margin-y": -4,
-        "text-max-width": "220px",
-        "text-wrap": "ellipsis",
-        "min-zoomed-font-size": 7,
-        padding: "14px",
-      },
-    },
     {
       selector: "node.member",
       style: {
@@ -147,7 +129,6 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
     { selector: "edge.more-edge", style: { "line-style": "dashed" } },
     // What the reader looks at: the node selected or under the pointer, its edges and its neighbours.
     { selector: ".dim", style: { opacity: 0.12, "text-opacity": 0 } },
-    { selector: "node.part.dim", style: { opacity: 0.45, "text-opacity": 0.6 } },
     { selector: "node.labelled", style: { "min-zoomed-font-size": 0, "z-index": 10 } },
     {
       selector: "edge.hl",
@@ -184,6 +165,5 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
         "z-index": 11,
       },
     },
-    { selector: "node.part.chosen", style: { "underlay-shape": "round-rectangle", "border-color": theme.ring, "border-width": 2 } },
   ];
 }

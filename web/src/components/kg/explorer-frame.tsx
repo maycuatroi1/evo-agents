@@ -51,7 +51,7 @@ export function Trail({ crumbs }: { crumbs: Crumb[] }) {
 }
 
 /** What the canvas draws, in words: sizes and lines for the overview, kinds and marks for nodes. */
-export function Legend({ scope, kinds, counts }: { scope: Scope["kind"]; kinds: string[]; counts: string }) {
+export function Legend({ scope, kinds, counts, circles = false }: { scope: Scope["kind"]; kinds: string[]; counts: string; circles?: boolean }) {
   const t = useTranslations("kg.explorer.legend");
   return (
     <details className="group pointer-events-auto max-w-[min(22rem,calc(100%-4.5rem))] rounded-md border bg-card/95 text-xs shadow-raised" data-testid="kg-legend">
@@ -63,7 +63,7 @@ export function Legend({ scope, kinds, counts }: { scope: Scope["kind"]; kinds: 
         </span>
       </summary>
       <div className="flex flex-col gap-2 border-t px-2.5 py-2 text-muted-foreground">
-        {scope === "overview" ? (
+        {scope === "overview" || circles ? (
           <ul className="flex flex-col gap-1">
             <li className="flex items-center gap-2">
               <span className="size-3 shrink-0 rounded-full bg-chart-1" aria-hidden="true" />
@@ -86,12 +86,7 @@ export function Legend({ scope, kinds, counts }: { scope: Scope["kind"]; kinds: 
                 {kind}
               </li>
             ))}
-            {scope === "cluster" ? (
-              <li className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-3.5 rounded-xs border bg-muted" aria-hidden="true" />
-                {t("part")}
-              </li>
-            ) : (
+            {scope === "cluster" ? null : (
               <>
                 <li className="inline-flex items-center gap-1.5">
                   <span className="size-3 rounded-full border-[3px] border-brand" aria-hidden="true" />

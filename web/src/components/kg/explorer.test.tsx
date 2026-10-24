@@ -138,6 +138,14 @@ function withQueries(ui: ReactElement) {
   client.setQueryData(kgKeys.graph("demo"), SUMMARY);
   client.setQueryData(kgKeys.clusterSummary("demo"), MAP);
   client.setQueryData(kgKeys.cluster("demo", "c:0"), DETAIL);
+  client.setQueryData(kgKeys.cluster("demo", "c:0.1"), {
+    ...DETAIL,
+    cluster: DETAIL.subclusters[1]!,
+    subclusters: [],
+    members: [DETAIL.members[2]!],
+    edges: [],
+    neighbours: [],
+  });
   client.setQueryData(kgKeys.node("demo", "requirement:KB-01"), detailOf("requirement:KB-01", "KB-01", "Requirement"));
   client.setQueryData(kgKeys.node("demo", "docs:doc:runbook#cài-đặt"), detailOf("docs:doc:runbook#cài-đặt", "Cài đặt", "Section"));
   client.setQueryData(kgKeys.neighbourhood("demo", "requirement:KB-01", 1, { group: EXPAND_GROUP, open: [] }), SEED);
@@ -199,21 +207,31 @@ describe("knowledge graph explorer", () => {
     expect(file).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("draws a cluster's members in its parts, the cluster in the inspector, and a member explores from there", async () => {
+  it("draws a cluster's parts with the cluster in the inspector, and a part opens into its members", async () => {
     params.current = new URLSearchParams("cluster=c:0");
     withQueries(<KgExplorer project="demo" errors={errors} />);
     expect(screen.getByTestId("kg-trail")).toHaveTextContent("Tổng quanrunbook, cài đặt");
-    const nodes = screen.getAllByTestId("stub-node").map((n) => n.dataset.id);
-    expect(nodes).toEqual(["c:0.0", "c:0.1", "docs:doc:runbook", "requirement:KB-01", "app:main.py"]);
+    expect(screen.getAllByTestId("stub-node").map((n) => n.dataset.id)).toEqual(["c:0.0", "c:0.1"]);
+    expect(screen.getByTestId("kg-explorer-counts")).toHaveTextContent("2 phần của 3 node");
     expect(within(screen.getByTestId("kg-inspector-cluster")).getByTestId("kg-inspector-parts")).toHaveTextContent("KB-01");
     expect(within(screen.getByTestId("kg-parts")).getAllByTestId("kg-cluster-row")).toHaveLength(2);
-    await userEvent.click(screen.getAllByTestId("stub-node").find((n) => n.dataset.id === "requirement:KB-01")!);
+    await userEvent.click(screen.getAllByTestId("stub-node")[0]!);
+    expect(within(screen.getByTestId("kg-inspector-cluster")).getByTestId("kg-inspector-title")).toHaveTextContent("runbook");
+    await userEvent.dblClick(screen.getAllByTestId("stub-node")[0]!);
+    expect(pushed.at(-1)).toBe("/p/demo/kg?cluster=c%3A0.0");
+    await userEvent.click(within(screen.getByTestId("kg-trail")).getByRole("button", { name: "Tổng quan" }));
+    expect(pushed.at(-1)).toBe("/p/demo/kg");
+  });
+
+  it("draws a part's members, and a member explores from there", async () => {
+    params.current = new URLSearchParams("cluster=c:0.1");
+    withQueries(<KgExplorer project="demo" errors={errors} />);
+    expect(screen.getAllByTestId("stub-node").map((n) => n.dataset.id)).toEqual(["requirement:KB-01"]);
+    await userEvent.click(screen.getAllByTestId("stub-node")[0]!);
     const inspector = await screen.findByTestId("kg-inspector-node");
     expect(within(inspector).getByTestId("kg-inspector-title")).toHaveTextContent("KB-01");
     await userEvent.click(within(inspector).getByTestId("kg-inspector-explore"));
     expect(pushed.at(-1)).toBe("/p/demo/kg?node=requirement%3AKB-01");
-    await userEvent.click(within(screen.getByTestId("kg-trail")).getByRole("button", { name: "Tổng quan" }));
-    expect(pushed.at(-1)).toBe("/p/demo/kg");
   });
 
   it("explores a node: expands a neighbour in place, collapses it, and hides it", async () => {
