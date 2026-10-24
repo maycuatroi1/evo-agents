@@ -5890,7 +5890,8 @@
       "browser_needs_login": "Một danh tính trình duyệt cần đăng nhập lại",
       "autonomy": "Việc hub đã làm theo mức tự chủ của bạn",
       "worker_doctor": "Doctor của một worker được chia phát hiện mức high",
-      "curator_probe_report": "Báo cáo probe hằng tuần của Curator"
+      "curator_probe_report": "Báo cáo probe hằng tuần của Curator",
+      "opportunity_window": "Hạn của một cơ hội sắp đóng"
     },
     "item": {
       "unread": "Chưa đọc",

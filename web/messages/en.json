@@ -5890,7 +5890,8 @@
       "browser_needs_login": "A browser identity needs a new login",
       "autonomy": "What the hub did under your autonomy",
       "worker_doctor": "A shared worker's doctor found something high",
-      "curator_probe_report": "Weekly probe report of the Curator"
+      "curator_probe_report": "Weekly probe report of the Curator",
+      "opportunity_window": "The window of an opportunity closes"
     },
     "item": {
       "unread": "Unread",

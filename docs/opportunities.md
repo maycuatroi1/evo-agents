@@ -64,6 +64,7 @@ lines; approving it creates them with the opportunity.
 
 ```
 evo-agents hub opportunity list --project northwind                  # by rank; --status open, captured, missed or dropped
+evo-agents hub opportunity list --closing-within 14 --project northwind  # open ones whose window ends within 14 days, nearest first
 evo-agents hub opportunity show O-1 --project northwind
 evo-agents hub opportunity set --statement "Sell the shelf scanner to the depot" --beneficiary "the night shift" \
     --leverage "the depot asked for a demo twice" --window-until 2026-12-01 --answers "P-1,lumen/P-2" --project northwind
@@ -78,6 +79,27 @@ evo-agents hub opportunity evidence confirm O-1 E-1
 
 The routes are under `/v1/projects/{project}/opportunities`. The MCP tools of `evo-agents hub mcp` read the same:
 `opportunity_list` (`project`, `status`), `opportunity_show` (`code`, `revision`) and `opportunity_evidence` (`code`).
+
+## Reminders of the window
+
+The hub reminds the owner of an open opportunity that has a `window_until`, without the plugin pm. The job
+`hub.opportunity_deadlines` runs hourly in the hub's worker (`evo_agents/hub/server/opportunity_deadlines.py`) and, on
+the UTC date, sends the owner the notice `opportunity_window` (web and every channel of theirs, schema 0142):
+
+| milestone | when | what it says |
+|---|---|---|
+| `due_14` | 14 days or fewer are left, more than 3 | the window closes on the date |
+| `due_3` | 3 days or fewer are left | the same, closer |
+| `past` | the date passed and the opportunity is still open | close it as `captured` or `missed`, or move the window |
+
+Each milestone goes out once for each value of `window_until`: the notice's details (`code`, `window_until`,
+`milestone`) are the mark the hub looks up before it sends, so nothing else is stored. Moving the date makes a new value
+and the milestones count again; closing the opportunity ends them. A pass that finds an opportunity past a milestone it
+never sent (the hub was down, or the window was set 5 days before its end) sends the latest milestone alone. The hub
+never changes the status of an opportunity: the notice asks, the owner decides.
+
+`hub opportunity list --closing-within DAYS` (`?closing_within=DAYS` on the route) lists the open opportunities whose
+window ends within DAYS days of today, one already past included, the nearest end first.
 
 ## The knowledge graph
 

@@ -3392,3 +3392,27 @@ def test_0141_keeps_the_opportunities_of_a_project_and_going_back_drops_them(hub
     assert not pg.OPPORTUNITY_TABLES & set(tables(hub_db))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0141") :]
+
+
+def test_0142_notices_take_the_opportunity_window_and_going_back_deletes_those_notices(hub_db):
+    move_to(hub_db, "0141")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    n = hub_tables.notifications
+    notice = {"user_id": ids["user"], "kind": "notice", "title": "Window", "project_id": ids["project"]}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(n).values({**notice, "notice_kind": "opportunity_window"}))
+    move_to(hub_db, "0142")
+    with live.connect(hub_db) as conn:
+        for kind in ("opportunity_window", "curator_probe_report", "release"):
+            conn.execute(insert(n).values({**notice, "notice_kind": kind}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(n).values({**notice, "notice_kind": "opportunity_closing"}))
+    # Going back deletes the reminders and keeps the other kinds.
+    move_to(hub_db, "0141", down=True)
+    assert query(hub_db, select(n.c.notice_kind).order_by(n.c.id)) == [("curator_probe_report",), ("release",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n).where(n.c.notice_kind.in_(("curator_probe_report", "release"))))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0142") :]

@@ -9415,6 +9415,14 @@
         },
         {
           "flags": [
+            "--closing-within"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--project"
           ],
           "value": "string",
@@ -69506,6 +69514,26 @@
                 "title": "Status"
               },
               "description": "those of this status alone"
+            },
+            {
+              "name": "closing_within",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 3650,
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the open ones whose window ends within this many days (one already past included), nearest end first; with it, status is open",
+                "title": "Closing Within"
+              },
+              "description": "the open ones whose window ends within this many days (one already past included), nearest end first; with it, status is open"
             }
           ],
           "responses": {
@@ -95479,7 +95507,8 @@
                     "autonomy",
                     "worker_doctor",
                     "browser_needs_login",
-                    "curator_probe_report"
+                    "curator_probe_report",
+                    "opportunity_window"
                   ]
                 },
                 {
