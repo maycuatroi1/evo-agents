@@ -6,8 +6,6 @@ import {
   CircleCheck,
   CircleHelp,
   CircleMinus,
-  GitBranch,
-  Info,
   Pause,
   Play,
   Power,
@@ -33,11 +31,12 @@ import { whoamiQuery } from "@/lib/queries";
 
 import { Ago } from "./ago";
 import { ChipList } from "./badges";
+import { CheckoutList } from "./checkout-list";
 import { ConfirmByName } from "./confirm-by-name";
 import { DispatchFromSwitch } from "./dispatch-from-switch";
 import { HeartbeatStrip } from "./heartbeat-strip";
 import { useRecordPrefetched, useWorkerFailure, useWorkerWrite } from "./hooks";
-import { dispatchKey, readCheckouts, readRuntimes, type RuntimeInfo, workerView } from "./model";
+import { dispatchKey, readRuntimes, type RuntimeInfo, workerView } from "./model";
 import { Note } from "./note";
 import {
   changeWorker,
@@ -95,14 +94,25 @@ function WorkerPage({ worker }: { worker: Worker }) {
         actions={<WorkerActions worker={worker} isOwner={isOwner} />}
       />
       <StatusNote worker={worker} isOwner={isOwner} admin={Boolean(me?.admin)} />
-      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+      {/* Scope beside its runtimes and version, so the three facts cards end level whatever the width. */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Scope worker={worker} isOwner={isOwner} className="lg:row-span-2" />
         <Runtimes worker={worker} />
-        <Scope worker={worker} isOwner={isOwner} />
-        <Checkouts worker={worker} />
         <VersionCard worker={worker} isOwner={isOwner} />
       </div>
-      {isOwner && view !== "revoked" ? <WorkerSharing worker={worker} /> : null}
-      {isOwner ? <WorkerSettings worker={worker} /> : null}
+      <Card data-testid="worker-runs">
+        <CardHeader className="sm:grid-cols-[1fr_auto]">
+          <CardTitle>
+            <h2>{t("runs.title")}</h2>
+          </CardTitle>
+          <p className="text-sm text-muted-foreground tabular-nums sm:col-start-2 sm:row-start-1 sm:self-center">
+            {t("runs.held", { held: worker.held_runs, free: Math.max(worker.slots - worker.held_runs, 0) })}
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 text-sm">
+          <WorkerRuns worker={worker} />
+        </CardContent>
+      </Card>
       <Card data-testid="worker-heartbeat">
         <CardHeader className="sm:grid-cols-[1fr_auto]">
           <CardTitle>
@@ -122,19 +132,9 @@ function WorkerPage({ worker }: { worker: Worker }) {
           <HeartbeatStrip workerId={worker.id} createdAt={worker.created_at} />
         </CardContent>
       </Card>
-      <Card data-testid="worker-runs">
-        <CardHeader>
-          <CardTitle>
-            <h2>{t("runs.title")}</h2>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm">
-          <p className="tabular-nums">
-            {t("runs.held", { held: worker.held_runs, free: Math.max(worker.slots - worker.held_runs, 0) })}
-          </p>
-          <WorkerRuns worker={worker} />
-        </CardContent>
-      </Card>
+      <CheckoutList worker={worker} />
+      {isOwner && view !== "revoked" ? <WorkerSharing worker={worker} /> : null}
+      {isOwner ? <WorkerSettings worker={worker} /> : null}
     </div>
   );
 }
@@ -181,13 +181,8 @@ function StatusNote({ worker, isOwner, admin }: { worker: Worker; isOwner: boole
       );
     }
     notes.push(<UpdateNotes key="update" worker={worker} isOwner={isOwner} />);
-    notes.push(
-      <Note key="help" tone="muted" icon={Info}>
-        {t("actionsHelp")}
-      </Note>,
-    );
   }
-  return <div className="flex flex-col gap-2.5">{notes}</div>;
+  return <div className="flex flex-col gap-2.5 empty:hidden">{notes}</div>;
 }
 
 function RuntimeIcon({ runtime }: { runtime: RuntimeInfo }) {
@@ -227,11 +222,11 @@ function Runtimes({ worker }: { worker: Worker }) {
   );
 }
 
-function Scope({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
+function Scope({ worker, isOwner, className }: { worker: Worker; isOwner: boolean; className?: string }) {
   const t = useTranslations("workers.detail.scope");
   const webOnly = worker.dispatch_from === "web";
   return (
-    <SectionCard title={t("title")} description={t("description")} testId="worker-scope">
+    <SectionCard title={t("title")} description={t("description")} testId="worker-scope" className={className}>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
         <dt className="text-muted-foreground">{t("projects")}</dt>
         <dd className="min-w-0">
@@ -256,34 +251,6 @@ function Scope({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
         <dd>{worker.allow_web_terminal ? t("terminalOn") : t("terminalOff")}</dd>
       </dl>
       {isOwner && workerView(worker) !== "revoked" ? <DispatchFromSwitch worker={worker} /> : null}
-    </SectionCard>
-  );
-}
-
-function Checkouts({ worker }: { worker: Worker }) {
-  const t = useTranslations("workers.detail.checkouts");
-  const checkouts = readCheckouts(worker.checkouts);
-  return (
-    <SectionCard title={t("title")} description={t("description")} testId="worker-checkouts">
-      {checkouts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{worker.last_heartbeat_at ? t("none") : t("empty")}</p>
-      ) : (
-        <ul className="flex flex-col divide-y">
-          {checkouts.map((checkout) => (
-            <li key={checkout.name} className="flex items-start gap-2.5 py-2 first:pt-0 last:pb-0" data-checkout={checkout.name}>
-              <GitBranch className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="font-mono text-sm font-medium [overflow-wrap:anywhere]">{checkout.name}</span>
-                {checkout.path || checkout.branch || checkout.detail ? (
-                  <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                    {[checkout.path, checkout.branch, checkout.detail].filter(Boolean).join(", ")}
-                  </span>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
     </SectionCard>
   );
 }

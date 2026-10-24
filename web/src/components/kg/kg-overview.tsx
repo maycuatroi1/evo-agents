@@ -1,7 +1,8 @@
 "use client";
 
-import { Eye } from "lucide-react";
+import { Eye, ListChecks } from "lucide-react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -10,6 +11,7 @@ import { Segmented } from "@/components/data/segmented";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState, TableSkeleton } from "@/components/states/states";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
@@ -23,11 +25,20 @@ import {
   kgGraphQuery,
   parseBuildFilter,
 } from "@/lib/kg/queries";
+import { reviewHref } from "@/lib/kg/routes";
 import type { KgBuilds } from "@/lib/kg/types";
 
-import { BuildHistory, BuildQueue, LatestBuild, NoBuilds, StatusTiles } from "./build-status";
+import { BuildHistory, BuildQueue, LatestBuild, NoBuilds } from "./build-status";
 import { KindSummary, NoGraph, SearchForm, SearchResults } from "./node-search";
+import { StatusTiles } from "./status-tiles";
 import { useNow } from "./use-now";
+
+// The graph's shape loads on demand too, with its own read (GET /v1/kg/{project}/shape), below the search.
+const Shape = dynamic(() => import("./graph-shape").then((module) => module.GraphShapeSection));
+
+// The cluster map loads on demand as well, with its own read (GET /v1/kg/{project}/clusters); cosmos.gl, which draws
+// it, loads later still, only once a canvas mounts.
+const ClusterMap = dynamic(() => import("./cluster-map").then((module) => module.ClusterMapSection));
 
 // The Commits read card loads on demand (next/dynamic): imported statically, its code sat in a chunk that both pages
 // of the graph, this one and the node page, load first, and put each over its budget in bundle-budget.json.
@@ -187,12 +198,16 @@ function Builds({ project, data, failedError }: { project: string; data: KgBuild
   );
 }
 
-function Status({ data }: { data: KgBuilds }) {
+function Status({ project, data, graphError }: { project: string; data: KgBuilds; graphError: ApiErrorInfo | null }) {
   const now = useNow(buildsActive(data));
-  return <StatusTiles data={data} now={now} />;
+  const graph = useHubQuery(kgGraphQuery(browserApi, project), graphError);
+  return <StatusTiles data={data} now={now} visible={graph.status === "success" ? graph.data.graph : null} />;
 }
 
-/** /p/{project}/kg: the graph's status, the commits its sources read, node search and the builds. Read-only. */
+/**
+ * /p/{project}/kg: the graph's status, the commits its sources read, node search, the cluster map, the graph's shape and
+ * the builds. Read-only.
+ */
 export function KgOverview({
   project,
   query,
@@ -226,6 +241,14 @@ export function KgOverview({
           {t("readOnly")}
         </Tag>
       }
+      actions={
+        <Button asChild variant="outline" size="sm">
+          <Link href={reviewHref(project)} data-testid="kg-review-link">
+            <ListChecks aria-hidden="true" />
+            {t("review.open")}
+          </Link>
+        </Button>
+      }
     />
   );
   if (builds.status === "error") {
@@ -240,10 +263,12 @@ export function KgOverview({
     <>
       {header}
       <QueryView state={builds} loading={<TilesSkeleton />}>
-        {(data) => <Status data={data} />}
+        {(data) => <Status project={project} data={data} graphError={errors.graph} />}
       </QueryView>
       <Commits project={project} error={errors.graph} />
       <SearchSection project={project} query={query} kind={kind} errors={errors} />
+      <ClusterMap project={project} />
+      <Shape project={project} />
       <QueryView state={builds} loading={<TableSkeleton rows={4} />}>
         {(data) => <Builds project={project} data={data} failedError={errors.failed ?? null} />}
       </QueryView>

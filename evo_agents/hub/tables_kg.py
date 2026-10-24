@@ -1,12 +1,16 @@
 """The tables of a project's knowledge graph on the hub, which ``evo_agents.hub.tables`` adds to its metadata and exposes
 as its own attributes (``tables.kg_ingests``, ``tables.kg_configs``, ``tables.kg_pending_runs``, ``tables.kg_builds``,
-``tables.kg_source_files``, ``tables.kg_health``): queries name them there.
+``tables.kg_source_files``, ``tables.kg_health``, ``tables.kg_review_dismissals``, ``tables.kg_decisions``,
+``tables.kg_decision_events``): queries name them there.
 
 kg_ingests (0001) holds the connector runs machines pushed, kg_configs (0006) the knowledge config the build reads,
 kg_pending_runs (0006) the runs waiting for their blobs, and kg_builds (0006, 0008) each build with its artifact
 (``evo_agents.hub.server.kg``, ``evo_agents.hub.kg_build``). kg_builds.coverage, kg_source_files and kg_health (0055)
 say how healthy the graph is over time: what each build covers, the files each git source holds in the latest
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
+kg_review_dismissals (0141) holds the items of the review queue writers dismissed (``evo_agents.kg.review``).
+kg_decisions and kg_decision_events (0142) hold the decisions writers took on the graph and the proposals agents made,
+with each step of their history (``evo_agents.hub.kg_decisions``).
 """
 
 from __future__ import annotations
@@ -175,6 +179,78 @@ def _health_tables(metadata: MetaData) -> tuple[Table, Table]:
         Index("kg_health_project_idx", "project_id", "measured_at"),
     )
     return files, health
+
+
+def review_dismissals(metadata: MetaData) -> Table:
+    """kg_review_dismissals (0141), added to ``metadata``: the items of a project's review queue a writer dismissed,
+    by fingerprint (``evo_agents.hub.server.kg_review``)."""
+    return Table(
+        "kg_review_dismissals",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("fingerprint", Text, nullable=False),
+        Column("rule", Text, nullable=False),
+        Column("reason", Text, nullable=False),
+        Column("dismissed_by", BigInteger, nullable=False),
+        _stamp("dismissed_at"),
+        Column("build_id", BigInteger),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_review_dismissals_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["dismissed_by"], ["users.id"], ondelete="RESTRICT", name="kg_review_dismissals_dismissed_by_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["build_id"], ["kg_builds.id"], ondelete="SET NULL", name="kg_review_dismissals_build_id_fkey"
+        ),
+        PrimaryKeyConstraint("project_id", "fingerprint", name="kg_review_dismissals_pkey"),
+    )
+
+
+def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
+    """(kg_decisions, kg_decision_events) (0142), added to ``metadata``: each decision of a project's graph, by its
+    number in the project, and each step of its history, by the project's revision it made
+    (``evo_agents.hub.kg_decisions``)."""
+    decisions = Table(
+        "kg_decisions",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("number", Integer, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("state", Text, nullable=False),
+        Column("src", Text, nullable=False),
+        Column("rel", Text),
+        Column("dst", Text),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_decisions_project_id_fkey"),
+        PrimaryKeyConstraint("id", name="kg_decisions_pkey"),
+        UniqueConstraint("project_id", "number", name="kg_decisions_project_id_number_key"),
+    )
+    events = Table(
+        "kg_decision_events",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("rev", Integer, nullable=False),
+        Column("decision_id", BigInteger, nullable=False),
+        Column("action", Text, nullable=False),
+        Column("actor_id", BigInteger, nullable=False),
+        _stamp("at"),
+        Column("reason", Text, nullable=False),
+        Column("build_id", BigInteger),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_decision_events_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["decision_id"], ["kg_decisions.id"], ondelete="CASCADE", name="kg_decision_events_decision_id_fkey"
+        ),
+        ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="kg_decision_events_actor_id_fkey"),
+        ForeignKeyConstraint(
+            ["build_id"], ["kg_builds.id"], ondelete="SET NULL", name="kg_decision_events_build_id_fkey"
+        ),
+        PrimaryKeyConstraint("project_id", "rev", name="kg_decision_events_pkey"),
+        Index("kg_decision_events_decision_idx", "decision_id"),
+    )
+    return decisions, events
 
 
 def kg_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:

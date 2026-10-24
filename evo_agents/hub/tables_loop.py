@@ -107,7 +107,7 @@ def _items(metadata: MetaData) -> Table:
         _stamp("updated_at"),
         _when("finished_at"),
         Column("problem_id", BigInteger),  # 0136
-        Column("opportunity_id", BigInteger),  # 0143
+        Column("opportunity_id", BigInteger),  # 0145
         _key(name, "project_id", "projects", ondelete="CASCADE"),
         _key(name, "goal_id", "goals", ondelete="SET NULL"),
         _key(name, "claim_id", "canvas_claims", ondelete="SET NULL"),

@@ -5,7 +5,9 @@ a member whose grant stops at internal never receives a customer node or edge, b
 that does not exist), in a neighbourhood or in the counts by kind; the web reads with the grant alone while the kg_*
 tools read with the grant met with the sink, and the two agree whenever the sink clears the grant; the neighbours the
 graph view shows one step out are those kg_context returns on the same store; the neighbourhood stops at 2 steps and
-150 nodes and says how many it left out; the graph summary and kg_status name the commit each source read, the
+150 nodes and says how many it left out; grouped, it shows the node's direct neighbours by edge type, direction and
+kind, the most connected first, a few of each group unless the group is opened; the graph's shape counts visible
+edges by source kind, edge type and target kind, and only those; the graph summary and kg_status name the commit each source read, the
 summary only for the sources the member can see; the build list the status page reads carries content hash, counts,
 times, errors and the jobs still queued; 401, 403, 404 and a project without a build.
 
@@ -55,6 +57,7 @@ MEMBERS = {
     "pat": ("reader", "public"),
 }
 LOW_LEVELS = {"public", "internal"}
+HUB_DEGREE_SEEN = 150  # the source of every document has more visible edges than this
 
 
 def _grant(client, admin: dict, project: str, login: str, role: str, level: str) -> None:
@@ -267,6 +270,66 @@ def test_the_neighbourhood_stops_at_two_steps_and_150_nodes_and_says_it_cut(hub)
         assert get(hub, "wendy", f"/v1/kg/{PROJECT}/neighbourhood", id=RUNBOOK, **params).status_code == 422
 
 
+def test_a_grouped_neighbourhood_shows_the_most_connected_of_each_group_and_opens_one_whole(hub):
+    whole = ok(hub, "wendy", f"/v1/kg/{PROJECT}/neighbourhood", id=HUB_NODE, hops=1)
+    (notes,) = whole["groups"]  # 160 sections mention KB-77
+    assert (notes["key"], notes["total"], whole["group"]) == ("in:mentions:Section", NOTES, None)
+    assert len(notes["shown"]) == 149 and whole["truncated"]  # ungrouped, the node limit cuts
+
+    grouped = ok(hub, "wendy", f"/v1/kg/{PROJECT}/neighbourhood", id=HUB_NODE, group=5)
+    (notes,) = grouped["groups"]
+    assert notes["total"] == NOTES and len(notes["shown"]) == 5 and grouped["group"] == 5
+    assert grouped["neighbours"] == NOTES and not grouped["truncated"] and grouped["left_out"] == 0
+    by_id = {n["id"]: n for n in grouped["nodes"]}
+    assert {n["id"] for n in grouped["nodes"] if n["hop"] == 1} == set(notes["shown"])
+    assert by_id[HUB_NODE]["degree"] == NOTES
+    assert max(n["hop"] for n in grouped["nodes"]) == 2  # the walk goes on from the five shown
+    assert all(e["src"] in by_id and e["dst"] in by_id for e in grouped["edges"])
+
+    opened = ok(hub, "wendy", f"/v1/kg/{PROJECT}/neighbourhood", id=HUB_NODE, group=5, hops=1, open=notes["key"])
+    assert len(opened["groups"][0]["shown"]) == 149 and opened["truncated"]
+
+    runbook = ok(hub, "wendy", f"/v1/kg/{PROJECT}/neighbourhood", id=RUNBOOK, group=1, hops=1)
+    groups = {g["key"]: g for g in runbook["groups"]}
+    assert set(groups) == {"out:in_source:Source", "in:part_of:Section"}
+    degrees = {n["id"]: n["degree"] for n in runbook["nodes"]}
+    assert degrees["source:docs"] > HUB_DEGREE_SEEN  # the source of every document
+    for group in groups.values():
+        shown = [degrees[i] for i in group["shown"]]
+        assert shown == sorted(shown, reverse=True)
+
+    for params in ({"group": 0}, {"group": 151}):
+        assert get(hub, "wendy", f"/v1/kg/{PROJECT}/neighbourhood", id=RUNBOOK, **params).status_code == 422
+
+
+def test_a_grouped_neighbourhood_counts_only_what_the_reader_sees(hub):
+    writer = ok(hub, "wendy", f"/v1/kg/{PROJECT}/neighbourhood", id=SHARED_NODE, group=5)
+    reader = ok(hub, "ivan", f"/v1/kg/{PROJECT}/neighbourhood", id=SHARED_NODE, group=5)
+    assert sum(g["total"] for g in reader["groups"]) == sum(g["total"] for g in writer["groups"]) - 1
+    assert not any(i.startswith("deals:") for g in reader["groups"] for i in g["shown"])
+    seen = {n["id"]: n["degree"] for n in reader["nodes"]}
+    full = {n["id"]: n["degree"] for n in writer["nodes"]}
+    assert seen[SHARED_NODE] == full[SHARED_NODE] - 1  # the contract's mention is not counted for the reader
+
+
+def test_the_graph_shape_counts_the_visible_edges_by_kinds_and_type(hub):
+    shape = ok(hub, "wendy", f"/v1/kg/{PROJECT}/shape")
+    assert shape["graph"]["build_id"] == hub.build["id"]
+    rows = {(r["src_kind"], r["rel"], r["dst_kind"]): r["count"] for r in shape["shape"]}
+    assert rows[("Section", "mentions", "Requirement")] >= NOTES
+    assert rows[("Document", "in_source", "Source")] == 2 + NOTES + 1
+    counts = [r["count"] for r in shape["shape"]]
+    assert counts == sorted(counts, reverse=True) and sum(counts) <= hub.build["edges"]
+
+    internal = {
+        (r["src_kind"], r["rel"], r["dst_kind"]): r["count"]
+        for r in ok(hub, "ivan", f"/v1/kg/{PROJECT}/shape")["shape"]
+    }
+    assert internal[("Document", "in_source", "Source")] == 2 + NOTES  # the contract is customer
+    assert sum(internal.values()) < sum(counts)
+    assert ok(hub, "pat", f"/v1/kg/{PROJECT}/shape")["shape"] == []
+
+
 def test_a_node_comes_with_its_label_source_uri_evidence_and_neighbours_by_edge_type(hub):
     detail = ok(hub, "ivan", f"/v1/kg/{PROJECT}/node", id=RUNBOOK)
     node = detail["node"]
@@ -306,6 +369,7 @@ def test_refusals(hub):
         ("nodes", {"q": "runbook"}),
         ("node", {"id": RUNBOOK}),
         ("neighbourhood", {"id": RUNBOOK}),
+        ("shape", {}),
     ):
         url = f"/v1/kg/{PROJECT}/{path}"
         assert hub.client.get(url, params=params).status_code == 401
@@ -320,6 +384,7 @@ def test_refusals(hub):
 
 def test_a_project_without_a_build(hub):
     assert ok(hub, "wendy", f"/v1/kg/{EMPTY}/graph") == {"graph": None, "kinds": [], "sources": []}
+    assert ok(hub, "wendy", f"/v1/kg/{EMPTY}/shape") == {"graph": None, "shape": []}
     found = ok(hub, "wendy", f"/v1/kg/{EMPTY}/nodes", q="runbook")
     assert found["graph"] is None and found["results"] == []
     for path in ("node", "neighbourhood"):

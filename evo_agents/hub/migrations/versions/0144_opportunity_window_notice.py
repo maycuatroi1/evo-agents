@@ -1,7 +1,7 @@
 """The notice opportunity_window: an open opportunity's window closes (plan opportunity-intake, step 3).
 
-Revision ID: 0142
-Revises: 0141
+Revision ID: 0144
+Revises: 0143
 Create Date: 2026-10-25
 
 The names below are copies of ``evo_agents.hub.runs`` as of this revision, never imports, so a later change to them
@@ -17,8 +17,8 @@ Going back deletes the notices of the kind and puts the check of 0132 back.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0142"
-down_revision = "0141"
+revision = "0144"
+down_revision = "0143"
 branch_labels = None
 depends_on = None
 

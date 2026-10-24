@@ -1,5 +1,5 @@
 """The evidence of an opportunity (plan opportunity-intake, criterion a2; the model in
-``evo_agents.hub.opportunities``). Table opportunity_evidence, schema 0141.
+``evo_agents.hub.opportunities``). Table opportunity_evidence, schema 0143.
 
 A line of evidence is something a source says that shows the opportunity is there, with the fields of a problem's line
 (``evo_agents.hub.server.problem_evidence``): the kind of the source and its address, where in it, who spoke, an

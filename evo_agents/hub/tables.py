@@ -976,8 +976,8 @@ problem_evidence = tables_problems.evidence_table(metadata)  # the lines of evid
 intakes = tables_intake.intake_table(metadata)  # the intakes of a project (0138)
 opportunities, opportunity_revisions, opportunity_answers = tables_opportunities.opportunity_tables(
     metadata
-)  # the opportunities of a project (0141)
-opportunity_evidence = tables_opportunities.evidence_table(metadata)  # the lines of evidence of an opportunity (0141)
+)  # the opportunities of a project (0143)
+opportunity_evidence = tables_opportunities.evidence_table(metadata)  # the lines of evidence of an opportunity (0143)
 loop_states, loop_items, loop_item_events = tables_loop.loop_tables(metadata)  # the Loop of a project (0093)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
 history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0059
@@ -999,6 +999,8 @@ credential_shares, credential_share_projects = tables_accounts.share_tables(meta
 invites = tables_invites.invite_tables(metadata)  # the invite links (0110)
 browser_identities = tables_browser.browser_tables(metadata)  # the browser identities of projects and members (0117)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
+kg_review_dismissals = tables_kg.review_dismissals(metadata)
+kg_decisions, kg_decision_events = tables_kg.decision_tables(metadata)  # 0142
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )

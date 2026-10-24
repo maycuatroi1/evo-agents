@@ -1,4 +1,4 @@
-"""The tables of the opportunities of a project (0141, plan opportunity-intake), which ``evo_agents.hub.tables`` adds to
+"""The tables of the opportunities of a project (0143, plan opportunity-intake), which ``evo_agents.hub.tables`` adds to
 its metadata and exposes as its own attributes (``tables.opportunities``, ``tables.opportunity_revisions``,
 ``tables.opportunity_answers``, ``tables.opportunity_evidence``): queries name them there.
 
@@ -107,7 +107,7 @@ def opportunity_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
 
 
 def evidence_table(metadata: MetaData) -> Table:
-    """opportunity_evidence (0141, plan opportunity-intake), added to ``metadata``: one row per line of evidence of an
+    """opportunity_evidence (0143, plan opportunity-intake), added to ``metadata``: one row per line of evidence of an
     opportunity, numbered within it (the code E-<number>). A line names the kind and address of its source, where in
     it, who spoke, an excerpt of at most 300 characters, the signal it shows and its label (public or internal), who
     added it, who confirmed it and when, and the proposal of @builder that made it, if one did. An opportunity's lines

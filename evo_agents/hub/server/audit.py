@@ -46,6 +46,11 @@ KG_PRUNE = "kg.prune"  # the retention deleted artifacts of a project's older gr
 KG_SCRUB = "kg.scrub"
 # A member took every run of a source off the hub (evo_agents.hub.server.kg): "<project> source=<id> runs=<n>".
 KG_FORGET = "kg.forget"
+# A writer dismissed an item of the review queue (evo_agents.hub.server.kg_review): "<project> item=<fingerprint>".
+KG_REVIEW = "kg.review"
+# A writer took, accepted, rejected or undid a decision on the graph, or an agent proposed one
+# (evo_agents.hub.server.kg_decisions): "<project> decision=<number> action=<action>".
+KG_DECISION = "kg.decision"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
 WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token

@@ -117,7 +117,9 @@ HUB_TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
 HUB_TABLES |= pg.PROBLEM_TABLES  # migration 0134
 HUB_TABLES |= pg.PROBLEM_EVIDENCE_TABLES  # migration 0137
 HUB_TABLES |= pg.INTAKE_TABLES  # migration 0138
-HUB_TABLES |= pg.OPPORTUNITY_TABLES  # migration 0141
+HUB_TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
+HUB_TABLES |= pg.KG_DECISION_TABLES  # migration 0142
+HUB_TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
 
 
 @pytest.fixture

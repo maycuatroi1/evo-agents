@@ -125,3 +125,12 @@ def known_kinds(ontology: dict | None) -> set[str]:
     if isinstance(entries, list):
         kinds.update(name for name in map(_entry_name, entries) if name)
     return kinds
+
+
+def known_relations(ontology: dict | None) -> set[str]:
+    """The hub relations and those the project ontology adds: what an edge a person declares may be."""
+    rels = set(HUB_RELATIONS)
+    entries = (ontology or {}).get("relations") or []
+    if isinstance(entries, list):
+        rels.update(name for name in map(_entry_name, entries) if name)
+    return rels

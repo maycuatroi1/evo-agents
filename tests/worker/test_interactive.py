@@ -34,6 +34,7 @@ from evo_agents.worker import interactive
 from evo_agents.worker.adapter import RunContext
 from evo_agents.worker.runtimes import claude_code, opencode
 from tests.hub import pg
+from tests.hub.test_digest import signature
 
 TMUX = shutil.which("tmux")
 WORKER_EXTRA = importlib.util.find_spec("aiohttp") is not None  # the daemon (run, hubapi) needs it to load
@@ -374,6 +375,7 @@ def test_the_transcripts_of_claude_code_and_codex_become_the_hubs_events():
             "message": {
                 "content": [
                     {"type": "thinking", "thinking": "Docs first."},
+                    {"type": "thinking", "thinking": "Reading the docs now.", "signature": signature("narration")},
                     {"type": "text", "text": "On it."},
                     {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": "ls"}},
                     {
@@ -396,15 +398,17 @@ def test_the_transcripts_of_claude_code_and_codex_become_the_hubs_events():
         "output",
         "agent_thought_chunk",
         "agent_message_chunk",
+        "agent_message_chunk",
         "tool_call",
         "tool_call",
         "plan",
         "tool_call_update",
     ]
     assert events[0].body == {"raw": {"type": "user", "text": "now fix the docs too"}}
-    assert events[3].body["kind"] == "execute" and events[3].body["rawInput"] == {"command": "ls"}
-    assert events[5].body["entries"] == [{"content": "docs", "status": "in_progress", "priority": "medium"}]
-    assert events[6].body["content"][0]["content"]["text"] == "a\nb"
+    assert events[2].body["content"]["text"] == "Reading the docs now."  # a narration is the agent's words
+    assert events[4].body["kind"] == "execute" and events[4].body["rawInput"] == {"command": "ls"}
+    assert events[6].body["entries"] == [{"content": "docs", "status": "in_progress", "priority": "medium"}]
+    assert events[7].body["content"][0]["content"]["text"] == "a\nb"
 
     codex = [
         {"type": "session_meta", "payload": {"id": "t-1", "cwd": "/w", "base_instructions": "long"}},

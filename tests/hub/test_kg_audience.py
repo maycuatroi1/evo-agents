@@ -267,6 +267,13 @@ def test_a_member_in_no_chat_sees_no_node_edge_count_or_search_result_of_one(hub
     assert mine["graph"]["nodes"] == sum(k["count"] for k in mine["kinds"]) == 2  # the plan and its source
     assert (whole["graph"]["nodes"], whole["graph"]["edges"]) == (hub.graph.report.nodes, hub.graph.report.edges)
     assert mine["graph"]["edges"] < whole["graph"]["edges"]
+    # The shape counts an edge only when carol sees it and both its nodes: the plan in its source, and no more.
+    shape = web(hub, "carol", "shape")["shape"]
+    assert shape == [{"src_kind": "Document", "rel": "in_source", "dst_kind": "Source", "count": 1}]
+    assert sum(r["count"] for r in web(hub, "alice", "shape")["shape"]) > sum(r["count"] for r in shape)
+    grouped = web(hub, "carol", "neighbourhood", id=PLAN, group=5)
+    assert [g["shown"] for g in grouped["groups"]] == [["source:chat"]]
+    assert {n["id"]: n["degree"] for n in grouped["nodes"]}[PLAN] == 1
     status = rest(hub, "carol", "kg_status")
     graph = data(status)["graph"]
     assert (graph["nodes"], graph["edges"]) == (mine["graph"]["nodes"], mine["graph"]["edges"])

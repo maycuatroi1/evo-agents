@@ -1823,7 +1823,8 @@
       "queue": "Hàng đợi",
       "queueEmpty": "Không có job nào",
       "queueCounts": "{waiting} đang chờ, {running} đang chạy",
-      "refreshing": "Tự cập nhật mỗi 5 giây"
+      "refreshing": "Tự cập nhật mỗi 5 giây",
+      "visibleEdges": "{count, plural, other {# cạnh}}, trong phần bạn đọc được"
     },
     "latest": {
       "title": "Build #{id}",
@@ -1942,7 +1943,8 @@
       "notFoundTitle": "Không tìm thấy node",
       "notFoundDescription": "Node không có trong đồ thị hiện tại, hoặc nhãn của nó cao hơn mức hiển thị của bạn.",
       "searchInstead": "Tìm trong đồ thị",
-      "olderBuild": "Kho blob chưa trả lời nên trang đang đọc build #{id}, cũ hơn build mới nhất."
+      "olderBuild": "Kho blob chưa trả lời nên trang đang đọc build #{id}, cũ hơn build mới nhất.",
+      "deprecated": "Đã cho nghỉ theo quyết định {number}: {reason}. Các công cụ kg bỏ qua nó trừ khi được yêu cầu."
     },
     "evidence": {
       "title": "Bằng chứng",
@@ -1977,11 +1979,14 @@
       "out": "đi ra",
       "in": "đi vào",
       "select": "Chọn {name} trong đồ thị",
-      "open": "Mở trang của {name}"
+      "open": "Mở trang của {name}",
+      "groupCount": "{shown} trên {total}",
+      "degree": "{count, plural, other {# cạnh}}",
+      "showMore": "{count, plural, other {Hiện thêm #}} ({rel}, {kind})"
     },
     "graph": {
       "title": "Vùng lân cận",
-      "description": "Node và cạnh trong {hops, plural, other {# bước}} quanh node này, tối đa {limit} node.",
+      "description": "Node và cạnh trong {hops, plural, other {# bước}} quanh node này, tối đa {limit} node. Mỗi nhóm hàng xóm trực tiếp hiện trước {group} node nhiều liên kết nhất.",
       "hops": "Số bước",
       "hopsValue": "{count, plural, other {# bước}}",
       "layout": "Bố cục",
@@ -2001,7 +2006,190 @@
       "truncatedTitle": "Đã cắt: đồ thị vẽ {shown} node, giới hạn là {limit}",
       "truncatedDescription": "{leftOut, plural, other {Còn # node trong tầm với không được vẽ.}} Node này có {neighbours} hàng xóm trực tiếp: xem đủ ở mục <link>Quan hệ theo loại cạnh</link>, hoặc mở một hàng xóm để xem vùng của nó.",
       "smallScreen": "Màn hình hẹp: đồ thị được thay bằng bảng hàng xóm.",
-      "selected": "Đang chọn {name} ({kind}), {count} cạnh"
+      "selected": "Đang chọn {name} ({kind}), {count} cạnh",
+      "legendMore": "Hàng xóm còn lại của một nhóm: bấm để hiện"
+    },
+    "shape": {
+      "title": "Hình dạng đồ thị",
+      "description": "Số cạnh mỗi loại nối mỗi loại node với loại khác, chỉ đếm phần bạn đọc được.",
+      "columns": {
+        "source": "Từ loại",
+        "rel": "Loại cạnh",
+        "target": "Đến loại",
+        "count": "Số cạnh"
+      },
+      "empty": "Không có cạnh nào bạn đọc được trong đồ thị này.",
+      "caption": "{count, plural, other {# tổ hợp loại node và loại cạnh}}"
+    },
+    "map": {
+      "title": "Bản đồ cụm",
+      "description": "Các nhóm node liên kết với nhau nhiều hơn với phần còn lại, đếm trên những gì bạn được đọc. Màu cho biết cụm; bấm một điểm để mở cụm của nó.",
+      "noClusters": "Không có cụm để hiện: {reason}",
+      "summary": "{clusters, plural, other {# cụm}}, {nodes, plural, other {# node}}, {links, plural, other {# liên kết giữa các cụm}}",
+      "canvasLabel": "Bản đồ các cụm của graph; bảng bên dưới liệt kê cùng các cụm đó",
+      "noWebgl": "Trình duyệt này không vẽ được bản đồ (không có WebGL2), nên các cụm được liệt kê bên dưới.",
+      "loading": "Đang vẽ bản đồ",
+      "whole": "Xem mọi node và cạnh",
+      "clusters": "Xem các cụm",
+      "wholeSummary": "{nodes, plural, other {# node}} và {edges, plural, other {# cạnh}} bạn được đọc",
+      "truncated": "Graph có nhiều node hơn số chế độ xem vẽ được; nó hiện {count} node đầu theo id.",
+      "focus": "Đang làm nổi: cụm của {node}",
+      "focusMissing": "{node} không thuộc cụm nào bạn thấy được.",
+      "clearFocus": "Bỏ",
+      "showOnMap": "Xem trên bản đồ",
+      "fit": "Vừa khung",
+      "table": {
+        "caption": "{count, plural, other {# cụm}}, lớn nhất trước",
+        "label": "Cụm",
+        "size": "Node",
+        "kinds": "Loại",
+        "subclusters": "Phần"
+      },
+      "matrix": {
+        "title": "Liên kết giữa các cụm",
+        "description": "Mỗi ô đếm số cạnh nối hai cụm; càng đậm càng nhiều.",
+        "cell": "{a} và {b}: {count, plural, other {# cạnh}}",
+        "hidden": "{count, plural, other {# cụm nhỏ hơn}} không có trong ma trận.",
+        "empty": "Không có cạnh nào bạn đọc được nối hai cụm."
+      }
+    },
+    "cluster": {
+      "title": "Cụm",
+      "back": "Bản đồ cụm",
+      "missingId": "Chưa chọn cụm: hãy mở một cụm từ bản đồ.",
+      "notFound": "Không có cụm nào với id đó mà bạn thấy được.",
+      "level": "{level, select, 1 {Cụm} other {Phần của một cụm}}",
+      "parent": "Thuộc {label}",
+      "size": "{count, plural, other {# node bạn được đọc}}",
+      "drawing": "Các thành viên và cạnh giữa chúng",
+      "canvasLabel": "Các thành viên của cụm; bảng liệt kê cùng các node đó",
+      "subclusters": "Các phần",
+      "neighbours": "Cụm lân cận",
+      "noNeighbours": "Không có cạnh nào bạn đọc được dẫn sang cụm khác.",
+      "neighbourWeight": "{count, plural, other {# cạnh}}",
+      "members": "Thành viên",
+      "filter": "Lọc thành viên",
+      "filterPlaceholder": "Tên, id hoặc loại",
+      "membersCaption": "{shown} trên {count, plural, other {# thành viên}}",
+      "columns": {
+        "node": "Node",
+        "kind": "Loại",
+        "part": "Phần"
+      }
+    },
+    "review": {
+      "title": "Hàng đợi rà duyệt",
+      "intro": "Những gì trong đồ thị cần người xem lại, do sáu luật tìm ra sau mỗi lần dựng. Mục đã bỏ qua vẫn được bỏ qua ở các lần dựng sau.",
+      "open": "Mở hàng đợi rà duyệt",
+      "back": "Đồ thị tri thức",
+      "notComputed": "Chưa có hàng đợi rà duyệt",
+      "noItems": "Không có mục nào khớp với cách xem này.",
+      "rules": {
+        "dangling_mention": "Nhắc tới mã không còn nữa",
+        "unmentioned_document": "Tài liệu không ai nhắc tới",
+        "cluster_without_knowledge": "Cụm có mã mà không có tri thức",
+        "possible_duplicate": "Có thể trùng lặp",
+        "ambiguous_match": "Khớp tên mơ hồ",
+        "bulk_noise": "Nhiễu hàng loạt"
+      },
+      "actions": {
+        "fix_mention": "Sửa chỗ nhắc tới",
+        "link_or_deprecate": "Liên kết hoặc cho nghỉ",
+        "add_knowledge": "Thêm tài liệu, kế hoạch hoặc vấn đề",
+        "merge": "Gộp lại",
+        "disambiguate": "Gọi đúng tên đích",
+        "exclude": "Loại khỏi đồ thị"
+      },
+      "filters": "Lọc hàng đợi",
+      "rule": "Luật",
+      "allRules": "Mọi luật",
+      "state": "Mục",
+      "states": {
+        "open": "Đang mở",
+        "dismissed": "Đã bỏ qua",
+        "all": "Tất cả"
+      },
+      "clusterFilter": "Cụm {label}",
+      "clearCluster": "Mọi cụm",
+      "counts": "{open} đang mở, {dismissed} đã bỏ qua",
+      "ruleItems": "{count} mục",
+      "noCluster": "Không thuộc cụm nào",
+      "more": "và {count} nút nữa",
+      "mentions": "{count} lần nhắc",
+      "samples": "ví dụ {samples}",
+      "edges": "{count} cạnh",
+      "dismissedBy": "{by} đã bỏ qua: {reason}",
+      "dismiss": "Bỏ qua",
+      "dismissing": "Đang bỏ qua…",
+      "cancel": "Hủy",
+      "reasonLabel": "Vì sao mục này không cần làm gì",
+      "reasonPlaceholder": "Ví dụ: cố ý giữ lại, tài liệu lưu trữ",
+      "dismissed": "Đã bỏ qua mục",
+      "forbidden": "Cần vai trò writer trên dự án để bỏ qua mục.",
+      "gone": "Mục đó không còn trong hàng đợi bạn thấy.",
+      "readerNote": "Bạn đọc được hàng đợi; writer của dự án mới bỏ qua được mục."
+    },
+    "decisions": {
+      "title": "Quyết định",
+      "clusterTitle": "Quyết định về các thành viên của cụm",
+      "reviewTitle": "Quyết định cần rà duyệt",
+      "none": "Chưa có quyết định nào nhắc tới mục này.",
+      "readerNote": "Cần vai trò người viết trong dự án này để quyết định.",
+      "proposed": "Do tác tử đề xuất",
+      "noProposals": "Không có đề xuất nào đang chờ người viết.",
+      "orphans": "Mồ côi",
+      "orphansNote": "Nút hoặc cạnh của chúng không còn trong lần dựng mới nhất; lần dựng bỏ qua chúng. Hãy hoàn tác những quyết định không còn đúng.",
+      "noOrphans": "Không có quyết định nào mồ côi.",
+      "kinds": {
+        "deprecate": "Cho nghỉ",
+        "merge": "Gộp",
+        "link": "Liên kết"
+      },
+      "states": {
+        "proposed": "Đã đề xuất",
+        "active": "Đang áp dụng",
+        "rejected": "Đã từ chối",
+        "undone": "Đã hoàn tác",
+        "orphan": "Mồ côi"
+      },
+      "actions": {
+        "propose": "{by} đã đề xuất quyết định {number}",
+        "decide": "{by} đã đưa ra quyết định {number}",
+        "accept": "{by} đã chấp nhận quyết định {number}",
+        "reject": "{by} đã từ chối quyết định {number}",
+        "undo": "{by} đã hoàn tác quyết định {number}"
+      },
+      "steps": {
+        "accept": "Chấp nhận",
+        "reject": "Từ chối",
+        "undo": "Hoàn tác"
+      },
+      "take": {
+        "deprecate": "Cho nghỉ",
+        "merge": "Gộp",
+        "link": "Thêm liên kết"
+      },
+      "hints": {
+        "deprecate": "Cho nghỉ nút này, hoặc khi có quan hệ và nút kia thì cho nghỉ cạnh giữa chúng. Các công cụ sau đó sẽ bỏ qua nó.",
+        "merge": "Gộp nút này với nút khác: chúng cùng nghĩa, id nhỏ hơn giữ id kia làm bí danh.",
+        "link": "Thêm một cạnh từ nút này tới nút khác; quan hệ phải có trong bản thể học."
+      },
+      "kindLabel": "Quyết định",
+      "relLabel": "Quan hệ",
+      "toLabel": "Id của nút kia",
+      "reasonLabel": "Vì sao",
+      "reasonPlaceholder": "Nói rõ lý do, cho người đọc đồ thị sau này",
+      "cancel": "Hủy",
+      "done": {
+        "take": "Đã lưu quyết định; lần dựng sau sẽ áp dụng.",
+        "accept": "Đã chấp nhận quyết định {number}; lần dựng sau sẽ áp dụng.",
+        "reject": "Đã từ chối quyết định {number}.",
+        "undo": "Đã hoàn tác quyết định {number}; lần dựng sau sẽ bỏ nó."
+      },
+      "forbidden": "Cần vai trò người viết trong dự án này để quyết định.",
+      "gone": "Nút, cạnh hoặc quyết định không có trong đồ thị bạn xem được.",
+      "stale": "Ai đó vừa quyết định trước bạn. Hãy tải lại các quyết định rồi thử lại.",
+      "invalid": "Hub đã từ chối quyết định này."
     }
   },
   "workers": {
@@ -2168,7 +2356,6 @@
       "facts": "{os} {arch} trên {hostname}. Chủ {owner}. Daemon evo-agents {version}, đăng ký {date}.",
       "notFoundTitle": "Không tìm thấy worker",
       "notFoundDescription": "Worker này không tồn tại, hoặc thuộc về thành viên khác.",
-      "actionsHelp": "Ngừng nhận việc: worker chạy xong các run đang giữ rồi không nhận run mới. Thu hồi: token của worker hết hiệu lực ngay, và các run nó đang giữ quay lại queue.",
       "asAdmin": "Bạn đang xem worker này với tư cách quản trị viên hub. Bạn được cho ngừng nhận việc hoặc thu hồi; chỉ {owner} cho nó nhận việc lại hoặc dispatch run tới nó.",
       "revoked": "Đã thu hồi {time}. Token của worker không còn hiệu lực, và tên này dùng được cho worker mới.",
       "draining": "Ngừng nhận việc từ {time}. Worker chạy xong các run đang giữ và không nhận run mới cho tới khi bạn cho nhận việc lại.",
@@ -2210,8 +2397,11 @@
       "checkouts": {
         "title": "Checkout",
         "description": "Các repo heartbeat gần nhất tìm thấy; mỗi run làm việc trong một worktree của một repo.",
+        "descriptionIn": "Các repo heartbeat gần nhất tìm thấy, đều nằm trong <code>{path}</code>; mỗi run làm việc trong một worktree của một repo.",
         "empty": "Hiện sau heartbeat đầu tiên.",
-        "none": "Heartbeat gần nhất không báo checkout nào."
+        "none": "Heartbeat gần nhất không báo checkout nào.",
+        "showAll": "Hiện cả {count} checkout",
+        "showFewer": "Thu gọn"
       },
       "heartbeat": {
         "title": "Heartbeat, 60 phút gần nhất",

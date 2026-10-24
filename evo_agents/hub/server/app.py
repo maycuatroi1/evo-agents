@@ -237,6 +237,18 @@ def create_app(config: HubConfig) -> FastAPI:
 
     app.include_router(kg_web.router)
 
+    from evo_agents.hub.server import kg_map
+
+    app.include_router(kg_map.router)
+
+    from evo_agents.hub.server import kg_review
+
+    app.include_router(kg_review.router)
+
+    from evo_agents.hub.server import kg_decisions
+
+    app.include_router(kg_decisions.router)
+
     from evo_agents.hub.server import admin_console
 
     app.include_router(admin_console.router)

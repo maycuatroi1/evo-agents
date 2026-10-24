@@ -3,9 +3,10 @@ proxy ``evo-agents hub mcp`` answers with it too while the hub cannot be reached
 either way.
 
 The seven kg_* tools are ``evo_agents.kg.serve.TOOLS`` unchanged, names and schemas, so a session reads the graph of
-its project the same way whether ``kg serve`` answers on the machine or the hub does. The twenty-seven others read and
+its project the same way whether ``kg serve`` answers on the machine or the hub does. The twenty-eight others read and
 write what the hub holds: memories, plans and their handoffs, the project's problems, skills, the caller's projects,
-the tool figures of runs, and what the Curator's review run reads: the night's figures, session digests, the events of a run, decisions,
+the tool figures of runs, proposals of decisions on the graph (kg_propose, which no kg_* tool of evo-kg has), and
+what the Curator's review run reads: the night's figures, session digests, the events of a run, decisions,
 the replays of the Curator's changes, and the project's whole history (HISTORY_READ_TOOLS: its sessions and runs, the
 words of its transcripts, run logs and group chats, the lines of a transcript, the clusters of its facets, what
 earlier review nights found and the Curator's playbook). Those about a project take an optional ``project``; without
@@ -470,6 +471,30 @@ HUB_TOOLS = [
                 "runtime": {"type": "string", "enum": list(RUNTIMES), "description": "without run_id: this runtime's"},
                 "project": _PROJECT,
             },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "kg_propose",
+        "description": (
+            "Propose a decision on the project's knowledge graph for a writer to accept or reject: deprecate a node "
+            "(id) or an edge (id, rel, to), merge two node ids that mean the same (id, to), or link two nodes with a "
+            "relation the ontology knows (id, rel, to). Writes a proposal only; nothing changes until a writer "
+            "accepts it and the next build applies it. base_rev is the project's decision revision you read: pass 0 "
+            "at first, and on a refusal for a stale revision pass the revision it names."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["deprecate", "merge", "link"]},  # kg_decisions.KINDS
+                "id": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "a node id or alias"},
+                "rel": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "an edge type"},
+                "to": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "the other node"},
+                "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "why, for the writer"},
+                "base_rev": {"type": "integer", "minimum": 0, "maximum": MAX_REVISION},
+                "project": _PROJECT,
+            },
+            "required": ["kind", "id", "reason", "base_rev"],
             "additionalProperties": False,
         },
     },

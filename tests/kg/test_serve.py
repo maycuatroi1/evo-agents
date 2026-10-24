@@ -709,7 +709,7 @@ def test_tools_take_the_argument_names_agents_guess(tmp_path, kg_env):
     wrong = session.call("kg_impact", {"id": RANK, "budget_tokens": 2000})
     assert wrong["isError"]
     assert wrong["content"][0]["text"] == (
-        "error: kg_impact has no argument 'budget_tokens'; it takes depth, diff, id, ids, limit, paths"
+        "error: kg_impact has no argument 'budget_tokens'; it takes deprecated, depth, diff, id, ids, limit, paths"
     )
     assert "Session." not in session.call("kg_search", {"query": "x", "unknown": 1})["content"][0]["text"]
     assert session.call("kg_impact", {"id": RANK, "limit": "many"})["isError"]  # a bad value is an error, not a crash
