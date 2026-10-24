@@ -133,6 +133,10 @@ class ProblemPlan(BaseModel):
 
 
 class ProjectProblemShown(ProjectProblem):
+    evidence_count: int = Field(description="the lines of evidence of the problem (plan problem-intake)")
+    source_count: int = Field(
+        description="the independent sources those lines come from: a source is a kind and an address"
+    )
     goals: list[ProblemGoal] = Field(description="the goals whose newest revision answers it, by code")
     claims: list[ProblemClaim] = Field(description="the claims that link it, by canvas and code: those the member sees")
     plans: list[ProblemPlan] = Field(description="the plans that name it, by plan id: those the member sees")
@@ -309,6 +313,13 @@ def _stored(row) -> dict:
         "status": row.status,
         "close_reason": row.close_reason,
     }
+
+
+async def evidence_counts(conn: AsyncConnection, problem_id: int) -> tuple[int, int]:
+    """(lines of evidence of the problem, the independent sources they come from)."""
+    e = tables.problem_evidence
+    rows = (await conn.execute(select(e.c.source_kind, e.c.source_uri).where(e.c.problem_id == problem_id))).all()
+    return len(rows), problems.sources_of([row._mapping for row in rows])
 
 
 async def answered_by(conn: AsyncConnection, problem_id: int) -> list[ProblemGoal]:
@@ -589,8 +600,11 @@ async def shown(
     plans that point to it now."""
     row = await _one(conn, access, ref, revision)
     code = problems.code(row.number)
+    lines, sources = await evidence_counts(conn, row.id)
     return ProjectProblemShown(
         **view(access.name, row).model_dump(),
+        evidence_count=lines,
+        source_count=sources,
         goals=await answered_by(conn, row.id),
         claims=await claimed_by(conn, access, code),
         plans=await named_by(conn, access, code),

@@ -150,3 +150,22 @@ def problem_lines(project: str, problem: dict) -> list[str]:
         *_listed("claims that link it:", "no claim links it yet", claims),
         *_listed("plans that name it:", "no plan names it yet", plans),
     ]
+
+
+def evidence_lines(code: str, project: str, lines: list[dict]) -> list[str]:
+    """What ``problem_evidence`` says of a problem's evidence (its lines as ProblemEvidence has them): a header with the
+    count of lines and of independent sources, then a line each."""
+    sources = problems.sources_of(lines)
+    head = f"# Evidence of problem {code} of project {project}: {len(lines)} lines from {sources} independent sources"
+    if not lines:
+        return [f"problem {code} of project {project} has no evidence yet"]
+    rows = []
+    for line in lines:
+        state = f"confirmed by {line['confirmed_by']}" if line["confirmed_by"] else "not confirmed"
+        place = f" at {line['locator']}" if line["locator"] else ""
+        who = f" ({line['speaker']})" if line["speaker"] else ""
+        rows.append(
+            f"- {line['code']} {line['signal']}, {line['label']}, {state}: {line['source_kind']} {line['source_uri']}"
+            f"{place}{who}: {one_line(line['excerpt'], EXCERPT)}"
+        )
+    return [head, *rows]

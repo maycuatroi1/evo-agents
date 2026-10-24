@@ -19,7 +19,10 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
   its code), its fields named as the problem's route names them (statement, who, when, workaround, metric, rank,
   owner, status, close_reason); its version is the problem's revision, 0 for a new one, whose code the hub picks when
   it is proposed and keeps in the target. A writer of the project decides it, and the hub writes the next revision as
-  the problem's route does (``problems.write``); rolling back a new problem drops it.
+  the problem's route does (``problems.write``); rolling back a new problem drops it. It may carry ``evidence`` (plan
+  problem-intake, criterion a1): lines of sources that show the problem hurts, each as the evidence route takes one,
+  which the hub makes with the problem when a writer approves; a proposal of lines alone names an existing problem,
+  sets nothing, and writes no revision. Rolling back takes the lines it made away.
 - ``goal``: a goal of the project (``evo_agents.hub.goals``), new or one that exists (``target.goal``, its code or
   alias), its fields named as the goal's route names them (statement, metric, deadline, canvas, problem, rank, owner,
   status, close_reason); its version is the goal's revision, 0 for a new one, whose code the hub picks when it is
@@ -54,7 +57,7 @@ from evo_agents.hub import autonomy, branding, chats, features, goals, tables
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs
+from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs, problem_evidence
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import problems as project_problems
 from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
@@ -111,9 +114,16 @@ class Change:
     sets: dict
     unset: tuple[str, ...]
     summary: str = ""
+    evidence: tuple[dict, ...] = ()  # lines of evidence of a problem, as ``ProblemEvidenceWrite`` dumps them
 
     def stored(self) -> dict:
-        return {"set": self.sets, "unset": list(self.unset)}
+        kept = {"set": self.sets, "unset": list(self.unset)}
+        return kept | ({"evidence": list(self.evidence)} if self.evidence else {})
+
+    @property
+    def evidence_only(self) -> bool:
+        """A proposal of a problem that carries lines of evidence and changes no field of the problem."""
+        return self.kind == PROBLEM and bool(self.evidence) and not self.sets and not self.unset
 
 
 @dataclass(frozen=True)
@@ -246,7 +256,10 @@ async def _locked(conn: AsyncConnection, access: ProjectAccess, proposal_id: int
 
 
 def change_of_row(row) -> Change:
-    return Change(row.kind, dict(row.target), dict(row.change["set"]), tuple(row.change["unset"]), row.summary)
+    evidence = tuple(row.change.get("evidence") or ())
+    return Change(
+        row.kind, dict(row.target), dict(row.change["set"]), tuple(row.change["unset"]), row.summary, evidence
+    )
 
 
 # What the agent proposes
@@ -266,6 +279,23 @@ def _field_problems(sets: object, unset: object) -> list[str]:
     if len(set(unset)) != len(unset):
         problems.append("unset names a field more than once")
     return problems
+
+
+def _evidence_of(kind: str, given: object) -> tuple[list[dict], list[str]]:
+    """The lines of evidence a proposal of ``kind`` carries as the hub keeps them, and what is wrong with them."""
+    if given is None or given == []:
+        return [], []
+    if kind != PROBLEM:
+        return [], ["evidence belongs to a problem proposal"]
+    if not isinstance(given, list) or len(given) > problem_model.MAX_PROPOSED_EVIDENCE:
+        return [], [f"evidence is a list of at most {problem_model.MAX_PROPOSED_EVIDENCE} lines"]
+    lines, wrong = [], []
+    for at, item in enumerate(given, start=1):
+        try:
+            lines.append(problem_evidence.ProblemEvidenceWrite.model_validate(item).model_dump())
+        except ValidationError as exc:
+            wrong.append(f"evidence {at}: {_said_by_pydantic(exc, 'evidence')}")
+    return lines, wrong
 
 
 def change_of(arguments: Mapping) -> Change:
@@ -291,10 +321,16 @@ def change_of(arguments: Mapping) -> Change:
         problems.append("target.goal is a goal's code (G-<number>) or its alias")
     if kind == PROBLEM and not re.fullmatch(problem_model.REF, str(target.get("problem", "P-1"))):
         problems.append("target.problem is a problem's code (P-<number>)")
-    problems.extend(_field_problems(sets, unset))
+    lines, said = _evidence_of(kind, arguments.get("evidence"))
+    problems.extend(said)
+    if lines and not sets and not unset:
+        if "problem" not in target:
+            problems.append("a proposal of evidence alone names the problem: target.problem")
+    else:
+        problems.extend(_field_problems(sets, unset))
     if problems:
         raise ProposalError(422, f"{'; '.join(problems)}; nothing proposed")
-    return Change(kind, dict(target), dict(sets), tuple(unset), summary)
+    return Change(kind, dict(target), dict(sets), tuple(unset), summary, tuple(lines))
 
 
 # Where a change applies
@@ -532,9 +568,22 @@ def _problem_body(change: Change, target: Target) -> project_problems.ProjectPro
         raise ProposalError(422, f"{_said_by_pydantic(exc, 'problem')}; {NOTHING}") from None
 
 
+async def _evidence_wrong(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> list[str]:
+    """What is wrong with the lines of evidence ``change`` carries as additions to the problem ``target`` holds (none
+    yet for a new problem)."""
+    if not change.evidence:
+        return []
+    held = await project_problems.found(conn, access.project_id, target.names["problem"]) if target.version else None
+    lines = [problem_evidence.ProblemEvidenceWrite.model_validate(line) for line in change.evidence]
+    return await problem_evidence.wrong_lines(conn, None if held is None else held.id, lines)
+
+
 async def _problem_wrong(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> list[str]:
+    wrong = await _evidence_wrong(conn, access, change, target)
+    if change.evidence_only:
+        return wrong
     body = _problem_body(change, target)
-    wrong = _layer_problems(change, target) if target.version else []
+    wrong += _layer_problems(change, target) if target.version else []
     try:
         return wrong + await project_problems.check(conn, access, target.names["problem"], body)
     except HTTPException as exc:
@@ -654,6 +703,34 @@ async def _write_problem(
     return shown.revision
 
 
+async def _apply_problem(
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    change: Change,
+    target: Target,
+    base: int,
+    proposal_id: int,
+) -> int:
+    """Write the problem ``change`` makes (unless it carries lines of evidence alone), then the lines it carries with
+    the proposal's id; the problem's revision."""
+    note = f"proposal {proposal_id} of @builder: {change.summary}"
+    ref, version = target.names["problem"], base
+    if change.evidence_only:
+        await project_problems._lock(conn, access.project_id)
+    else:
+        body = _problem_body(change, target)
+        version = await _write_problem(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
+    if change.evidence:
+        held = await project_problems.found(conn, access.project_id, ref)
+        lines = [problem_evidence.ProblemEvidenceWrite.model_validate(line) for line in change.evidence]
+        try:
+            await problem_evidence.add_lines(conn, user, access, held.id, lines, proposal_id=proposal_id)
+        except HTTPException as exc:
+            raise ProposalError(exc.status_code, str(exc.detail)) from None
+    return version
+
+
 def _still_at(target: Target, version: int, doing: str) -> None:
     if target.version != version:
         raise ProposalError(
@@ -688,9 +765,7 @@ async def apply(
         body = _goal_body(change, target)
         return await _write_goal(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
     if change.kind == PROBLEM:
-        note = f"proposal {proposal_id} of @builder: {change.summary}"
-        body = _problem_body(change, target)
-        return await _write_problem(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
+        return await _apply_problem(conn, user, access, change, target, base, proposal_id)
     await check(conn, access, change, target, hub_version)
     if change.kind == PLUGIN_CONFIG:
         return await _apply_config(conn, user, change, target, base)
@@ -765,9 +840,30 @@ async def _roll_back_goal(
 
 
 async def _roll_back_problem(
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    change: Change,
+    target: Target,
+    applied: int,
+    proposal_id: int,
+) -> int:
+    """The problem's next revision, a copy of revision ``applied - 1``; a problem the proposal made is dropped. The
+    lines of evidence it made are taken away; a proposal of lines alone writes no revision."""
+    if change.evidence_only:
+        await project_problems._lock(conn, access.project_id)
+        held = await project_problems.found(conn, access.project_id, target.names["problem"])
+        await problem_evidence.remove_proposed(conn, user, access, held.id, proposal_id)
+        return applied
+    version = await _roll_back_problem_revision(conn, user, access, target, applied, proposal_id)
+    held = await project_problems.found(conn, access.project_id, target.names["problem"])
+    await problem_evidence.remove_proposed(conn, user, access, held.id, proposal_id)
+    return version
+
+
+async def _roll_back_problem_revision(
     conn: AsyncConnection, user: Principal, access: ProjectAccess, target: Target, applied: int, proposal_id: int
 ) -> int:
-    """The problem's next revision, a copy of revision ``applied - 1``; a problem the proposal made is dropped."""
     ref, before = target.names["problem"], applied - 1
     row = await project_problems.found(conn, access.project_id, ref, before or None)
     if row is None:
@@ -805,7 +901,7 @@ async def roll_back(
     if change.kind == GOAL:
         return await _roll_back_goal(conn, user, access, target, applied, proposal_id)
     if change.kind == PROBLEM:
-        return await _roll_back_problem(conn, user, access, target, applied, proposal_id)
+        return await _roll_back_problem(conn, user, access, change, target, applied, proposal_id)
     return await _roll_back_layer(conn, user, target, applied)
 
 
@@ -904,14 +1000,16 @@ def done_already(row, verb: str, user_id: int) -> bool:
 
 def thread_text(proposal_id: int, change: Change, target: Target, approver: str) -> str:
     """The hub's message that shows a proposal in its thread."""
-    shown_values = json.dumps(change.sets, ensure_ascii=False, indent=1, sort_keys=True)
+    shown = change.sets | ({"evidence": list(change.evidence)} if change.evidence else {})
+    shown_values = json.dumps(shown, ensure_ascii=False, indent=1, sort_keys=True)
     if len(shown_values.encode()) > MAX_SHOWN_BYTES:
         shown_values = shown_values.encode()[:MAX_SHOWN_BYTES].decode(errors="ignore") + "\n..."
     sets = ", ".join(sorted(change.sets)) or "nothing"
     unsets = ", ".join(change.unset) or "nothing"
+    lines = f" It adds {len(change.evidence)} lines of evidence." if change.evidence else ""
     return (
         f"Proposal {proposal_id} of @builder: {change.summary}\n\n"
-        f"It changes {target.title}, now at version {target.version}: it sets {sets} and unsets {unsets}.\n\n"
+        f"It changes {target.title}, now at version {target.version}: it sets {sets} and unsets {unsets}.{lines}\n\n"
         f"```json\n{shown_values}\n```\n\n"
         f"Nothing changes until {approver} approves it: reply `approve {proposal_id}` or `reject {proposal_id}` in "
         f"this thread, or answer it from the Inbox. Once it is applied, `rollback {proposal_id}` brings back the "

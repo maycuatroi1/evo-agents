@@ -1,5 +1,11 @@
-"""``evo-agents hub problem list|show|set|close``: the problems of a project (``evo_agents.hub.problems``), over GET
-and PUT /v1/projects/{p}/problems and the routes below it.
+"""``evo-agents hub problem list|show|set|close`` and ``problem evidence add|list|confirm``: the problems of a project
+(``evo_agents.hub.problems``), over GET and PUT /v1/projects/{p}/problems and the routes below it.
+
+``problem evidence add CODE`` adds a line of evidence to a problem (plan problem-intake): the kind and address of its
+source (``--source-kind``, ``--source-uri``), where in it (``--locator``), who spoke (``--speaker``), an excerpt of at
+most 300 characters (``--excerpt``), the signal it shows (``--signal``) and its label (``--label`` public or internal;
+the hub refuses personal). ``evidence list CODE`` prints a problem's lines, ``evidence confirm CODE E-<n>`` confirms
+one. ``show`` counts the lines and the independent sources they come from.
 
 ``list`` prints the project's problems by rank, those of one ``--status`` alone when given. ``show CODE`` prints a
 problem (P-<number>) at its newest revision or at ``--revision``, with the goals that answer it, the claims of the
@@ -48,6 +54,24 @@ PROBLEM_KEYS = (
     "note",
     "created_by",
     "created_at",
+)
+EVIDENCE_KEYS = (
+    "project",
+    "problem",
+    "code",
+    "number",
+    "source_kind",
+    "source_uri",
+    "locator",
+    "speaker",
+    "excerpt",
+    "signal",
+    "label",
+    "added_by",
+    "added_at",
+    "confirmed_by",
+    "confirmed_at",
+    "proposal_id",
 )
 METRIC_OPTIONS = {"metric": "key", "aggregate": "aggregate", "window_days": "window_days", "tenant": "tenant"}
 NEEDED = ("metric", "aggregate")  # the options a metric cannot go without
@@ -141,6 +165,8 @@ def _show(problem: dict, revisions: list[dict]) -> None:
         done = f"{plan['area']}, {plan['steps_done']}/{plan['steps_total']} steps done"
         title = f": {_clip(plan['title'], SHOWN_STATEMENT_CHARS)}" if plan.get("title") else ""
         print(f"  {plan['plan_id']} ({done}){title}")
+    if problem.get("evidence_count"):
+        print(f"Evidence: {problem['evidence_count']} lines from {problem['source_count']} independent sources")
     if revisions:
         print("Revisions:")
         rows = [
@@ -148,6 +174,65 @@ def _show(problem: dict, revisions: list[dict]) -> None:
             for item in revisions
         ]
         table(("REVISION", "WRITTEN (UTC)", "BY", "CHANGED"), rows)
+
+
+@client_command
+def cmd_evidence_list(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    found = hub.call("GET", _path(project, _ref(args.code) + "/evidence"))
+    if args.json:
+        print_json(found)
+        return 0
+    if not found:
+        print(f"Problem {args.code} of project {project} has no evidence.")
+        return 0
+    rows = [
+        (
+            line["code"],
+            line["signal"],
+            line["label"],
+            f"{line['source_kind']} {_clip(line['source_uri'], 40)}",
+            line["speaker"] or "-",
+            "confirmed by " + line["confirmed_by"] if line["confirmed_by"] else "not confirmed",
+            _clip(line["excerpt"], SHOWN_STATEMENT_CHARS),
+        )
+        for line in found
+    ]
+    table(("CODE", "SIGNAL", "LABEL", "SOURCE", "SPEAKER", "STATE", "EXCERPT"), rows)
+    return 0
+
+
+@client_command
+def cmd_evidence_add(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    body = {
+        "source_kind": args.source_kind,
+        "source_uri": args.source_uri,
+        "excerpt": args.excerpt,
+        "signal": args.signal,
+        "label": args.label,
+    }
+    body |= {name: value for name in ("locator", "speaker") if (value := getattr(args, name)) is not None}
+    written = hub.call("POST", _path(project, _ref(args.code) + "/evidence"), body)
+    if args.json:
+        print_json(written)
+        return 0
+    print(f"Added evidence {written['code']} to problem {written['problem']} of project {project}.")
+    return 0
+
+
+@client_command
+def cmd_evidence_confirm(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    written = hub.call("POST", _path(project, f"{_ref(args.code)}/evidence{_ref(args.evidence)}/confirm"))
+    if args.json:
+        print_json(written)
+        return 0
+    print(f"Confirmed evidence {written['code']} of problem {written['problem']} of project {project}.")
+    return 0
 
 
 @client_command
@@ -290,7 +375,18 @@ def register_problems(hsub) -> None:
     shown.add_argument("code", metavar="CODE", help="its code (P-<number>)")
     shown.add_argument("--revision", type=int, metavar="N", help="an older revision (default: the newest)")
     shown.add_argument("--project", help=PROJECT_HELP)
-    json_option(shown, returns_object(*PROBLEM_KEYS, "goals", "claims", "plans", schema="ProjectProblemShown"))
+    json_option(
+        shown,
+        returns_object(
+            *PROBLEM_KEYS,
+            "goals",
+            "claims",
+            "plans",
+            "evidence_count",
+            "source_count",
+            schema="ProjectProblemShown",
+        ),
+    )
     shown.set_defaults(func=cmd_show)
 
     written = psub.add_parser(
@@ -313,3 +409,39 @@ def register_problems(hsub) -> None:
     closed.add_argument("--project", help=PROJECT_HELP)
     json_option(closed, returns_object(*PROBLEM_KEYS, "changed", schema="ProjectProblemWritten"))
     closed.set_defaults(func=cmd_close)
+
+    evidence = psub.add_parser("evidence", help="the evidence of a problem: lines of sources that show it hurts")
+    esub = evidence.add_subparsers(dest="evidence_command", required=True)
+
+    seen = esub.add_parser("list", help="a problem's lines of evidence")
+    seen.add_argument("code", metavar="CODE", help="the problem's code (P-<number>)")
+    seen.add_argument("--project", help=PROJECT_HELP)
+    json_option(seen, returns_array(*EVIDENCE_KEYS, schema="ProblemEvidence"))
+    seen.set_defaults(func=cmd_evidence_list)
+
+    added = esub.add_parser("add", help="add a line of evidence to a problem (the writer role on the project)")
+    added.add_argument("code", metavar="CODE", help="the problem's code (P-<number>)")
+    added.add_argument("--source-kind", required=True, choices=problems.SOURCE_KINDS, help="where it was read")
+    added.add_argument("--source-uri", required=True, metavar="URI", help="the source's URI or path")
+    added.add_argument("--locator", help="where in the source: a message id, a time, a page")
+    added.add_argument("--speaker", help="who spoke, when someone did")
+    added.add_argument(
+        "--excerpt", required=True, help=f"what the source says (at most {problems.MAX_EXCERPT_CHARS} characters)"
+    )
+    added.add_argument("--signal", required=True, choices=problems.SIGNALS, help="what the line shows")
+    added.add_argument(
+        "--label",
+        required=True,
+        choices=(*problems.EVIDENCE_LABELS, "personal"),
+        help="public or internal; the hub refuses personal, which stays on your machine",
+    )
+    added.add_argument("--project", help=PROJECT_HELP)
+    json_option(added, returns_object(*EVIDENCE_KEYS, schema="ProblemEvidence"))
+    added.set_defaults(func=cmd_evidence_add)
+
+    confirmed = esub.add_parser("confirm", help="confirm a line of evidence (the writer role on the project)")
+    confirmed.add_argument("code", metavar="CODE", help="the problem's code (P-<number>)")
+    confirmed.add_argument("evidence", metavar="EVIDENCE", help="the line's code (E-<number>)")
+    confirmed.add_argument("--project", help=PROJECT_HELP)
+    json_option(confirmed, returns_object(*EVIDENCE_KEYS, schema="ProblemEvidence"))
+    confirmed.set_defaults(func=cmd_evidence_confirm)

@@ -195,3 +195,28 @@ def test_problem_graph_on_the_hub_finds_a_problem_by_code_or_text_with_the_plan_
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     solved = tool_ok(hub, "kg_search", {"query": "second delivery on Wednesday"})["structuredContent"]["results"]
     assert "plugin.hub_problems:doc:problems#P-1" in [hit["id"] for hit in solved]
+
+
+def test_problem_evidence_joins_the_graph_as_edges_of_the_problem_with_the_label_of_the_project(hub, tmp_path):
+    made = hub.client.put(f"/v1/projects/{PROJECT}/problems/P-1", json=STOCK_OUTS, headers=hub.alice)
+    assert made.status_code == 200, made.text
+    line = {
+        "source_kind": "email",
+        "source_uri": "mailto:ines@northwind.example",
+        "locator": "thread 7",
+        "excerpt": "We ring the depot every Thursday because the shelf is empty.",
+        "signal": "workaround",
+        "label": "internal",
+    }
+    machine(hub, tmp_path)
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    added = hub.client.post(f"/v1/projects/{PROJECT}/problems/P-1/evidence", json=line, headers=hub.alice)
+    assert added.status_code == 201, added.text
+    assert queued(hub) == 1  # an added line queues a build
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    found = tool_ok(hub, "kg_search", {"query": "ring the depot"})["structuredContent"]["results"]
+    assert "plugin.hub_problems:doc:evidence#P-1/E-1" in [hit["id"] for hit in found]
+    path = tool_ok(hub, "kg_path", {"from": "plugin.hub_problems:doc:evidence#P-1/E-1", "to": PROBLEM})
+    assert path["structuredContent"]["found"] and [e["rel"] for e in path["structuredContent"]["edges"]] == [
+        "evidences"
+    ]

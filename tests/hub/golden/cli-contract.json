@@ -11220,6 +11220,246 @@
         "schema": "ProjectProblemWritten"
       }
     },
+    "hub problem evidence add": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--source-kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "hub_chat",
+            "messenger",
+            "chat_fpt",
+            "email",
+            "file",
+            "harness",
+            "other"
+          ]
+        },
+        {
+          "flags": [
+            "--source-uri"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--locator"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--speaker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--excerpt"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--signal"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "complaint",
+            "workaround",
+            "repeated_request",
+            "blocker",
+            "commitment",
+            "proposed_solution",
+            "contradiction",
+            "decision_without_reason"
+          ]
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "public",
+            "internal",
+            "personal"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "problem",
+          "code",
+          "number",
+          "source_kind",
+          "source_uri",
+          "locator",
+          "speaker",
+          "excerpt",
+          "signal",
+          "label",
+          "added_by",
+          "added_at",
+          "confirmed_by",
+          "confirmed_at",
+          "proposal_id"
+        ],
+        "schema": "ProblemEvidence"
+      }
+    },
+    "hub problem evidence confirm": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "evidence",
+          "metavar": "EVIDENCE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "problem",
+          "code",
+          "number",
+          "source_kind",
+          "source_uri",
+          "locator",
+          "speaker",
+          "excerpt",
+          "signal",
+          "label",
+          "added_by",
+          "added_at",
+          "confirmed_by",
+          "confirmed_at",
+          "proposal_id"
+        ],
+        "schema": "ProblemEvidence"
+      }
+    },
+    "hub problem evidence list": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "project",
+          "problem",
+          "code",
+          "number",
+          "source_kind",
+          "source_uri",
+          "locator",
+          "speaker",
+          "excerpt",
+          "signal",
+          "label",
+          "added_by",
+          "added_at",
+          "confirmed_by",
+          "confirmed_at",
+          "proposal_id"
+        ],
+        "schema": "ProblemEvidence"
+      }
+    },
     "hub problem list": {
       "positionals": [],
       "options": [
@@ -11505,7 +11745,9 @@
           "created_at",
           "goals",
           "claims",
-          "plans"
+          "plans",
+          "evidence_count",
+          "source_count"
         ],
         "schema": "ProjectProblemShown"
       }
@@ -17960,7 +18202,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.40.3"
+      "version": "0.41.0"
     },
     "paths": {
       "/v1/health": {
@@ -67808,6 +68050,308 @@
           }
         }
       },
+      "/v1/projects/{project}/problems/{ref}/evidence": {
+        "get": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "List Evidence",
+          "description": "The evidence of a problem by number, for a member with a grant on the project.",
+          "operationId": "list_evidence_v1_projects__project__problems__ref__evidence_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^P-[1-9][0-9]{0,8}$",
+                "description": "P-<number>",
+                "title": "Ref"
+              },
+              "description": "P-<number>"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProblemEvidence"
+                    },
+                    "title": "Response List Evidence V1 Projects  Project  Problems  Ref  Evidence Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "Add Evidence",
+          "description": "Add a line of evidence to a problem; a writer of the project may. 422 for a personal label or an excerpt of more\nthan 300 characters, 409 for a line the problem has already.",
+          "operationId": "add_evidence_v1_projects__project__problems__ref__evidence_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^P-[1-9][0-9]{0,8}$",
+                "description": "P-<number>",
+                "title": "Ref"
+              },
+              "description": "P-<number>"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemEvidenceWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProblemEvidence"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/problems/{ref}/evidence/{code}/confirm": {
+        "post": {
+          "tags": [
+            "problems"
+          ],
+          "summary": "Confirm Evidence",
+          "description": "Confirm a line of evidence, once; a writer of the project may.",
+          "operationId": "confirm_evidence_v1_projects__project__problems__ref__evidence__code__confirm_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^P-[1-9][0-9]{0,8}$",
+                "description": "P-<number>",
+                "title": "Ref"
+              },
+              "description": "P-<number>"
+            },
+            {
+              "name": "code",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^E-[1-9][0-9]{0,8}$",
+                "description": "E-<number>",
+                "title": "Code"
+              },
+              "description": "E-<number>"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProblemEvidence"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/loop": {
         "get": {
           "tags": [
@@ -98927,6 +99471,208 @@
           "title": "ProblemClaim",
           "description": "A claim of a canvas of the project that links the problem: not archived, in a canvas that is not."
         },
+        "ProblemEvidence": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "problem": {
+              "type": "string",
+              "title": "Problem",
+              "description": "P-<number>"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "E-<number>, unique in the problem"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "source_kind": {
+              "type": "string",
+              "title": "Source Kind"
+            },
+            "source_uri": {
+              "type": "string",
+              "title": "Source Uri"
+            },
+            "locator": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locator"
+            },
+            "speaker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speaker"
+            },
+            "excerpt": {
+              "type": "string",
+              "title": "Excerpt"
+            },
+            "signal": {
+              "type": "string",
+              "title": "Signal"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label"
+            },
+            "added_by": {
+              "type": "string",
+              "title": "Added By"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            },
+            "confirmed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmed By",
+              "description": "the writer who confirmed it; null before"
+            },
+            "confirmed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmed At"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id",
+              "description": "the proposal of @builder that made it; null for a line a writer added"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "problem",
+            "code",
+            "number",
+            "source_kind",
+            "source_uri",
+            "locator",
+            "speaker",
+            "excerpt",
+            "signal",
+            "label",
+            "added_by",
+            "added_at",
+            "confirmed_by",
+            "confirmed_at",
+            "proposal_id"
+          ],
+          "title": "ProblemEvidence",
+          "description": "A line of the evidence of a problem."
+        },
+        "ProblemEvidenceWrite": {
+          "properties": {
+            "source_kind": {
+              "type": "string",
+              "title": "Source Kind",
+              "description": "where it was read: hub_chat, messenger, chat_fpt, email, file, harness, other"
+            },
+            "source_uri": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Source Uri",
+              "description": "the source's URI or path"
+            },
+            "locator": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locator",
+              "description": "where in the source: a message id, a time, a page"
+            },
+            "speaker": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speaker",
+              "description": "who spoke, when someone did"
+            },
+            "excerpt": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Excerpt",
+              "description": "at most 300 characters of the source"
+            },
+            "signal": {
+              "type": "string",
+              "title": "Signal",
+              "description": "what it shows: complaint, workaround, repeated_request, blocker, commitment, proposed_solution, contradiction, decision_without_reason"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label",
+              "description": "public or internal; a personal line stays on the member's machine"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "source_kind",
+            "source_uri",
+            "excerpt",
+            "signal",
+            "label"
+          ],
+          "title": "ProblemEvidenceWrite",
+          "description": "One line of evidence, as a writer adds it or @builder proposes it."
+        },
         "ProblemGoal": {
           "properties": {
             "code": {
@@ -100499,6 +101245,16 @@
               "format": "date-time",
               "title": "Created At"
             },
+            "evidence_count": {
+              "type": "integer",
+              "title": "Evidence Count",
+              "description": "the lines of evidence of the problem (plan problem-intake)"
+            },
+            "source_count": {
+              "type": "integer",
+              "title": "Source Count",
+              "description": "the independent sources those lines come from: a source is a kind and an address"
+            },
             "goals": {
               "items": {
                 "$ref": "#/components/schemas/ProblemGoal"
@@ -100542,6 +101298,8 @@
             "note",
             "created_by",
             "created_at",
+            "evidence_count",
+            "source_count",
             "goals",
             "claims",
             "plans"
