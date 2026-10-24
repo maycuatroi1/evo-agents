@@ -41281,6 +41281,10 @@ export interface operations {
                 kind?: ("decision" | "notice" | "proposal") | null;
                 /** @description only this project's */
                 project?: string | null;
+                /** @description only this run's */
+                run?: number | null;
+                /** @description only those whose title or body holds these words */
+                q?: string | null;
                 limit?: number;
                 offset?: number;
             };

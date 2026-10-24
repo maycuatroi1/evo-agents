@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, Lightbulb, MessageCircleQuestionMark } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Lightbulb, MessageCircleQuestionMark } from "lucide-react";
 import type { Route } from "next";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -14,11 +14,12 @@ import { Prose } from "@/components/plans/prose";
 import { runHref } from "@/components/runs/queries";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
-import { Ago } from "@/components/workers/ago";
+import { Ago } from "@/components/data/ago";
 import { cn } from "@/lib/utils";
 
 import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
-import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, mergeAsk, noticeFacts, pluginFacts, shortCommit } from "./model";
+import { isBranchNotice, isOpenProposal, isWaiting, mergeAsk } from "./model";
+import { BranchFacts, PluginNoticeFacts } from "./notice-facts";
 import type { Notification } from "./queries";
 
 /** The answer a notice of the merge queue asks of an admin: loaded only with such a notice, so the Inbox stays light. */
@@ -58,95 +59,14 @@ function FoldedText({ text }: { text: string }) {
   );
 }
 
-/** The repo, branch and commits of a push or merge into a default branch. */
-function BranchFacts({ notification }: { notification: Notification }) {
-  const t = useTranslations("inbox.item");
-  const facts = noticeFacts(notification.details);
-  const [all, setAll] = useState(false);
-  if (!facts.repo && !facts.branch && facts.commits.length === 0) return null;
-  const shown = all ? facts.commits : facts.commits.slice(0, COMMITS_SHOWN);
-  const more = facts.commits.length - shown.length;
-  return (
-    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs" data-testid="notice-facts">
-      {facts.repo ? (
-        <>
-          <dt className="text-muted-foreground">{t("repo")}</dt>
-          <dd className="font-mono [overflow-wrap:anywhere]" data-testid="notice-repo">
-            {facts.repo}
-          </dd>
-        </>
-      ) : null}
-      {facts.branch ? (
-        <>
-          <dt className="text-muted-foreground">{t("branch")}</dt>
-          <dd className="flex min-w-0 items-center gap-1 font-mono [overflow-wrap:anywhere]" data-testid="notice-branch">
-            <GitBranch className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            {facts.branch}
-          </dd>
-        </>
-      ) : null}
-      {facts.commits.length > 0 ? (
-        <>
-          <dt className="text-muted-foreground">{t("commits", { count: facts.commits.length })}</dt>
-          <dd className="min-w-0">
-            <ul className="flex flex-wrap items-center gap-1.5" data-testid="notice-commits">
-              {shown.map((sha) => (
-                <li key={sha} className="inline-flex h-5 items-center gap-1 rounded-xs bg-surface-sunken px-1.5 font-mono text-muted-foreground" data-sha={sha}>
-                  <GitCommitHorizontal className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span title={sha}>{shortCommit(sha)}</span>
-                  <span className="sr-only">{t("commitFull", { sha })}</span>
-                </li>
-              ))}
-              {more > 0 || all ? (
-                <li>
-                  <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" aria-expanded={all} onClick={() => setAll(!all)} data-testid="notice-commits-toggle">
-                    {all ? t("fewerCommits") : t("moreCommits", { count: more })}
-                  </Button>
-                </li>
-              ) : null}
-            </ul>
-          </dd>
-        </>
-      ) : null}
-    </dl>
-  );
-}
-
-/** The plugin that sent a notice and its topic. */
-function PluginNoticeFacts({ notification }: { notification: Notification }) {
-  const t = useTranslations("inbox.item");
-  const { plugin, topic } = pluginFacts(notification.details);
-  if (!plugin && !topic) return null;
-  return (
-    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs" data-testid="notice-plugin-facts">
-      {plugin ? (
-        <>
-          <dt className="text-muted-foreground">{t("plugin")}</dt>
-          <dd className="font-mono [overflow-wrap:anywhere]" data-testid="notice-plugin">
-            {plugin}
-          </dd>
-        </>
-      ) : null}
-      {topic ? (
-        <>
-          <dt className="text-muted-foreground">{t("topic")}</dt>
-          <dd className="font-mono [overflow-wrap:anywhere]" data-testid="notice-topic">
-            {topic}
-          </dd>
-        </>
-      ) : null}
-    </dl>
-  );
-}
-
 /** The triage thread a `run_failed` notice links to (the hub's /chats/ID?message=ID), or null: the run's page is its target. */
-function triageThread(notification: Notification): Route | null {
+export function triageThread(notification: Notification): Route | null {
   const link = notification.link ?? "";
   return notification.notice_kind === "run_failed" && link.startsWith("/chats/") ? (link as Route) : null;
 }
 
 /** Where a notice leads: the run's page, or the hub page its link names (never another site). */
-function noticeHref(notification: Notification): Route | null {
+export function noticeHref(notification: Notification): Route | null {
   const thread = triageThread(notification);
   if (thread) return thread;
   if (notification.project && notification.run_id !== null) return runHref(notification.project, notification.run_id);
@@ -154,12 +74,158 @@ function noticeHref(notification: Notification): Route | null {
   return link.startsWith("/") && !link.startsWith("//") ? (link as Route) : null;
 }
 
+/** The kind icon of a notification: a question for a decision, a bulb for a proposal, the notice's own otherwise. */
+export function NotificationIcon({ notification, className }: { notification: Notification; className?: string }) {
+  const Icon =
+    notification.kind === "decision"
+      ? MessageCircleQuestionMark
+      : notification.kind === "proposal" && notification.proposal_id != null
+        ? Lightbulb
+        : notification.notice_kind
+          ? NOTICE_LOOK[notification.notice_kind].icon
+          : MessageCircleQuestionMark;
+  return <Icon className={className} aria-hidden="true" />;
+}
+
+/** The state of a decision or a proposal as its pill, and a proposal's tier. */
+export function AskedBadges({ notification }: { notification: Notification }) {
+  const tier = typeof notification.details?.tier === "number" ? notification.details.tier : null;
+  const proposal = notification.kind === "proposal" && notification.proposal_id != null;
+  return (
+    <>
+      {notification.kind === "decision" && notification.decision_state ? <StatusBadge kind="decision" status={notification.decision_state} /> : null}
+      {proposal && notification.proposal_state ? <StatusBadge kind="proposal" status={notification.proposal_state} /> : null}
+      {proposal && tier !== null ? <TierTag tier={tier} /> : null}
+    </>
+  );
+}
+
 /**
- * One notification of the Inbox. A decision opens in a sheet over the list (its title is a link to
- * `/inbox?decision=ID`, which `onOpenDecision` follows without leaving the page), and so does a tier 2 proposal of the
- * Curator (`/inbox?proposal=ID`, `onOpenProposal`); a notice links to its run, and a Lean Canvas baseline that waits
- * for review (canvas_baseline) to its review page. An unread one is marked by a dot, a
- * heavier title and the words "Unread" for screen readers, and offers Mark as read.
+ * The click on a link to a decision or a proposal: a plain click opens it in the sheet over the list without leaving
+ * the page; a click with a modifier, or another button, leaves the browser to follow the link.
+ */
+export function useFollow(
+  notification: Notification,
+  onOpenDecision: (id: number) => void,
+  onOpenProposal?: (id: number) => void,
+) {
+  const proposal = notification.kind === "proposal" && notification.proposal_id != null;
+  return (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (proposal && notification.proposal_id != null && onOpenProposal) {
+      event.preventDefault();
+      onOpenProposal(notification.proposal_id);
+      return;
+    }
+    if (notification.decision_id === null) return;
+    event.preventDefault();
+    onOpenDecision(notification.decision_id);
+  };
+}
+
+/**
+ * What a notification says beyond its title: the repo, branch and commits of a push or merge, the plugin of a plugin's
+ * notice, the body (folded to three lines), the files it carries and the answer a notice of the merge queue asks.
+ */
+export function NotificationContent({ notification, onRead }: { notification: Notification; onRead: (id: number) => void }) {
+  const tFiles = useTranslations("outputs.strip");
+  const decision = notification.kind === "decision";
+  const asked = decision || (notification.kind === "proposal" && notification.proposal_id != null);
+  return (
+    <>
+      {!asked && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
+      {!asked && notification.notice_kind === "plugin_notice" ? <PluginNoticeFacts notification={notification} /> : null}
+      {!decision && notification.body ? <FoldedText text={notification.body} /> : null}
+      <OutputStrip outputs={notification.outputs ?? []} label={tFiles(decision ? "question" : "notice")} testId="notification-files" />
+      {!asked && mergeAsk(notification) !== null ? <MergeNoticeActions notification={notification} onRead={onRead} /> : null}
+    </>
+  );
+}
+
+const LINK = "inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline max-md:min-h-11";
+
+/**
+ * Where a notification leads: Answer or View for a decision or a proposal (into the sheet), the proposal's page, the
+ * run of a notice or of a decision, the triage thread of a failed run, or the hub page of a notice of no run (a
+ * baseline to review, a plugin's page, a page that wants a sign-in). Following a notice's link reads it.
+ */
+export function NotificationLinks({
+  notification,
+  href,
+  follow,
+  onRead,
+}: {
+  notification: Notification;
+  href: Route | null;
+  follow: (event: MouseEvent<HTMLAnchorElement>) => void;
+  onRead: (id: number) => void;
+}) {
+  const t = useTranslations("inbox.item");
+  const unread = notification.read_at === null;
+  const decision = notification.kind === "decision";
+  const proposal = notification.kind === "proposal" && notification.proposal_id != null;
+  const open = isWaiting(notification);
+  const target = decision || proposal ? null : noticeHref(notification);
+  const readOnFollow = () => {
+    if (unread) onRead(notification.id);
+  };
+  return (
+    <>
+      {decision && href && notification.decision_id !== null ? (
+        <Button asChild size="sm" variant={open ? "default" : "outline"}>
+          <Link href={href} onClick={follow} data-testid="notification-answer" aria-label={t(open ? "answerLabel" : "viewLabel", { id: notification.decision_id })}>
+            <MessageCircleQuestionMark aria-hidden="true" />
+            {open ? t("answer") : t("view")}
+          </Link>
+        </Button>
+      ) : null}
+      {proposal && href && notification.proposal_id != null ? (
+        <Button asChild size="sm" variant={isOpenProposal(notification) ? "default" : "outline"}>
+          <Link
+            href={href}
+            onClick={follow}
+            data-testid="notification-answer"
+            aria-label={t(isOpenProposal(notification) ? "answerProposalLabel" : "viewProposalLabel", { id: notification.proposal_id })}
+          >
+            <Lightbulb aria-hidden="true" />
+            {isOpenProposal(notification) ? t("answer") : t("view")}
+          </Link>
+        </Button>
+      ) : null}
+      {proposal && notification.project && notification.proposal_id != null ? (
+        <Link href={proposalHref(notification.project, notification.proposal_id)} className={LINK} data-testid="notification-proposal-link">
+          {t("openProposal", { id: notification.proposal_id })}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
+      {target && notification.run_id !== null ? (
+        <Link href={target} onClick={readOnFollow} className={cn(LINK, "font-medium")} data-testid="notification-run-link">
+          {triageThread(notification) ? t("openTriage") : t("openRun", { id: notification.run_id })}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
+      {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice" || notification.notice_kind === "browser_needs_login") ? (
+        <Link href={target} onClick={readOnFollow} className={cn(LINK, "font-medium")} data-testid="notification-link">
+          {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : notification.notice_kind === "browser_needs_login" ? t("openLogin") : t("openBaseline")}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
+      {decision && notification.run_id !== null && notification.project ? (
+        <Link href={runHref(notification.project, notification.run_id)} className={LINK} data-testid="notification-run-link">
+          {t("openRun", { id: notification.run_id })}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * One notification of the Inbox as a card: what waits for the reader's answer (an open decision or proposal), at the
+ * top of the list. A decision opens in a sheet over the list (its title is a link to `/inbox?decision=ID`, which
+ * `onOpenDecision` follows without leaving the page), and so does a tier 2 proposal of the Curator
+ * (`/inbox?proposal=ID`, `onOpenProposal`). An unread one is marked by a dot, a heavier title and the words "Unread",
+ * and offers Mark as read. The rest of the list are rows (`notification-row.tsx`).
  */
 export function NotificationItem({
   notification,
@@ -180,33 +246,12 @@ export function NotificationItem({
   reading: boolean;
 }) {
   const t = useTranslations("inbox.item");
-  const tFiles = useTranslations("outputs.strip");
   const unread = notification.read_at === null;
   const decision = notification.kind === "decision";
   const proposal = notification.kind === "proposal" && notification.proposal_id != null;
   const asked = decision || proposal;
   const open = isWaiting(notification);
-  const Icon = decision
-    ? MessageCircleQuestionMark
-    : proposal
-      ? Lightbulb
-      : notification.notice_kind
-        ? NOTICE_LOOK[notification.notice_kind].icon
-        : MessageCircleQuestionMark;
-  const target = asked ? null : noticeHref(notification);
-  const tier = typeof notification.details?.tier === "number" ? notification.details.tier : null;
-
-  const follow = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (proposal && notification.proposal_id != null && onOpenProposal) {
-      event.preventDefault();
-      onOpenProposal(notification.proposal_id);
-      return;
-    }
-    if (notification.decision_id === null) return;
-    event.preventDefault();
-    onOpenDecision(notification.decision_id);
-  };
+  const follow = useFollow(notification, onOpenDecision, onOpenProposal);
 
   return (
     <li
@@ -233,7 +278,7 @@ export function NotificationItem({
         )}
         aria-hidden="true"
       >
-        <Icon className="size-4" />
+        <NotificationIcon notification={notification} className="size-4" />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -243,9 +288,7 @@ export function NotificationItem({
               {t("unread")}
             </span>
           ) : null}
-          {decision && notification.decision_state ? <StatusBadge kind="decision" status={notification.decision_state} /> : null}
-          {proposal && notification.proposal_state ? <StatusBadge kind="proposal" status={notification.proposal_state} /> : null}
-          {proposal && tier !== null ? <TierTag tier={tier} /> : null}
+          <AskedBadges notification={notification} />
           {!asked && notification.notice_kind ? <NoticeKindBadge kind={notification.notice_kind} /> : null}
           {notification.project ? <span className="font-mono [overflow-wrap:anywhere]">{notification.project}</span> : null}
           <Ago value={notification.created_at} never="-" />
@@ -259,6 +302,7 @@ export function NotificationItem({
               unread ? "font-semibold" : "font-medium",
             )}
             data-testid="notification-open"
+            data-inbox-row=""
             data-decision-link={decision ? (notification.decision_id ?? undefined) : undefined}
             data-proposal-link={proposal ? (notification.proposal_id ?? undefined) : undefined}
           >
@@ -269,79 +313,9 @@ export function NotificationItem({
             {notification.title}
           </p>
         )}
-        {!asked && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
-        {!asked && notification.notice_kind === "plugin_notice" ? <PluginNoticeFacts notification={notification} /> : null}
-        {!decision && notification.body ? <FoldedText text={notification.body} /> : null}
-        <OutputStrip outputs={notification.outputs ?? []} label={tFiles(decision ? "question" : "notice")} testId="notification-files" />
-        {!asked && mergeAsk(notification) !== null ? <MergeNoticeActions notification={notification} onRead={onRead} /> : null}
+        <NotificationContent notification={notification} onRead={onRead} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
-          {decision && href && notification.decision_id !== null ? (
-            <Button asChild size="sm" variant={open ? "default" : "outline"}>
-              <Link href={href} onClick={follow} data-testid="notification-answer" aria-label={t(open ? "answerLabel" : "viewLabel", { id: notification.decision_id })}>
-                <MessageCircleQuestionMark aria-hidden="true" />
-                {open ? t("answer") : t("view")}
-              </Link>
-            </Button>
-          ) : null}
-          {proposal && href && notification.proposal_id != null ? (
-            <Button asChild size="sm" variant={isOpenProposal(notification) ? "default" : "outline"}>
-              <Link
-                href={href}
-                onClick={follow}
-                data-testid="notification-answer"
-                aria-label={t(isOpenProposal(notification) ? "answerProposalLabel" : "viewProposalLabel", { id: notification.proposal_id })}
-              >
-                <Lightbulb aria-hidden="true" />
-                {isOpenProposal(notification) ? t("answer") : t("view")}
-              </Link>
-            </Button>
-          ) : null}
-          {proposal && notification.project && notification.proposal_id != null ? (
-            <Link
-              href={proposalHref(notification.project, notification.proposal_id)}
-              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline max-md:min-h-11"
-              data-testid="notification-proposal-link"
-            >
-              {t("openProposal", { id: notification.proposal_id })}
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Link>
-          ) : null}
-          {target && notification.run_id !== null ? (
-            <Link
-              href={target}
-              onClick={() => {
-                if (unread) onRead(notification.id);
-              }}
-              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline max-md:min-h-11"
-              data-testid="notification-run-link"
-            >
-              {triageThread(notification) ? t("openTriage") : t("openRun", { id: notification.run_id })}
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Link>
-          ) : null}
-          {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice" || notification.notice_kind === "browser_needs_login") ? (
-            <Link
-              href={target}
-              onClick={() => {
-                if (unread) onRead(notification.id);
-              }}
-              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline max-md:min-h-11"
-              data-testid="notification-link"
-            >
-              {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : notification.notice_kind === "browser_needs_login" ? t("openLogin") : t("openBaseline")}
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Link>
-          ) : null}
-          {decision && notification.run_id !== null && notification.project ? (
-            <Link
-              href={runHref(notification.project, notification.run_id)}
-              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline max-md:min-h-11"
-              data-testid="notification-run-link"
-            >
-              {t("openRun", { id: notification.run_id })}
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Link>
-          ) : null}
+          <NotificationLinks notification={notification} href={href} follow={follow} onRead={onRead} />
           {unread ? (
             <Button
               type="button"
