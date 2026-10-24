@@ -8,6 +8,7 @@ messages name. The hook sends nothing in a worker run, nothing when not signed i
 messages, and when the hub does not answer it keeps the digest waiting and leaves the hub alone for the cooldown.
 ``tests.hub.test_session_digests`` pushes digests to a hub on Postgres."""
 
+import base64
 import io
 import json
 import sys
@@ -246,6 +247,21 @@ def test_the_digest_reads_the_notes_and_the_directory_of_the_spool_hook():
     assert digest.names_spool({"file_path": "C:\\Users\\bob\\.evo\\tool-output\\s\\c.txt"})
     assert digest.names_spool("sed -n 1,40p ~/.evo/tool-output/s/c.txt")
     assert not digest.names_spool({"file_path": "/work/app/tool-output.txt"})
+
+
+def signature(kind: str) -> str:
+    """A thinking block's signature as Claude Code 2.1.308 writes one: the protobuf naming the kind, then bytes."""
+    label = kind.encode()
+    head = b"\x08\x04\x12\xee\x06\n\x11\x08\x13\x18\x028\x01B" + bytes([len(label)]) + label
+    return base64.b64encode(head + b"\x12\x0c" + bytes(range(60))).decode()
+
+
+def test_a_thinking_block_is_a_narration_only_when_its_signature_names_that_kind():
+    assert digest.is_narration(signature("narration"))
+    assert digest.is_narration(signature("narration")[:34])  # cut short of a multiple of four
+    assert not digest.is_narration(signature("thinking"))
+    for odd in ("", "s", "kept by the API", "%%%%", None, 7):
+        assert not digest.is_narration(odd)
 
 
 def test_the_digest_cuts_long_text_and_bounds_its_lists(tmp_path):
