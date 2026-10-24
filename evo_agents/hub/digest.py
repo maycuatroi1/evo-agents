@@ -57,6 +57,8 @@ install.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import contextlib
 import hashlib
 import json
@@ -102,6 +104,11 @@ EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 SHELL_TOOLS = frozenset({"Bash"})
 SKILL_TOOL = "Skill"  # Claude Code's tool that loads a skill, named by its input's ``skill``
 SYNTHETIC_MODEL = "<synthetic>"  # what Claude Code writes for a message no model sent
+# A thinking block's signature opens with a protobuf naming the block's kind: field 8, ``thinking`` or ``narration``.
+# A narration is the short update to the person the Claude app shows as the agent's words (``thinking`` holds it), seen
+# in transcripts of Claude Code 2.1.274 to 2.1.308; nothing else in the transcript tells it from thinking.
+NARRATION_KIND = b"B\tnarration"
+SIGNATURE_HEAD = 64  # characters of the signature's base64 that hold the kind
 # The spool of the PostToolUse hook (``evo_agents.hub.spool``): its directory under the home, as a call that reads a
 # spool file names it, and the note it puts in the place of a result it cut, which names the result's size and the
 # file under that directory (``spool.note``: a long output, or a Read with its lines).
@@ -139,6 +146,18 @@ def _cut(text, limit: int) -> str:
 
 
 # The transcript
+
+
+def is_narration(signature) -> bool:
+    """Whether the thinking block of this signature is a narration (NARRATION_KIND): words for the person, not
+    thinking. False for a signature that is not such base64."""
+    if not isinstance(signature, str):
+        return False
+    head = signature[:SIGNATURE_HEAD]
+    try:
+        return NARRATION_KIND in base64.b64decode(head + "=" * (-len(head) % 4))
+    except (binascii.Error, ValueError):
+        return False
 
 
 def _role(line: dict) -> str:
