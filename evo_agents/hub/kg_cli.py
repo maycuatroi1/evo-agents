@@ -1,4 +1,4 @@
-"""``evo-agents hub kg push|builds|build|health|forget-source|prune|scrub``, and the hub backend of ``kg serve`` and
+"""``evo-agents hub kg push|builds|build|health|forget-source|prune|scrub|clusters``, and the hub backend of ``kg serve`` and
 ``kg query``.
 
 ``push`` sends the runs a project's corpus holds and the hub lacks (``evo_agents.hub.kg_push``): ``--project P`` one
@@ -15,6 +15,8 @@ artifacts of graphs older than each project's ``--keep`` newest leave the bucket
 ``scrub`` (a hub admin) reads every built graph and source blob of a project, or of every project, page by page
 (``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the kinds of secret, never a
 value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), and has the hub delete the old ones.
+``clusters`` lists the clusters of a project's graph the caller can see, and ``clusters show ID`` one of them
+(``evo_agents.hub.kg_clusters_cli``).
 
 ``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
@@ -458,7 +460,8 @@ def register_kg(hsub) -> None:
     from evo_agents.hub.cli import _positive
 
     kg = hsub.add_parser(
-        "kg", help="knowledge graphs on the hub: push runs, list and queue builds, their health, prune old graphs"
+        "kg",
+        help="knowledge graphs on the hub: push runs, list and queue builds, their health, clusters, prune old graphs",
     )
     ksub = kg.add_subparsers(dest="kg_command", required=True)
 
@@ -527,6 +530,10 @@ def register_kg(hsub) -> None:
     scrub.add_argument("--yes", action="store_true", help="with --purge: delete without asking")
     json_option(scrub, returns_object("purge", "projects"))
     scrub.set_defaults(func=cmd_scrub)
+
+    from evo_agents.hub import kg_clusters_cli
+
+    kg_clusters_cli.register(ksub)
 
 
 # The hub backend of kg serve and kg query

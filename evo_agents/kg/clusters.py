@@ -335,14 +335,23 @@ def _name(groups: list[set[str]], previous: dict[str, set[str]], level: int) -> 
     return out
 
 
-def _words(node: dict) -> list[str]:
-    text = f"{node.get('name') or ''} {node['props'].get('path') or ''}".lower()
+def _words(name: str | None, path: str | None) -> list[str]:
+    text = f"{name or ''} {path or ''}".lower()
     return [t for t in re.findall(r"[^\W_]+", text) if len(t) > 2 and not t.isdigit() and t not in STOP_WORDS]
 
 
 def _labels(by_cluster: dict[str, list[str]], graph: Graph) -> dict[str, str]:
-    """The LABEL_WORDS words of each cluster with the highest c-TF-IDF against the others, joined by ", "."""
-    docs = {cid: Counter(t for nid in ids for t in _words(graph.nodes[nid])) for cid, ids in by_cluster.items()}
+    named = {
+        cid: [(graph.nodes[nid].get("name"), graph.nodes[nid]["props"].get("path")) for nid in ids]
+        for cid, ids in by_cluster.items()
+    }
+    return labels(named)
+
+
+def labels(named: dict[str, list[tuple[str | None, str | None]]]) -> dict[str, str]:
+    """The LABEL_WORDS words of each cluster with the highest c-TF-IDF against the others, joined by ", ": ``named``
+    gives each cluster's members of one level as (name, path)."""
+    docs = {cid: Counter(t for name, path in members for t in _words(name, path)) for cid, members in named.items()}
     if not docs:
         return {}
     frequency = Counter(t for doc in docs.values() for t in doc)

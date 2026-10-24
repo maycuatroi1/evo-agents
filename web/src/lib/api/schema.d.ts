@@ -1339,6 +1339,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/clusters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cluster Map
+         * @description The level-1 clusters of the graph you can see, the links between them and, for the map, their members.
+         */
+        get: operations["cluster_map_v1_kg__project__clusters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/cluster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Cluster
+         * @description One cluster you can see a member of: its subclusters, members, their edges and its neighbouring clusters.
+         */
+        get: operations["show_cluster_v1_kg__project__cluster_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/whole": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whole Graph
+         * @description Every node you can see, at most ``limit``, and every edge you can see between two of them, compact.
+         */
+        get: operations["whole_graph_v1_kg__project__whole_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/audit": {
         parameters: {
             query?: never;
@@ -13900,6 +13960,126 @@ export interface components {
             /** Location */
             location?: string | null;
         };
+        /** ClusterDetail */
+        ClusterDetail: {
+            graph: components["schemas"]["GraphRef"];
+            cluster: components["schemas"]["ClusterSummary"];
+            /**
+             * Subclusters
+             * @description its level-2 clusters you can see, largest first
+             */
+            subclusters: components["schemas"]["ClusterSummary"][];
+            /**
+             * Members
+             * @description its members you can see, by id
+             */
+            members: components["schemas"]["MapNode"][];
+            /**
+             * Edges
+             * @description the edges between two members, as [index, index, weight] into members
+             */
+            edges: number[][];
+            /**
+             * Neighbours
+             * @description clusters of its level its edges reach, heaviest first
+             */
+            neighbours: components["schemas"]["ClusterNeighbour"][];
+        };
+        /** ClusterLink */
+        ClusterLink: {
+            /** A */
+            a: string;
+            /** B */
+            b: string;
+            /**
+             * Weight
+             * @description the edges you can see joining members of the two clusters
+             */
+            weight: number;
+        };
+        /** ClusterMap */
+        ClusterMap: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Computed
+             * @description false when there is no cluster to show; reason says why
+             */
+            computed: boolean;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Clusters
+             * @description the level-1 clusters you can see, largest first
+             */
+            clusters: components["schemas"]["ClusterSummary"][];
+            /**
+             * Links
+             * @description level-1 clusters joined by edges you can see, heaviest first
+             */
+            links: components["schemas"]["ClusterLink"][];
+            /**
+             * Nodes
+             * @description the members you can see, by id; empty with nodes=false
+             */
+            nodes: components["schemas"]["MapNode"][];
+            /**
+             * Edges
+             * @description the edges you can see between two members, as [index, index, weight] into nodes
+             */
+            edges: number[][];
+        };
+        /** ClusterNeighbour */
+        ClusterNeighbour: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Size */
+            size: number;
+            /**
+             * Weight
+             * @description the edges you can see joining it to the cluster
+             */
+            weight: number;
+        };
+        /** ClusterSummary */
+        ClusterSummary: {
+            /** Id */
+            id: string;
+            /**
+             * Level
+             * @description 1 for a cluster of the whole graph, 2 for a part of a large level-1 cluster
+             */
+            level: number;
+            /**
+             * Parent
+             * @description the level-1 cluster of a level-2 cluster
+             */
+            parent: string | null;
+            /**
+             * Label
+             * @description its words by c-TF-IDF over the names and paths of the members you can see
+             */
+            label: string;
+            /**
+             * Size
+             * @description its members you can see
+             */
+            size: number;
+            /**
+             * Kinds
+             * @description its members you can see, by kind
+             */
+            kinds: {
+                [key: string]: number;
+            };
+            /**
+             * Subclusters
+             * @description its level-2 clusters with a member you can see
+             */
+            subclusters: number;
+        };
         /** CommandCount */
         CommandCount: {
             /** Command */
@@ -17920,6 +18100,25 @@ export interface components {
              * @description the version of the document it was read from
              */
             version: number | null;
+        };
+        /** MapNode */
+        MapNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /**
+             * Cluster
+             * @description its level-1 cluster
+             */
+            cluster: string;
+            /**
+             * Sub
+             * @description its level-2 cluster, if any
+             */
+            sub: string | null;
         };
         /** MarketingBrowserClaim */
         MarketingBrowserClaim: {
@@ -31460,6 +31659,45 @@ export interface components {
             /** Grants */
             grants: components["schemas"]["GrantInfo"][];
         };
+        /** WholeGraph */
+        WholeGraph: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Nodes
+             * @description the nodes you can see, by id, at most limit
+             */
+            nodes: components["schemas"]["WholeNode"][];
+            /**
+             * Rels
+             * @description the edge types edges index
+             */
+            rels: string[];
+            /**
+             * Edges
+             * @description [source index, target index, type index into rels]
+             */
+            edges: number[][];
+            /**
+             * Truncated
+             * @description true when you can see more nodes than limit
+             */
+            truncated: boolean;
+        };
+        /** WholeNode */
+        WholeNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /**
+             * Cluster
+             * @description the level-1 cluster it counts in, if one you can see
+             */
+            cluster: string | null;
+        };
         /** Window */
         Window: {
             /**
@@ -36773,6 +37011,242 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Neighbourhood"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cluster_map_v1_kg__project__clusters_get: {
+        parameters: {
+            query?: {
+                /** @description include the members and their edges, for the map */
+                nodes?: boolean;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterMap"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_cluster_v1_kg__project__cluster_get: {
+        parameters: {
+            query: {
+                /** @description a cluster id */
+                id: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    whole_graph_v1_kg__project__whole_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeGraph"];
                 };
             };
             /** @description Unauthorized */
