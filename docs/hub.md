@@ -1222,7 +1222,8 @@ evo-agents hub notifications --read all                       # or --read 12,14
 is no longer open 409. The answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It
 goes to the run's inbox, which the worker hands to the agent; a parked run is resumed on its worker in its session, as a
 new run that the answer names. `notifications` lists your own (`GET /v1/me/notifications`), filtered by `--unread`,
-`--kind` (`decision`, `notice` or `proposal`) and `--project`, with `--limit` and `--offset`, and says how many are
+`--kind` (`decision`, `notice` or `proposal`), `--project`, `--run` and `--search` (words of the title or the body),
+with `--limit` and `--offset`, and says how many are
 unread and how many decisions and proposals wait for an answer (`GET /v1/me/notifications/count`). `--read all`, or
 `--read` with ids, marks them read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters;
 answering a decision reads its notification too. Each of these prints the hub's answer with `--json`, `notifications

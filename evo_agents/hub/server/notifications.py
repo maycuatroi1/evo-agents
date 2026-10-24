@@ -37,7 +37,7 @@ leaves a ``system`` event in the run's log. A run of one step sends no notice (4
 hold). The hub sends ``plan_finished`` and ``run_failed`` itself when a plan run ends (``run_state``).
 
 A member reads their own notifications: GET /v1/me/notifications (open decisions and proposals first, then newest
-first; filtered by unread, kind and project, a page at a time), GET /v1/me/notifications/count (the unread ones, and
+first; filtered by unread, kind, project, run and words of the title or body, a page at a time), GET /v1/me/notifications/count (the unread ones, and
 the decisions and the proposals still waiting for an answer, for the bell), and POST /v1/me/notifications/read (by ids,
 or all), audited as notification.read with the ids, never the text. A notification of a project the member no longer
 holds a grant on is not shown. Answering a decision reads its notification too (``decisions``). A notification of kind
@@ -100,6 +100,7 @@ BACKOFF_MAX_SECONDS = 3600
 MAX_LIST = 200
 MAX_OFFSET = 100_000
 MAX_READ_IDS = 500
+MAX_QUERY_CHARS = 200  # the words GET /v1/me/notifications searches the titles and bodies for
 NO_GRANT = "the member holds no grant on the notification's project any more"
 # The blob store of the job's pass, so a channel's prepare can hand out presigned GETs of a notification's files
 # (``output_notices.channel_outputs``); None outside a pass, or on a hub without one.
@@ -657,8 +658,20 @@ def _open_proposal():
     return and_(tables.notifications.c.kind == "proposal", tables.proposals.c.state == "open")
 
 
-def _listed(user_id: int, unread: bool, kind: str | None, project: str | None) -> list:
-    """The conditions of the list's filters, over ``_shown``."""
+def _like(text: str) -> str:
+    """``text`` as an ILIKE pattern that matches it anywhere, its own wildcards taken literally."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _listed(
+    user_id: int,
+    unread: bool,
+    kind: str | None,
+    project: str | None,
+    run_id: int | None = None,
+    text: str | None = None,
+) -> list:
+    """The conditions of the list's filters, over ``_shown``: ``text`` matches anywhere in the title or the body."""
     stored = tables.notifications
     found = [_visible(user_id)]
     if unread:
@@ -667,6 +680,11 @@ def _listed(user_id: int, unread: bool, kind: str | None, project: str | None) -
         found.append(stored.c.kind == kind)
     if project is not None:
         found.append(tables.projects.c.name == project)
+    if run_id is not None:
+        found.append(stored.c.run_id == run_id)
+    if text:
+        pattern = _like(text)
+        found.append(or_(stored.c.title.ilike(pattern), stored.c.body.ilike(pattern)))
     return found
 
 
@@ -731,11 +749,15 @@ async def list_notifications(
     unread: Annotated[bool, Query(description="only the notifications not read yet")] = False,
     kind: Annotated[Literal[runs.NOTIFICATION_KINDS] | None, Query()] = None,
     project: Annotated[str | None, Query(pattern=PROJECT_NAME, description="only this project's")] = None,
+    run: Annotated[int | None, Query(ge=1, le=MAX_ID, description="only this run's")] = None,
+    q: Annotated[
+        str | None, Query(max_length=MAX_QUERY_CHARS, description="only those whose title or body holds these words")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> NotificationList:
     """The caller's notifications, open decisions and proposals first, then newest first."""
-    found = _listed(user.user_id, unread, kind, project)
+    found = _listed(user.user_id, unread, kind, project, run, (q or "").strip() or None)
     waiting = or_(_open_decision(), _open_proposal())
     order = (func.coalesce(waiting, false()).desc(), tables.notifications.c.id.desc())
     listed = _notification_rows().where(*found).order_by(*order).limit(limit).offset(offset)

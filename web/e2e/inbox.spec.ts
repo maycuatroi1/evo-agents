@@ -20,6 +20,7 @@ import {
   workerInbox,
 } from "./support/runs";
 import { localAsk, localState, registerLocal } from "./support/local";
+import { expandInbox } from "./support/inbox";
 import { toast } from "./support/toast";
 
 /**
@@ -81,10 +82,15 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
   await expect(waiting.nth(1).getByTestId("notification-open")).toHaveText(`Run #${run.id} asks: ${QUESTION}`);
   await expect(waiting.nth(1).getByTestId("notification-open")).toHaveAttribute("href", `/inbox?decision=${decision}`);
 
-  // The notice of the push names its repo, branch and commits.
+  // The notice of the push shows its title and the first line of its body; opened, it names its repo, branch and
+  // commits.
   const notice = main(page).getByTestId("inbox-rest").getByTestId("notification");
   await expect(notice).toHaveCount(1);
   await expect(notice.getByTestId("notice-kind")).toHaveText("Pushed to a default branch");
+  await expect(notice.getByTestId("notification-snippet")).toHaveText("The catalog of use cases now lists plan runs.");
+  await expect(notice.getByTestId("notice-facts")).toHaveCount(0);
+  await notice.getByTestId("notification-toggle").click();
+  await expect(notice.getByTestId("notification-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(notice.getByTestId("notice-repo")).toHaveText(HARNESS_REPO);
   await expect(notice.getByTestId("notice-branch")).toHaveText("main");
   await expect(notice.getByTestId("notice-commits").locator("[data-sha]")).toHaveText([
@@ -92,6 +98,16 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
     `${SHA_2.slice(0, 7)}commit ${SHA_2}`,
   ]);
   await expect(notice.getByTestId("notification-run-link")).toHaveAttribute("href", runPath(project, run.id));
+
+  // J and K move focus from row to row: the cards of what waits, then the notice's row.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("j");
+  await expect(waiting.nth(0).getByTestId("notification-open")).toBeFocused();
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await expect(notice.getByTestId("notification-toggle")).toBeFocused();
+  await page.keyboard.press("k");
+  await expect(waiting.nth(1).getByTestId("notification-open")).toBeFocused();
 
   // Filters live in the URL.
   await main(page).getByTestId("inbox-facet-kind").getByRole("button", { name: "Notices" }).click();
@@ -142,6 +158,7 @@ test("a notice of a plugin names the plugin and its topic, links to its page and
   const notice = main(page).getByTestId("notification");
   await expect(notice).toHaveCount(1);
   await expect(notice).toHaveAttribute("data-notice-kind", "plugin_notice");
+  await expandInbox(main(page));
   await expect(notice.getByTestId("notice-kind")).toHaveText("A notice from a plugin");
   await expect(notice.getByTestId("notice-plugin")).toHaveText("teaching");
   await expect(notice.getByTestId("notice-topic")).toHaveText("lesson-reminder");

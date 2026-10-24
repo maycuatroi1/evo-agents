@@ -433,6 +433,7 @@ def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypat
         (("decision", "answer", "7"), "an answer names an option with --option KEY, gives words with --text TEXT"),
         (("notifications", "--read", "all", "--unread"), "--read marks notifications read and lists none"),
         (("notifications", "--read", "all", "--offset", "0"), "so it does not go with --offset"),
+        (("notifications", "--read", "all", "--search", "merged"), "so it does not go with --search"),
         (("notifications", "--read", "12,x"), "--read takes all, or notification ids such as 12,14, not '12,x'"),
     ],
 )
@@ -1171,6 +1172,8 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     ]
     assert as_json(hub_of(hub, monkeypatch, capsys, "reader", "notifications", "--json"))["total"] == 0
     notices = as_json(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--kind", "notice", "--json"))
+    found = hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--search", "no such words", "--json")
+    assert as_json(found)["total"] == 0
     assert [n["id"] for n in notices["notifications"]] == [pushed["id"]]
     marked = as_json(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--read", str(pushed["id"]), "--json"))
     assert_json_keys("hub notifications", marked, "--read")

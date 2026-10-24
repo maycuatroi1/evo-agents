@@ -6,6 +6,9 @@ import {
   answerProblem,
   bellNumber,
   chosenOption,
+  daysBefore,
+  dayKey,
+  groupInbox,
   inboxQuery,
   initialOption,
   inboxSearch,
@@ -18,6 +21,8 @@ import {
   readInboxFilters,
   runLinkWords,
   notificationOfProposal,
+  opensByItself,
+  snippet,
   splitInbox,
   unreadIds,
 } from "./model";
@@ -46,7 +51,9 @@ const decision = (id: number, state: Notification["decision_state"], extra: Part
 describe("inbox filters", () => {
   it("reads the URL's filters, keeping only values the API takes", () => {
     const params = new URLSearchParams("kind=decision&project=demo&unread=1&page=3&decision=42");
-    expect(readInboxFilters(params)).toEqual({ kind: "decision", project: "demo", unread: true, page: 3, decision: 42, proposal: null });
+    expect(readInboxFilters(params)).toEqual({ ...NO_FILTERS, kind: "decision", project: "demo", unread: true, page: 3, decision: 42 });
+    expect(readInboxFilters(new URLSearchParams("q=%20deploy%20staging%20&run=707"))).toEqual({ ...NO_FILTERS, q: "deploy staging", run: 707 });
+    expect(readInboxFilters(new URLSearchParams(`q=${"x".repeat(250)}&run=-1`))).toEqual({ ...NO_FILTERS, q: "x".repeat(200) });
     expect(readInboxFilters(new URLSearchParams("kind=proposal&proposal=9"))).toEqual({ ...NO_FILTERS, kind: "proposal", proposal: 9 });
     const bad = new URLSearchParams("kind=email&project=Bad%20Name&unread=yes&page=0&decision=-4");
     expect(readInboxFilters(bad)).toEqual(NO_FILTERS);
@@ -55,24 +62,86 @@ describe("inbox filters", () => {
 
   it("writes them back in a stable order, leaving out what is not set", () => {
     expect(inboxSearch(NO_FILTERS)).toBe("");
-    expect(inboxSearch({ kind: "notice", project: "demo", unread: true, page: 2, decision: 7, proposal: null })).toBe(
+    expect(inboxSearch({ ...NO_FILTERS, kind: "notice", project: "demo", unread: true, page: 2, decision: 7 })).toBe(
       "?decision=7&kind=notice&project=demo&unread=1&page=2",
     );
+    expect(inboxSearch({ ...NO_FILTERS, q: "merged main", run: 12 })).toBe("?run=12&q=merged+main");
     expect(inboxSearch({ ...NO_FILTERS, proposal: 12 })).toBe("?proposal=12");
     const round = readInboxFilters(new URLSearchParams(inboxSearch({ ...NO_FILTERS, project: "ops", decision: 3 }).slice(1)));
     expect(round).toEqual({ ...NO_FILTERS, project: "ops", decision: 3 });
   });
 
   it("asks the API for the page the filters name; the open decision is not a filter", () => {
-    expect(inboxQuery({ kind: "decision", project: null, unread: true, page: 3, decision: 9, proposal: 4 })).toEqual({
+    expect(inboxQuery({ ...NO_FILTERS, kind: "decision", unread: true, q: "deploy", page: 3, decision: 9, proposal: 4 })).toEqual({
       kind: "decision",
       project: null,
       unread: true,
+      q: "deploy",
+      run: null,
       limit: 50,
       offset: 100,
     });
     expect(isFiltered({ ...NO_FILTERS, decision: 4, page: 2 })).toBe(false);
     expect(isFiltered({ ...NO_FILTERS, unread: true })).toBe(true);
+    expect(isFiltered({ ...NO_FILTERS, q: "deploy" })).toBe(true);
+    expect(isFiltered({ ...NO_FILTERS, run: 7 })).toBe(true);
+  });
+});
+
+describe("the rest of the list by day and by run", () => {
+  it("reads days in the page's time zone", () => {
+    expect(dayKey("2026-10-23T18:30:00Z", "UTC")).toBe("2026-10-23");
+    expect(dayKey("2026-10-23T18:30:00Z", "Asia/Ho_Chi_Minh")).toBe("2026-10-24");
+    expect(daysBefore("2026-10-23", "2026-10-24")).toBe(1);
+    expect(daysBefore("2025-12-31", "2026-01-01")).toBe(1);
+    expect(daysBefore("2026-10-24", "2026-10-24")).toBe(0);
+  });
+
+  it("groups a run's notifications of one day where the newest stands, and leaves the rest alone", () => {
+    const page = [
+      note(9, { created_at: "2026-10-24T09:00:00Z" }),
+      note(8, { run_id: 30, created_at: "2026-10-24T08:00:00Z", read_at: "2026-10-24T08:30:00Z" }),
+      decision(7, "answered", { created_at: "2026-10-24T07:00:00Z" }),
+      note(6, { run_id: null, created_at: "2026-10-24T06:00:00Z" }),
+      note(5, { run_id: null, created_at: "2026-10-24T05:00:00Z" }),
+      note(4, { project: "other", created_at: "2026-10-24T04:00:00Z" }),
+      note(3, { created_at: "2026-10-23T20:00:00Z" }),
+    ];
+    const days = groupInbox(page, "UTC");
+    expect(days.map((day) => [day.key, day.total, day.unread])).toEqual([
+      ["2026-10-24", 6, 5],
+      ["2026-10-23", 1, 1],
+    ]);
+    const [today, yesterday] = days;
+    expect(today.entries.map((entry) => (entry.type === "run" ? `run ${entry.runId}: ${entry.notifications.map((item) => item.id)}` : `one ${entry.notification.id}`))).toEqual([
+      "run 12: 9,7",
+      "one 8",
+      "one 6",
+      "one 5",
+      "one 4",
+    ]);
+    const run = today.entries[0];
+    expect(run.type === "run" && run.unread).toBe(2);
+    expect(yesterday.entries).toEqual([{ type: "single", notification: page[6] }]);
+    // the same moment is the next day in Ho Chi Minh City: run 12's notice of 20:00 UTC joins the 24th
+    expect(groupInbox(page, "Asia/Ho_Chi_Minh").map((day) => day.key)).toEqual(["2026-10-24"]);
+  });
+
+  it("opens by itself only an unread notice that asks something or is a brief", () => {
+    expect(opensByItself(note(1, { notice_kind: "canvas_baseline" }))).toBe(true);
+    expect(opensByItself(note(1, { notice_kind: "curator_brief" }))).toBe(true);
+    expect(opensByItself(note(1, { notice_kind: "merge_default_branch", details: { ask: "sample", repo: "api" } }))).toBe(true);
+    expect(opensByItself(note(1, { notice_kind: "canvas_baseline", read_at: "2026-10-05T08:00:00Z" }))).toBe(false);
+    expect(opensByItself(note(1))).toBe(false);
+    expect(opensByItself(decision(1, "answered"))).toBe(false);
+  });
+
+  it("takes the first line with words of a body, without Markdown's marks", () => {
+    expect(snippet("\n\n## **Run #12** pushed\nmore")).toBe("Run #12 pushed");
+    expect(snippet("- `api` merged")).toBe("api merged");
+    expect(snippet("1. first step")).toBe("first step");
+    expect(snippet("  \n ")).toBeNull();
+    expect(snippet(null)).toBeNull();
   });
 });
 

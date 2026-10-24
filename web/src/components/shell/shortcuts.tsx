@@ -35,7 +35,7 @@ import { useCurrentProject, useSelectedProject } from "./project-switcher";
  * I, P, R, C or W (within a second) go to Home, Inbox, the project's Plans, Runs and Curator, and Workers; D opens Dispatch on a
  * project's pages for a writer; ? opens the dialog. The others stay with what they act on: Cmd K or Ctrl K in
  * palette/palette-context.tsx, `/` in data/search-shortcut.ts, Cmd or Ctrl with Enter in the answer and message
- * forms, Cmd or Ctrl with B in ui/sidebar.tsx, Esc in each dialog.
+ * forms, Cmd or Ctrl with B in ui/sidebar.tsx, J and K in inbox/inbox-page.tsx, Esc in each dialog.
  *
  * Single keys never take a key pressed with Cmd, Ctrl or Alt (the browser's and the screen reader's own), nor one
  * typed in a text field, the web terminal, a menu or a dialog (`characterKeyBlocked` in lib/keyboard.ts). The visitor
@@ -43,21 +43,9 @@ import { useCurrentProject, useSelectedProject } from "./project-switcher";
  */
 
 export type ShortcutId =
-  | "palette"
-  | "search"
-  | "help"
-  | "sidebar"
-  | "close"
-  | "goHome"
-  | "goInbox"
-  | "goPlans"
-  | "goRuns"
-  | "goCurator"
-  | "goWorkers"
-  | "dispatch"
-  | "send"
-  | "chatSend"
-  | "chatLine";
+  | "palette" | "search" | "help" | "sidebar" | "close"
+  | "goHome" | "goInbox" | "goPlans" | "goRuns" | "goCurator" | "goWorkers"
+  | "dispatch" | "send" | "chatSend" | "chatLine" | "nextItem" | "previousItem";
 
 type ShortcutGroup = "general" | "goto" | "actions";
 
@@ -69,7 +57,7 @@ export type Shortcut = {
   /** A key pressed alone: off while the visitor has single-key shortcuts off. */
   single: boolean;
   /** Where it works, when that is not every page: said under its name in the dialog. */
-  where?: "project" | "writer" | "chat";
+  where?: "project" | "writer" | "chat" | "inbox";
 };
 
 export const SHORTCUTS: readonly Shortcut[] = [
@@ -82,6 +70,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: "send", group: "actions", keys: [["mod", "enter"]], single: false },
   { id: "chatSend", group: "actions", keys: [["enter"]], single: false, where: "chat" },
   { id: "chatLine", group: "actions", keys: [["shift", "enter"]], single: false, where: "chat" },
+  { id: "nextItem", group: "actions", keys: [["j"]], single: true, where: "inbox" },
+  { id: "previousItem", group: "actions", keys: [["k"]], single: true, where: "inbox" },
   { id: "goHome", group: "goto", keys: [["g"], ["h"]], single: true },
   { id: "goInbox", group: "goto", keys: [["g"], ["i"]], single: true },
   { id: "goPlans", group: "goto", keys: [["g"], ["p"]], single: true, where: "project" },

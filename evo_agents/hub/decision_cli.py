@@ -280,6 +280,8 @@ def cmd_notifications(args) -> int:
             ("--unread", args.unread or None),
             ("--kind", args.kind),
             ("--project", args.project),
+            ("--run", args.run),
+            ("--search", args.search),
             ("--limit", args.limit),
             ("--offset", args.offset),
         )
@@ -297,7 +299,14 @@ def cmd_notifications(args) -> int:
         print(f"Marked {result['read']} notification(s) read; {result['unread']} left unread.")
         return 0
     query: list[tuple[str, object]] = [("unread", "true")] if args.unread else []
-    given = (("kind", args.kind), ("project", args.project), ("limit", args.limit), ("offset", args.offset))
+    given = (
+        ("kind", args.kind),
+        ("project", args.project),
+        ("run", args.run),
+        ("q", args.search),
+        ("limit", args.limit),
+        ("offset", args.offset),
+    )
     query += [(key, value) for key, value in given if value is not None]
     hub, _ = _signed_in()
     listed = hub.call("GET", "/v1/me/notifications" + (f"?{urlencode(query)}" if query else ""))
@@ -391,6 +400,8 @@ def register_decisions(hsub) -> None:
     notifications.add_argument("--unread", action="store_true", help="only those not read yet")
     notifications.add_argument("--kind", choices=NOTIFICATION_KINDS, help="only decisions, or only notices")
     notifications.add_argument("--project", help="only those of this project (default: every project's)")
+    notifications.add_argument("--run", type=int, metavar="ID", help="only those of this run")
+    notifications.add_argument("--search", metavar="WORDS", help="only those whose title or body holds these words")
     notifications.add_argument(
         "--limit", type=int, choices=range(1, MAX_LIST + 1), metavar="N", help=f"1 to {MAX_LIST} (default 50)"
     )
