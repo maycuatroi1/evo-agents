@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from evo_agents.hub.chats import READ_REF
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
+from evo_agents.hub.intakes import REF as INTAKE_REF
+from evo_agents.hub.intakes import STATUSES as INTAKE_STATUSES
 from evo_agents.hub.memory import MAX_AUDIENCE, TYPES
 from evo_agents.hub.plans import AREAS, STEP_STATUSES
 from evo_agents.hub.problems import REF as PROBLEM_REF
@@ -296,6 +298,37 @@ HUB_TOOLS = [
             "type": "object",
             "properties": {
                 "code": {"type": "string", "pattern": PROBLEM_REF, "description": "P-<number>"},
+                "project": _PROJECT,
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "intake_list",
+        "description": (
+            "The intakes of a project on the hub, newest first (plan problem-intake): each is one reading of vague "
+            "context by a member's session, with its code (I-<number>), status (open, done), requester, sources (kind "
+            "and label, never content) and the count of candidates and promises its result held. intake_show reads one."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project": _PROJECT, "status": {"type": "string", "enum": list(INTAKE_STATUSES)}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "intake_show",
+        "description": (
+            "One intake of a project on the hub by its code: its requester, sources and note, and once its result was "
+            "put, the proposals of @builder it made (a new problem, or evidence for one), the tasks its promises "
+            "became with their assignee and due date, why they made none when the plugin tasks is off, and the "
+            "questions the session could not answer."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "pattern": INTAKE_REF, "description": "I-<number>"},
                 "project": _PROJECT,
             },
             "required": ["code"],

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 
-from evo_agents.hub import problems
+from evo_agents.hub import intakes, problems
 from evo_agents.hub.memory import FRONTMATTER, frontmatter
 from evo_agents.kg.serve import CAP_CHARS
 
@@ -169,3 +169,39 @@ def evidence_lines(code: str, project: str, lines: list[dict]) -> list[str]:
             f"{place}{who}: {one_line(line['excerpt'], EXCERPT)}"
         )
     return [head, *rows]
+
+
+def intake_line(intake: dict) -> str:
+    """An intake of ``intake_list`` in one line: its code, status, requester, sources and what its result held."""
+    held = ""
+    if intake["status"] == intakes.DONE:
+        held = f"; {intake['candidates']} candidates, {intake['promises']} promises, {intake['questions']} questions"
+    return f"{intake['code']} {intake['status']}, asked by {intake['requested_by']}, {len(intake['sources'])} sources{held}"
+
+
+def intake_lines(intake: dict) -> list[str]:
+    """What ``intake_show`` says of an intake: a header, its sources and note, and what the hub made of its result."""
+    lines = [
+        f"# Intake {intake['code']} of project {intake['project']}: {intake['status']}, asked by {intake['requested_by']}"
+    ]
+    lines += [f"source: {intakes.source_text(source)}" for source in intake["sources"]]
+    if intake["note"]:
+        lines.append(f"note: {intake['note']}")
+    outcome = intake["outcome"]
+    if outcome is None:
+        return lines
+    lines.append(
+        f"put by {intake['put_by']}: {intake['candidates']} candidates, {intake['promises']} promises, "
+        f"{intake['questions']} questions"
+    )
+    for proposal in outcome["proposals"]:
+        what = "a new problem" if proposal["kind"] == "new_problem" else "evidence for"
+        lines.append(f"proposal {proposal['proposal_id']}: {what} {proposal['problem']}, {proposal['lines']} lines")
+    for task in outcome["tasks"]:
+        due = f", due {task['due_on']}" if task["due_on"] else ""
+        seen = "delivery evidence seen" if task["delivery_seen"] else "no delivery evidence"
+        lines.append(f"task {task['task']}: promise {task['promise']}, assigned to {task['assignee']}{due}; {seen}")
+    if outcome["tasks_skipped"]:
+        lines.append(outcome["tasks_skipped"])
+    lines += [f"question: {one_line(str(q.get('text', '')), EXCERPT)}" for q in outcome["questions"]]
+    return lines

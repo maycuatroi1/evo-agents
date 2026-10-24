@@ -7180,6 +7180,221 @@
       "options": [],
       "json": null
     },
+    "hub intake list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "done"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "status",
+          "requested_by",
+          "sources",
+          "note",
+          "created_at",
+          "put_by",
+          "done_at",
+          "candidates",
+          "promises",
+          "questions",
+          "outcome"
+        ],
+        "schema": "Intake"
+      }
+    },
+    "hub intake put": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "status",
+          "requested_by",
+          "sources",
+          "note",
+          "created_at",
+          "put_by",
+          "done_at",
+          "candidates",
+          "promises",
+          "questions",
+          "outcome"
+        ],
+        "schema": "Intake"
+      }
+    },
+    "hub intake show": {
+      "positionals": [
+        {
+          "name": "code",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "status",
+          "requested_by",
+          "sources",
+          "note",
+          "created_at",
+          "put_by",
+          "done_at",
+          "candidates",
+          "promises",
+          "questions",
+          "outcome"
+        ],
+        "schema": "Intake"
+      }
+    },
+    "hub intake start": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "status",
+          "requested_by",
+          "sources",
+          "note",
+          "created_at",
+          "put_by",
+          "done_at",
+          "candidates",
+          "promises",
+          "questions",
+          "outcome"
+        ],
+        "schema": "Intake"
+      }
+    },
     "hub kg build": {
       "positionals": [],
       "options": [
@@ -68352,6 +68567,390 @@
           }
         }
       },
+      "/v1/projects/{project}/intakes": {
+        "get": {
+          "tags": [
+            "intake"
+          ],
+          "summary": "List Intakes",
+          "description": "The project's intakes, newest first, for a member with a grant on the project.",
+          "operationId": "list_intakes_v1_projects__project__intakes_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "done"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "keep the intakes of one status",
+                "title": "Status"
+              },
+              "description": "keep the intakes of one status"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Intake"
+                    },
+                    "title": "Response List Intakes V1 Projects  Project  Intakes Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "intake"
+          ],
+          "summary": "Start Intake",
+          "description": "Start an intake: a writer of the project asks their session to read sources; it gets the next code I-<n>.",
+          "operationId": "start_intake_v1_projects__project__intakes_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeStart"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Intake"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/intakes/{ref}": {
+        "get": {
+          "tags": [
+            "intake"
+          ],
+          "summary": "Show Intake",
+          "description": "One intake: its requester, sources, status and, once done, what the hub made of its result.",
+          "operationId": "show_intake_v1_projects__project__intakes__ref__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^I-[1-9][0-9]{0,8}$",
+                "description": "I-<number>",
+                "title": "Ref"
+              },
+              "description": "I-<number>"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Intake"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "intake"
+          ],
+          "summary": "Put Intake",
+          "description": "Put the result of an intake, once, as an evo-intake/1 document (see the module).",
+          "operationId": "put_intake_v1_projects__project__intakes__ref__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^I-[1-9][0-9]{0,8}$",
+                "description": "I-<number>",
+                "title": "Ref"
+              },
+              "description": "I-<number>"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Intake"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/loop": {
         "get": {
           "tags": [
@@ -86132,6 +86731,346 @@
             "created_at"
           ],
           "title": "InboxMessage"
+        },
+        "Intake": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "I-<number>, unique in the project"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "done"
+              ],
+              "title": "Status"
+            },
+            "requested_by": {
+              "type": "string",
+              "title": "Requested By"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/IntakeSource"
+              },
+              "type": "array",
+              "title": "Sources"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "put_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Put By",
+              "description": "who put the result; null while it is open"
+            },
+            "done_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done At"
+            },
+            "candidates": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Candidates",
+              "description": "how many candidates the result held; null while it is open"
+            },
+            "promises": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promises"
+            },
+            "questions": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Questions"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IntakeOutcome"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the hub made of the result; null while it is open"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "status",
+            "requested_by",
+            "sources",
+            "note",
+            "created_at",
+            "put_by",
+            "done_at",
+            "candidates",
+            "promises",
+            "questions",
+            "outcome"
+          ],
+          "title": "Intake",
+          "description": "An intake of a project."
+        },
+        "IntakeOutcome": {
+          "properties": {
+            "proposals": {
+              "items": {
+                "$ref": "#/components/schemas/IntakeProposal"
+              },
+              "type": "array",
+              "title": "Proposals"
+            },
+            "tasks": {
+              "items": {
+                "$ref": "#/components/schemas/IntakeTask"
+              },
+              "type": "array",
+              "title": "Tasks"
+            },
+            "tasks_skipped": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tasks Skipped",
+              "description": "why the promises made no task (the plugin tasks is not enabled in the project); null otherwise"
+            },
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Questions",
+              "description": "the questions the session could not answer, as it put them"
+            }
+          },
+          "type": "object",
+          "required": [
+            "proposals",
+            "tasks",
+            "tasks_skipped",
+            "questions"
+          ],
+          "title": "IntakeOutcome",
+          "description": "What the hub made of a result."
+        },
+        "IntakeProposal": {
+          "properties": {
+            "candidate": {
+              "type": "integer",
+              "title": "Candidate",
+              "description": "the candidate's place in the result, from 1"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "new_problem",
+                "evidence"
+              ],
+              "title": "Kind"
+            },
+            "problem": {
+              "type": "string",
+              "title": "Problem",
+              "description": "P-<number>: the code a new problem would take, or the problem the lines join"
+            },
+            "proposal_id": {
+              "type": "integer",
+              "title": "Proposal Id",
+              "description": "the pending proposal of @builder a writer approves"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines"
+            }
+          },
+          "type": "object",
+          "required": [
+            "candidate",
+            "kind",
+            "problem",
+            "proposal_id",
+            "lines"
+          ],
+          "title": "IntakeProposal"
+        },
+        "IntakeSource": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "one of hub_chat, messenger, chat_fpt, email, file, harness, other"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label",
+              "description": "one of public, internal, personal"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "a short name, such as a group's; never content"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "kind",
+            "label"
+          ],
+          "title": "IntakeSource",
+          "description": "A source the session reads: what it is, never what it says."
+        },
+        "IntakeStart": {
+          "properties": {
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/IntakeSource"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Sources"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why the member asked for it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "sources"
+          ],
+          "title": "IntakeStart"
+        },
+        "IntakeTask": {
+          "properties": {
+            "promise": {
+              "type": "integer",
+              "title": "Promise",
+              "description": "the promise's place in the result, from 1"
+            },
+            "task": {
+              "type": "string",
+              "title": "Task",
+              "description": "the task's code, such as T-12"
+            },
+            "assignee": {
+              "type": "string",
+              "title": "Assignee"
+            },
+            "due_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due On"
+            },
+            "delivery_seen": {
+              "type": "boolean",
+              "title": "Delivery Seen"
+            }
+          },
+          "type": "object",
+          "required": [
+            "promise",
+            "task",
+            "assignee",
+            "due_on",
+            "delivery_seen"
+          ],
+          "title": "IntakeTask"
         },
         "InviteAccept": {
           "properties": {

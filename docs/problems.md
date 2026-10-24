@@ -172,6 +172,35 @@ together with the problem, and rolling it back removes them. A proposal of lines
 writes no revision. The graph holds each line as a `doc:evidence` item of the problem (`P-1/E-2`) with an `evidences`
 edge to the problem's node, at the project's label. Schema 0137 adds the table `problem_evidence`.
 
+## Intake
+
+An intake (I-1, I-2, ...) is one reading of vague context, such as a chat, a mail thread or a folder, by the session of
+a member. `hub intake start` opens it with the kind and label of each source (`KIND:LABEL[:NAME]`, never content). The
+session puts what it made of the sources once, as an `evo-intake/1` document (schema
+`evo_agents/harness/schemas/intake.schema.json`, validated on put): `candidates` (problems with their evidence lines),
+`promises` and `questions`.
+
+```
+evo-agents hub intake start --source messenger:internal:"Shop group" --source file:public:notes.md
+evo-agents hub intake put I-1 result.json
+evo-agents hub intake show I-1 --json
+evo-agents hub intake list --status open
+```
+
+A put makes a pending @builder proposal of kind `problem` for each candidate: a new problem takes the next free code
+(the codes of one put follow each other, so approve them in order), and a candidate with `matches: "P-3"` proposes its
+lines as evidence of P-3. A candidate with one independent source that nobody confirmed is refused with 422 and a
+reason, and the whole put writes nothing. A candidate is confirmed by `confirmed_by` (a member of the project) or by a
+confirmed line of the problem it matches; for a match, the problem's lines count with the candidate's.
+
+Each promise becomes a task of the plugin tasks when the project enabled it: due on the date the session inferred,
+assigned to the promiser when they hold a grant on the project and to the member who put the result otherwise. The task
+description says who promised, from which source and whether delivery evidence was seen. Without the plugin the
+promises stay in the intake and the answer says so (`tasks_skipped`). A put twice is a 409.
+
+Routes: `GET|POST /v1/projects/{project}/intakes`, `GET|PUT .../intakes/{ref}`; the tools `intake_list` and
+`intake_show`. Starting and putting need the writer role, reading a grant. Schema 0138 adds the table `intakes`.
+
 ## Tables
 
 `problems` holds one row per problem of a project: its number and its newest revision. `problem_revisions` holds every

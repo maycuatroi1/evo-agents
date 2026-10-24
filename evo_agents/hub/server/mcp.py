@@ -102,6 +102,7 @@ from evo_agents.hub.server import (
     digests,
     history_mcp,
     hub_settings,
+    intake,
     kg,
     kg_audience,
     local_runs,
@@ -128,6 +129,8 @@ from evo_agents.hub.server.mcp_text import (
     event_lines,
     evidence_lines,
     fit_digest,
+    intake_line,
+    intake_lines,
     memory_about,
     memory_line,
     memory_where,
@@ -400,6 +403,8 @@ class HubMcp(MCPServer):
             "problem_list": self._problem_list,
             "problem_show": self._problem_show,
             "problem_evidence": self._problem_evidence,
+            "intake_list": self._intake_list,
+            "intake_show": self._intake_show,
             "ask_member": self._ask_member,
             "skill_list": self._skill_list,
             "hub_projects": self._hub_projects,
@@ -751,6 +756,25 @@ class HubMcp(MCPServer):
         sources = problem_model.sources_of(lines)
         summary = f"{len(lines)} lines of evidence from {sources} sources"
         return text, {"project": project, "problem": arguments["code"], "evidence": lines, "summary": summary}
+
+    async def _intake_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        project = self._project(caller, arguments)
+        access = await self._readable(caller, project)
+        status = arguments.get("status")
+        async with self.hub.state.engine.begin() as conn:
+            found = await intake.listed(conn, access, status)
+        listed = [i.model_dump(mode="json") for i in found]
+        text = "\n".join(intake_line(i) for i in listed)
+        text = text or f"project {project} has no intake{' ' + status if status else ''} on the hub"
+        return text, {"project": project, "intakes": listed, "summary": f"{len(found)} intakes"}
+
+    async def _intake_show(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        project = self._project(caller, arguments)
+        access = await self._readable(caller, project)
+        async with self.hub.state.engine.begin() as conn:
+            found = await intake.shown(conn, access, arguments["code"])
+        data = found.model_dump(mode="json")
+        return "\n".join(intake_lines(data)), {"project": project, "intake": data, "summary": f"intake {found.code}"}
 
     async def _ask_member(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         """Ask the member who runs this local session a question as a decision (Inbox, Telegram, web, the run's page,

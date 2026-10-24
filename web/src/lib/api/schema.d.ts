@@ -8860,6 +8860,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/problems/{ref}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evidence
+         * @description The evidence of a problem by number, for a member with a grant on the project.
+         */
+        get: operations["list_evidence_v1_projects__project__problems__ref__evidence_get"];
+        put?: never;
+        /**
+         * Add Evidence
+         * @description Add a line of evidence to a problem; a writer of the project may. 422 for a personal label or an excerpt of more
+         *     than 300 characters, 409 for a line the problem has already.
+         */
+        post: operations["add_evidence_v1_projects__project__problems__ref__evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/problems/{ref}/evidence/{code}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Evidence
+         * @description Confirm a line of evidence, once; a writer of the project may.
+         */
+        post: operations["confirm_evidence_v1_projects__project__problems__ref__evidence__code__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/intakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Intakes
+         * @description The project's intakes, newest first, for a member with a grant on the project.
+         */
+        get: operations["list_intakes_v1_projects__project__intakes_get"];
+        put?: never;
+        /**
+         * Start Intake
+         * @description Start an intake: a writer of the project asks their session to read sources; it gets the next code I-<n>.
+         */
+        post: operations["start_intake_v1_projects__project__intakes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/intakes/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Intake
+         * @description One intake: its requester, sources, status and, once done, what the hub made of its result.
+         */
+        get: operations["show_intake_v1_projects__project__intakes__ref__get"];
+        /**
+         * Put Intake
+         * @description Put the result of an intake, once, as an evo-intake/1 document (see the module).
+         */
+        put: operations["put_intake_v1_projects__project__intakes__ref__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/loop": {
         parameters: {
             query?: never;
@@ -16209,6 +16302,152 @@ export interface components {
              */
             attachments?: components["schemas"]["Attachment"][];
         };
+        /**
+         * Intake
+         * @description An intake of a project.
+         */
+        Intake: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description I-<number>, unique in the project
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "done";
+            /** Requested By */
+            requested_by: string;
+            /** Sources */
+            sources: components["schemas"]["IntakeSource"][];
+            /** Note */
+            note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Put By
+             * @description who put the result; null while it is open
+             */
+            put_by: string | null;
+            /** Done At */
+            done_at: string | null;
+            /**
+             * Candidates
+             * @description how many candidates the result held; null while it is open
+             */
+            candidates: number | null;
+            /** Promises */
+            promises: number | null;
+            /** Questions */
+            questions: number | null;
+            /** @description what the hub made of the result; null while it is open */
+            outcome: components["schemas"]["IntakeOutcome"] | null;
+        };
+        /**
+         * IntakeOutcome
+         * @description What the hub made of a result.
+         */
+        IntakeOutcome: {
+            /** Proposals */
+            proposals: components["schemas"]["IntakeProposal"][];
+            /** Tasks */
+            tasks: components["schemas"]["IntakeTask"][];
+            /**
+             * Tasks Skipped
+             * @description why the promises made no task (the plugin tasks is not enabled in the project); null otherwise
+             */
+            tasks_skipped: string | null;
+            /**
+             * Questions
+             * @description the questions the session could not answer, as it put them
+             */
+            questions: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** IntakeProposal */
+        IntakeProposal: {
+            /**
+             * Candidate
+             * @description the candidate's place in the result, from 1
+             */
+            candidate: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "new_problem" | "evidence";
+            /**
+             * Problem
+             * @description P-<number>: the code a new problem would take, or the problem the lines join
+             */
+            problem: string;
+            /**
+             * Proposal Id
+             * @description the pending proposal of @builder a writer approves
+             */
+            proposal_id: number;
+            /** Lines */
+            lines: number;
+        };
+        /**
+         * IntakeSource
+         * @description A source the session reads: what it is, never what it says.
+         */
+        IntakeSource: {
+            /**
+             * Kind
+             * @description one of hub_chat, messenger, chat_fpt, email, file, harness, other
+             */
+            kind: string;
+            /**
+             * Label
+             * @description one of public, internal, personal
+             */
+            label: string;
+            /**
+             * Name
+             * @description a short name, such as a group's; never content
+             */
+            name?: string | null;
+        };
+        /** IntakeStart */
+        IntakeStart: {
+            /** Sources */
+            sources: components["schemas"]["IntakeSource"][];
+            /**
+             * Note
+             * @description why the member asked for it
+             */
+            note?: string | null;
+        };
+        /** IntakeTask */
+        IntakeTask: {
+            /**
+             * Promise
+             * @description the promise's place in the result, from 1
+             */
+            promise: number;
+            /**
+             * Task
+             * @description the task's code, such as T-12
+             */
+            task: string;
+            /** Assignee */
+            assignee: string;
+            /** Due On */
+            due_on: string | null;
+            /** Delivery Seen */
+            delivery_seen: boolean;
+        };
         /** InviteAccept */
         InviteAccept: {
             /**
@@ -22050,6 +22289,100 @@ export interface components {
             text: string;
         };
         /**
+         * ProblemEvidence
+         * @description A line of the evidence of a problem.
+         */
+        ProblemEvidence: {
+            /** Project */
+            project: string;
+            /**
+             * Problem
+             * @description P-<number>
+             */
+            problem: string;
+            /**
+             * Code
+             * @description E-<number>, unique in the problem
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /** Source Kind */
+            source_kind: string;
+            /** Source Uri */
+            source_uri: string;
+            /** Locator */
+            locator: string | null;
+            /** Speaker */
+            speaker: string | null;
+            /** Excerpt */
+            excerpt: string;
+            /** Signal */
+            signal: string;
+            /** Label */
+            label: string;
+            /** Added By */
+            added_by: string;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /**
+             * Confirmed By
+             * @description the writer who confirmed it; null before
+             */
+            confirmed_by: string | null;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /**
+             * Proposal Id
+             * @description the proposal of @builder that made it; null for a line a writer added
+             */
+            proposal_id: number | null;
+        };
+        /**
+         * ProblemEvidenceWrite
+         * @description One line of evidence, as a writer adds it or @builder proposes it.
+         */
+        ProblemEvidenceWrite: {
+            /**
+             * Source Kind
+             * @description where it was read: hub_chat, messenger, chat_fpt, email, file, harness, other
+             */
+            source_kind: string;
+            /**
+             * Source Uri
+             * @description the source's URI or path
+             */
+            source_uri: string;
+            /**
+             * Locator
+             * @description where in the source: a message id, a time, a page
+             */
+            locator?: string | null;
+            /**
+             * Speaker
+             * @description who spoke, when someone did
+             */
+            speaker?: string | null;
+            /**
+             * Excerpt
+             * @description at most 300 characters of the source
+             */
+            excerpt: string;
+            /**
+             * Signal
+             * @description what it shows: complaint, workaround, repeated_request, blocker, commitment, proposed_solution, contradiction, decision_without_reason
+             */
+            signal: string;
+            /**
+             * Label
+             * @description public or internal; a personal line stays on the member's machine
+             */
+            label: string;
+        };
+        /**
          * ProblemGoal
          * @description A goal of the project whose newest revision answers the problem.
          */
@@ -22757,6 +23090,16 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Evidence Count
+             * @description the lines of evidence of the problem (plan problem-intake)
+             */
+            evidence_count: number;
+            /**
+             * Source Count
+             * @description the independent sources those lines come from: a source is a kind and an address
+             */
+            source_count: number;
             /**
              * Goals
              * @description the goals whose newest revision answers it, by code
@@ -64936,6 +65279,477 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectProblemWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_evidence_v1_projects__project__problems__ref__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description P-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemEvidence"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_evidence_v1_projects__project__problems__ref__evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description P-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProblemEvidenceWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemEvidence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirm_evidence_v1_projects__project__problems__ref__evidence__code__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description P-<number> */
+                ref: string;
+                /** @description E-<number> */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemEvidence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_intakes_v1_projects__project__intakes_get: {
+        parameters: {
+            query?: {
+                /** @description keep the intakes of one status */
+                status?: ("open" | "done") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Intake"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_intake_v1_projects__project__intakes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntakeStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Intake"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_intake_v1_projects__project__intakes__ref__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description I-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Intake"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_intake_v1_projects__project__intakes__ref__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description I-<number> */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Intake"];
                 };
             };
             /** @description Unauthorized */
