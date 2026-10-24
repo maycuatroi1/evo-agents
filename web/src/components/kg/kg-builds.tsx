@@ -1,18 +1,12 @@
 "use client";
 
-import { Eye, ListChecks } from "lucide-react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-import { Tag } from "@/components/data/identifier";
 import { Segmented } from "@/components/data/segmented";
-import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState, TableSkeleton } from "@/components/states/states";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
@@ -25,29 +19,23 @@ import {
   kgGraphQuery,
   parseBuildFilter,
 } from "@/lib/kg/queries";
-import { reviewHref } from "@/lib/kg/routes";
 import type { KgBuilds } from "@/lib/kg/types";
 
 import { BuildHistory, BuildQueue, LatestBuild, NoBuilds } from "./build-status";
-import { KindSummary, NoGraph, SearchForm, SearchResults } from "./node-search";
+import { KgHeader } from "./kg-header";
 import { StatusTiles } from "./status-tiles";
 import { useNow } from "./use-now";
 
-// The graph's shape loads on demand too, with its own read (GET /v1/kg/{project}/shape), below the search.
+// The graph's shape loads on demand, with its own read (GET /v1/kg/{project}/shape).
 const Shape = dynamic(() => import("./graph-shape").then((module) => module.GraphShapeSection));
-
-// The cluster map loads on demand as well, with its own read (GET /v1/kg/{project}/clusters); cosmos.gl, which draws
-// it, loads later still, only once a canvas mounts.
-const ClusterMap = dynamic(() => import("./cluster-map").then((module) => module.ClusterMapSection));
 
 // The Commits read card loads on demand (next/dynamic): imported statically, its code sat in a chunk that both pages
 // of the graph, this one and the node page, load first, and put each over its budget in bundle-budget.json.
 const SourceCommits = dynamic(() => import("./source-commits").then((module) => module.SourceCommits));
 
-export type KgOverviewErrors = {
+export type KgBuildsErrors = {
   builds: ApiErrorInfo | null;
   graph: ApiErrorInfo | null;
-  search: ApiErrorInfo | null;
   /** Of the failed builds, prefetched when the URL asks for them (`?builds=failed`). */
   failed?: ApiErrorInfo | null;
 };
@@ -62,46 +50,8 @@ function TilesSkeleton() {
   );
 }
 
-function SearchSection({
-  project,
-  query,
-  kind,
-  errors,
-}: {
-  project: string;
-  query: string;
-  kind: string;
-  errors: KgOverviewErrors;
-}) {
-  const t = useTranslations("kg.search");
-  const graph = useHubQuery(kgGraphQuery(browserApi, project), errors.graph);
-  const kinds = graph.status === "success" ? graph.data.kinds : [];
-  return (
-    <section aria-labelledby="kg-search-title">
-    <Card data-testid="kg-search">
-      <CardHeader>
-        <CardTitle>
-          <h2 id="kg-search-title">{t("title")}</h2>
-        </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        <SearchForm project={project} query={query} kind={kind} kinds={kinds} />
-        {query ? (
-          <SearchResults key={`${query}\u0000${kind}`} project={project} query={query} kind={kind} initialError={errors.search} />
-        ) : (
-          <QueryView state={graph} loading={<Skeleton className="h-16 w-full" />}>
-            {(summary) => (summary.graph === null ? <NoGraph /> : <KindSummary kinds={summary.kinds} project={project} />)}
-          </QueryView>
-        )}
-      </CardContent>
-    </Card>
-    </section>
-  );
-}
-
 /**
- * The commit each git source of the graph read; the graph query is the one the search section reads. A graph whose
+ * The commit each git source of the graph read, from the graph summary the status tiles read too. A graph whose
  * sources read no commit never fetches the card's chunk.
  */
 function Commits({ project, error }: { project: string; error: ApiErrorInfo | null }) {
@@ -205,21 +155,10 @@ function Status({ project, data, graphError }: { project: string; data: KgBuilds
 }
 
 /**
- * /p/{project}/kg: the graph's status, the commits its sources read, node search, the cluster map, the graph's shape and
- * the builds. Read-only.
+ * /p/{project}/kg/builds: the graph's status, the commits its sources read, the graph's shape and the builds, under the
+ * knowledge graph's tabs. Read-only.
  */
-export function KgOverview({
-  project,
-  query,
-  kind,
-  errors,
-}: {
-  project: string;
-  query: string;
-  kind: string;
-  errors: KgOverviewErrors;
-}) {
-  const t = useTranslations("kg");
+export function KgBuildsPage({ project, errors }: { project: string; errors: KgBuildsErrors }) {
   const tStates = useTranslations("states");
   // Builds in progress are the page's live work: the top bar follows their query while it polls.
   const builds = useHubQuery(kgBuildsQuery(browserApi, project), errors.builds, { live: true });
@@ -232,25 +171,7 @@ export function KgOverview({
     );
   }
   if (builds.status === "error" && builds.error.status === 403) return <ApiErrorState error={builds.error} />;
-  const header = (
-    <PageHeader
-      title={t("title")}
-      tags={
-        <Tag data-testid="kg-read-only">
-          <Eye aria-hidden="true" />
-          {t("readOnly")}
-        </Tag>
-      }
-      actions={
-        <Button asChild variant="outline" size="sm">
-          <Link href={reviewHref(project)} data-testid="kg-review-link">
-            <ListChecks aria-hidden="true" />
-            {t("review.open")}
-          </Link>
-        </Button>
-      }
-    />
-  );
+  const header = <KgHeader project={project} current="builds" />;
   if (builds.status === "error") {
     return (
       <>
@@ -266,8 +187,6 @@ export function KgOverview({
         {(data) => <Status project={project} data={data} graphError={errors.graph} />}
       </QueryView>
       <Commits project={project} error={errors.graph} />
-      <SearchSection project={project} query={query} kind={kind} errors={errors} />
-      <ClusterMap project={project} />
       <Shape project={project} />
       <QueryView state={builds} loading={<TableSkeleton rows={4} />}>
         {(data) => <Builds project={project} data={data} failedError={errors.failed ?? null} />}
@@ -276,8 +195,8 @@ export function KgOverview({
   );
 }
 
-/** The skeleton of the whole page while the route loads. */
-export function KgOverviewSkeleton() {
+/** The skeleton of the builds page while the route loads. */
+export function KgBuildsSkeleton() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">

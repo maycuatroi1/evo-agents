@@ -7,7 +7,7 @@ import { expect, type Member, test } from "./support/fixtures";
 import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
-import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
+import { buildsPath, grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { decidePath } from "./support/loop";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
@@ -157,6 +157,7 @@ for (const width of WIDTHS) {
     await grantOn(kg.project, me.login, "reader", "internal");
     await noSidewaysScroll(page, [width], [
       { path: `${kgPath(kg.project)}?q=runbook`, ready: shown("kg-results") },
+      { path: buildsPath(kg.project), ready: shown("kg-latest-build") },
       { path: nodePath(kg.project, SHARED_NODE), ready: shown("kg-neighbours") },
     ]);
   });

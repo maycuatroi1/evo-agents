@@ -245,7 +245,7 @@ describe("CommandPalette", () => {
     expect(items(palette, "runs")).toEqual(["run:demo:13", "run:demo:8"]);
     expect(items(palette, "plans")).toEqual(["plan:demo:fleet"]);
     await waitFor(() => expect(items(palette, "workers")).toEqual(["worker:1"]));
-    expect(items(palette, "goto").slice(0, 3)).toEqual(["goto:demo:overview", "goto:demo:decide", "goto:demo:plans"]);
+    expect(items(palette, "goto").slice(0, 3)).toEqual(["goto:demo:overview", "goto:demo:kg", "goto:demo:decide"]);
     expect(within(palette).getByRole("option", { name: /Run của demo/ })).toBeInTheDocument();
     expect(within(palette).getByTestId("palette-scope")).toHaveAttribute("data-scope", "demo");
     // Nothing that deletes or stops: no cancel, drain, revoke or sign out.

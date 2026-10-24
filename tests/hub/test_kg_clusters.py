@@ -6,7 +6,8 @@ at internal never receives the customer contract, its id, a word of its name in 
 from the map, a cluster or the whole graph; a cluster with no visible member answers 404 like one that does not exist;
 one cluster lists its subclusters, members and neighbours; the whole graph is every visible node and edge, compact,
 capped by ``limit``; a project without a build, a build without clusters and a reader who sees none get an empty map
-with a reason; the command line prints the hub's answer.
+with a reason; the map, a cluster and the whole graph count a reader's view once, and never hand it to a reader who
+sees differently; the command line prints the hub's answer.
 
 One hub serves every test of the module (they only read), built as in ``tests.hub.test_kg_api``.
 """
@@ -250,3 +251,47 @@ def test_the_command_line_prints_the_clusters_and_one_cluster(hub, capsys):
     assert kg_clusters_cli._list(client, SimpleNamespace(project=PROJECT, action=None, id=None, json=False)) == 0
     text = capsys.readouterr().out
     assert cid in text and "CLUSTER" in text
+
+
+def test_a_view_is_counted_once_per_reader_and_never_shared_across_readers(hub, monkeypatch):
+    counted: list[int] = []
+    real = kg_map.view
+
+    def counting(store, b, visible):
+        counted.append(b)
+        return real(store, b, visible)
+
+    kg_map.VIEWS.clear()
+    monkeypatch.setattr(kg_map, "view", counting)
+    first = cluster_map(hub, "wendy")
+    assert cluster_map(hub, "wendy") == first
+    cid = contract_cluster(first)
+    ok(hub, "wendy", f"/v1/kg/{PROJECT}/cluster", id=cid)
+    ok(hub, "wendy", f"/v1/kg/{PROJECT}/whole", limit=5)
+    assert len(counted) == 1  # the map, the map again, a cluster and the whole graph read one view
+
+    ivan = cluster_map(hub, "ivan")
+    assert len(counted) == 2  # another clearance, another view
+    assert CONTRACT not in json.dumps(ivan)
+    assert cluster_map(hub, "wendy") == first and len(counted) == 2
+
+
+def test_the_view_cache_keeps_the_latest_views():
+    cache = kg_map.ViewCache(kept=2)
+    made: list[str] = []
+
+    def make(name):
+        def build():
+            made.append(name)
+            return kg_map.View(reason=name)
+
+        return build
+
+    a = cache.get("a", make("a"))
+    assert cache.get("a", make("a")) is a and made == ["a"]
+    cache.get("b", make("b"))
+    cache.get("a", make("a"))  # a is now the latest used
+    cache.get("c", make("c"))  # b goes
+    assert cache.get("a", make("a")) is a and made == ["a", "b", "c"]
+    cache.get("b", make("b"))
+    assert made == ["a", "b", "c", "b"]

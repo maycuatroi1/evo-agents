@@ -104,6 +104,17 @@ export function kgPath(project: string): string {
   return `/p/${project}/kg`;
 }
 
+export function buildsPath(project: string): string {
+  return `/p/${project}/kg/builds`;
+}
+
+/** The explorer drew its scope: Cytoscape loaded in the browser and laid the view out. */
+export async function explorerReady(page: Page, scope?: "overview" | "cluster" | "node"): Promise<void> {
+  const canvas = page.getByTestId("kg-explorer-canvas");
+  if (scope) await expect(canvas).toHaveAttribute("data-scope", scope);
+  await expect(canvas).toHaveAttribute("data-ready", "true");
+}
+
 export function nodePath(project: string, id: string, hops?: 1 | 2): string {
   const params = new URLSearchParams({ id });
   if (hops === 1) params.set("hops", "1");

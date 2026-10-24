@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { expect, test } from "./support/fixtures";
 import { newAccount } from "./support/hub";
-import { graphReady, HUB_NODE, kgPath, kgProject, nodePath, open, queueBuild, SHARED_NODE, sharedKg } from "./support/kg";
+import { buildsPath, explorerReady, graphReady, HUB_NODE, kgPath, kgProject, nodePath, open, queueBuild, SHARED_NODE, sharedKg } from "./support/kg";
 
 /**
  * Review screenshots of the knowledge graph pages, light and dark, desktop and 375 px, written to
@@ -30,12 +30,20 @@ test.describe("knowledge graph screenshots", () => {
       await signInAs(reviewer);
 
       await open(page, kgPath(kg.project));
-      await expect(page.getByTestId("kg-kinds")).toBeVisible();
-      await shot("overview");
-      await open(page, `${kgPath(kg.project)}?q=KB-01`);
-      await expect(page.getByTestId("kg-results")).toBeVisible();
-      await shot("search");
-      await open(page, kgPath(status.project));
+      await explorerReady(page, "overview");
+      await shot("explorer-overview", false);
+      await page.getByTestId("kg-cluster-row").first().click();
+      await shot("explorer-overview-selected", false);
+      await page.getByTestId("kg-inspector-explore").click();
+      await explorerReady(page, "cluster");
+      await shot("explorer-cluster", false);
+      await open(page, `${kgPath(kg.project)}?q=KB-01&node=${encodeURIComponent(SHARED_NODE)}`);
+      await explorerReady(page, "node");
+      await shot("explorer-node", false);
+      await open(page, buildsPath(kg.project));
+      await expect(page.getByTestId("kg-latest-build")).toBeVisible();
+      await shot("builds");
+      await open(page, buildsPath(status.project));
       await expect(page.getByTestId("queue-job")).toBeVisible();
       await shot("status-queued-failed");
       await open(page, nodePath(kg.project, SHARED_NODE));
@@ -48,7 +56,8 @@ test.describe("knowledge graph screenshots", () => {
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, `${kgPath(kg.project)}?q=runbook`);
       await expect(page.getByTestId("kg-results")).toBeVisible();
-      await shot("search-mobile");
+      await explorerReady(page, "overview");
+      await shot("explorer-mobile");
       await open(page, nodePath(kg.project, SHARED_NODE));
       await expect(page.getByTestId("kg-neighbours")).toBeVisible();
       await shot("node-mobile");
