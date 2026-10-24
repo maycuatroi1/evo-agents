@@ -538,6 +538,51 @@
       }
     },
     {
+      "name": "intake_list",
+      "description": "The intakes of a project on the hub, newest first (plan problem-intake): each is one reading of vague context by a member's session, with its code (I-<number>), status (open, done), requester, sources (kind and label, never content) and the count of candidates and promises its result held. intake_show reads one.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "done"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "intake_show",
+      "description": "One intake of a project on the hub by its code: its requester, sources and note, and once its result was put, the proposals of @builder it made (a new problem, or evidence for one), the tasks its promises became with their assignee and due date, why they made none when the plugin tasks is off, and the questions the session could not answer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^I-[1-9][0-9]{0,8}$",
+            "description": "I-<number>"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "ask_member",
       "description": "Ask the person who runs this session a question that has 2 to 6 options, in a session of a project on the hub: it reaches them as a decision in the Inbox, Telegram, the web and the run's page, and they can answer on any of them or on this machine with `evo-agents hub decision answer`. The first answer wins and comes back here with the words they wrote. It waits about 20 seconds; with no answer it says so, and you call it again with decision_id to wait longer or go on, and a late answer reaches you with the person's next message. Outside a hub project's session it is refused: use AskUserQuestion.",
       "inputSchema": {

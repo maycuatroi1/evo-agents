@@ -206,6 +206,11 @@ PROBLEM_SET = "problem.set"
 # approved a proposal of @builder that carried them, or " removed proposal=<id>" when a rollback took them away; never
 # an excerpt.
 PROBLEM_EVIDENCE = "problem.evidence"
+# An intake of a project started or its result put (evo_agents.hub.server.intake), in the project: "<project>/intake
+# I-<n>" with " started sources=<count>", or " put candidates=<n> promises=<n> questions=<n> proposals=<ids>
+# tasks=<count>"; never a source's name or an excerpt.
+INTAKE_START = "intake.start"
+INTAKE_PUT = "intake.put"
 # The org chart belongs to no project (evo_agents.hub.server.org_store). A target names the unit by slug and the seat
 # by id with its holder, then each field that changed as "<field>=<was>-><is>" and the unit's revision after it:
 # "unit:<slug> parent=<slug> kind=<kind> revision=1", "seat:<id> unit=<slug> login=<l> role=<role> primary=true->false

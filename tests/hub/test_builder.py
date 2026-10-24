@@ -838,3 +838,40 @@ def test_builder_proposals_table_refuses_a_row_whose_state_and_columns_disagree(
         ("agent", "rolled_back"),
         ("policy", "pending"),
     ]
+
+
+# Proposals an intake made (plan problem-intake): no run, no chat; approving one writes the problem and its lines
+
+
+def test_builder_proposals_of_an_intake_are_approved_like_any_other(client, hub):
+    base = f"/v1/projects/{PROJECT}/intakes"
+    sources = [{"kind": "messenger", "label": "internal", "name": "Shop group"}]
+    assert client.post(base, json={"sources": sources}, headers=hub["other"]).status_code == 201
+    line = {
+        "source_kind": "messenger",
+        "source_uri": "messenger://shop-group/1",
+        "excerpt": "We ring the depot every morning.",
+        "signal": "workaround",
+        "label": "internal",
+    }
+    candidate = {
+        "statement": "Shops cannot tell when a delivery comes",
+        "who": "shop owners",
+        "when": "before the delivery",
+        "workaround": "they ring the depot",
+        "basis": {
+            "statement": {"quote": "we ring the depot"},
+            "who": "inferred",
+            "when": "inferred",
+            "workaround": "inferred",
+        },
+        "evidence": [line, {**line, "source_kind": "email", "source_uri": "email://depot/42"}],
+    }
+    result = {"schema": "evo-intake/1", "candidates": [candidate], "promises": [], "questions": []}
+    put = client.put(f"{base}/I-1", json=result, headers=hub["other"])
+    assert put.status_code == 200, put.text
+    proposal_id = put.json()["outcome"]["proposals"][0]["proposal_id"]
+    assert shown(client, hub["reader"], proposal_id)["state"] == "pending"
+    assert answer(client, hub["owner"], proposal_id, "approve").json()["state"] == "applied"
+    found = problem(client, hub["reader"], "P-1")
+    assert (found["statement"], found["evidence_count"], found["source_count"]) == (candidate["statement"], 2, 2)

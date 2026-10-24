@@ -139,6 +139,7 @@ TABLES |= pg.PROBE_TABLES  # migration 0130
 TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
 TABLES |= pg.PROBLEM_TABLES  # migration 0134
 TABLES |= pg.PROBLEM_EVIDENCE_TABLES  # migration 0137
+TABLES |= pg.INTAKE_TABLES  # migration 0138
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -3327,3 +3328,32 @@ def test_0137_keeps_the_evidence_of_a_problem_and_going_back_drops_it(hub_db):
     assert "problem_evidence" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0137") :]
+
+
+def test_0138_keeps_the_intakes_of_a_project_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0137")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0138")
+    n = hub_tables.intakes
+    assert "intakes" in tables(hub_db)
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        row = {"project_id": ids["project"], "number": 1, "requested_by": ids["user"], "sources": []}
+        conn.execute(insert(n).values(row))
+        done = {"result": {}, "outcome": {}, "put_by": ids["user"], "done_at": func.now(), "status": "done"}
+        conn.execute(insert(n).values({**row, "number": 2, **done}))
+        for bad in (
+            {**row, "number": 3, "status": "stuck"},
+            {**row, "number": 0},
+            {**row, "number": 4, "sources": {}},
+            {**row, "number": 5, "note": "x" * 1001},
+            {**row, "number": 6, "status": "done"},  # done without its result
+            {**row, "number": 7, **{k: v for k, v in done.items() if k != "status"}},  # a result while open
+            {**row, "number": 1},
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(insert(n).values(bad))
+    move_to(hub_db, "0137", down=True)
+    assert "intakes" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0138") :]
