@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsFetching } from "@tanstack/react-query";
 import { Info, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,8 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { displayName, kindsOf, neighboursOf } from "@/lib/kg/graph";
-import { kgNeighbourhoodQuery } from "@/lib/kg/queries";
+import { displayName, kindsOf, neighbourGroups } from "@/lib/kg/graph";
+import { type Grouping, kgNeighbourhoodQuery, NODE_PAGE_GROUPING } from "@/lib/kg/queries";
 import { nodeHref } from "@/lib/kg/routes";
 import { type GraphNode, type Hops, MAX_NODES, type Neighbourhood } from "@/lib/kg/types";
 import { cn } from "@/lib/utils";
@@ -45,7 +46,7 @@ function HopsToggle({ project, id, hops }: { project: string; id: string; hops: 
   );
 }
 
-function Legend({ nodes }: { nodes: GraphNode[] }) {
+function Legend({ nodes, more }: { nodes: GraphNode[]; more: boolean }) {
   const t = useTranslations("kg.graph");
   return (
     <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
@@ -65,12 +66,28 @@ function Legend({ nodes }: { nodes: GraphNode[] }) {
           <span className="size-3 rounded-full border-2 border-dashed border-muted-foreground" aria-hidden="true" />
           {t("legendHub")}
         </li>
+        {more ? (
+          <li className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-4 rounded-xs border-[1.5px] border-dashed border-muted-foreground" aria-hidden="true" />
+            {t("legendMore")}
+          </li>
+        ) : null}
       </ul>
     </div>
   );
 }
 
-function View({ project, view }: { project: string; view: Neighbourhood }) {
+function View({
+  project,
+  view,
+  opening,
+  onOpenGroup,
+}: {
+  project: string;
+  view: Neighbourhood;
+  opening: string | null;
+  onOpenGroup: (key: string) => void;
+}) {
   const t = useTranslations("kg.graph");
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -79,7 +96,8 @@ function View({ project, view }: { project: string; view: Neighbourhood }) {
   const byId = useMemo(() => new Map(view.nodes.map((node) => [node.id, node])), [view.nodes]);
   const focus = byId.get(view.focus) ?? view.nodes[0];
   const node = byId.get(selected) ?? focus;
-  const rows = useMemo(() => neighboursOf(view, node.id), [view, node.id]);
+  const groups = useMemo(() => neighbourGroups(view, node.id), [view, node.id]);
+  const edgeCount = groups.reduce((sum, group) => sum + group.rows.length, 0);
   const open = useCallback((id: string) => router.push(nodeHref(project, id)), [router, project]);
   const select = useCallback((id: string) => setSelected(id), []);
   const name = displayName(focus);
@@ -132,20 +150,29 @@ function View({ project, view }: { project: string; view: Neighbourhood }) {
               describedBy="kg-graph-help"
               onSelect={select}
               onOpen={open}
+              onOpenGroup={onOpenGroup}
             />
           ) : null}
-          <Legend nodes={view.nodes} />
+          <Legend nodes={view.nodes} more={view.groups.some((group) => group.total > group.shown.length)} />
         </div>
         <div className="flex min-w-0 flex-col gap-3">
           <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground md:hidden">
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             {t("smallScreen")}
           </p>
-          <NeighbourTable project={project} node={node} focus={focus} rows={rows} onSelect={select} />
+          <NeighbourTable
+            project={project}
+            node={node}
+            focus={focus}
+            groups={groups}
+            onSelect={select}
+            onOpenGroup={onOpenGroup}
+            opening={opening}
+          />
         </div>
       </div>
       <p className="sr-only" aria-live="polite" data-testid="kg-selection-announcement">
-        {node.id === focus.id ? "" : t("selected", { name: displayName(node), kind: node.kind, count: rows.length })}
+        {node.id === focus.id ? "" : t("selected", { name: displayName(node), kind: node.kind, count: edgeCount })}
       </p>
     </div>
   );
@@ -163,7 +190,19 @@ export function NeighbourhoodSection({
   initialError: ApiErrorInfo | null;
 }) {
   const t = useTranslations("kg.graph");
-  const state = useHubQuery(kgNeighbourhoodQuery(browserApi, project, id, hops), initialError);
+  // The groups the reader opened, for this node and these steps only: another node starts with every group closed.
+  const at = `${id}\u0000${hops}`;
+  const [opened, setOpened] = useState<{ at: string; keys: readonly string[] }>({ at, keys: NODE_PAGE_GROUPING.open });
+  const keys = opened.at === at ? opened.keys : NODE_PAGE_GROUPING.open;
+  const grouping: Grouping = { ...NODE_PAGE_GROUPING, open: keys };
+  const query = kgNeighbourhoodQuery(browserApi, project, id, hops, grouping);
+  const state = useHubQuery(query, initialError);
+  // Only a click opens a group, so the group being opened is the last one asked for.
+  const opening = useIsFetching({ queryKey: query.queryKey }) > 0 ? (keys.at(-1) ?? null) : null;
+  const openGroup = useCallback(
+    (key: string) => setOpened({ at, keys: keys.includes(key) ? keys : [...keys, key] }),
+    [at, keys],
+  );
   return (
     <section aria-labelledby="kg-graph-title">
       <Card data-testid="kg-neighbourhood">
@@ -172,13 +211,21 @@ export function NeighbourhoodSection({
             <CardTitle>
               <h2 id="kg-graph-title">{t("title")}</h2>
             </CardTitle>
-            <CardDescription>{t("description", { hops, limit: MAX_NODES })}</CardDescription>
+            <CardDescription>{t("description", { hops, limit: MAX_NODES, group: NODE_PAGE_GROUPING.group })}</CardDescription>
           </div>
           <HopsToggle project={project} id={id} hops={hops} />
         </CardHeader>
         <CardContent>
           <QueryView state={state} loading={<Skeleton className="h-[28rem] w-full rounded-md" />}>
-            {(view) => <View key={`${view.focus}:${view.hops}`} project={project} view={view} />}
+            {(view) => (
+              <View
+                key={`${view.focus}:${view.hops}`}
+                project={project}
+                view={view}
+                opening={opening}
+                onOpenGroup={openGroup}
+              />
+            )}
           </QueryView>
         </CardContent>
       </Card>

@@ -98,6 +98,7 @@ class Session:
         self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
         self.read: Label | None = None  # join of the labels the current call reveals
         self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.kg.policy)
+        self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
                 # The local operator already holds the corpus; the cli sink sees everything unless declared.
@@ -118,6 +119,10 @@ class Session:
         level, location, *_rest = label
         audience = label[3] if len(label) > 3 else frozenset()
         return level <= self.clearance[0] and location <= self.clearance[1] and audience_below(audience, self.audience)
+
+    def seen(self, x: dict) -> bool:
+        """``visible``, and not deprecated by a decision (``evo_agents.kg.pipeline.curation``) unless asked for."""
+        return self.visible(x["label"]) and (self.deprecated or "deprecated" not in (x.get("props") or {}))
 
     def describe(self, label: tuple) -> str:
         lvl = self.policy.level_name(label[0])
@@ -165,6 +170,7 @@ class Session:
             args = args or {}
             if name in SIGNATURES:
                 args = arguments(name, args, *SIGNATURES[name])
+            self.deprecated = bool(args.pop("deprecated", False))
             text, data = handler(**args)
         except (ToolError, UnknownArgument) as exc:
             return _error(str(exc))
@@ -251,9 +257,9 @@ class Session:
         if named is not None:
             ids = [named["id"], *(i for i in ids if i != named["id"])]
         found = store.nodes(ids, b)
-        hits = [found[i] for i in ids if i in found and self.visible(found[i]["label"])]
+        hits = [found[i] for i in ids if i in found and self.seen(found[i])]
         results, via = with_mentions(
-            store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.visible, kinds
+            store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
         for reached in via.values():
             self._saw(reached["label"])
@@ -329,12 +335,14 @@ class Session:
             raise ToolError("no visible node has that id; search with kg_search")
         links = Links.of(store, b)
         n = links.node(n)
-        edges = [e for e in store.edges_of(n["id"], b, limit=400) if self.visible(e["label"])]
+        edges = [e for e in store.edges_of(n["id"], b, limit=400) if self.seen(e)]
         others = store.nodes({e["dst"] if e["src"] == n["id"] else e["src"] for e in edges}, b)
         lines = [self._line(n)]
         if n["aliases"]:
             lines.append(f"aliases: {', '.join(n['aliases'])}")
-        props = {k: v for k, v in n["props"].items() if k not in ("span",)}
+        if n["props"].get("deprecated"):
+            lines.append("deprecated: {reason} (decision {decision})".format(**n["props"]["deprecated"]))
+        props = {k: v for k, v in n["props"].items() if k not in ("span", "deprecated")}
         if props:
             lines.append("props: " + json.dumps(props, ensure_ascii=False, sort_keys=True))
         evidence = self._evidence(store, n["id"], b, links)
@@ -347,7 +355,7 @@ class Session:
         for e in edges:
             other_id = e["dst"] if e["src"] == n["id"] else e["src"]
             other = others.get(other_id)
-            if other is None or not self.visible(other["label"]):
+            if other is None or not self.seen(other):
                 continue
             self._saw(e["label"])
             self._saw(other["label"])
@@ -441,7 +449,7 @@ class Session:
         elif query:
             hits = store.search(query, b, limit=5)[:5]
             nodes = store.nodes(hits, b)
-            seeds = {h: nodes[h] for h in hits if h in nodes and self.visible(nodes[h]["label"])}
+            seeds = {h: nodes[h] for h in hits if h in nodes and self.seen(nodes[h])}
         else:
             raise ToolError("give a query or ids")
         if not seeds:
@@ -454,7 +462,7 @@ class Session:
     def _context_from(self, store: Store, b: int, current: str, depth: int, room: Room, frontier: deque) -> None:
         """Put the visible edges of ``current`` into ``room``, strongest first, each with the neighbour it brings
         when that one is new; what does not fit is counted as left out, and a new neighbour joins the frontier."""
-        edges = [e for e in store.edges_of(current, b, limit=300) if self.visible(e["label"])]
+        edges = [e for e in store.edges_of(current, b, limit=300) if self.seen(e)]
         edges.sort(
             key=lambda e: (
                 -STATUS_RANK.get(e["status"], 0),
@@ -468,7 +476,7 @@ class Session:
         for e in edges:
             other = e["dst"] if e["src"] == current else e["src"]
             node = neighbours.get(other)
-            if node is None or not self.visible(node["label"]) or e["id"] in room.edges:
+            if node is None or not self.seen(node) or e["id"] in room.edges:
                 continue
             cost = line_size(self._edge_line(e))
             if other in room.nodes:
@@ -626,7 +634,7 @@ class Session:
             and e["src"] != nid
             and e["rel"] in WALKED_RELS
             and STATUS_RANK.get(e["status"], 0) >= IMPACT_MIN_RANK
-            and self.visible(e["label"])
+            and self.seen(e)
         ]
 
     def _seed_edges(self, store: Store, found: Impact, nid: str) -> list[dict]:
@@ -783,7 +791,7 @@ class Session:
                     tree[nid]["hub"] = True
                     continue
                 for e in edges:
-                    if e["rel"] in PATH_SKIP or (rels and e["rel"] not in rels) or not self.visible(e["label"]):
+                    if e["rel"] in PATH_SKIP or (rels and e["rel"] not in rels) or not self.seen(e):
                         continue
                     other = e["dst"] if e["src"] == nid else e["src"]
                     if other in tree:
@@ -795,7 +803,7 @@ class Session:
             layer = []
             for other in sorted(best):
                 node = found.get(other)
-                if node is None or not self.visible(node["label"]):
+                if node is None or not self.seen(node):
                     continue
                 key, parent, e = best[other]
                 tree[other] = {"hop": hop, "score": -key[0], "parent": parent, "edge": e, "node": node, "hub": False}

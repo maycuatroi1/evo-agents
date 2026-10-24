@@ -1822,7 +1822,8 @@
       "queue": "Queue",
       "queueEmpty": "No jobs",
       "queueCounts": "{waiting} waiting, {running} running",
-      "refreshing": "Refreshes every 5 seconds"
+      "refreshing": "Refreshes every 5 seconds",
+      "visibleEdges": "{count, plural, one {# edge} other {# edges}}, of what you can read"
     },
     "latest": {
       "title": "Build #{id}",
@@ -1941,7 +1942,8 @@
       "notFoundTitle": "Node not found",
       "notFoundDescription": "The node is not in the current graph, or its label is above your visibility.",
       "searchInstead": "Search the graph",
-      "olderBuild": "The blob store did not answer, so this page reads build #{id}, older than the latest one."
+      "olderBuild": "The blob store did not answer, so this page reads build #{id}, older than the latest one.",
+      "deprecated": "Deprecated by decision {number}: {reason}. The kg tools leave it out unless asked."
     },
     "evidence": {
       "title": "Evidence",
@@ -1976,11 +1978,14 @@
       "out": "outgoing",
       "in": "incoming",
       "select": "Select {name} in the graph",
-      "open": "Open the page of {name}"
+      "open": "Open the page of {name}",
+      "groupCount": "{shown} of {total}",
+      "degree": "{count, plural, one {# edge} other {# edges}}",
+      "showMore": "{count, plural, one {Show # more} other {Show # more}} ({rel}, {kind})"
     },
     "graph": {
       "title": "Neighbourhood",
-      "description": "Nodes and edges within {hops, plural, one {# step} other {# steps}} of this node, at most {limit} nodes.",
+      "description": "Nodes and edges within {hops, plural, one {# step} other {# steps}} of this node, at most {limit} nodes. Of each group of direct neighbours, the {group} most connected show first.",
       "hops": "Steps",
       "hopsValue": "{count, plural, one {# step} other {# steps}}",
       "layout": "Layout",
@@ -2000,7 +2005,190 @@
       "truncatedTitle": "Cut: the graph draws {shown} nodes, the limit is {limit}",
       "truncatedDescription": "{leftOut, plural, one {# more node within reach is not drawn.} other {# more nodes within reach are not drawn.}} This node has {neighbours} direct neighbours: see them all under <link>Relations by edge type</link>, or open a neighbour to see its own area.",
       "smallScreen": "Narrow screen: the graph is replaced by the table of neighbours.",
-      "selected": "Selected {name} ({kind}), {count} edges"
+      "selected": "Selected {name} ({kind}), {count} edges",
+      "legendMore": "More neighbours of a group: click to show them"
+    },
+    "shape": {
+      "title": "Shape of the graph",
+      "description": "How many edges of each type join each kind of node to another, counted over what you can read.",
+      "columns": {
+        "source": "From kind",
+        "rel": "Edge type",
+        "target": "To kind",
+        "count": "Edges"
+      },
+      "empty": "No edge you can read in this graph.",
+      "caption": "{count, plural, one {# combination of kinds and edge type} other {# combinations of kinds and edge type}}"
+    },
+    "map": {
+      "title": "Map of clusters",
+      "description": "Groups of nodes that link to each other more than to the rest, counted over what you can read. Colour marks the cluster; click a point to open its cluster.",
+      "noClusters": "No cluster to show: {reason}",
+      "summary": "{clusters, plural, one {# cluster} other {# clusters}}, {nodes, plural, one {# node} other {# nodes}}, {links, plural, one {# link between clusters} other {# links between clusters}}",
+      "canvasLabel": "Map of the graph's clusters; the table below lists the same clusters",
+      "noWebgl": "This browser cannot draw the map (no WebGL2), so the clusters are listed below.",
+      "loading": "Drawing the map",
+      "whole": "View all nodes and edges",
+      "clusters": "View clusters",
+      "wholeSummary": "{nodes, plural, one {# node} other {# nodes}} and {edges, plural, one {# edge} other {# edges}} you can read",
+      "truncated": "The graph holds more nodes than the view draws; it shows the first {count} by id.",
+      "focus": "Lit up: the cluster of {node}",
+      "focusMissing": "{node} is in no cluster you can see.",
+      "clearFocus": "Clear",
+      "showOnMap": "Show on map",
+      "fit": "Fit to view",
+      "table": {
+        "caption": "{count, plural, one {# cluster} other {# clusters}}, largest first",
+        "label": "Cluster",
+        "size": "Nodes",
+        "kinds": "Kinds",
+        "subclusters": "Parts"
+      },
+      "matrix": {
+        "title": "Links between clusters",
+        "description": "Each cell counts the edges joining two clusters; darker means more.",
+        "cell": "{a} and {b}: {count, plural, one {# edge} other {# edges}}",
+        "hidden": "{count, plural, one {# smaller cluster is} other {# smaller clusters are}} left out of the matrix.",
+        "empty": "No edge you can read joins two clusters."
+      }
+    },
+    "cluster": {
+      "title": "Cluster",
+      "back": "Map of clusters",
+      "missingId": "No cluster chosen: open one from the map.",
+      "notFound": "No cluster with that id is visible to you.",
+      "level": "{level, select, 1 {Cluster} other {Part of a cluster}}",
+      "parent": "Part of {label}",
+      "size": "{count, plural, one {# node you can read} other {# nodes you can read}}",
+      "drawing": "Members and the edges between them",
+      "canvasLabel": "The cluster's members; the table lists the same nodes",
+      "subclusters": "Parts",
+      "neighbours": "Neighbouring clusters",
+      "noNeighbours": "No edge you can read leads to another cluster.",
+      "neighbourWeight": "{count, plural, one {# edge} other {# edges}}",
+      "members": "Members",
+      "filter": "Filter members",
+      "filterPlaceholder": "Name, id or kind",
+      "membersCaption": "{shown} of {count, plural, one {# member} other {# members}}",
+      "columns": {
+        "node": "Node",
+        "kind": "Kind",
+        "part": "Part"
+      }
+    },
+    "review": {
+      "title": "Review queue",
+      "intro": "What in the graph a person should look at, found by six rules after each build. A dismissed item stays dismissed in later builds.",
+      "open": "Open review queue",
+      "back": "Knowledge graph",
+      "notComputed": "No review queue yet",
+      "noItems": "No item matches this view.",
+      "rules": {
+        "dangling_mention": "Mentions of code that is gone",
+        "unmentioned_document": "Documents nothing mentions",
+        "cluster_without_knowledge": "Clusters with code and no knowledge",
+        "possible_duplicate": "Possible duplicates",
+        "ambiguous_match": "Ambiguous name matches",
+        "bulk_noise": "Bulk noise"
+      },
+      "actions": {
+        "fix_mention": "Fix the mention",
+        "link_or_deprecate": "Link it or retire it",
+        "add_knowledge": "Add a document, plan or problem",
+        "merge": "Merge them",
+        "disambiguate": "Name the target exactly",
+        "exclude": "Exclude them from the graph"
+      },
+      "filters": "Filter the queue",
+      "rule": "Rule",
+      "allRules": "Every rule",
+      "state": "Items",
+      "states": {
+        "open": "Open",
+        "dismissed": "Dismissed",
+        "all": "All"
+      },
+      "clusterFilter": "Cluster {label}",
+      "clearCluster": "Every cluster",
+      "counts": "{open, plural, one {# open} other {# open}}, {dismissed, plural, one {# dismissed} other {# dismissed}}",
+      "ruleItems": "{count, plural, one {# item} other {# items}}",
+      "noCluster": "In no cluster",
+      "more": "and {count, plural, one {# more} other {# more}}",
+      "mentions": "{count, plural, one {# mention} other {# mentions}}",
+      "samples": "e.g. {samples}",
+      "edges": "{count, plural, one {# edge} other {# edges}}",
+      "dismissedBy": "Dismissed by {by}: {reason}",
+      "dismiss": "Dismiss",
+      "dismissing": "Dismissing…",
+      "cancel": "Cancel",
+      "reasonLabel": "Why this needs nothing done",
+      "reasonPlaceholder": "For example: kept on purpose, an archive",
+      "dismissed": "Item dismissed",
+      "forbidden": "Dismissing needs the writer role on the project.",
+      "gone": "That item is no longer in the queue you can see.",
+      "readerNote": "You can read the queue; a writer of the project can dismiss its items."
+    },
+    "decisions": {
+      "title": "Decisions",
+      "clusterTitle": "Decisions about this cluster's members",
+      "reviewTitle": "Decisions to review",
+      "none": "No decision names this yet.",
+      "readerNote": "Deciding needs the writer role on this project.",
+      "proposed": "Proposed by agents",
+      "noProposals": "No proposal waits for a writer.",
+      "orphans": "Orphaned",
+      "orphansNote": "Their node or edge is no longer in the latest build; the build skips them. Undo the ones that no longer apply.",
+      "noOrphans": "No decision is orphaned.",
+      "kinds": {
+        "deprecate": "Deprecate",
+        "merge": "Merge",
+        "link": "Link"
+      },
+      "states": {
+        "proposed": "Proposed",
+        "active": "In force",
+        "rejected": "Rejected",
+        "undone": "Undone",
+        "orphan": "Orphaned"
+      },
+      "actions": {
+        "propose": "{by} proposed decision {number}",
+        "decide": "{by} took decision {number}",
+        "accept": "{by} accepted decision {number}",
+        "reject": "{by} rejected decision {number}",
+        "undo": "{by} undid decision {number}"
+      },
+      "steps": {
+        "accept": "Accept",
+        "reject": "Reject",
+        "undo": "Undo"
+      },
+      "take": {
+        "deprecate": "Deprecate",
+        "merge": "Merge",
+        "link": "Add link"
+      },
+      "hints": {
+        "deprecate": "Deprecates this node, or with a relation and another node, the edge between them. The tools then leave it out.",
+        "merge": "Merges this node with another: they mean the same, and the smaller id keeps the other as an alias.",
+        "link": "Adds an edge from this node to another; the relation must exist in the ontology."
+      },
+      "kindLabel": "Decision",
+      "relLabel": "Relation",
+      "toLabel": "Other node id",
+      "reasonLabel": "Why",
+      "reasonPlaceholder": "Say why, for the people who read the graph later",
+      "cancel": "Cancel",
+      "done": {
+        "take": "Decision saved; the next build applies it.",
+        "accept": "Decision {number} accepted; the next build applies it.",
+        "reject": "Decision {number} rejected.",
+        "undo": "Decision {number} undone; the next build drops it."
+      },
+      "forbidden": "Deciding needs the writer role on this project.",
+      "gone": "The node, edge or decision is not in the graph you can see.",
+      "stale": "Someone decided in the meantime. Reload the decisions and try again.",
+      "invalid": "The hub refused this decision."
     }
   },
   "workers": {

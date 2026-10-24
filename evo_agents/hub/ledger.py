@@ -338,7 +338,7 @@ def worse_evidence(after: Mapping, outcome: Mapping) -> list[str]:
     if "corrections" in worse:
         add(item.get("evidence") for item in _list(after.get("corrections")) if isinstance(item, Mapping))
     health = after.get("kg_health") if isinstance(after.get("kg_health"), Mapping) else {}
-    if worse & kg_coverage.LEVELS:
+    if worse & (kg_coverage.LEVELS - kg_coverage.REVIEW):  # the queue's items name nodes, not code or sessions
         for item in _list(health.get("sources")):
             if isinstance(item, Mapping):
                 add(_list(item.get("evidence")))

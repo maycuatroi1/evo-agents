@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode, Neighbourhood, Relation } from "./types";
+import type { GraphEdge, GraphNode, Neighbourhood, NeighbourGroup, Relation } from "./types";
 
 /**
  * The graph view's model, independent of the canvas: how each kind of node is drawn (a chart colour and a shape,
@@ -110,6 +110,59 @@ export function neighboursOf(view: Pick<Neighbourhood, "nodes" | "edges">, id: s
       collator.compare(displayName(a.node), displayName(b.node)) ||
       collator.compare(a.node.id, b.node.id),
   );
+}
+
+/**
+ * The neighbours of `id` the table lists, in groups by edge type, direction and kind of the node at the other end.
+ * For the node shown, the groups are the API's: each lists the neighbours the view holds, the most connected first,
+ * and says how many more it has (`hidden`), which opening the group shows. For another node selected in the graph,
+ * the groups are of the edges the view holds, and hide nothing.
+ */
+export type RowGroup = Pick<NeighbourGroup, "key" | "rel" | "direction" | "kind" | "total"> & {
+  rows: NeighbourRow[];
+  hidden: number;
+};
+
+export function groupKey(direction: Direction, rel: string, kind: string): string {
+  return `${direction}:${rel}:${kind}`;
+}
+
+export function neighbourGroups(view: Pick<Neighbourhood, "focus" | "nodes" | "edges" | "groups">, id: string): RowGroup[] {
+  const rows = neighboursOf(view, id);
+  const byKey = new Map<string, NeighbourRow[]>();
+  for (const row of rows) {
+    const key = groupKey(row.direction, row.edge.rel, row.node.kind);
+    byKey.set(key, [...(byKey.get(key) ?? []), row]);
+  }
+  if (id === view.focus && view.groups.length > 0) {
+    return view.groups.map((group) => {
+      const found = byKey.get(group.key) ?? [];
+      const place = new Map(group.shown.map((node, index) => [node, index]));
+      const listed = found
+        .filter((row) => place.has(row.node.id))
+        .sort((a, b) => (place.get(a.node.id) ?? 0) - (place.get(b.node.id) ?? 0));
+      return { ...group, rows: listed, hidden: Math.max(0, group.total - group.shown.length) };
+    });
+  }
+  return [...byKey.entries()]
+    .map(([key, listed]) => {
+      const [first] = listed;
+      return {
+        key,
+        rel: first.edge.rel,
+        direction: first.direction,
+        kind: first.node.kind,
+        total: new Set(listed.map((row) => row.node.id)).size,
+        rows: listed,
+        hidden: 0,
+      };
+    })
+    .sort(
+      (a, b) =>
+        collator.compare(a.rel, b.rel) ||
+        (a.direction === b.direction ? 0 : a.direction === "out" ? -1 : 1) ||
+        collator.compare(a.kind, b.kind),
+    );
 }
 
 /** The node after (or before) `current` in `ordered`, wrapping around. */

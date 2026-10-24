@@ -462,6 +462,131 @@ most once a day, after its sync and push, holding every source's lock so no sync
 deletes appends a `prune` line with the counts to the project's `audit.jsonl`. `--json` prints the counts for a
 script.
 
+## Clusters
+
+A build groups the graph into named clusters in two levels when the optional extra `clusters` is installed
+(`pip install 'evo-ak[clusters]'`, which pulls `graspologic-native`; the hub image has it). Without the extra the build
+still succeeds with the same graph and no clusters, and `evo-agents kg status` says why on the line `clusters: none,
+graspologic-native is not installed: ...`. A build made before clusters existed opens as before and reports `clusters:
+none, the build predates them`. The code is `evo_agents/kg/clusters.py`.
+
+**The projection.** Clusters are computed over a projected graph, not over every node:
+
+- a Symbol counts as the File that defines it (its `props.file`, else the File of its `defines` edge), and a Section
+  as the Document that holds it;
+- Source, Repo, Directory and Commit nodes are left out, and so are the structural relations `in_source`, `in_repo`,
+  `child_of`, `defines`, `part_of` and `member_of`;
+- image files, and plan steps whose name recurs across plans ("Merge and release"), are left out as noise;
+- only nodes and edges every reader of the project may read take part: no audience, and a level and location within
+  the clearance of the project's hub sink (else the lowest clearance its sinks declare, else level 0). A node of a
+  narrower audience is neither a member nor a word of a label.
+
+The weight of a pair of projected nodes is the number of edges that join them, divided by the square root of the
+product of their degrees. The most connected 0.5% of the projected nodes stay out of the clustering and join
+afterwards the cluster their edges reach most, so a few documents every plan names do not glue unrelated clusters
+together. A shared node with no projected edge belongs to no cluster.
+
+**The algorithm.** `hierarchical_leiden` of graspologic-native, seed 7, resolution 1.0, gives level 1, the clusters of
+the whole graph, and level 2, the parts of a level-1 cluster over 150 members. A level-2 cluster exists only under a
+level-1 cluster that large. An error of the engine does not fail the build: the coverage records `computed: false` with
+the reason.
+
+**Labels.** A cluster's label is its first 5 words by c-TF-IDF over the names and paths of its members, against the
+other clusters of its level, with file suffixes and common English and Vietnamese words left out. Each cluster also
+keeps its size, its members counted by kind, and the weight of its links to the other clusters of its level.
+
+**Stability.** The seed is fixed, and the clustering starts from the clusters of the previous build (the store's last
+ready build, or the target `graph.sqlite` when the hub builds into a staging store). A new cluster takes the id of the
+previous cluster of its level it matches with a Jaccard index of at least 0.5, best matches first and each id once;
+any other cluster's id is a digest of its members. The same graph, previous clusters and parameters give the same
+clusters and the same content hash. The algorithm's version, its parameters and the engine's version are an input of
+the build, so installing or upgrading the extra rebuilds. Each build keeps the members it started from in
+`cluster_warm`, outside the content hash, so `kg build --verify` reproduces a build whose previous build is gone (the
+hub writes each build into an empty store). The tables `clusters`, `cluster_members` and `cluster_links`
+count in the content hash only when they hold rows, so a build without clusters hashes as it did before.
+
+**On the hub.** The hub serves the clusters per reader: it recounts sizes, kinds, link weights and labels over the
+members and edges the reader can see and never serves the stored numbers, so a hidden node cannot leak through a
+count or a label word. The project's knowledge graph page draws the map; `docs/hub.md` (Memories, skills and
+knowledge graphs) lists the routes and `evo-agents hub kg clusters`.
+
+## Review
+
+Each build with clusters computes a review queue: what in the graph a person should look at, found by six rules with
+no model (`evo_agents/kg/review.py`, stored in the build's `review_items` table).
+
+| Rule | What it finds | Suggested action |
+| --- | --- | --- |
+| `dangling_mention` | an item (a document, a plan) that mentions code the graph does not hold, the dangling mentions its source's coverage counts | `fix_mention` |
+| `unmentioned_document` | a Document no other node mentions or links to, its own sections aside | `link_or_deprecate` |
+| `cluster_without_knowledge` | a level-1 cluster with code (File, Symbol) and no Document, Plan, Problem or Claim | `add_knowledge` |
+| `possible_duplicate` | nodes of one kind whose normalised names (accents dropped, case folded, letters and digits only) are the same and whose ids differ | `merge` |
+| `ambiguous_match` | an item whose mentions matched several nodes by name, or a path edge resolved to one of several files with that path | `disambiguate` |
+| `bulk_noise` | images, generated files (lockfiles, `dist/`, `node_modules/`, `*.min.js` and the like) and plan steps whose name repeats across plans, 3 or more of a kind in one place | `exclude` |
+
+An item holds its rule, the ids of the nodes it is about (its evidence, at most 50 with the full count in its detail),
+the level-1 cluster its first node counts in, the suggested action and what it found. Kinds whose names repeat by
+design (Symbol, Section, File, PlanStep and the like) are not checked for duplicates.
+
+**Fingerprints.** An item's fingerprint, `r:` and 16 hex digits, hashes its rule with what it is about: a node id, an
+edge id, a cluster id, a kind and name, a directory. Nothing that changes between builds goes in, so the same finding
+keeps its fingerprint across builds.
+
+**Dismissing.** A writer of the project dismisses an item with a reason, on the web's review page or with `evo-agents
+hub kg review dismiss`. The hub keeps the dismissal by fingerprint (`kg_review_dismissals`, migration 0141), so the item stays
+dismissed in later builds. Dismissing an item again replaces the reason and keeps the first build. There is no undo.
+
+**Who sees what.** A reader sees an item only through its nodes: the first nodes the rule requires must all be
+visible to them, the rest of its evidence is shown only where visible, and an item left with too few visible nodes
+(two for a duplicate) is not shown. The hub recomputes each item's cluster label and order for that reader, so the queue names no hidden node, id or count.
+The page groups items by rule, then by cluster, most connected nodes first.
+
+**Health.** The open items of each rule are a level metric of the graph's health, `kg_review_<rule>`, measured as the
+owner through the hub's sink, with dismissed fingerprints left out. The Curator's `kg_health` lens reads them
+(`docs/hub.md`, The graph's health).
+
+## Decisions
+
+A writer of a project corrects its graph on the hub with decisions, and the next build applies them. A decision never
+deletes anything: it is recorded with its reason and can be undone. Fixing what a source says (a wrong document) still
+goes through a commit to that source.
+
+**Kinds.**
+
+- `deprecate` a node, or an edge given by from, relation and to, with a required reason. The node or edge stays in
+  the graph with `props.deprecated = {reason, decision}`.
+- `merge` two node ids, as `same_as` of a binding file does: the smallest id stays and the other becomes its alias.
+- `link` two nodes with a relation the project's ontology knows. The edge has status `declared` and the prop
+  `decision`.
+
+**States.** A decision is `proposed`, `active`, `rejected` or `undone`. A writer's decision is active at once. An
+agent only proposes, through the MCP tool `kg_propose` of evo-hub (it needs the writer role, returns no graph data, and
+judge runs cannot call it); a writer accepts or rejects the proposal with a reason. A writer undoes an active decision.
+`orphan` is not stored: the hub computes it when it lists decisions, for an active decision whose nodes the latest
+build no longer holds (a link or a merge counts only its nodes). An orphan applies to nothing and breaks no build; it
+shows in the list for a writer to undo.
+
+**Revisions.** A project has one decision revision, the highest of its events (0 before the first). Every write names
+the revision it read (`base_rev`), and the hub answers 409 with the revision now when it differs; nothing changes.
+Each step records who took it, when, why and the build the graph was at (`kg_decisions`, `kg_decision_events`,
+migration 0142). A new decision may name only nodes and edges the writer sees in the latest build. Taking, accepting
+or undoing a decision queues a build.
+
+**How a build applies them.** The hub gives the active decisions to the build as one item of its own source
+`plugin.hub_decisions`, a binding item marked `curation`, with the project's default label
+(`evo_agents/hub/kg_decisions.py`). The binding stage reads it (`evo_agents/kg/pipeline/curation.py`): merges join
+like `same_as`, links become `declared` edges, and deprecations mark their node or edge once the graph is assembled. A
+decision whose ids the graph does not hold is skipped, never an error. A project with no active decision gets no item.
+
+**Effect on the tools.** `kg_search`, `kg_context`, `kg_path` and the web's node search leave deprecated nodes and
+edges out; `kg_impact` does not follow a deprecated edge; `kg_node` of a deprecated node says `deprecated: <reason>
+(decision N)`. Each of `kg_search`, `kg_context`, `kg_node`, `kg_impact` and `kg_path` takes `deprecated: true` to
+include them. A merged id answers as an alias of the node that stayed.
+
+**Who sees what.** A member sees a decision only when every node and edge it names that the build holds is visible to
+them. Writers decide, readers of the project see the list, and anyone without a grant gets 404. `evo-agents hub kg
+decisions` lists and takes them (`docs/hub.md`, Memories, skills and knowledge graphs).
+
 ## Measuring retrieval
 
 `evo-agents kg eval questions.jsonl` asks `kg_search` and `kg_context` each question of a set as an agent would,

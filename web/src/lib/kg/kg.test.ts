@@ -1,15 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import { buildDurations, durationParts, isWebLink, shortHash } from "./format";
-import { displayName, groupRelations, kindStyle, neighboursOf, orderNodes, shortLabel, step } from "./graph";
-import { buildsActive, cleanQuery, parseHops } from "./queries";
+import {
+  displayName,
+  groupRelations,
+  kindStyle,
+  neighbourGroups,
+  neighboursOf,
+  orderNodes,
+  shortLabel,
+  step,
+} from "./graph";
+import { buildsActive, cleanQuery, kgKeys, NODE_PAGE_GROUPING, openKeys, parseHops } from "./queries";
 import { kgHref, nodeHref } from "./routes";
 import type { GraphEdge, GraphNode, KgBuild, KgBuilds, Relation } from "./types";
 
 const label = { level: "internal", location: "any", integrity: "U" };
 
-function node(id: string, hop: number, kind = "Section", name: string | null = id): GraphNode {
-  return { id, kind, name, status: "parsed", conf: 1, label, props: {}, aliases: [], hop, hub: false };
+function node(id: string, hop: number, kind = "Section", name: string | null = id, degree = 1): GraphNode {
+  return { id, kind, name, status: "parsed", conf: 1, label, props: {}, aliases: [], hop, hub: false, degree };
 }
 
 function edge(src: string, rel: string, dst: string): GraphEdge {
@@ -105,6 +114,39 @@ describe("graph model", () => {
     ]);
     expect(neighboursOf(view, "doc").map((row) => [row.direction, row.node.id])).toEqual([["in", "a"]]);
     expect(neighboursOf(view, "nowhere")).toEqual([]);
+  });
+
+  it("groups the neighbours of the node shown as the API ranks them, with how many each group holds back", () => {
+    const grouped = {
+      focus: "focus",
+      nodes: [node("focus", 0, "Requirement"), node("low", 1, "Section", "Low", 2), node("high", 1, "Section", "High", 9), node("doc", 1, "Document")],
+      edges: [edge("focus", "defines", "low"), edge("focus", "defines", "high"), edge("doc", "mentions", "focus")],
+      groups: [
+        { key: "out:defines:Section", rel: "defines", direction: "out" as const, kind: "Section", total: 7, shown: ["high", "low"] },
+        { key: "in:mentions:Document", rel: "mentions", direction: "in" as const, kind: "Document", total: 1, shown: ["doc"] },
+      ],
+    };
+    const groups = neighbourGroups(grouped, "focus");
+    expect(groups.map((g) => [g.key, g.rows.map((row) => row.node.id), g.total, g.hidden])).toEqual([
+      ["out:defines:Section", ["high", "low"], 7, 5],
+      ["in:mentions:Document", ["doc"], 1, 0],
+    ]);
+    // Another node selected in the graph: the groups of the edges drawn, which hide nothing.
+    expect(neighbourGroups(grouped, "low").map((g) => [g.key, g.total, g.hidden])).toEqual([["in:defines:Requirement", 1, 0]]);
+    // A view asked without groups groups its own edges, even for the node shown.
+    expect(neighbourGroups({ ...view, focus: "focus", groups: [] }, "focus").map((g) => [g.key, g.rows.length])).toEqual([
+      ["out:defines:Section", 1],
+      ["in:mentions:Section", 2],
+    ]);
+  });
+
+  it("asks for the same grouped neighbourhood whatever order the groups were opened in", () => {
+    expect(openKeys({ group: 5, open: ["b", "a", "b"] })).toEqual(["a", "b"]);
+    expect(kgKeys.neighbourhood("demo", "x", 2, { group: 5, open: ["b", "a"] })).toEqual(
+      kgKeys.neighbourhood("demo", "x", 2, { group: 5, open: ["a", "b"] }),
+    );
+    expect(kgKeys.neighbourhood("demo", "x", 2, NODE_PAGE_GROUPING)).toEqual(["kg", "demo", "neighbourhood", "x", 2, 5]);
+    expect(kgKeys.neighbourhood("demo", "x", 2)).toEqual(["kg", "demo", "neighbourhood", "x", 2]);
   });
 
   it("orders nodes by step, kind and name, and steps through them both ways", () => {

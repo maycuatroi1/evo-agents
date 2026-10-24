@@ -3,7 +3,8 @@ each git source holds in it (``source_files``), how they compare with the tree o
 forge (``compare_files``), and what the facets of sessions and runs say agents got from the graph (``retrieval``).
 Pure functions over JSON values and the worker's cache of a project, no database: ``evo_agents.hub.kg_build`` keeps
 the first two with each build, and ``evo_agents.hub.server.kg_health`` measures the graph and counts the night's figures
-(``kg_health``) from them. ``evo_agents.hub.ledger`` reads its metrics (METRICS) from those figures.
+(``kg_health``) from them. ``evo_agents.hub.ledger`` reads its metrics (METRICS) from those figures, among them the
+open items of each rule of the review queue (``kg_review_<rule>``, ``evo_agents.hub.kg_review``).
 
 A build's coverage (``kg_builds.coverage``) holds, for each source of the build, its items and mentions and how many of
 those resolved, stayed ambiguous or dangled, with their shares, and for a git source the commit it read
@@ -26,6 +27,7 @@ from datetime import datetime
 from evo_agents.hub.facets import KG_LOOKUPS
 from evo_agents.kg import freshness
 from evo_agents.kg.connectors._files import excluded, selected
+from evo_agents.kg.review import RULES as REVIEW_RULES
 
 MAX_FILES = 50_000  # files of one git source a build keeps; past that the list is cut and says so
 SAMPLES = 5  # paths, sessions and runs an entry names
@@ -246,6 +248,27 @@ def _retrieved(figure: Mapping | None, key: str) -> int:
     return _int(found.get(key)) if isinstance(found, Mapping) else 0
 
 
+def review_open(figure: Mapping | None, rule: str) -> int:
+    """The items of the review queue of ``rule`` open to the owner (``kg_health.review``)."""
+    found = figure.get("review") if isinstance(figure, Mapping) else None
+    counts = found.get("open") if isinstance(found, Mapping) else None
+    return _int(counts.get(rule)) if isinstance(counts, Mapping) else 0
+
+
+REVIEW_WORDS = {
+    "dangling_mention": "documents and plans of the knowledge graph that mention code it does not hold",
+    "unmentioned_document": "documents of the knowledge graph nothing mentions",
+    "cluster_without_knowledge": "clusters of the knowledge graph with code and no document, plan, problem or claim",
+    "possible_duplicate": "groups of nodes of the knowledge graph that may be duplicates",
+    "ambiguous_match": "mentions and links of the knowledge graph that matched one of several nodes by name",
+    "bulk_noise": "groups of images, generated files and repeated plan steps in the knowledge graph",
+}
+
+
+def _review_metric(rule: str):
+    return lambda figure: review_open(figure, rule)
+
+
 # metric: (what it counts, how it reads from the night's ``kg_health``)
 METRICS = {
     "kg_behind": ("commits of the default branches the knowledge graph has not read", behind),
@@ -257,4 +280,8 @@ METRICS = {
         lambda figure: _retrieved(figure, "misses"),
     ),
 }
-LEVELS = frozenset({"kg_behind", "kg_files_off"})  # the graph's state at a moment, not counts of activity
+METRICS.update(
+    {f"kg_review_{rule}": (f"open review items: {REVIEW_WORDS[rule]}", _review_metric(rule)) for rule in REVIEW_RULES}
+)
+REVIEW = frozenset(f"kg_review_{rule}" for rule in REVIEW_RULES)  # open items of the review queue, per rule
+LEVELS = frozenset({"kg_behind", "kg_files_off"}) | REVIEW  # the graph's state at a moment, not counts of activity

@@ -29,7 +29,7 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 36 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+The 39 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project whose audience the caller still holds
@@ -105,6 +105,7 @@ from evo_agents.hub.server import (
     intake,
     kg,
     kg_audience,
+    kg_decisions,
     local_runs,
     memories,
     plans,
@@ -409,6 +410,7 @@ class HubMcp(MCPServer):
             "skill_list": self._skill_list,
             "hub_projects": self._hub_projects,
             "run_tool_stats": self._run_tool_stats,
+            "kg_propose": partial(self._delegated, kg_decisions.mcp_answer),
             "curator_figures": self._curator_figures,
             "digest_list": self._digest_list,
             "digest_show": self._digest_show,

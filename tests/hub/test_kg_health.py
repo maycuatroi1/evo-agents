@@ -33,6 +33,7 @@ from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import kg_health
 from evo_agents.hub.server.collect import collect
 from evo_agents.kg.project import load_project_at
+from evo_agents.kg.review import RULES
 from evo_agents.kg.sync import sync_project
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, app_key  # noqa: F401 (a fixture)
@@ -242,6 +243,7 @@ def test_the_hub_measures_each_git_source_of_a_charter_against_its_default_branc
     assert unbuilt["why"] == "no successful build of the graph holds this source yet"
     assert local["why"] == kg_health.NO_REPO and local["repo"] is None and local["graph_files"] == 0
     assert body["eval"] == {"why": "this process has no blob store and cache to read the graph from"}
+    assert body["review"] == {"why": "this process has no blob store and cache to read the graph from"}
     asked = [json.loads(call.body) for call in world.github.requests if call.path.endswith("/access_tokens")]
     assert asked[-1]["permissions"] == {"contents": "read", "metadata": "read"}  # it reads; it never writes
 
@@ -327,6 +329,7 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
     assert health["sources"][0]["behind"] == 2 and health["sources"][0]["lag_hours"] == 6.0
     assert all("off" not in item for item in health["sources"])  # the tier rules read those paths, not the Reviewer
     assert health["coverage"]["build_id"] == build_id and health["coverage"]["python"]["uncalled_methods"] == 2
+    assert health["review"] == {"why": "this process has no blob store and cache to read the graph from"}
     builds = health["builds"]
     assert {key: builds[key] for key in ("builds", "succeeded", "failed", "unchanged", "unchanged_rate")} == {
         "builds": 3,
@@ -368,7 +371,14 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
     assert response.status_code == 200, response.text
     trigger = response.json()["lines"][0]["figures"]
     metrics = {item["key"]: item["value"] for item in trigger["metrics"]}
-    assert metrics == {"kg_behind": 2.0, "kg_files_off": 3.0, "kg_empty": 2.0, "kg_fallbacks": 1.0, "kg_misses": 1.0}
+    assert metrics == {
+        "kg_behind": 2.0,
+        "kg_files_off": 3.0,
+        "kg_empty": 2.0,
+        "kg_fallbacks": 1.0,
+        "kg_misses": 1.0,
+        **{f"kg_review_{rule}": 0.0 for rule in RULES},  # no blob store here: the queue is not counted
+    }
 
 
 def test_a_project_without_a_graph_has_no_health_in_its_figures(world):  # noqa: F811
@@ -466,5 +476,6 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
     ((_, _, body, error),) = health_rows(world.db)
     assert error is None and body["sources"][0]["behind"] == 2
     assert body["eval"] == {"why": "the evaluation failed: RuntimeError"}
+    assert body["review"]["why"].startswith("counting the review queue failed")  # the measure stands without it
     ((project, sink, builds, plans),) = asked
     assert project == PROJECT and sink == "hub" and len(builds) == 2 and "credentials-smoke" in plans  # as the owner

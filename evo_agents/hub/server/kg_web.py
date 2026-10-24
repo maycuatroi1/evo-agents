@@ -5,8 +5,12 @@
 - GET /v1/kg/{project}/nodes?q=&kind=&limit=: search, as kg_search.
 - GET /v1/kg/{project}/node?id=: one node with its label, evidence (source, revision, span, uri) and its visible
   neighbours by edge type, as kg_node.
-- GET /v1/kg/{project}/neighbourhood?id=&hops=&limit=: the nodes and edges the graph view draws, at most 2 steps
-  from the node and at most 150 nodes, saying when it left nodes out.
+- GET /v1/kg/{project}/neighbourhood?id=&hops=&limit=&group=&open=: the nodes and edges the graph view draws, at
+  most 2 steps from the node and at most 150 nodes, saying when it left nodes out. The node's direct neighbours come in
+  groups by edge type, direction and kind; with ``group``, each group shows at most that many, those with the most
+  visible edges first, except the groups ``open`` names, and the second step goes on from those alone.
+- GET /v1/kg/{project}/shape: the graph's shape, how many visible edges join each (source kind, edge type, target
+  kind); an edge counts only when it and both its nodes are visible.
 
 The build status the pages show comes from GET /v1/kg/{project}/builds (``evo_agents.hub.server.kg``). Nothing here
 writes, queues a build or goes through /mcp.
@@ -26,7 +30,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -139,6 +143,7 @@ class NodeDetail(BaseModel):
 class GraphNode(KgNode):
     hop: int = Field(description="steps from the node shown, 0 for the node itself")
     hub: bool = Field(description="left unexpanded: it has more than 150 visible edges")
+    degree: int = Field(description="the node's visible edges in the whole graph")
 
 
 class GraphEdge(BaseModel):
@@ -149,16 +154,39 @@ class GraphEdge(BaseModel):
     status: str
 
 
+class NeighbourGroup(BaseModel):
+    key: str = Field(description="direction:rel:kind, as the open parameter names the group")
+    rel: str
+    direction: Literal["out", "in"]
+    kind: str = Field(description="the kind of the neighbours")
+    total: int = Field(description="visible direct neighbours in the group")
+    shown: list[str] = Field(description="the ids of those in nodes, most visible edges first")
+
+
 class Neighbourhood(BaseModel):
     graph: GraphRef
     focus: str = Field(description="the id of the node shown, when it was asked for by an alias")
     hops: int
     limit: int
+    group: int | None = Field(description="direct neighbours shown of each group not opened; null for all")
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+    groups: list[NeighbourGroup] = Field(description="the node's direct neighbours by edge type, direction and kind")
     neighbours: int = Field(description="visible direct neighbours of the node")
     left_out: int = Field(description="visible nodes within reach that the node limit left out")
     truncated: bool
+
+
+class ShapeRow(BaseModel):
+    src_kind: str
+    rel: str
+    dst_kind: str
+    count: int
+
+
+class GraphShape(BaseModel):
+    graph: GraphRef | None = Field(description="null until a build of the project succeeded")
+    shape: list[ShapeRow] = Field(description="visible edges by source kind, edge type and target kind, most first")
 
 
 # Reading
@@ -237,6 +265,13 @@ async def graph_summary(request: Request, project: ProjectName, user: CurrentUse
     )
 
 
+@router.get("/{project}/shape", response_model=GraphShape)
+async def graph_shape(request: Request, project: ProjectName, user: CurrentUser) -> GraphShape:
+    """How many edges the member can see join each kind of node to each other, by edge type, most first."""
+    shape, ref = await _read(request, user, project, WebSession.shape)
+    return GraphShape(graph=ref, shape=[ShapeRow(**row) for row in shape or []])
+
+
 @router.get("/{project}/nodes", response_model=NodeSearch)
 async def search_nodes(
     request: Request,
@@ -296,12 +331,20 @@ async def show_neighbourhood(
     user: CurrentUser,
     hops: Annotated[int, Query(ge=1, le=MAX_HOPS)] = MAX_HOPS,
     limit: Annotated[int, Query(ge=1, le=MAX_NODES)] = MAX_NODES,
+    group: Annotated[
+        int | None, Query(ge=1, le=MAX_NODES, description="direct neighbours shown of each group; all when absent")
+    ] = None,
+    opened: Annotated[
+        list[str] | None,
+        Query(alias="open", max_length=100, description="keys of the groups shown whole (direction:rel:kind)"),
+    ] = None,
 ) -> Neighbourhood:
     """The visible nodes and edges within ``hops`` steps of a node, at most ``limit`` nodes, for the graph view."""
+    keys = frozenset(opened or [])
 
     def reader(session: WebSession):
         try:
-            return session.neighbourhood(node_id, hops, limit)
+            return session.neighbourhood(node_id, hops, limit, group, keys)
         except NotVisible:
             return None
 
@@ -315,8 +358,10 @@ async def show_neighbourhood(
         focus=data["focus"],
         hops=data["hops"],
         limit=data["limit"],
+        group=data["group"],
         nodes=[GraphNode(**n) for n in data["nodes"]],
         edges=[GraphEdge(**e) for e in data["edges"]],
+        groups=[NeighbourGroup(**g) for g in data["groups"]],
         neighbours=data["neighbours"],
         left_out=data["left_out"],
         truncated=data["truncated"],
