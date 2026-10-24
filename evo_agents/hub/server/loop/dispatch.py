@@ -41,9 +41,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
-from evo_agents.hub.server.loop import caps, plugin_rules, texts
+from evo_agents.hub.server.loop import act, caps, plugin_rules, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker
 from evo_agents.hub.server.loop.model import (
+    ACT,
     BRAINSTORM,
     BUILD,
     DELIVER,
@@ -264,6 +265,8 @@ async def hand_out(
     conn: AsyncConnection, project_id: int, item: ItemView, view: View, worker: LoopWorker
 ) -> Handed | None:
     """The run of work item ``item``, which passed admission, as the module says; None for no kind of the Loop's."""
+    if item.kind == ACT:
+        return await act.hand_out(conn, project_id, item, view.now)
     if item.kind in (BRAINSTORM, USE_CASE, DISCOVER):
         return await _task_run(conn, project_id, item)
     if item.kind == BUILD:

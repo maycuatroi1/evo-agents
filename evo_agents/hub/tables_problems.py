@@ -19,6 +19,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     Identity,
+    Index,
     Integer,
     MetaData,
     PrimaryKeyConstraint,
@@ -76,3 +77,36 @@ def problem_tables(metadata: MetaData) -> tuple[Table, Table]:
         PrimaryKeyConstraint("problem_id", "revision", name="problem_revisions_pkey"),
     )
     return problems, revisions
+
+
+def evidence_table(metadata: MetaData) -> Table:
+    """problem_evidence (0137, plan problem-intake), added to ``metadata``: one row per line of evidence of a problem,
+    numbered within the problem (the code E-<number>). A line names the kind and address of its source, where in it,
+    who spoke, an excerpt of at most 300 characters, the signal it shows and its label (public or internal), who added
+    it, who confirmed it and when, and the proposal of @builder that made it, if one did. A problem's lines go with it."""
+    name = "problem_evidence"
+    table = Table(
+        name,
+        metadata,
+        Column("problem_id", BigInteger, nullable=False),
+        Column("number", Integer, nullable=False),
+        Column("source_kind", Text, nullable=False),
+        Column("source_uri", Text, nullable=False),
+        Column("locator", Text),
+        Column("speaker", Text),
+        Column("excerpt", Text, nullable=False),
+        Column("signal", Text, nullable=False),
+        Column("label", Text, nullable=False),
+        Column("added_by", BigInteger, nullable=False),
+        _stamp("created_at"),
+        Column("confirmed_by", BigInteger),
+        Column("confirmed_at", DateTime(timezone=True)),
+        Column("proposal_id", BigInteger),
+        _key(name, "problem_id", "problems", ondelete="CASCADE"),
+        _key(name, "added_by", "users", ondelete="RESTRICT"),
+        _key(name, "confirmed_by", "users", ondelete="RESTRICT"),
+        _key(name, "proposal_id", "builder_proposals", ondelete="SET NULL"),
+        PrimaryKeyConstraint("problem_id", "number", name="problem_evidence_pkey"),
+    )
+    Index(f"{name}_proposal_idx", table.c.proposal_id, postgresql_where=table.c.proposal_id.is_not(None))
+    return table

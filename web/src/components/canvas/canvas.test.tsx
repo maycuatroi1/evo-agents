@@ -30,6 +30,7 @@ function claimOf(overrides: Partial<CanvasClaim> = {}): CanvasClaim {
     text: "Shop owners lose a sale when checkout takes more than two minutes",
     status: "testing",
     confidence: "medium",
+    delivery: "code",
     test_card: {
       hypothesis: "Owners pay for one-click checkout",
       test: "Offer it to 20 shops",

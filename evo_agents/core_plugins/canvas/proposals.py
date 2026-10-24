@@ -32,6 +32,7 @@ NEW_CLAIM_FIELDS = (  # what a proposed new claim may set
     "cell",
     "text",
     "confidence",
+    "delivery",
     "position",
     "test_card",
     "use_cases",

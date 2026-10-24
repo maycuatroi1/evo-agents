@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_gate, runs, tables
 from evo_agents.hub.server.loop.model import (
+    ACT,
     BUILD,
     CYCLE_OF,
     DELIVER,
@@ -104,6 +105,8 @@ class Capacity:
 
     def take(self, item: ItemView, repos: Iterable[str]) -> None:
         """Count the run just handed out for ``item``, a deliver holding ``repos``."""
+        if item.kind == ACT:
+            return  # a task of the plugin tasks holds no slot of the cycle and no hand-out of the hour
         self.running[CYCLE_OF[item.kind]] += 1
         self.dispatched += 1
         if item.kind == DELIVER:
@@ -136,6 +139,8 @@ def refusal(item: ItemView, repos: Sequence[str], capacity: Capacity, policy: Ma
     for a deliver; None when it passes them all. ``policy`` is the loop section of the effective policy."""
     if capacity.tripped:
         return BREAKER, {}
+    if item.kind == ACT:
+        return None  # only the breaker holds an act: its task is no run
     cycle = CYCLE_OF[item.kind]
     most = int(policy[cycle]["max_running"])
     if capacity.running[cycle] >= most:
@@ -246,14 +251,14 @@ async def _handed_lately(conn: AsyncConnection, project_id: int, view: View) -> 
     query = (
         select(func.count())
         .select_from(e.join(i, i.c.id == e.c.item_id))
-        .where(i.c.project_id == project_id, e.c.kind == DISPATCHED, e.c.at > view.now - RATE_WINDOW)
+        .where(i.c.project_id == project_id, i.c.kind != ACT, e.c.kind == DISPATCHED, e.c.at > view.now - RATE_WINDOW)
     )
     return int(await conn.scalar(query) or 0)
 
 
 async def measure(conn: AsyncConnection, project_id: int, view: View, *, tripped: bool) -> Capacity:
     """What the checks count now, from ``view`` (every work item not finished) and the project's rows."""
-    running = Counter(CYCLE_OF[item.kind] for item in view.items if item.state == RUNNING)
+    running = Counter(CYCLE_OF[item.kind] for item in view.items if item.state == RUNNING and item.kind != ACT)
     return Capacity(
         tripped=tripped,
         worker=await loop_worker(conn, project_id, view.policy.get("worker")),

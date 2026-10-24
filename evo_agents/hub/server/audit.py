@@ -201,6 +201,16 @@ GOAL_SET = "goal.set"
 # revision=<n> fields=<the fields whose value changed>", then " proposal=<id>" when a writer approved or rolled back a
 # proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
 PROBLEM_SET = "problem.set"
+# Lines of evidence of a problem added or confirmed (evo_agents.hub.server.problem_evidence), in the project:
+# "<project>/problem P-<n> evidence=E-<n>[,E-<n>...]" with " added" or " confirmed", then " proposal=<id>" when a writer
+# approved a proposal of @builder that carried them, or " removed proposal=<id>" when a rollback took them away; never
+# an excerpt.
+PROBLEM_EVIDENCE = "problem.evidence"
+# An intake of a project started or its result put (evo_agents.hub.server.intake), in the project: "<project>/intake
+# I-<n>" with " started sources=<count>", or " put candidates=<n> promises=<n> questions=<n> proposals=<ids>
+# tasks=<count>"; never a source's name or an excerpt.
+INTAKE_START = "intake.start"
+INTAKE_PUT = "intake.put"
 # The org chart belongs to no project (evo_agents.hub.server.org_store). A target names the unit by slug and the seat
 # by id with its holder, then each field that changed as "<field>=<was>-><is>" and the unit's revision after it:
 # "unit:<slug> parent=<slug> kind=<kind> revision=1", "seat:<id> unit=<slug> login=<l> role=<role> primary=true->false

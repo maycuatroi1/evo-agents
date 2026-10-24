@@ -9140,6 +9140,10 @@
       "approved": "Đã duyệt",
       "expired": "Đã hết hạn"
     },
+    "delivery": {
+      "code": "Code",
+      "action": "Hành động"
+    },
     "confidence": {
       "low": "Thấp",
       "medium": "Vừa",
@@ -9251,6 +9255,8 @@
       "cell": "Ô",
       "status": "Trạng thái",
       "confidence": "Độ tin",
+      "delivery": "Cách giao",
+      "deliveryHelp": "Code đi theo đường build. Hành động thành một task của plugin tasks khi claim chuyển sang đang kiểm.",
       "statusHelp": "Đang kiểm cần giả thuyết, cách kiểm và hạn. Đã xác thực cần bằng chứng thật ủng hộ claim.",
       "testingHelp": "Đang kiểm cần test card có giả thuyết, cách kiểm và hạn.",
       "validatedHelp": "Hub chỉ nhận Đã xác thực khi có bằng chứng thật ủng hộ claim: không dựa trên người dùng mô phỏng, không thuộc loại tài liệu hay mô phỏng, do người thêm hoặc được người có vai trò ghi xác nhận.",
@@ -9677,14 +9683,16 @@
       "discover": "Discover",
       "use_case": "Use case",
       "build": "Build",
-      "deliver": "Deliver"
+      "deliver": "Deliver",
+      "act": "Act"
     },
     "title": {
       "brainstorm": "Brainstorm cho {subject}",
       "discover": "Discover cho {subject}",
       "use_case": "Use case cho {subject}",
       "build": "Build {subject}",
-      "deliver": "Deliver {subject}"
+      "deliver": "Deliver {subject}",
+      "act": "Act cho {subject}"
     },
     "cycle": {
       "business": "Business cycle",

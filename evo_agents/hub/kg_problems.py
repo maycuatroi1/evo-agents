@@ -14,6 +14,11 @@ keeps it apart from any plugin's. It answers two items, each a Document of the g
   its code (``G-1``), with its statement and status. The fragment ``defines`` the Goal node ``goal:G-1``, which
   ``addresses`` the problem.
 
+- ``plugin.hub_problems:doc:evidence``, titled Evidence (plan problem-intake, criterion a1), for a project whose
+  problems have evidence: a fragment per line keyed ``P-3/E-2``, whose text is its excerpt with the signal, the source
+  and who spoke. The fragment ``evidences`` the Problem node of its problem, so the line is an edge of that node. Like
+  the other items it carries the project's default label.
+
 A plan whose body names a problem ``addresses`` it (``evo_agents.kg.pipeline.stages``), and so does a claim that links
 one (``evo_agents.core_plugins.canvas.kg``). The identifier PROBLEM_PATTERN links a mention of a problem's code in any
 source of the project to its node. A project without a problem gets no item, so its graph builds as before.
@@ -34,6 +39,7 @@ DOC = "doc"  # the kind in an item's id: plugin.hub_problems:doc:problems
 PROBLEM = "Problem"
 GOAL = "Goal"
 ADDRESSES = "addresses"  # a plan, a claim or a goal to the problem it answers
+EVIDENCES = "evidences"  # a line of evidence to the problem it shows hurts
 PROBLEM_PATTERN = r"(?<![\w-])P-[1-9][0-9]{0,8}(?![\w-])"  # a problem's code inside text (problems.code)
 
 
@@ -106,6 +112,55 @@ async def _goals(conn: AsyncConnection, project_id: int) -> list:
     return (await conn.execute(query)).all()
 
 
+async def _evidence(conn: AsyncConnection, project_id: int) -> list:
+    """The lines of evidence of the project's problems, with their problem's number."""
+    e, p = tables.problem_evidence, tables.problems
+    query = (
+        select(
+            p.c.number.label("problem"),
+            e.c.number,
+            e.c.source_kind,
+            e.c.source_uri,
+            e.c.locator,
+            e.c.speaker,
+            e.c.excerpt,
+            e.c.signal,
+            e.c.created_at,
+        )
+        .join_from(e, p, p.c.id == e.c.problem_id)
+        .where(p.c.project_id == project_id)
+        .order_by(p.c.number, e.c.number)
+    )
+    return (await conn.execute(query)).all()
+
+
+def _evidence_item(rows: list, label: dict, page: dict) -> dict:
+    item_id = f"{SOURCE}:{DOC}:evidence"
+    fragments, edges = [], []
+    for row in rows:
+        problem, line = problems.code(row.problem), problems.evidence_code(row.number)
+        anchor = f"{problem}/{line}"
+        where = f" at {row.locator}" if row.locator else ""
+        who = f", said by {row.speaker}" if row.speaker else ""
+        text = f"{row.excerpt}\n\nSignal: {row.signal}. Source: {row.source_kind} {row.source_uri}{where}{who}."
+        fragments.append(
+            {"anchor": anchor, "title": f"Evidence {row.number} of problem {row.problem}", "level": 1, "text": text}
+        )
+        edges.append(
+            {"src": f"{item_id}#{anchor}", "rel": EVIDENCES, "dst": problem_node_id(problem), "anchor": anchor}
+        )
+    return {
+        "id": item_id,
+        "kind": "doc",
+        "title": "Evidence",
+        "rev_time": utc_text(max(row.created_at for row in rows)),
+        "fragments": fragments,
+        "props": {"evidence": len(rows), "graph": {"nodes": [], "edges": edges}},
+        "label": label,
+        **page,
+    }
+
+
 def _problems_item(rows: list, label: dict, page: dict) -> dict:
     item_id = f"{SOURCE}:{DOC}:problems"
     fragments, nodes, edges = [], [], []
@@ -164,11 +219,15 @@ async def read(conn: AsyncConnection, project_id: int, project: str, base_url: s
     answering = await _goals(conn, project_id)
     if answering:
         items.append(_goals_item(answering, label, _page(base_url, project, "goals")))
+    lines = await _evidence(conn, project_id)
+    if lines:
+        items.append(_evidence_item(lines, label, _page(base_url, project, "problems")))
     return {"items": items, "identifiers": identifiers()}
 
 
 __all__ = [
     "ADDRESSES",
+    "EVIDENCES",
     "SOURCE",
     "goal_node_id",
     "identifiers",

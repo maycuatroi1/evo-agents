@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 
-from evo_agents.hub import problems
+from evo_agents.hub import intakes, problems
 from evo_agents.hub.memory import FRONTMATTER, frontmatter
 from evo_agents.kg.serve import CAP_CHARS
 
@@ -150,3 +150,58 @@ def problem_lines(project: str, problem: dict) -> list[str]:
         *_listed("claims that link it:", "no claim links it yet", claims),
         *_listed("plans that name it:", "no plan names it yet", plans),
     ]
+
+
+def evidence_lines(code: str, project: str, lines: list[dict]) -> list[str]:
+    """What ``problem_evidence`` says of a problem's evidence (its lines as ProblemEvidence has them): a header with the
+    count of lines and of independent sources, then a line each."""
+    sources = problems.sources_of(lines)
+    head = f"# Evidence of problem {code} of project {project}: {len(lines)} lines from {sources} independent sources"
+    if not lines:
+        return [f"problem {code} of project {project} has no evidence yet"]
+    rows = []
+    for line in lines:
+        state = f"confirmed by {line['confirmed_by']}" if line["confirmed_by"] else "not confirmed"
+        place = f" at {line['locator']}" if line["locator"] else ""
+        who = f" ({line['speaker']})" if line["speaker"] else ""
+        rows.append(
+            f"- {line['code']} {line['signal']}, {line['label']}, {state}: {line['source_kind']} {line['source_uri']}"
+            f"{place}{who}: {one_line(line['excerpt'], EXCERPT)}"
+        )
+    return [head, *rows]
+
+
+def intake_line(intake: dict) -> str:
+    """An intake of ``intake_list`` in one line: its code, status, requester, sources and what its result held."""
+    held = ""
+    if intake["status"] == intakes.DONE:
+        held = f"; {intake['candidates']} candidates, {intake['promises']} promises, {intake['questions']} questions"
+    return f"{intake['code']} {intake['status']}, asked by {intake['requested_by']}, {len(intake['sources'])} sources{held}"
+
+
+def intake_lines(intake: dict) -> list[str]:
+    """What ``intake_show`` says of an intake: a header, its sources and note, and what the hub made of its result."""
+    lines = [
+        f"# Intake {intake['code']} of project {intake['project']}: {intake['status']}, asked by {intake['requested_by']}"
+    ]
+    lines += [f"source: {intakes.source_text(source)}" for source in intake["sources"]]
+    if intake["note"]:
+        lines.append(f"note: {intake['note']}")
+    outcome = intake["outcome"]
+    if outcome is None:
+        return lines
+    lines.append(
+        f"put by {intake['put_by']}: {intake['candidates']} candidates, {intake['promises']} promises, "
+        f"{intake['questions']} questions"
+    )
+    for proposal in outcome["proposals"]:
+        what = "a new problem" if proposal["kind"] == "new_problem" else "evidence for"
+        lines.append(f"proposal {proposal['proposal_id']}: {what} {proposal['problem']}, {proposal['lines']} lines")
+    for task in outcome["tasks"]:
+        due = f", due {task['due_on']}" if task["due_on"] else ""
+        seen = "delivery evidence seen" if task["delivery_seen"] else "no delivery evidence"
+        lines.append(f"task {task['task']}: promise {task['promise']}, assigned to {task['assignee']}{due}; {seen}")
+    if outcome["tasks_skipped"]:
+        lines.append(outcome["tasks_skipped"])
+    lines += [f"question: {one_line(str(q.get('text', '')), EXCERPT)}" for q in outcome["questions"]]
+    return lines

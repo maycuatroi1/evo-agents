@@ -210,6 +210,8 @@ PROBE_TABLES = frozenset({"curator_probes"})  # the probes of the Curator's prop
 PROBE_RUN_TABLES = frozenset({"curator_probe_runs"})  # each probe measured once a week on each model (0131)
 # migration 0134: the problems of a project and their revisions (plan problem-oriented-hub)
 PROBLEM_TABLES = frozenset({"problems", "problem_revisions"})
+PROBLEM_EVIDENCE_TABLES = frozenset({"problem_evidence"})  # migration 0137 (plan problem-intake)
+INTAKE_TABLES = frozenset({"intakes"})  # migration 0138 (plan problem-intake)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

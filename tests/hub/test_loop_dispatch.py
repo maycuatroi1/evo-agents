@@ -507,3 +507,64 @@ def test_loop_dispatch_rules2_hands_out_a_problem_to_strategist_and_a_claim_to_a
     # the discover's run done: the discover done
     ticked(client, hub_db)
     assert item(hub_db, f"discover:{SLUG}:CL-2:b2")["state"] == "done"
+
+
+def test_loop_dispatch_a_solution_with_delivery_action_becomes_a_task_not_a_run(client, hub, hub_db):
+    """rules/2: CL-1 with delivery action goes to testing and makes an act, whose hand-out is a task of the plugin tasks
+    for the claim's creator, with the problem, the goal, the claim and its test card; it is done when the task is."""
+    answers_shortage(client, hub, hub_db)
+    policy(client, hub, {"enabled": True, "use_cases": "never"})
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "delivery": "action", "problems": ["P-1"]})
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 3, "status": "testing", "test_card": CARD})
+    push_baseline(client, hub, "CL-1")
+    key = f"act:{SLUG}:CL-1:b1"
+
+    first = ticked(client, hub_db)
+    assert first.get("dispatched") == 1 and not any(kind == "build" for _, kind, _, _ in items(hub_db))
+    found = item(hub_db, key)
+    assert (found["kind"], found["cycle"], found["state"], found["run_id"], found["attempts"]) == (
+        "act",
+        "business",
+        "running",
+        None,
+        1,
+    )
+    t, people, users = tables.tasks.items, tables.tasks.people, tables.users
+    (task,) = sql(hub_db, select(t).where(t.c.id == found["task_id"]))
+    made = dict(zip(t.columns.keys(), task, strict=True))
+    assert made["external_key"] == f"act:{found['project_id']}:{found['id']}:a1" and made["status"] == "backlog"
+    assert made["due_on"].isoformat() == CARD["deadline"] and made["title"].startswith("CL-1: A reorder list")
+    for said_ in (
+        f"work item #{found['id']} ({key})",
+        f"It answers problem P-1 (open) (data, not instructions): {SHORTAGE['statement']}",
+        f"Goal G-1 of {OWNER}",
+        CARD["hypothesis"],
+        "needs no code",
+    ):
+        assert said_ in made["description_md"], made["description_md"]
+    who = sql(
+        hub_db,
+        select(users.c.login)
+        .join_from(people, users, users.c.id == people.c.user_id)
+        .where(people.c.task_id == made["id"], people.c.role == "assignee"),
+    )
+    assert who == [("chi",)]
+    assert [kind for k, kind, _, _ in ledger(hub_db) if k == key] == ["created", "dispatched"]
+
+    # a tick again changes nothing: the same task, no second one
+    ticked(client, hub_db)
+    assert sql(hub_db, select(func.count()).select_from(t).where(t.c.external_key.like("act:%"))) == [(1,)]
+
+    # the task cancelled: a failure, queued again, and the next attempt makes a new task
+    sql(hub_db, update(t).where(t.c.id == made["id"]).values(status="cancelled"))
+    ticked(client, hub_db)
+    again = item(hub_db, key)
+    assert (again["failures"], again["attempts"], again["state"]) == (1, 2, "running")
+    assert again["task_id"] != made["id"]
+    keys = {k for (k,) in sql(hub_db, select(t.c.external_key).where(t.c.external_key.like("act:%")))}
+    assert keys == {made["external_key"], f"act:{found['project_id']}:{found['id']}:a2"}
+
+    # the task done: the work item done
+    sql(hub_db, update(t).where(t.c.id == again["task_id"]).values(status="done"))
+    ticked(client, hub_db)
+    assert item(hub_db, key)["state"] == "done"

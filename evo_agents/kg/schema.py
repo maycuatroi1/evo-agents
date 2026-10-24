@@ -61,6 +61,7 @@ HUB_RELATIONS = {
     "merged_as": ("PullRequest", "Commit"),  # a merged pull request to the commit that merged it
     "measured_by": ("Claim", "SignalKey"),  # a claim of a Lean Canvas to a signal key that measures it
     "addresses": ("*", "Problem"),  # a plan, a claim or a goal to a problem of the hub it answers
+    "evidences": ("*", "Problem"),  # a line of evidence of the hub to the problem it shows hurts
 }
 
 ITEM_KIND_TO_NODE = {

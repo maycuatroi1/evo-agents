@@ -45,6 +45,8 @@ function problem(number: number, values: Partial<ProjectProblem> = {}): ProjectP
 }
 
 const SHOWN: ProjectProblemShown = {
+  evidence_count: 0,
+  source_count: 0,
   ...problem(1, { revision: 3, status: "solved", close_reason: "Checkout takes 20 seconds now", created_by: "bao" }),
   goals: [{ code: "G-1", revision: 2, statement: "Shops check out in one tap", status: "active" }],
   claims: [
