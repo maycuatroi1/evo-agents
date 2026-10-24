@@ -32,6 +32,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Merge queue, `/p/{project}/merge-queue`, `.../merge-queue/figures` and `.../merge-queue/policy` | the hub's merge queue on GitLab (`docs/merge-queue.md`): the merge requests waiting, in their turn and after their merge, why each waits or is blocked, its gates, verdicts and ledger, each repo's breaker and the audit samples waiting for an answer; the figures of each repo, agent and model; the autonomy policy, its form, its revisions and the comparison of two. A reader reads; an admin edits the policy, answers samples, approves a manual release, asks for a revert and resets a breaker | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`, `GET` and `PUT .../policy`, `.../policy/revisions`, `.../policy/compare` |
 | Goals, `/p/{project}/goals` and `.../goals/{code}`; Loop, `/p/{project}/loop` and `.../loop/items/{id}`; Decisions, `/p/{project}/decide` | the project's goals with their metric against the target and their work items by state; the Loop's work items by state or by chain, why each waits, and a work item's chain from the goal to the release with its ledger; the decision board, the three gates first (`docs/loop.md`). A reader reads; an admin turns the Loop on or off and resets its breaker | `GET /v1/projects/{project}/goals`, `.../loop`, `.../loop/items`, `.../loop/items/{id}`, `.../loop/goals`, `.../decision-board`, `GET` and `PUT .../policy`, `POST .../loop/resume` |
+| Knowledge graph, `/p/{project}/kg`, a cluster, `.../kg/cluster?id=`, the review queue, `.../kg/review`, and a node, `.../kg/node?id=` | the build's status and size, search, and the shape table; the map of level-1 clusters drawn with cosmos.gl (loaded on demand), nodes coloured by cluster, labels at each cluster's centre, a button to every node and edge the reader can see, a cluster-by-cluster matrix in SVG and a table of the same data for screen readers; without WebGL2 the list and the matrix with a line saying why; a search result's Show on map lights its cluster. A cluster's page: subclusters, members with a filter, neighbouring clusters and its own map. The review page: items by rule, then by cluster, Dismiss for a writer. The node, cluster and review pages carry the decision panels (deprecate, merge, link, accept, reject, undo) for a writer (`docs/kg.md`, Clusters, Review, Decisions) | `GET /v1/kg/{project}/clusters`, `.../cluster`, `.../whole`, `.../review`, `POST .../review/{fingerprint}/dismiss`, `GET`/`POST .../decisions`, `POST .../decisions/{number}/{step}` |
 | Org, `/org` | the org chart: units, seats, ceilings and effective levels, each person's runs at work, and for an admin the people still Unplaced; admins and leads change it there (`docs/org-chart.md`) | `GET /v1/org`, `GET /v1/org/runs` and the writes under `/v1/org` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
 | Plugins, `/admin/plugins` and `/admin/plugins/{name}`; a project's plugins, `/p/{project}/plugins` and `.../plugins/{name}`; a plugin's page, `/p/{project}/x/{plugin}/{page}` | for a hub admin, the store (versions, an upgrade waiting, Install, Upgrade, Remove), the trusted publishers, a plugin's backend and the hub's layer of its config; for a project's members, its plugins, enabled through a consent that lists what each asks for, and the form of the project's layer drawn from the plugin's config schema (a secret never shown again); the pages enabled plugins add to the project's menu, an isolated plugin's framed in a sandbox, a core plugin's native (`docs/plugins.md`, section Pages) | `GET /v1/plugins`, `GET /v1/plugin-publishers`, `GET /v1/projects/{project}/plugins`, `.../config`, `.../config/effective` |
@@ -97,7 +98,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle`; `PUT /v1/skills/global/{name}/audience`, for hub admins |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
-| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../shape`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
+| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../shape`, `.../nodes`, `.../node`, `.../neighbourhood`, `.../clusters`, `.../cluster`, `.../whole`, `.../review`, `POST .../review/{fingerprint}/dismiss`, `.../decisions` (`GET`, `POST`), `POST .../decisions/{number}/{accept,reject,undo}`; the worker on duty's are under worker protocol |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
@@ -2452,6 +2453,41 @@ audience (Projects and who sees what, Audience). A reader who does not hold ever
 of `kg_status` and of the graph pages within their own audience, and for a project whose graph holds chats every
 answer that names a build gives its nodes and edges as null (`GET /v1/kg/{project}/builds`, `.../builds/{id}`), since
 those totals count messages most members may not read.
+
+**Clusters, review and decisions.** A build with the `clusters` extra groups the graph into named clusters, computes
+a review queue by six rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,
+Decisions). Every read goes through the reader's view of the graph: sizes, kinds, link weights and labels are recounted
+over what the reader can see, a cluster with no visible member is absent, and a review item or a decision that names a
+hidden node is not listed. A graph without clusters answers an empty list with the reason.
+
+- `GET /v1/kg/{project}/clusters` gives the level-1 clusters with their kinds, the links between them and, unless
+  `nodes=false`, the projected nodes with their cluster ids and the edges between them, for the map.
+- `GET /v1/kg/{project}/cluster?id=` gives one cluster: its subclusters, members, their edges and its neighbouring
+  clusters; 404 when the reader sees none of its members.
+- `GET /v1/kg/{project}/whole?limit=` gives every node the reader can see, at most 20000 by id order with `truncated`
+  set when it cuts any, and the edges between them in a compact form, for the view of the whole graph.
+- `GET /v1/kg/{project}/review?rule=&cluster=&state=open|dismissed|all` gives the queue with its counts per rule and
+  `can_dismiss`; `POST .../review/{fingerprint}/dismiss {reason}` dismisses an item (the writer role).
+- `GET /v1/kg/{project}/decisions?state=` lists the decisions newest first, each with its history, with the project's
+  decision revision and `can_decide`. `POST .../decisions {kind, src, rel, dst, reason, base_rev}` takes one and
+  `POST .../decisions/{number}/{accept|reject|undo} {reason, base_rev}` steps one; the writer role, 409 when
+  `base_rev` is stale, 403 for a reader, 404 without a grant. Taking, accepting and undoing queue a build.
+- The MCP tool `kg_propose` of `/mcp` writes a proposal for a writer to accept or reject.
+
+```sh
+evo-agents hub kg clusters --project demo --json            # the level-1 clusters: id, level, parent, label, size, kinds
+evo-agents hub kg clusters show c:0123456789ab --project demo     # one cluster: subclusters, members, neighbours
+evo-agents hub kg review --project demo --rule possible_duplicate --json
+evo-agents hub kg review dismiss r:0123456789abcdef --reason "two copies by design" --project demo
+evo-agents hub kg decisions --project demo --json           # every decision: number, kind, state, src, rel, dst, history
+evo-agents hub kg decisions deprecate demo:docs/old.md --reason "replaced by docs/new.md" --project demo
+evo-agents hub kg decisions merge demo:src/a.py --to demo:src/b.py --reason "same module" --project demo
+evo-agents hub kg decisions link usecase:KB-01 --rel implements --to demo:src/a.py --reason "..." --project demo
+evo-agents hub kg decisions accept 12 --reason "checked" --project demo   # also reject and undo
+```
+
+`--base-rev` names the revision read; without it the command uses the hub's revision now. `--state` filters the list
+(`proposed`, `active`, `rejected`, `undone`, `orphan`).
 
 **Dropping a source.** To drop a source from knowledge.yaml once the hub holds runs of it, run `evo-agents hub kg
 forget-source --project demo --source old-repo` first (the writer role; `--source` repeats), then remove the source
