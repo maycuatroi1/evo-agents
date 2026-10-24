@@ -140,10 +140,11 @@ def test_browser_session_install_again_changes_nothing_and_max_changes_the_max_a
     assert 1 <= installed.max <= runs.MAX_BROWSERS
     assert mode(install.directory(home)) == 0o700 and mode(install.directory(home) / install.STATE) == 0o600
 
-    two, changed = install.install(home, os.environ, max_browsers=2, say=lambda _: None)
-    assert changed and two == install.read(home) and two.max == 2
+    other = 3 if installed.max == 2 else 2  # the install's max follows the memory free when it ran
+    two, changed = install.install(home, os.environ, max_browsers=other, say=lambda _: None)
+    assert changed and two == install.read(home) and two.max == other
     assert (two.executable, two.version, two.sandbox) == (installed.executable, installed.version, installed.sandbox)
-    assert install.install(home, os.environ, max_browsers=2, say=lambda _: None) == (two, False)
+    assert install.install(home, os.environ, max_browsers=other, say=lambda _: None) == (two, False)
     with pytest.raises(install.InstallError, match="--max takes 1 to"):
         install.install(home, os.environ, max_browsers=0, say=lambda _: None)
     assert install.default_max(cores=8, memory=6 * install.GIB) == 4  # by memory: 1.5 GiB each

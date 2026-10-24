@@ -124,6 +124,9 @@ class FakeHub:
         # answer carries; None: the key left out, as a hub before 0065, or one that has not read nightly yet
         self.nightly: dict | None = None
         self.update_now: dict | None = None
+        # the owner's open Install browser ({requested_at}) each heartbeat answer of a daemon saying browser_install
+        # carries; None: the key left out
+        self.browser_install: dict | None = None
         self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol
         self.heartbeat_bodies: list[dict] = []  # every heartbeat the worker sent, in order
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
@@ -897,6 +900,8 @@ class FakeHub:
             answer["nightly"] = self.nightly
         if self.update_now is not None:
             answer["update_now"] = self.update_now
+        if self.browser_install is not None and runs.BROWSER_INSTALL in (body.get("features") or ()):
+            answer["browser_install"] = self.browser_install
         return web.json_response(answer)
 
     async def _state(self, request: web.Request) -> web.Response:

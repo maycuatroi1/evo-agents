@@ -979,7 +979,8 @@ with the project's harness alone and whose agent opens each other repo it needs 
 ([Repos a chat run opens](#repos-a-chat-run-opens)); the hub hands a daemon without it every repo the worker has a
 checkout of, as before; and `kg_sync`, a daemon that keeps fresh the graphs of the projects whose night shift it is on
 duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)); and `update_now`, a daemon that takes nightly from the
-heartbeat answer and carries out an owner's Update now ([Update now](#update-now)); and `clones_checkouts`, a daemon
+heartbeat answer and carries out an owner's Update now ([Update now](#update-now)); and `browser_install`, a daemon
+that installs Chromium on its owner's Install browser ([Install browser](#install-browser)); and `clones_checkouts`, a daemon
 that clones each repo of a run it has no checkout of ([Repos a run clones](#repos-a-run-clones)), which the hub then
 hands a run whatever checkouts it reports; and `agent_home`, a daemon that gives a claude-code agent of a profile
 that is not its project's default a config dir of its own ([The config dir of an agent's run](#the-config-dir-of-an-agents-run)),
@@ -1041,7 +1042,10 @@ the hub read it once and by a hub before schema 0065; and for a daemon that list
 Update now (`update_now`, `{"requested_at"}`), left out when none is open. The hub ends the request on the heartbeat
 that shows it ended: `current` when `agent_commit` is nightly's commit, `failed` or `impossible` as `self_update.update_now`
 says for this `requested_at`, and `impossible` too when the worker is locked, `self_update.state` is `locked` or
-`unsupported`, or `features` no longer lists `update_now`. When they differ from `config.json`, the daemon takes them in memory, writes
+`unsupported`, or `features` no longer lists `update_now`. For a daemon that lists `browser_install`, the answer also
+carries the owner's open Install browser (`browser_install`, `{"requested_at"}`), left out when none is open; the
+heartbeat says where the daemon stands with it in its own `browser_install` (`requested_at`, `ended`: null or `failed`,
+and `error`). When they differ from `config.json`, the daemon takes them in memory, writes
 `config.json` again (atomically, mode 0600, its other fields as they are on disk) and logs the old and new values. More
 slots are claimed at the next turn of the claim loop, without a restart; fewer stop no run, and the daemon only
 claims nothing until it holds fewer runs than the new slots. The hub counts the runs a worker holds against its slots
@@ -1239,6 +1243,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), `projects` (the whole list, 1 to 100 names, [The projects a worker serves](#the-projects-a-worker-serves)), `version_locked` (`true` or `false`, [Updating itself to nightly](#updating-itself-to-nightly)) or `shared`, at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
+| `POST /v1/workers/{id}/browser-install`, `/browser-install/cancel` | owner or hub admin | ask the worker's daemon to install Chromium, or withdraw that ([Install browser](#install-browser)); 409 with why for a revoked worker, a daemon that does not say `browser_install`, or one whose heartbeat lists the feature browser already |
 | `POST /v1/workers/{id}/update-now`, `/update-now/cancel` | owner or hub admin | ask the worker's daemon to update itself to nightly now, or withdraw that ([Update now](#update-now)); 409 with why for a revoked or locked worker, a daemon that does not say `update_now`, or one that runs nightly's commit already |
 | `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
@@ -2991,6 +2996,29 @@ next heartbeat answer. The request ends:
 
 The daemon reports the last two in `self_update.update_now` and claims again. `GET /v1/workers/{id}` shows the last
 request as `update_now` (`requested_at`, `ended_at`, `outcome`, `reason`) and the hub's read as `nightly`.
+
+#### Install browser
+
+The owner of a worker, or a hub admin, asks its daemon to install Chromium with Install browser on the worker's page
+(the foot of the Detected runtimes card), or `POST /v1/workers/{id}/browser-install`; Cancel, or `POST
+/v1/workers/{id}/browser-install/cancel`, withdraws it. Both have the rights of drain, and the audit rows
+`worker.browser_install` and `worker.browser_install_cancel`. The hub refuses a request with 409 and why when its
+daemon does not say `browser_install` (an older one: update it, or run `evo-agents worker browser install` on the
+machine), or when its heartbeat lists the feature browser already. Asking while a request is open, or cancelling when
+none is, changes nothing.
+
+The heartbeat answer carries the open request to the daemon (`browser_install`). The daemon installs Chromium as `evo-agents
+worker browser install` does ([Browser for agents](browser.md#installing-chromium-on-a-worker)), in a thread, without
+the download's progress in its log; its runs go on and it keeps claiming. A request is carried out once per daemon: a
+daemon that starts again in the middle installs again, which changes nothing once Chromium is in. The request ends:
+
+- `installed`, on the heartbeat that lists the feature browser with its Chromium;
+- `cancelled`, when its owner or a hub admin cancelled it (an install the daemon began goes on to its end);
+- `failed`, when the install failed: the daemon reports `ended: "failed"` and the `error` (up to 2,000 characters) for
+  this `requested_at`; a new request installs again;
+- `impossible`, when the daemon no longer says `browser_install`.
+
+`GET /v1/workers/{id}` shows the last request as `browser_install` (`requested_at`, `ended_at`, `outcome`, `reason`).
 
 The update, once decided:
 

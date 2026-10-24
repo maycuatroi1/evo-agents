@@ -31,6 +31,7 @@ import { whoamiQuery } from "@/lib/queries";
 
 import { Ago } from "./ago";
 import { ChipList } from "./badges";
+import { BrowserLine } from "./browser-line";
 import { CheckoutList } from "./checkout-list";
 import { ConfirmByName } from "./confirm-by-name";
 import { DispatchFromSwitch } from "./dispatch-from-switch";
@@ -51,7 +52,7 @@ import { WorkerSettings } from "./worker-settings";
 import { WorkerSharing } from "./worker-sharing";
 
 /**
- * One worker: its runtimes, scope, checkouts and version, the last hour of heartbeats, its latest runs, drain, resume
+ * One worker: its runtimes and browser (Install browser for its owner), scope, checkouts and version, the last hour of heartbeats, its latest runs, drain, resume
  * and revoke, and, for its owner, whom it is shared with and what its doctor found, its settings with the version
  * lock and the switch that keeps it to runs dispatched from the web.
  */
@@ -97,7 +98,7 @@ function WorkerPage({ worker }: { worker: Worker }) {
       {/* Scope beside its runtimes and version, so the three facts cards end level whatever the width. */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Scope worker={worker} isOwner={isOwner} className="lg:row-span-2" />
-        <Runtimes worker={worker} />
+        <Runtimes worker={worker} isOwner={isOwner} />
         <VersionCard worker={worker} isOwner={isOwner} />
       </div>
       <Card data-testid="worker-runs">
@@ -191,7 +192,7 @@ function RuntimeIcon({ runtime }: { runtime: RuntimeInfo }) {
   return <CircleHelp className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
 
-function Runtimes({ worker }: { worker: Worker }) {
+function Runtimes({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
   const t = useTranslations("workers.detail.runtimes");
   const runtimes = readRuntimes(worker.runtimes);
   return (
@@ -218,6 +219,7 @@ function Runtimes({ worker }: { worker: Worker }) {
           ))}
         </ul>
       )}
+      {worker.last_heartbeat_at ? <BrowserLine worker={worker} isOwner={isOwner} /> : null}
     </SectionCard>
   );
 }

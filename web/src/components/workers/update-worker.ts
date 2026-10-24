@@ -26,3 +26,15 @@ export async function setUpdateNow(api: ApiClient, id: number, ask: boolean): Pr
   if (ask) return call(api.POST("/v1/workers/{worker_id}/update-now", { params, headers }));
   return call(api.POST("/v1/workers/{worker_id}/update-now/cancel", { params, headers }));
 }
+
+/**
+ * Ask the worker's daemon to install Chromium (`ask`), as `evo-agents worker browser install` does, or withdraw that. The
+ * rights are those of drain; the page offers it to the owner only. 409 says why the hub refused: a daemon too old, or
+ * Chromium there already.
+ */
+export async function setBrowserInstall(api: ApiClient, id: number, ask: boolean): Promise<Worker> {
+  const headers = await csrfHeaders(api);
+  const params = { path: { worker_id: id } };
+  if (ask) return call(api.POST("/v1/workers/{worker_id}/browser-install", { params, headers }));
+  return call(api.POST("/v1/workers/{worker_id}/browser-install/cancel", { params, headers }));
+}

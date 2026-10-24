@@ -3547,3 +3547,44 @@ def test_0145_keeps_the_opportunities_a_claim_links_the_answer_of_a_goal_and_goi
     held = select(k.claims.c.number, k.claims.c.problems)
     assert query(hub_db, held) == [(1, ["P-1"])]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0145") :]
+
+
+def test_0146_adds_the_browser_install_of_a_worker_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0145")
+    workers = hub_tables.workers
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="5" * 64, host="vps").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "vps", 1))
+    move_to(hub_db, "0146")
+    added = {
+        "browser_install_requested_at",
+        "browser_install_ended_at",
+        "browser_install_outcome",
+        "browser_install_reason",
+    }
+    assert added <= columns(hub_db, "workers")
+    shown = select(*(workers.c[name] for name in sorted(added))).where(workers.c.id == worker)
+    assert query(hub_db, shown) == [(None, None, None, None)]
+    asked, ended = {"browser_install_requested_at": func.now()}, {"browser_install_ended_at": func.now()}
+    bad_requests = (
+        ended | {"browser_install_outcome": "installed"},  # an end without a request
+        asked | ended,  # an end without an outcome
+        asked | {"browser_install_outcome": "installed"},  # an outcome without an end
+        asked | ended | {"browser_install_outcome": "current"},
+        asked | {"browser_install_reason": "why"},  # a reason without an outcome
+    )
+    with live.connect(hub_db) as conn:
+        for bad in bad_requests:
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(workers).values(**bad).where(workers.c.id == worker))
+        conn.execute(update(workers).values(**asked).where(workers.c.id == worker))
+        done = ended | {"browser_install_outcome": "failed", "browser_install_reason": "npx is not on PATH"}
+        conn.execute(update(workers).values(**done).where(workers.c.id == worker))
+    found = select(workers.c.browser_install_outcome, workers.c.browser_install_reason)
+    assert query(hub_db, found) == [("failed", "npx is not on PATH")]
+    move_to(hub_db, "0145", down=True)
+    assert not added & columns(hub_db, "workers")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0146") :]

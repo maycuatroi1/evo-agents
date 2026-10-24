@@ -2734,6 +2734,33 @@
         "stale": "Cũ hơn 48 h",
         "none": "Chưa có"
       }
+    },
+    "browserInstall": {
+      "title": "Trình duyệt",
+      "installedDetail": "Chromium {version}, headless, {max} trình duyệt cùng lúc, {sandbox, select, on {có sandbox riêng} other {không có sandbox}}",
+      "notInstalled": "Chưa có Chromium: worker không nhận run cần trình duyệt.",
+      "available": "Có sẵn",
+      "missing": "Chưa có",
+      "button": "Cài trình duyệt",
+      "pending": "Đang gửi…",
+      "cancel": "Huỷ",
+      "cancelPending": "Đang huỷ…",
+      "ready": "Daemon tải Chromium vào cache của nó, không cần sudo, rồi kiểm tra Chromium chạy được. Các run đang chạy vẫn tiếp tục.",
+      "tooOld": "Daemon quá cũ để cài trình duyệt từ hub. Hãy cập nhật nó, hoặc chạy `evo-agents worker browser install` trên máy.",
+      "phase": {
+        "offline": "Đã yêu cầu cài trình duyệt: đang chờ worker online lại.",
+        "installing": "Đang cài Chromium trên worker. Dòng này mất đi khi heartbeat báo đã có trình duyệt."
+      },
+      "requested": "Đã yêu cầu",
+      "failed": "Lần cài gần nhất thất bại: {reason}",
+      "impossible": "Lần cài gần nhất không thực hiện được: {reason}",
+      "asked": "{name} đang cài trình duyệt",
+      "askedText": "Daemon tải Chromium và kiểm tra nó chạy được; khi heartbeat báo có trình duyệt, run cần trình duyệt sẽ được giao cho worker này.",
+      "cancelled": "Đã huỷ yêu cầu cài trình duyệt của {name}",
+      "cancelledText": "Nếu daemon đã bắt đầu cài, việc cài vẫn chạy tới hết.",
+      "askFailed": "Không gửi được yêu cầu cài trình duyệt cho {name}",
+      "cancelFailed": "Không huỷ được yêu cầu cài trình duyệt của {name}",
+      "refused": "Hub từ chối, lý do ở dưới. Trang đã tải lại."
     }
   },
   "secrets": {
@@ -10797,7 +10824,7 @@
       "sharedWorkers": "Worker dùng chung",
       "sharedWorker": "{name} (do {owner} chia sẻ)",
       "workerHint": "Hồ sơ nằm lại trên worker này. Chỉ hiện các worker đã cài trình duyệt.",
-      "noWorkers": "Chưa có worker nào có trình duyệt. Chạy `evo-agents worker browser install` trên một worker rồi khởi động lại daemon của nó.",
+      "noWorkers": "Chưa có worker nào có trình duyệt. Cài từ trang của một worker (nút Cài trình duyệt trong thẻ runtime), hoặc chạy `evo-agents worker browser install` trên máy đó.",
       "workerRequired": "Chọn một worker.",
       "owner": "Chủ sở hữu",
       "ownerMember": "Tôi",
