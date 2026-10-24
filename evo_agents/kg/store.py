@@ -18,6 +18,10 @@ build only. A build rewrites the aliases, and only the rows of ``node_fts`` whos
 keeps the rowid and digest of each node's row. A node is found by its id, its name or an alias through an index,
 then by its words.
 
+Clusters (``evo_agents.kg.clusters``): ``clusters``, ``cluster_members`` and ``cluster_links`` are bitemporal like
+the graph and in its content hash, but only when a build has some, so a build without them hashes as before. A file
+written before them lacks the tables: it still opens, and ``clusters`` reads None from it.
+
 A build's ``stats`` also hold its ``size`` (live nodes, edges and units) and ``top_label``, the highest level and
 the highest location any of its nodes, edges and units carries: a reader whose clearance covers both sees everything,
 and need not test each label (``evo_agents.kg.serve``); and ``top_audience``, the join of their audiences, when one has
@@ -106,6 +110,22 @@ CREATE VIRTUAL TABLE IF NOT EXISTS node_fts_aud USING fts5(
 CREATE TABLE IF NOT EXISTS node_fts_rows (
     node_id TEXT PRIMARY KEY, fts_rowid INTEGER NOT NULL, digest TEXT NOT NULL, aud INTEGER NOT NULL
 ) STRICT, WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS clusters (
+    cluster_id TEXT NOT NULL, level INTEGER NOT NULL, parent TEXT, label TEXT NOT NULL, size INTEGER NOT NULL,
+    kinds TEXT NOT NULL, content TEXT NOT NULL, tx_from INTEGER NOT NULL, tx_to INTEGER
+) STRICT;
+CREATE TABLE IF NOT EXISTS cluster_members (
+    node_id TEXT NOT NULL, cluster_id TEXT NOT NULL, sub_id TEXT, content TEXT NOT NULL,
+    tx_from INTEGER NOT NULL, tx_to INTEGER
+) STRICT;
+CREATE TABLE IF NOT EXISTS cluster_links (
+    link_id TEXT NOT NULL, level INTEGER NOT NULL, a TEXT NOT NULL, b TEXT NOT NULL, weight REAL NOT NULL,
+    content TEXT NOT NULL, tx_from INTEGER NOT NULL, tx_to INTEGER
+) STRICT;
+CREATE INDEX IF NOT EXISTS clusters_id ON clusters(cluster_id, tx_from);
+CREATE INDEX IF NOT EXISTS cluster_members_node ON cluster_members(node_id, tx_from);
+CREATE INDEX IF NOT EXISTS cluster_members_cluster ON cluster_members(cluster_id, tx_from);
+CREATE INDEX IF NOT EXISTS cluster_links_id ON cluster_links(link_id, tx_from);
 """
 
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
@@ -113,7 +133,9 @@ SEEN = "(label_aud IS NULL OR aud_seen(label_aud))"  # the row's audience is wit
 FTS_TABLES = ("node_fts", "node_fts_aud")  # the full-text rows of nodes without an audience, and with one
 NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
 EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
-HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov")  # the tables whose rows carry tx_from, tx_to
+CLUSTER_TABLES = ("clusters", "cluster_members", "cluster_links")  # absent from a file written before clusters came
+# the tables whose rows carry tx_from, tx_to
+HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov", *CLUSTER_TABLES)
 # Builds retention always keeps: the latest, and the one before it, which a reader that read the latest build id just
 # before a build landed may still be reading.
 KEEP_BUILDS = 2
@@ -151,6 +173,18 @@ class Graph:
     units: dict[str, dict] = field(default_factory=dict)
     texts: dict[str, str] = field(default_factory=dict)  # node id -> the body of its searchable text
     paths: dict[str, str] = field(default_factory=dict)  # node id -> the path it is found by, when it has one
+    clusters: Clusters | None = None  # None: not computed (``evo_agents.kg.clusters``)
+
+
+@dataclass
+class Clusters:
+    """The clusters of a graph (``evo_agents.kg.clusters``): each cluster's level (1 or 2), parent (a level-2 cluster's
+    level-1 cluster), label, size and members by kind; each member's level-1 cluster and level-2 cluster, if any; and
+    the weight of the edges between two clusters of a level, keyed (level, a, b) with a < b."""
+
+    clusters: dict[str, dict] = field(default_factory=dict)
+    members: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+    links: dict[tuple[int, str, str], float] = field(default_factory=dict)
 
 
 def _content(row: dict) -> str:
@@ -282,8 +316,19 @@ class Store:
 
     # -- builds ---------------------------------------------------------------------------------
 
-    def latest_ready(self) -> int | None:
+    def latest_ready(self, before: int | None = None) -> int | None:
+        """The latest ready build, or the latest before build ``before``."""
+        if before is not None:
+            sql = "SELECT max(build_id) FROM builds WHERE status = 'ready' AND build_id < ?"
+            row = self.db.execute(sql, (before,)).fetchone()
+            return row[0] if row and row[0] is not None else None
         row = self.db.execute("SELECT max(build_id) FROM builds WHERE status = 'ready'").fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def ready_build_of(self, content_hash: str) -> int | None:
+        """The latest ready build whose content hash is ``content_hash``."""
+        sql = "SELECT max(build_id) FROM builds WHERE status = 'ready' AND content_hash = ?"
+        row = self.db.execute(sql, (content_hash,)).fetchone()
         return row[0] if row and row[0] is not None else None
 
     def build_row(self, build_id: int) -> dict:
@@ -405,6 +450,7 @@ class Store:
                 for unit, span in entries:
                     wheres[f"{elem}\x1f{unit}\x1f{span}"] = {"elem_id": elem, "unit_id": unit, "span": span}
             self._diff("where_prov", None, b, wheres, ["elem_id", "unit_id", "span"])
+            self._write_clusters(b, graph.clusters or Clusters())
             searched = self._write_search(graph)
             content_hash = self.content_hash(b, searched)
             stats = {**stats, "size": _size(graph), "top_label": _top_label(graph), **_top_audience(graph)}
@@ -414,6 +460,84 @@ class Store:
                 (utc_now(), content_hash, json.dumps(coverage, ensure_ascii=False), json.dumps(stats), b),
             )
         return b
+
+    def _write_clusters(self, b: int, found: Clusters) -> None:
+        """Bring the cluster tables to ``found``; a graph without clusters closes the previous build's."""
+        self._diff(
+            "clusters",
+            "cluster_id",
+            b,
+            {
+                cid: {
+                    "cluster_id": cid,
+                    "level": c["level"],
+                    "parent": c["parent"],
+                    "label": c["label"],
+                    "size": c["size"],
+                    "kinds": json.dumps(c["kinds"], sort_keys=True),
+                }
+                for cid, c in found.clusters.items()
+            },
+            ["cluster_id", "level", "parent", "label", "size", "kinds"],
+        )
+        self._diff(
+            "cluster_members",
+            "node_id",
+            b,
+            {nid: {"node_id": nid, "cluster_id": top, "sub_id": sub} for nid, (top, sub) in found.members.items()},
+            ["node_id", "cluster_id", "sub_id"],
+        )
+        self._diff(
+            "cluster_links",
+            "link_id",
+            b,
+            {
+                f"{level}\x1f{a}\x1f{c}": {
+                    "link_id": f"{level}\x1f{a}\x1f{c}",
+                    "level": level,
+                    "a": a,
+                    "b": c,
+                    "weight": w,
+                }
+                for (level, a, c), w in found.links.items()
+            },
+            ["link_id", "level", "a", "b", "weight"],
+        )
+
+    def has_clusters(self) -> bool:
+        """Whether the file has the cluster tables: one written before clusters came lacks them."""
+        marks = ", ".join("?" for _ in CLUSTER_TABLES)
+        sql = f"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ({marks})"
+        return self.db.execute(sql, CLUSTER_TABLES).fetchone()[0] == len(CLUSTER_TABLES)
+
+    def clusters(self, b: int) -> Clusters | None:
+        """The clusters of build b, whatever the reader; None when the build has none (computed without the extra,
+        or written before clusters came)."""
+        if not self.has_clusters():
+            return None
+        out = Clusters()
+        for cid, level, parent, label, size, kinds in self.db.execute(
+            f"SELECT cluster_id, level, parent, label, size, kinds FROM clusters WHERE {LIVE} ORDER BY cluster_id",
+            {"b": b},
+        ):
+            out.clusters[cid] = {
+                "level": level,
+                "parent": parent,
+                "label": label,
+                "size": size,
+                "kinds": json.loads(kinds),
+            }
+        if not out.clusters:
+            return None
+        for nid, top, sub in self.db.execute(
+            f"SELECT node_id, cluster_id, sub_id FROM cluster_members WHERE {LIVE} ORDER BY node_id", {"b": b}
+        ):
+            out.members[nid] = (top, sub)
+        for level, a, c, w in self.db.execute(
+            f"SELECT level, a, b, weight FROM cluster_links WHERE {LIVE} ORDER BY link_id", {"b": b}
+        ):
+            out.links[(level, a, c)] = w
+        return out
 
     def _write_search(self, graph: Graph) -> str:
         """Bring the full-text index to ``graph``'s nodes, deleting and inserting only the rows that changed, and
@@ -510,6 +634,18 @@ class Store:
         ):
             rows = self.db.execute(f"SELECT content FROM {table} WHERE {LIVE} ORDER BY {order}", {"b": b})
             parts.append([r[0] for r in rows])
+        # A build without clusters hashes as before clusters came, so its file and an older one stay interchangeable.
+        clustered = []
+        if self.has_clusters():
+            for table, order in (
+                ("clusters", "cluster_id"),
+                ("cluster_members", "node_id"),
+                ("cluster_links", "link_id"),
+            ):
+                rows = self.db.execute(f"SELECT content FROM {table} WHERE {LIVE} ORDER BY {order}", {"b": b})
+                clustered.append([r[0] for r in rows])
+        if any(clustered):
+            parts.append(clustered)
         return sha256(canonical_json(parts))
 
     # -- history -------------------------------------------------------------------------------
@@ -534,7 +670,7 @@ class Store:
             table: self.db.execute(
                 f"SELECT count(*) FROM {table} WHERE tx_to IS NOT NULL AND tx_to <= ?", (floor,)
             ).fetchone()[0]
-            for table in HISTORY_TABLES
+            for table in self._history_tables()
         }
         out["builds"] = self.db.execute("SELECT count(*) FROM builds WHERE build_id < ?", (floor,)).fetchone()[0]
         return out
@@ -545,10 +681,13 @@ class Store:
         with self.db:
             out = {
                 table: self.db.execute(f"DELETE FROM {table} WHERE tx_to IS NOT NULL AND tx_to <= ?", (floor,)).rowcount
-                for table in HISTORY_TABLES
+                for table in self._history_tables()
             }
             out["builds"] = self.db.execute("DELETE FROM builds WHERE build_id < ?", (floor,)).rowcount
         return out
+
+    def _history_tables(self) -> tuple[str, ...]:
+        return HISTORY_TABLES if self.has_clusters() else tuple(t for t in HISTORY_TABLES if t not in CLUSTER_TABLES)
 
     def counts(self, b: int) -> dict:
         out = {}
