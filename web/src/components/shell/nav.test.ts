@@ -43,6 +43,7 @@ describe("nav", () => {
       ["mergeQueue", "delivery"],
       ["releases", "delivery"],
       ["problems", "improvement"],
+      ["opportunities", "improvement"],
       ["goals", "improvement"],
       ["signals", "improvement"],
       ["loop", "improvement"],
