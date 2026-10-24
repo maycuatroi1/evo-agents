@@ -115,16 +115,9 @@ def curation_item(rows: list, label: dict) -> dict:
 async def active(conn: AsyncConnection, project_id: int) -> list:
     """The active decisions of a project, oldest first, each with the reason it was proposed or taken with."""
     d, e = tables.kg_decisions, tables.kg_decision_events
-    first = (
-        select(e.c.decision_id, e.c.reason)
-        .where(e.c.project_id == project_id)
-        .distinct(e.c.decision_id)
-        .order_by(e.c.decision_id, e.c.rev)
-        .subquery()
-    )
+    first = select(e.c.reason).where(e.c.decision_id == d.c.id).order_by(e.c.rev).limit(1).scalar_subquery()
     query = (
-        select(d.c.number, d.c.kind, d.c.src, d.c.rel, d.c.dst, first.c.reason)
-        .join(first, first.c.decision_id == d.c.id)
+        select(d.c.number, d.c.kind, d.c.src, d.c.rel, d.c.dst, first.label("reason"))
         .where(d.c.project_id == project_id, d.c.state == "active")
         .order_by(d.c.number)
     )

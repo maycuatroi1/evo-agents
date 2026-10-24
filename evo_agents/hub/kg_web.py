@@ -31,7 +31,7 @@ from collections import deque
 from collections.abc import Callable
 from typing import TypeVar
 
-from evo_agents.hub import kg_map, kg_review
+from evo_agents.hub import kg_decisions, kg_map, kg_review
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
 from evo_agents.kg import freshness
@@ -169,6 +169,14 @@ class WebSession(HubSession):
             return {"computed": False, "reason": kg_map.NO_VISIBLE, "items": []}
         store, b = self._visible_store()
         return kg_review.queue(store, b, self.visible, self._degrees)
+
+    def decision_subjects(self, nodes, edges) -> dict:
+        """Whether the build holds each node id and (src, rel, dst) edge decisions name, and whether the member sees
+        it (``evo_agents.hub.kg_decisions.subjects``); all hidden for a member who sees nothing of the build."""
+        if self.error:
+            return {key: kg_decisions.HIDDEN for key in [*nodes, *edges]}
+        store, b = self._visible_store()
+        return kg_decisions.subjects(store, b, self.visible, nodes, edges)
 
     def _degrees(self, store: Store, ids, b: int) -> dict[str, int]:
         """Visible edges of each node of ``ids``, by the same ceiling ``visible`` compares labels with."""

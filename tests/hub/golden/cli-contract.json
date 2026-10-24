@@ -7564,6 +7564,190 @@
         }
       }
     },
+    "hub kg decisions": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "deprecate",
+            "merge",
+            "link",
+            "accept",
+            "reject",
+            "undo"
+          ]
+        },
+        {
+          "name": "target",
+          "metavar": "TARGET",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "proposed",
+            "active",
+            "rejected",
+            "undone",
+            "orphan"
+          ]
+        },
+        {
+          "flags": [
+            "--rel"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--to"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--base-rev"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "number",
+          "kind",
+          "state",
+          "src",
+          "rel",
+          "dst",
+          "history"
+        ],
+        "schema": "KgDecision",
+        "with": {
+          "deprecate": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "merge": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "link": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "accept": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "reject": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          },
+          "undo": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "kind",
+              "state",
+              "src",
+              "rel",
+              "dst",
+              "history"
+            ],
+            "schema": "KgDecision"
+          }
+        }
+      }
+    },
     "hub kg forget-source": {
       "positionals": [],
       "options": [
@@ -26268,6 +26452,390 @@
                 }
               },
               "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/decisions": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Decisions",
+          "description": "The decisions on the graph you can see, newest first, with their history and the revision to write against.",
+          "operationId": "list_decisions_v1_kg__project__decisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "proposed",
+                      "active",
+                      "rejected",
+                      "undone",
+                      "orphan"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the decisions in this state",
+                "title": "State"
+              },
+              "description": "only the decisions in this state"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgDecisionList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Take Decision",
+          "description": "Deprecate a node or an edge, merge two node ids or link two nodes, with a reason: active at once.",
+          "operationId": "take_decision_v1_kg__project__decisions_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewKgDecision"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgDecision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/decisions/{number}/{step}": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Step Decision",
+          "description": "Accept or reject a proposal, or undo an active decision, with a reason.",
+          "operationId": "step_decision_v1_kg__project__decisions__number___step__post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 1,
+                "description": "the decision's number in the project",
+                "title": "Number"
+              },
+              "description": "the decision's number in the project"
+            },
+            {
+              "name": "step",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "enum": [
+                  "accept",
+                  "reject",
+                  "undo"
+                ],
+                "type": "string",
+                "description": "accept or reject a proposal, or undo an active decision",
+                "title": "Step"
+              },
+              "description": "accept or reject a proposal, or undo an active decision"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KgDecisionStep"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgDecision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
             },
             "502": {
               "content": {
@@ -89457,6 +90025,203 @@
           ],
           "title": "KgConfig"
         },
+        "KgDecision": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "the decision's number in the project, from 1"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "deprecate",
+                "merge",
+                "link"
+              ],
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "active",
+                "rejected",
+                "undone",
+                "orphan"
+              ],
+              "title": "State"
+            },
+            "src": {
+              "type": "string",
+              "title": "Src",
+              "description": "the node deprecated, the first node merged, or the edge's source"
+            },
+            "rel": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rel",
+              "description": "the edge's type, for an edge deprecated or linked"
+            },
+            "dst": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dst",
+              "description": "the edge's target, or the node merged into src's id"
+            },
+            "history": {
+              "items": {
+                "$ref": "#/components/schemas/KgDecisionEvent"
+              },
+              "type": "array",
+              "title": "History",
+              "description": "oldest first; the first step says why it was taken"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "kind",
+            "state",
+            "src",
+            "rel",
+            "dst",
+            "history"
+          ],
+          "title": "KgDecision"
+        },
+        "KgDecisionEvent": {
+          "properties": {
+            "rev": {
+              "type": "integer",
+              "title": "Rev",
+              "description": "the project's decision revision this step made"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "propose",
+                "decide",
+                "accept",
+                "reject",
+                "undo"
+              ],
+              "title": "Action"
+            },
+            "by": {
+              "type": "string",
+              "title": "By",
+              "description": "the login of the member, or of the agent's owner, who took the step"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id",
+              "description": "the build the graph was at; null once that build is gone"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rev",
+            "action",
+            "by",
+            "at",
+            "reason",
+            "build_id"
+          ],
+          "title": "KgDecisionEvent"
+        },
+        "KgDecisionList": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "rev": {
+              "type": "integer",
+              "title": "Rev",
+              "description": "the project's decision revision: what a write names as base_rev"
+            },
+            "can_decide": {
+              "type": "boolean",
+              "title": "Can Decide",
+              "description": "true for a writer of the project"
+            },
+            "decisions": {
+              "items": {
+                "$ref": "#/components/schemas/KgDecision"
+              },
+              "type": "array",
+              "title": "Decisions",
+              "description": "newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "rev",
+            "can_decide",
+            "decisions"
+          ],
+          "title": "KgDecisionList"
+        },
+        "KgDecisionStep": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            },
+            "base_rev": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0,
+              "title": "Base Rev",
+              "description": "the decision revision you read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason",
+            "base_rev"
+          ],
+          "title": "KgDecisionStep"
+        },
         "KgDuty": {
           "properties": {
             "project": {
@@ -94738,6 +95503,72 @@
             "truncated"
           ],
           "title": "Neighbourhood"
+        },
+        "NewKgDecision": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            },
+            "base_rev": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 0.0,
+              "title": "Base Rev",
+              "description": "the decision revision you read"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "deprecate",
+                "merge",
+                "link"
+              ],
+              "title": "Kind"
+            },
+            "src": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Src"
+            },
+            "rel": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rel"
+            },
+            "dst": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dst"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason",
+            "base_rev",
+            "kind",
+            "src"
+          ],
+          "title": "NewKgDecision"
         },
         "Night": {
           "properties": {
