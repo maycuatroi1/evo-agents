@@ -8,58 +8,42 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { displayName, kindStyle, orderNodes, shortLabel, step, type Tone } from "@/lib/kg/graph";
+import { displayName, kindStyle, orderNodes, shortLabel, step } from "@/lib/kg/graph";
 import { MAX_HOPS, type Neighbourhood } from "@/lib/kg/types";
+
+import { readTheme, type Theme } from "./graph-theme";
 
 /**
  * The neighbourhood drawn with Cytoscape.js on a canvas, loaded only in the browser. A canvas says nothing to a
  * screen reader: the neighbour table beside it carries the same data and the same selection, and this view only
  * mirrors it. Keyboard: arrows step through the nodes (the table's order), Home goes back to the node shown, Enter
  * opens the selected node, + and - zoom, 0 fits the graph. Colours come from the design tokens and follow the theme.
- * The container is sized, not positioned: Cytoscape gives it `position: relative` in a style of its own, outside the
+ * The node's groups of direct neighbours (edge type, direction, kind) that hold more than the view draws end in one
+ * dashed node each, "+N kind", as the table's "show more" does: choosing it opens the group. The container is sized,
+ * not positioned: Cytoscape gives it `position: relative` in a style of its own, outside the
  * cascade layers, which wins over any utility class.
  */
 export type LayoutName = "concentric" | "cose" | "breadthfirst";
 export const LAYOUTS: readonly LayoutName[] = ["concentric", "cose", "breadthfirst"];
 
-type Theme = {
-  tones: Record<Tone, string>;
-  foreground: string;
-  muted: string;
-  surface: string;
-  brand: string;
-  ring: string;
-  font: string;
-};
+/** The id of the node that stands for what a group of direct neighbours holds beyond those drawn. */
+const MORE = "more\u0000";
 
-const FALLBACK: Theme = {
-  tones: { 1: "#2f4bd8", 2: "#bc7800", 3: "#0f8c80", 4: "#7c4de8", 5: "#85858d" },
-  foreground: "#09090b",
-  muted: "#52525b",
-  surface: "#ffffff",
-  brand: "#2f4bd8",
-  ring: "#2f4bd8",
-  font: "sans-serif",
-};
-
-function readTheme(): Theme {
-  const root = getComputedStyle(document.documentElement);
-  const token = (name: string, fallback: string) => root.getPropertyValue(name).trim() || fallback;
-  return {
-    tones: {
-      1: token("--chart-1", FALLBACK.tones[1]),
-      2: token("--chart-2", FALLBACK.tones[2]),
-      3: token("--chart-3", FALLBACK.tones[3]),
-      4: token("--chart-4", FALLBACK.tones[4]),
-      5: token("--chart-5", FALLBACK.tones[5]),
-    },
-    foreground: token("--foreground", FALLBACK.foreground),
-    muted: token("--muted-foreground", FALLBACK.muted),
-    surface: token("--background", FALLBACK.surface),
-    brand: token("--brand", FALLBACK.brand),
-    ring: token("--ring", FALLBACK.ring),
-    font: getComputedStyle(document.body).fontFamily || FALLBACK.font,
-  };
+function moreElements(view: Neighbourhood): cytoscape.ElementDefinition[] {
+  return view.groups.flatMap((group) => {
+    const hidden = group.total - group.shown.length;
+    if (hidden <= 0) return [];
+    const id = `${MORE}${group.key}`;
+    const ends = group.direction === "out" ? { source: view.focus, target: id } : { source: id, target: view.focus };
+    return [
+      {
+        group: "nodes",
+        data: { id, label: `+${hidden} ${group.kind}`, kind: group.kind, hop: 1, tone: 5, shape: "round-rectangle" },
+        classes: ["more"],
+      },
+      { group: "edges", data: { id: `${id}\u0000edge`, ...ends, rel: group.rel }, classes: ["more"] },
+    ];
+  });
 }
 
 function elements(view: Neighbourhood): cytoscape.ElementDefinition[] {
@@ -75,7 +59,7 @@ function elements(view: Neighbourhood): cytoscape.ElementDefinition[] {
     group: "edges",
     data: { id: edge.id, source: edge.src, target: edge.dst, rel: edge.rel },
   }));
-  return [...nodes, ...edges];
+  return [...nodes, ...edges, ...moreElements(view)];
 }
 
 function stylesheet(theme: Theme): cytoscape.StylesheetJson {
@@ -153,6 +137,19 @@ function stylesheet(theme: Theme): cytoscape.StylesheetJson {
         "min-zoomed-font-size": 8,
       },
     },
+    {
+      selector: "node.more",
+      style: {
+        width: 22,
+        height: 14,
+        "background-color": theme.surface,
+        "border-width": 1.5,
+        "border-style": "dashed",
+        "border-color": theme.muted,
+        color: theme.muted,
+      },
+    },
+    { selector: "edge.more", style: { "line-style": "dashed" } },
     { selector: "node.faded", style: { opacity: 0.25, "text-opacity": 0 } },
     { selector: "edge.faded", style: { opacity: 0.15 } },
   ];
@@ -224,6 +221,7 @@ export function GraphCanvas({
   describedBy,
   onSelect,
   onOpen,
+  onOpenGroup,
 }: {
   view: Neighbourhood;
   selected: string;
@@ -232,21 +230,23 @@ export function GraphCanvas({
   describedBy: string;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
+  /** Show the whole of a group of the node's direct neighbours, by its key. */
+  onOpenGroup: (key: string) => void;
 }) {
   const t = useTranslations("kg.graph");
   const container = useRef<HTMLDivElement>(null);
   const [cy, setCy] = useState<cytoscape.Core | null>(null);
   const { resolvedTheme } = useTheme();
   const ordered = useMemo(() => orderNodes(view.nodes), [view.nodes]);
-  const handlers = useRef({ onSelect, onOpen });
+  const handlers = useRef({ onSelect, onOpen, onOpenGroup });
   const tapped = useRef(false); // the last selection came from the canvas: do not move the view for it
   const latest = useRef({ layout, selected });
   const applied = useRef<{ cy: cytoscape.Core | null; layout: LayoutName | null }>({ cy: null, layout: null });
 
   useEffect(() => {
-    handlers.current = { onSelect, onOpen };
+    handlers.current = { onSelect, onOpen, onOpenGroup };
     latest.current = { layout, selected };
-  }, [onSelect, onOpen, layout, selected]);
+  }, [onSelect, onOpen, onOpenGroup, layout, selected]);
 
   useEffect(() => {
     let cancelled = false;
@@ -264,10 +264,18 @@ export function GraphCanvas({
         selectionType: "single",
       });
       instance.on("tap", "node", (event) => {
+        const id = String(event.target.id());
+        if (id.startsWith(MORE)) {
+          handlers.current.onOpenGroup(id.slice(MORE.length));
+          return;
+        }
         tapped.current = true;
-        handlers.current.onSelect(String(event.target.id()));
+        handlers.current.onSelect(id);
       });
-      instance.on("dbltap", "node", (event) => handlers.current.onOpen(String(event.target.id())));
+      instance.on("dbltap", "node", (event) => {
+        const id = String(event.target.id());
+        if (!id.startsWith(MORE)) handlers.current.onOpen(id);
+      });
       const created = instance;
       created.layout(layoutOptions(latest.current.layout, view.focus, () => created)).run();
       highlight(created, latest.current.selected);

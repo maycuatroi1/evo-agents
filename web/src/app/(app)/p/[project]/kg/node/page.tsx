@@ -7,7 +7,7 @@ import { KgNodePage } from "@/components/kg/kg-node-page";
 import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
-import { kgNeighbourhoodQuery, kgNodeQuery, parseHops } from "@/lib/kg/queries";
+import { kgNeighbourhoodQuery, kgNodeQuery, NODE_PAGE_GROUPING, parseHops } from "@/lib/kg/queries";
 import { PROJECT_NAME } from "@/lib/queries";
 
 type Props = {
@@ -44,7 +44,7 @@ export default async function KgNodeRoute({ params, searchParams }: Props) {
     const api = await serverApi();
     const [node, neighbourhood] = await Promise.all([
       prefetch(client, kgNodeQuery(() => api, project, id)),
-      prefetch(client, kgNeighbourhoodQuery(() => api, project, id, hops)),
+      prefetch(client, kgNeighbourhoodQuery(() => api, project, id, hops, NODE_PAGE_GROUPING)),
     ]);
     errors = { node, neighbourhood };
   }

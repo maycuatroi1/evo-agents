@@ -1820,7 +1820,8 @@
       "queue": "Hàng đợi",
       "queueEmpty": "Không có job nào",
       "queueCounts": "{waiting} đang chờ, {running} đang chạy",
-      "refreshing": "Tự cập nhật mỗi 5 giây"
+      "refreshing": "Tự cập nhật mỗi 5 giây",
+      "visibleEdges": "{count, plural, other {# cạnh}}, trong phần bạn đọc được"
     },
     "latest": {
       "title": "Build #{id}",
@@ -1974,11 +1975,14 @@
       "out": "đi ra",
       "in": "đi vào",
       "select": "Chọn {name} trong đồ thị",
-      "open": "Mở trang của {name}"
+      "open": "Mở trang của {name}",
+      "groupCount": "{shown} trên {total}",
+      "degree": "{count, plural, other {# cạnh}}",
+      "showMore": "{count, plural, other {Hiện thêm #}} ({rel}, {kind})"
     },
     "graph": {
       "title": "Vùng lân cận",
-      "description": "Node và cạnh trong {hops, plural, other {# bước}} quanh node này, tối đa {limit} node.",
+      "description": "Node và cạnh trong {hops, plural, other {# bước}} quanh node này, tối đa {limit} node. Mỗi nhóm hàng xóm trực tiếp hiện trước {group} node nhiều liên kết nhất.",
       "hops": "Số bước",
       "hopsValue": "{count, plural, other {# bước}}",
       "layout": "Bố cục",
@@ -1998,7 +2002,20 @@
       "truncatedTitle": "Đã cắt: đồ thị vẽ {shown} node, giới hạn là {limit}",
       "truncatedDescription": "{leftOut, plural, other {Còn # node trong tầm với không được vẽ.}} Node này có {neighbours} hàng xóm trực tiếp: xem đủ ở mục <link>Quan hệ theo loại cạnh</link>, hoặc mở một hàng xóm để xem vùng của nó.",
       "smallScreen": "Màn hình hẹp: đồ thị được thay bằng bảng hàng xóm.",
-      "selected": "Đang chọn {name} ({kind}), {count} cạnh"
+      "selected": "Đang chọn {name} ({kind}), {count} cạnh",
+      "legendMore": "Hàng xóm còn lại của một nhóm: bấm để hiện"
+    },
+    "shape": {
+      "title": "Hình dạng đồ thị",
+      "description": "Số cạnh mỗi loại nối mỗi loại node với loại khác, chỉ đếm phần bạn đọc được.",
+      "columns": {
+        "source": "Từ loại",
+        "rel": "Loại cạnh",
+        "target": "Đến loại",
+        "count": "Số cạnh"
+      },
+      "empty": "Không có cạnh nào bạn đọc được trong đồ thị này.",
+      "caption": "{count, plural, other {# tổ hợp loại node và loại cạnh}}"
     }
   },
   "workers": {

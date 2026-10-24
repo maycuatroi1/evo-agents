@@ -25,9 +25,13 @@ import {
 } from "@/lib/kg/queries";
 import type { KgBuilds } from "@/lib/kg/types";
 
-import { BuildHistory, BuildQueue, LatestBuild, NoBuilds, StatusTiles } from "./build-status";
+import { BuildHistory, BuildQueue, LatestBuild, NoBuilds } from "./build-status";
 import { KindSummary, NoGraph, SearchForm, SearchResults } from "./node-search";
+import { StatusTiles } from "./status-tiles";
 import { useNow } from "./use-now";
+
+// The graph's shape loads on demand too, with its own read (GET /v1/kg/{project}/shape), below the search.
+const Shape = dynamic(() => import("./graph-shape").then((module) => module.GraphShapeSection));
 
 // The Commits read card loads on demand (next/dynamic): imported statically, its code sat in a chunk that both pages
 // of the graph, this one and the node page, load first, and put each over its budget in bundle-budget.json.
@@ -187,9 +191,10 @@ function Builds({ project, data, failedError }: { project: string; data: KgBuild
   );
 }
 
-function Status({ data }: { data: KgBuilds }) {
+function Status({ project, data, graphError }: { project: string; data: KgBuilds; graphError: ApiErrorInfo | null }) {
   const now = useNow(buildsActive(data));
-  return <StatusTiles data={data} now={now} />;
+  const graph = useHubQuery(kgGraphQuery(browserApi, project), graphError);
+  return <StatusTiles data={data} now={now} visible={graph.status === "success" ? graph.data.graph : null} />;
 }
 
 /** /p/{project}/kg: the graph's status, the commits its sources read, node search and the builds. Read-only. */
@@ -240,10 +245,11 @@ export function KgOverview({
     <>
       {header}
       <QueryView state={builds} loading={<TilesSkeleton />}>
-        {(data) => <Status data={data} />}
+        {(data) => <Status project={project} data={data} graphError={errors.graph} />}
       </QueryView>
       <Commits project={project} error={errors.graph} />
       <SearchSection project={project} query={query} kind={kind} errors={errors} />
+      <Shape project={project} />
       <QueryView state={builds} loading={<TableSkeleton rows={4} />}>
         {(data) => <Builds project={project} data={data} failedError={errors.failed ?? null} />}
       </QueryView>

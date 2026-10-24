@@ -688,6 +688,52 @@ class Store:
             f"SELECT count(*) FROM edges WHERE (src = :id OR dst = :id) AND {LIVE} AND {SEEN}", {"id": node_id, "b": b}
         ).fetchone()[0]
 
+    def degrees(self, ids, b: int, ceiling: tuple[int, int]) -> dict[str, int]:
+        """How many live edges touch each of ``ids`` whose label is at most ``ceiling`` (level, location) and whose
+        audience is within ``reader``; an edge from a node to itself counts twice. Ids without one are left out."""
+        out: dict[str, int] = defaultdict(int)
+        ids = list(dict.fromkeys(ids))
+        for start in range(0, len(ids), 400):
+            chunk = ids[start : start + 400]
+            marks = ", ".join("?" for _ in chunk)
+            where = (
+                "tx_from <= ? AND (tx_to IS NULL OR tx_to > ?) AND label_lvl <= ? AND label_loc <= ?"
+                " AND (label_aud IS NULL OR aud_seen(label_aud))"
+            )
+            params = (b, b, ceiling[0], ceiling[1])
+            for column in ("src", "dst"):
+                for node_id, count in self.db.execute(
+                    f"SELECT {column}, count(*) FROM edges WHERE {column} IN ({marks}) AND {where} GROUP BY {column}",
+                    (*chunk, *params),
+                ):
+                    out[node_id] += count
+        return dict(out)
+
+    def shape_counts(self, b: int) -> list[tuple]:
+        """The live edges of build b whose edge and both nodes have an audience within ``reader``, counted by the
+        kind of their source, their type, the kind of their target and the three labels: rows of (source kind, rel,
+        target kind, edge label, source label, target label, count), each label (level, location, integrity), in no
+        particular order. An edge whose node is not live at b is left out."""
+
+        def live(t: str) -> str:
+            return f"{t}.tx_from <= :b AND ({t}.tx_to IS NULL OR {t}.tx_to > :b)"
+
+        def seen(t: str) -> str:
+            return f"({t}.label_aud IS NULL OR aud_seen({t}.label_aud))"
+
+        def label(t: str) -> str:
+            return f"{t}.label_lvl, {t}.label_loc, {t}.label_int"
+
+        rows = self.db.execute(
+            f"SELECT s.kind, e.rel, d.kind, {label('e')}, {label('s')}, {label('d')}, count(*) FROM edges e"
+            f" JOIN nodes s ON s.node_id = e.src AND {live('s')} AND {seen('s')}"
+            f" JOIN nodes d ON d.node_id = e.dst AND {live('d')} AND {seen('d')}"
+            f" WHERE {live('e')} AND {seen('e')}"
+            f" GROUP BY s.kind, e.rel, d.kind, {label('e')}, {label('s')}, {label('d')}",
+            {"b": b},
+        )
+        return [(r[0], r[1], r[2], tuple(r[3:6]), tuple(r[6:9]), tuple(r[9:12]), r[12]) for r in rows]
+
     def search(
         self, query: str, b: int, limit: int = 50, *, kinds: list[str] | None = None, any_word: bool = True
     ) -> list[str]:
