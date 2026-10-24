@@ -22,6 +22,11 @@ Clusters (``evo_agents.kg.clusters``): ``clusters``, ``cluster_members`` and ``c
 the graph and in its content hash, but only when a build has some, so a build without them hashes as before. A file
 written before them lacks the tables: it still opens, and ``clusters`` reads None from it.
 
+``cluster_warm`` keeps, per build, the cluster members its clustering started from (the previous build's), and the
+build's ``stats["warm"]`` says how many there were (0 for a cold start): a hub build is written into an empty store
+that replaces the last one, so the build before it is gone when ``verify_build`` rebuilds it. The table is outside the
+content hash, and a build whose ``stats`` lack ``warm`` recorded none.
+
 A build's ``stats`` also hold its ``size`` (live nodes, edges and units) and ``top_label``, the highest level and
 the highest location any of its nodes, edges and units carries: a reader whose clearance covers both sees everything,
 and need not test each label (``evo_agents.kg.serve``); and ``top_audience``, the join of their audiences, when one has
@@ -131,8 +136,13 @@ CREATE TABLE IF NOT EXISTS review_items (
     action TEXT NOT NULL, detail TEXT NOT NULL, content TEXT NOT NULL, tx_from INTEGER NOT NULL, tx_to INTEGER
 ) STRICT;
 CREATE INDEX IF NOT EXISTS review_items_id ON review_items(fingerprint, tx_from);
+CREATE TABLE IF NOT EXISTS cluster_warm (
+    build_id INTEGER NOT NULL, node_id TEXT NOT NULL, cluster_id TEXT NOT NULL, sub_id TEXT,
+    PRIMARY KEY (build_id, node_id)
+) STRICT, WITHOUT ROWID;
 """
 
+_NO_WARM = object()  # Store.write: no warm start to record
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
 SEEN = "(label_aud IS NULL OR aud_seen(label_aud))"  # the row's audience is within the store's reader
 FTS_TABLES = ("node_fts", "node_fts_aud")  # the full-text rows of nodes without an audience, and with one
@@ -389,8 +399,18 @@ class Store:
         found = self.db.execute(sql, (build_id,)).fetchone()
         return stored_audience(found[0] if found else None)
 
-    def write(self, graph: Graph, *, state_digest: str, coverage: dict, stats: dict, policy) -> int:
-        """Write a graph as a new build, diffing against the previous one, in one transaction."""
+    def write(
+        self,
+        graph: Graph,
+        *,
+        state_digest: str,
+        coverage: dict,
+        stats: dict,
+        policy,
+        warm: Clusters | None | object = _NO_WARM,
+    ) -> int:
+        """Write a graph as a new build, diffing against the previous one, in one transaction. ``warm``, when given, is
+        the clusters the build's clustering started from, kept in ``cluster_warm`` for ``warm_start``."""
         db = self.db
         with db:
             cur = db.execute(
@@ -485,12 +505,35 @@ class Store:
             searched = self._write_search(graph)
             content_hash = self.content_hash(b, searched)
             stats = {**stats, "size": _size(graph), "top_label": _top_label(graph), **_top_audience(graph)}
+            if warm is not _NO_WARM:
+                stats["warm"] = self._write_warm(b, warm)
             db.execute(
                 "UPDATE builds SET status = 'ready', finished_at = ?, content_hash = ?, coverage = ?, stats = ?"
                 " WHERE build_id = ?",
                 (utc_now(), content_hash, json.dumps(coverage, ensure_ascii=False), json.dumps(stats), b),
             )
         return b
+
+    def _write_warm(self, b: int, warm: Clusters | None) -> int:
+        members = sorted((warm.members if warm is not None else {}).items())
+        self.db.executemany(
+            "INSERT INTO cluster_warm (build_id, node_id, cluster_id, sub_id) VALUES (?, ?, ?, ?)",
+            [(b, nid, top, sub) for nid, (top, sub) in members],
+        )
+        return len(members)
+
+    def warm_start(self, b: int) -> tuple[bool, Clusters | None]:
+        """Whether build b recorded the clusters it started from, and those clusters (members only; None for a cold
+        start)."""
+        stats = self.db.execute("SELECT stats FROM builds WHERE build_id = ?", (b,)).fetchone()
+        found = json.loads(stats[0] or "{}") if stats else {}
+        if "warm" not in found:
+            return False, None
+        out = Clusters()
+        sql = "SELECT node_id, cluster_id, sub_id FROM cluster_warm WHERE build_id = ? ORDER BY node_id"
+        for nid, top, sub in self.db.execute(sql, (b,)):
+            out.members[nid] = (top, sub)
+        return True, out if out.members else None
 
     def _write_clusters(self, b: int, found: Clusters) -> None:
         """Bring the cluster tables to ``found``; a graph without clusters closes the previous build's."""
@@ -781,6 +824,7 @@ class Store:
                 for table in self._history_tables()
             }
             out["builds"] = self.db.execute("DELETE FROM builds WHERE build_id < ?", (floor,)).rowcount
+            self.db.execute("DELETE FROM cluster_warm WHERE build_id < ?", (floor,))  # what only those builds read
         return out
 
     def _history_tables(self) -> tuple[str, ...]:

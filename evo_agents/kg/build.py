@@ -614,6 +614,7 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
             coverage=coverage,
             stats={"memo": report.memo, "inputs": build_inputs(project, corpus)},
             policy=project.policy,
+            warm=warm,
         )
         if report.rebuilt_from:
             store = store.install(target)
@@ -696,8 +697,9 @@ def previous_clusters(
 
 
 def warm_start_of(project: Project, content_hash: str) -> Clusters | None:
-    """The clusters the project's ready build of ``content_hash`` started from: those of the ready build before it
-    in the project's store. None when the store, that build or the one before it is gone."""
+    """The clusters the project's ready build of ``content_hash`` started from: those it recorded (``Store.warm_start``),
+    else those of the ready build before it in the project's store. None when the store, that build or the one before
+    it is gone."""
     target = project.root / "graph.sqlite"
     if not target.exists():
         return None
@@ -713,6 +715,13 @@ def warm_start_of(project: Project, content_hash: str) -> Clusters | None:
     if b is None:
         store.close()
         return None
+    try:
+        recorded, warm = store.warm_start(b)
+    except sqlite3.Error:  # a file written before cluster_warm came
+        recorded, warm = False, None
+    if recorded:
+        store.close()
+        return warm
     return previous_clusters(store, target, before=b, close=True)
 
 
@@ -736,6 +745,7 @@ def verify_build(
         graph, coverage, errors, _ = run_pipeline(project, corpus, memo)
         if errors:
             return {"match": False, "errors": errors[:10]}
+        add_curation(graph, coverage)
         add_clusters(project, graph, coverage, warm)
         add_review(graph, coverage)
         b = store.write(graph, state_digest=corpus.state_digest(), coverage=coverage, stats={}, policy=project.policy)
