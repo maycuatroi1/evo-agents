@@ -34,6 +34,7 @@ from evo_agents.hub.tables_canvas import (
     CELLS,
     CHANGES,
     CONFIDENCES,
+    DELIVERIES,
     DIRECTIONS,
     EVIDENCE_KINDS,
     JUDGED_SOURCES,
@@ -119,6 +120,9 @@ class CanvasContent(BaseModel):
     text: str
     status: Literal[STATUSES]
     confidence: Literal[CONFIDENCES]
+    delivery: Literal[DELIVERIES] = Field(
+        "code", description="code: the build path; action: a task of the plugin tasks"
+    )
     test_card: CanvasTestCard | None
     archived: bool
     use_cases: list[str] = UseCases
@@ -136,6 +140,9 @@ class CanvasClaim(BaseModel):
     text: str
     status: Literal[STATUSES]
     confidence: Literal[CONFIDENCES]
+    delivery: Literal[DELIVERIES] = Field(
+        "code", description="code: the build path; action: a task of the plugin tasks"
+    )
     test_card: CanvasTestCard | None
     archived: bool
     use_cases: list[str] = UseCases
@@ -364,6 +371,7 @@ class CanvasChangeIn(BaseModel):
     text: str | None = Field(None, min_length=1, max_length=MAX_TEXT_CHARS)
     status: Literal[STATUSES] | None = None
     confidence: Literal[CONFIDENCES] | None = None
+    delivery: Literal[DELIVERIES] | None = Field(None, description="code or action: how a solution claim is delivered")
     test_card: CanvasTestCardIn | None = None
     archived: bool | None = None
     use_cases: list[str] | None = Field(
@@ -455,6 +463,7 @@ def claim_model(row: ClaimRow, evidence: list[EvidenceRow]) -> CanvasClaim:
         text=row.text,
         status=row.status,
         confidence=row.confidence,
+        delivery=row.delivery,
         test_card=card_model(row.test_card),
         archived=row.archived_at is not None,
         use_cases=list(row.use_cases),

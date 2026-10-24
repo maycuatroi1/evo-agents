@@ -39,7 +39,7 @@ export const ITEM_STATES = ["queued", "running", "watching", "waiting_human", "d
  * `loop.model.KINDS`, in the order of a chain: the business cycle (a brainstorm toward a goal, a discover of a problem's
  * claim, a use case of a solution's), then the development cycle.
  */
-export const ITEM_KINDS = ["brainstorm", "discover", "use_case", "build", "deliver"] as const satisfies readonly ItemKind[];
+export const ITEM_KINDS = ["brainstorm", "discover", "use_case", "build", "deliver", "act"] as const satisfies readonly ItemKind[];
 /** `board_items.GROUPS`: the three gates, then what the Loop's chain waits on. */
 export const BOARD_GROUPS = ["goal", "canvas", "policy", "exception", "srs"] as const satisfies readonly BoardGroup[];
 /** `items.DEFAULT_ITEMS`: the newest work items one read of the Loop page lists. */

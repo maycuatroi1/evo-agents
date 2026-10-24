@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import date
 
 from evo_agents.hub import problems as problem_model
-from evo_agents.hub.tables_canvas import CELLS, CONFIDENCES, MAX_TEXT_CHARS, STATUSES
+from evo_agents.hub.tables_canvas import CELLS, CONFIDENCES, DEFAULT_DELIVERY, DELIVERIES, MAX_TEXT_CHARS, STATUSES
 from evo_agents.hub.tables_srs import MAX_CODE_CHARS, code_key
 
 CODE = re.compile(r"^(?:CL-)?([1-9][0-9]{0,8})$", re.IGNORECASE)  # CL-3, cl-3 or 3
@@ -37,7 +37,17 @@ MAX_WINDOW_DAYS = 90
 MAX_LINKS = 20  # use cases a claim links, signal keys, and problems
 LINKS = ("use_cases", "signal_keys", "problems")  # the fields of a claim's content that link it, each a sorted tuple
 PROBLEM = re.compile(problem_model.REF)  # a problem's code, P-<number>
-FIELDS = ("cell", "position", "text", "status", "confidence", "test_card", "archived", *LINKS)  # of a claim's content
+FIELDS = (
+    "cell",
+    "position",
+    "text",
+    "status",
+    "confidence",
+    "delivery",
+    "test_card",
+    "archived",
+    *LINKS,
+)  # of a claim's content
 CARD_FIELDS = (
     "hypothesis",
     "test",
@@ -86,6 +96,7 @@ class Content:
     text: str
     status: str = "assumption"
     confidence: str = "medium"
+    delivery: str = DEFAULT_DELIVERY  # code: the build path; action: a task of the plugin tasks (plan problem-intake)
     test_card: dict | None = None
     archived: bool = False
     use_cases: tuple[str, ...] = ()
@@ -226,6 +237,7 @@ CHECKS = {  # field of a claim -> what checks it and gives the value kept
     "text": lambda v: _text("text", v, MAX_TEXT_CHARS),
     "status": lambda v: _choice("status", v, STATUSES),
     "confidence": lambda v: _choice("confidence", v, CONFIDENCES),
+    "delivery": lambda v: _choice("delivery", v, DELIVERIES),
     "test_card": checked_card,
     "use_cases": checked_use_cases,
     "signal_keys": checked_signal_keys,

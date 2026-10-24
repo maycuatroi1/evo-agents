@@ -63,6 +63,7 @@ class ClaimRow:
     use_cases: list[str] = field(default_factory=list)  # the codes of the use cases it links
     signal_keys: list[str] = field(default_factory=list)  # the signal keys it links
     problems: list[str] = field(default_factory=list)  # the codes of the problems of the project it answers
+    delivery: str = "code"  # code or action (tables_canvas.DELIVERIES)
 
     @property
     def code(self) -> str:
@@ -80,6 +81,7 @@ class ClaimRow:
             use_cases=tuple(self.use_cases),
             signal_keys=tuple(self.signal_keys),
             problems=tuple(self.problems),
+            delivery=self.delivery,
         )
 
 
@@ -298,6 +300,7 @@ def _claims_query():
         k.c.use_cases,
         k.c.signal_keys,
         k.c.problems,
+        k.c.delivery,
     ).select_from(k.join(users, users.c.id == k.c.created_by))
 
 

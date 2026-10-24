@@ -11722,6 +11722,11 @@ export interface components {
             status?: ("assumption" | "testing" | "validated" | "invalidated" | "retired") | null;
             /** Confidence */
             confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * Delivery
+             * @description code or action: how a solution claim is delivered
+             */
+            delivery?: ("code" | "action") | null;
             test_card?: components["schemas"]["CanvasTestCardIn"] | null;
             /** Archived */
             archived?: boolean | null;
@@ -11775,6 +11780,13 @@ export interface components {
              * @enum {string}
              */
             confidence: "low" | "medium" | "high";
+            /**
+             * Delivery
+             * @description code: the build path; action: a task of the plugin tasks
+             * @default code
+             * @enum {string}
+             */
+            delivery: "code" | "action";
             test_card: components["schemas"]["CanvasTestCard"] | null;
             /** Archived */
             archived: boolean;
@@ -11861,6 +11873,13 @@ export interface components {
              * @enum {string}
              */
             confidence: "low" | "medium" | "high";
+            /**
+             * Delivery
+             * @description code: the build path; action: a task of the plugin tasks
+             * @default code
+             * @enum {string}
+             */
+            delivery: "code" | "action";
             test_card: components["schemas"]["CanvasTestCard"] | null;
             /** Archived */
             archived: boolean;
@@ -11948,6 +11967,13 @@ export interface components {
              * @enum {string}
              */
             confidence: "low" | "medium" | "high";
+            /**
+             * Delivery
+             * @description code: the build path; action: a task of the plugin tasks
+             * @default code
+             * @enum {string}
+             */
+            delivery: "code" | "action";
             test_card: components["schemas"]["CanvasTestCard"] | null;
             /** Archived */
             archived: boolean;
@@ -12199,6 +12225,13 @@ export interface components {
              * @enum {string}
              */
             confidence: "low" | "medium" | "high";
+            /**
+             * Delivery
+             * @description code: the build path; action: a task of the plugin tasks
+             * @default code
+             * @enum {string}
+             */
+            delivery: "code" | "action";
             test_card: components["schemas"]["CanvasTestCard"] | null;
             /** Archived */
             archived: boolean;
@@ -17680,7 +17713,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "brainstorm" | "use_case" | "build" | "deliver" | "discover";
+            kind: "brainstorm" | "use_case" | "build" | "deliver" | "discover" | "act";
             /**
              * Cycle
              * @enum {string}
@@ -65928,7 +65961,7 @@ export interface operations {
         parameters: {
             query?: {
                 state?: ("queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled") | null;
-                kind?: ("brainstorm" | "use_case" | "build" | "deliver" | "discover") | null;
+                kind?: ("brainstorm" | "use_case" | "build" | "deliver" | "discover" | "act") | null;
                 /** @description a goal's code or alias */
                 goal?: string | null;
                 /** @description only the work items not done or cancelled */

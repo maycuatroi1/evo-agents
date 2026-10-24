@@ -83,6 +83,8 @@ CELLS = (  # canvas_claims.cell: the nine cells of a Lean Canvas, in the order a
 )
 STATUSES = ("assumption", "testing", "validated", "invalidated", "retired")  # canvas_claims.status
 CONFIDENCES = ("low", "medium", "high")  # canvas_claims.confidence
+DELIVERIES = ("code", "action")  # canvas_claims.delivery (plan problem-intake): how a solution claim is delivered
+DEFAULT_DELIVERY = "code"
 CHANGES = (  # canvas_claim_revs.change
     "create",
     "edit",
@@ -190,6 +192,7 @@ def _claims(metadata: MetaData) -> Table:
         Column("use_cases", ARRAY(Text), nullable=False, server_default="{}"),  # 0078
         Column("signal_keys", ARRAY(Text), nullable=False, server_default="{}"),  # 0078
         Column("problems", ARRAY(Text), nullable=False, server_default="{}"),  # 0135
+        Column("delivery", Text, nullable=False, server_default="code"),  # 0139
         _key(name, "project_id", "projects", ondelete="RESTRICT"),
         _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
         _key(name, "created_by", "users", ondelete="RESTRICT"),

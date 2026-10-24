@@ -9140,6 +9140,10 @@
       "approved": "Approved",
       "expired": "Expired"
     },
+    "delivery": {
+      "code": "Code",
+      "action": "Action"
+    },
     "confidence": {
       "low": "Low",
       "medium": "Medium",
@@ -9251,6 +9255,8 @@
       "cell": "Cell",
       "status": "Status",
       "confidence": "Confidence",
+      "delivery": "Delivery",
+      "deliveryHelp": "Code goes through the build path. Action becomes a task of the tasks plugin when the claim moves to testing.",
       "statusHelp": "Testing needs a hypothesis, a test and a deadline. Validated needs real evidence that supports the claim.",
       "testingHelp": "Testing needs a hypothesis, a test and a deadline on the test card.",
       "validatedHelp": "The hub accepts validated only with real evidence that supports the claim: not synthetic, not a document or a simulation, and added by a person or confirmed by a writer.",
@@ -9677,14 +9683,16 @@
       "discover": "Discover",
       "use_case": "Use case",
       "build": "Build",
-      "deliver": "Deliver"
+      "deliver": "Deliver",
+      "act": "Act"
     },
     "title": {
       "brainstorm": "Brainstorm for {subject}",
       "discover": "Discover for {subject}",
       "use_case": "Use case for {subject}",
       "build": "Build {subject}",
-      "deliver": "Deliver {subject}"
+      "deliver": "Deliver {subject}",
+      "act": "Act for {subject}"
     },
     "cycle": {
       "business": "Business cycle",

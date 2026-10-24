@@ -14,6 +14,11 @@ is the engine ``rules/1`` (``rules``) with the changes below, three pure functio
     rest of its chain as rules/1 has it; otherwise a ``build`` straight from the claim, whose author run in Loop mode
     takes the problem, the goal, the claim and its test card as its request (``texts.claim_request``), then a
     ``deliver`` of the plan it wrote as rules/1's (rows 9 to 11). Key ``build:claim:<canvas>:<claim>:b<baseline>``.
+  - the same cells, when the claim's delivery is ``action`` (plan problem-intake): an ``act``, whatever the project's
+    use cases. It needs no code: ``act.hand_out`` makes a task of the plugin tasks with the problem, the goal, the
+    claim and its test card, for the claim's creator or the project's writer. The work item is done when the task is
+    done; a task cancelled, gone or past its due day is a failure as for any kind (queued again, triage, a person).
+    Key ``act:<canvas>:<claim>:b<baseline>``.
   - Problem: a ``discover`` (cycle business) of @strategist, whose task run runs the claim's test card
     (``texts.discover_task``): done once that run is done; a run that fails, is lost or ends on its caps counts a
     failure as for any kind (queued again, then triage, then a person). Key ``discover:<canvas>:<claim>:b<baseline>``.
@@ -36,11 +41,14 @@ from datetime import datetime, timedelta
 
 from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.server.loop.model import (
+    ACT,
     BUILD,
+    CANCELLED_GROUP,
     CLAIM_BUILD,
     DISCOVER,
     DONE,
     DONE_EVENT,
+    DONE_GROUP,
     ENGINE,
     PROBLEM_CELL,
     QUEUED,
@@ -57,9 +65,19 @@ from evo_agents.hub.server.loop.model import (
     View,
     WorkSpec,
 )
-from evo_agents.hub.server.loop.rules import NOTED_RESULTS, Rules, approved, move_build, noted, run_of, use_case_work
+from evo_agents.hub.server.loop.rules import (
+    NOTED_RESULTS,
+    Rules,
+    _failure,
+    approved,
+    move_build,
+    noted,
+    run_of,
+    use_case_work,
+)
 
 STABLE = "stable"
+ACTION = "action"  # canvas_claims.delivery: the claim is delivered by a task, not by code
 
 # The problem a work item goes from
 
@@ -115,6 +133,8 @@ def _in_testing(event: Event, view: View, moved: dict) -> list[Effect]:
     claim = view.claims.get(moved["claim_id"])
     cell = None if claim is None else claim.cell
     at = f"{event.payload['canvas']}:{moved['claim']}:b{event.payload['baseline']}"
+    if cell in SOLUTION_CELLS and claim is not None and claim.delivery == ACTION:
+        return _testing(event, view, moved, ACT, f"{ACT}:{at}")
     if cell in SOLUTION_CELLS and view.use_cases:
         return use_case_work(event, view, moved)
     if cell in SOLUTION_CELLS:
@@ -163,7 +183,29 @@ def _discovered(item: ItemView, view: View) -> Transition | None:
     return None
 
 
-MOVES = {BUILD: _built, DISCOVER: _discovered}
+def _acted(item: ItemView, view: View) -> Transition | None:
+    """An act past its stable hours; one running with its task of the plugin tasks (``act.hand_out``): done once the
+    task is done, a failure (as for any kind: queued again, then triage, then a person) when it is cancelled or gone or
+    past its due day."""
+    if item.state == WATCHING and item.reason == STABLE:
+        return _stable(item, view)
+    if item.state != RUNNING or item.task_id is None:
+        return None
+    task = view.tasks.get(item.task_id)
+    if task is None:
+        return _failure(item, why="the task of the act is gone")
+    if task.group == DONE_GROUP:
+        return Transition(item.id, DONE, DONE_EVENT, detail={"task": task.number})
+    if task.group == CANCELLED_GROUP:
+        return _failure(item, task=task.number, why="the task of the act was cancelled")
+    if task.due_on is not None and view.now.date() > task.due_on:
+        return _failure(
+            item, task=task.number, why=f"the task of the act is past its due day {task.due_on.isoformat()}"
+        )
+    return None
+
+
+MOVES = {BUILD: _built, DISCOVER: _discovered, ACT: _acted}
 
 
 class Rules2(Rules):

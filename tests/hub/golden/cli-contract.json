@@ -3242,6 +3242,18 @@
         },
         {
           "flags": [
+            "--delivery"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "code",
+            "action"
+          ]
+        },
+        {
+          "flags": [
             "--position"
           ],
           "value": "integer",
@@ -3983,6 +3995,7 @@
               "use_cases",
               "signal_keys",
               "problems",
+              "delivery",
               "rev",
               "evidence_count",
               "real_support_count",
@@ -69164,7 +69177,8 @@
                       "use_case",
                       "build",
                       "deliver",
-                      "discover"
+                      "discover",
+                      "act"
                     ],
                     "type": "string"
                   },
@@ -76238,6 +76252,22 @@
               ],
               "title": "Confidence"
             },
+            "delivery": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "code",
+                    "action"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Delivery",
+              "description": "code or action: how a solution claim is delivered"
+            },
             "test_card": {
               "anyOf": [
                 {
@@ -76366,6 +76396,16 @@
                 "high"
               ],
               "title": "Confidence"
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "code",
+                "action"
+              ],
+              "title": "Delivery",
+              "description": "code: the build path; action: a task of the plugin tasks",
+              "default": "code"
             },
             "test_card": {
               "anyOf": [
@@ -76532,6 +76572,16 @@
                 "high"
               ],
               "title": "Confidence"
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "code",
+                "action"
+              ],
+              "title": "Delivery",
+              "description": "code: the build path; action: a task of the plugin tasks",
+              "default": "code"
             },
             "test_card": {
               "anyOf": [
@@ -76715,6 +76765,16 @@
                 "high"
               ],
               "title": "Confidence"
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "code",
+                "action"
+              ],
+              "title": "Delivery",
+              "description": "code: the build path; action: a task of the plugin tasks",
+              "default": "code"
             },
             "test_card": {
               "anyOf": [
@@ -77310,6 +77370,16 @@
                 "high"
               ],
               "title": "Confidence"
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "code",
+                "action"
+              ],
+              "title": "Delivery",
+              "description": "code: the build path; action: a task of the plugin tasks",
+              "default": "code"
             },
             "test_card": {
               "anyOf": [
@@ -89935,7 +90005,8 @@
                 "use_case",
                 "build",
                 "deliver",
-                "discover"
+                "discover",
+                "act"
               ],
               "title": "Kind"
             },

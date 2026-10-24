@@ -51,7 +51,7 @@ DEFAULT_DAYS = 30
 DEFAULT_LIMIT = 50
 FEEDBACK_CHARS = 300  # of a piece of feedback a series shows
 RACE = "another write in the project took a claim's number at the same moment: nothing was written; try again"
-CLAIM_FIELDS = ("cell", "text", "status", "confidence", "position", "test_card", "archived", *LINKS)
+CLAIM_FIELDS = ("cell", "text", "status", "confidence", "delivery", "position", "test_card", "archived", *LINKS)
 
 
 def _text(text: str, *, error: bool = False) -> dict:
@@ -114,6 +114,7 @@ def _claim_lines(row: store.ClaimRow, evidence: list[store.EvidenceRow]) -> list
     archived = ", archived" if row.archived_at is not None else ""
     return [
         f"- {row.code} [{row.status}, {row.confidence}, rev {row.rev}{archived}] {row.text}",
+        f"  delivery: {row.delivery}",
         f"  test card: {_card_text(row.test_card)}",
         *([f"  use cases: {', '.join(row.use_cases)}"] if row.use_cases else []),
         *([f"  signal keys: {', '.join(row.signal_keys)}"] if row.signal_keys else []),

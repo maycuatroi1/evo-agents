@@ -221,8 +221,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_seventy_tables(hub_db):
-    assert len(TABLES) == 170  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_seventy_two_tables(hub_db):
+    assert len(TABLES) == 172  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)

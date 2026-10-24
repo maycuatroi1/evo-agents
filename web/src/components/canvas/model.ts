@@ -10,6 +10,7 @@ import type {
   Cell,
   ClaimStatus,
   Confidence,
+  Delivery,
   Direction,
 } from "./api";
 
@@ -50,6 +51,8 @@ export const CELL_PLACE: Record<Cell, string> = {
 
 /** `tables_canvas.STATUSES`, in the order a claim usually moves through them. */
 export const STATUSES = ["assumption", "testing", "validated", "invalidated", "retired"] as const satisfies readonly ClaimStatus[];
+/** `tables_canvas.DELIVERIES`: code follows the build path, action becomes a task. */
+export const DELIVERIES = ["code", "action"] as const satisfies readonly Delivery[];
 export const CONFIDENCES = ["low", "medium", "high"] as const satisfies readonly Confidence[];
 /** `writes.ADDED_KINDS`: the evidence a person adds; signal and feedback are the hub's to write. */
 export const ADDED_KINDS = ["interview", "experiment", "market", "doc", "simulation"] as const satisfies readonly AddedEvidenceKind[];
@@ -135,6 +138,7 @@ export type ClaimForm = {
   text: string;
   status: ClaimStatus;
   confidence: Confidence;
+  delivery: Delivery;
   hypothesis: string;
   test: string;
   metric: string;
@@ -155,6 +159,7 @@ export function emptyForm(cell: Cell): ClaimForm {
     text: "",
     status: "assumption",
     confidence: "low",
+    delivery: "code",
     hypothesis: "",
     test: "",
     metric: "",
@@ -179,6 +184,7 @@ export function formOf(content: CanvasContent): ClaimForm {
     text: content.text,
     status: content.status,
     confidence: content.confidence,
+    delivery: content.delivery ?? "code",
     hypothesis: text(card.hypothesis),
     test: text(card.test),
     metric: text(card.metric),
@@ -249,6 +255,7 @@ export function changeOf(form: ClaimForm, held: { content: CanvasContent; code: 
       text: form.text.trim(),
       status: form.status,
       confidence: form.confidence,
+      delivery: form.delivery,
       test_card: card,
       use_cases: useCases,
       signal_keys: form.signalKeys,
@@ -260,6 +267,7 @@ export function changeOf(form: ClaimForm, held: { content: CanvasContent; code: 
   if (form.text.trim() !== content.text) change.text = form.text.trim();
   if (form.status !== content.status) change.status = form.status;
   if (form.confidence !== content.confidence) change.confidence = form.confidence;
+  if (form.delivery !== (content.delivery ?? "code")) change.delivery = form.delivery;
   if (!sameCard(card, content.test_card)) change.test_card = card;
   if (!sameList(useCases, content.use_cases)) change.use_cases = useCases;
   if (!sameList(form.signalKeys, content.signal_keys)) change.signal_keys = form.signalKeys;
