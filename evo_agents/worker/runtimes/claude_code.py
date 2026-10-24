@@ -396,6 +396,11 @@ def _image_of(block) -> ToolImage | None:
     return ToolImage.of(media_type, data) if data else None
 
 
+def thinking_event(text: str, signature) -> AgentEvent:
+    """A thinking block's text: the agent's words when it is a narration (``digest.is_narration``), else a thought."""
+    return (message_chunk if digest.is_narration(signature) else thought_chunk)(text)
+
+
 def tool_result(call_id: str, status: str, content) -> AgentEvent:
     """The ``tool_call_update`` of a tool's result, headless (``events_of``) or from the transcript of a session a
     person drives (``interactive.claude_transcript_events``): its text as before, and each image of it, once per
@@ -614,7 +619,7 @@ def events_of(message) -> list[AgentEvent]:
                     events.append(message_chunk(block.text))
             elif isinstance(block, sdk.ThinkingBlock):
                 if block.thinking.strip():  # thinking the API keeps to itself comes with an empty text
-                    events.append(thought_chunk(block.thinking))
+                    events.append(thinking_event(block.thinking, block.signature))
             elif isinstance(block, (sdk.ToolUseBlock, sdk.ServerToolUseBlock)):
                 events.append(
                     tool_call(block.id, block.name, TOOL_KINDS.get(block.name, "other"), "pending", block.input)

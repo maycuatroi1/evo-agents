@@ -396,9 +396,16 @@ def agent_words(rec: dict, transcript: Path) -> list[str]:
         content = message.get("content")
         blocks = content if isinstance(content, list) else []
         for block in blocks:
-            if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
-                if block["text"].strip():
-                    texts.append(block["text"].strip())
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                text = block.get("text")
+            elif block.get("type") == "thinking" and digest.is_narration(block.get("signature")):
+                text = block.get("thinking")  # the update the Claude app shows as the agent's words
+            else:
+                continue
+            if isinstance(text, str) and text.strip():
+                texts.append(text.strip())
     return texts
 
 
