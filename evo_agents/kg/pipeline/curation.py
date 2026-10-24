@@ -42,11 +42,13 @@ def bind(record: dict, text: str | None, index: dict) -> list[dict]:
 
 
 def _existing(value, index: dict) -> str | None:
-    """The id ``value`` names in the graph, or None: a decision never creates a node."""
+    """The id ``value`` names, or None. An identifier's id (``requirement:KB-01``) stands as it is, but a decision never
+    creates its node: the edges of a link need both their nodes, and a merge only joins nodes the graph holds."""
     if not isinstance(value, str) or not value.strip():
         return None
-    found, create = resolve(value, index, {})
-    return None if create else found
+    code_kinds = {i["kind"].lower(): i["kind"] for i in index.get("identifiers", [])}
+    found, _create = resolve(value, index, code_kinds)
+    return found
 
 
 def _decision_facts(entry: dict, unit: str, index: dict) -> list[dict]:

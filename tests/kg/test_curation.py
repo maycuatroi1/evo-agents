@@ -57,6 +57,7 @@ DECISIONS = [
     row(2, "link", SERVER_PY, "verifies", SEARCH_PY),
     row(3, "deprecate", RANK, reason="ranking moved to the index"),
     row(4, "deprecate", HANDLE, "calls", SEARCH, reason="the server calls the index now"),
+    row(5, "link", SERVER_PY, "implements", "usecase:KB-02"),  # an identifier's node, by its id
 ]
 
 
@@ -68,6 +69,8 @@ def test_curation_merges_links_and_deprecates_at_the_binding_stage(tmp_path, kg_
     # A link is a declared edge that names its decision.
     added = next(e for e in store.edges_of(SERVER_PY, b, "out") if e["rel"] == "verifies")
     assert added["dst"] == SEARCH_PY and added["status"] == "declared" and added["props"] == {"decision": 2}
+    implements = [e for e in store.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
+    assert [(e["dst"], e["props"]) for e in implements] == [("usecase:KB-02", {"decision": 5})]
     # A deprecation marks the node or edge it names, with its reason and decision; neither leaves the graph.
     assert store.node(RANK, b)["props"]["deprecated"] == {"reason": "ranking moved to the index", "decision": 3}
     calls = next(e for e in store.edges_of(HANDLE, b, "out") if e["rel"] == "calls")
@@ -84,10 +87,13 @@ def test_curation_orphans_are_skipped_and_never_break_the_build(tmp_path, kg_env
         row(3, "deprecate", gone),
         row(4, "deprecate", HANDLE, "imports", SEARCH),  # no such edge
         row(5, "deprecate", RANK),
+        row(6, "link", SERVER_PY, "implements", "usecase:KB-99"),  # no such requirement: the link makes none
     ]
     _project, store, b, report = curated(tmp_path, kg_env, rows)
     assert store.node(gone, b) is None and store.alias_of(gone, b) is None
     assert not [e for e in store.edges_of(SEARCH_PY, b, "in") if e["rel"] == "verifies"]
+    assert store.node("usecase:KB-99", b) is None
+    assert not [e for e in store.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
     assert report.coverage["curation"] == {"deprecated": 1, "orphans": 2}
     assert store.node(RANK, b)["props"]["deprecated"]["decision"] == 5
 
