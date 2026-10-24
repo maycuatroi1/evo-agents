@@ -270,8 +270,16 @@ export function bellNumber(unread: number): string {
   return unread > 99 ? "99+" : String(unread);
 }
 
-/** Why an answer cannot be sent as it stands: nothing chosen or written, or words over 4 KiB of UTF-8. */
-export type AnswerProblem = "empty" | "option" | "long" | null;
+/**
+ * Why an answer cannot be sent as it stands: nothing chosen or written, no option for a decision of the hub's, words
+ * with an option that keeps the decision open (the agent would never read them), or words over 4 KiB of UTF-8.
+ */
+export type AnswerProblem = "empty" | "option" | "waits" | "long" | null;
+
+/** Whether option `key` of `decision` says not yet: choosing it keeps the decision open and tells the agent nothing. */
+export function optionWaits(decision: Pick<Decision, "options">, key: string | null): boolean {
+  return key !== null && decision.options.some((option) => option.key === key && option.waits === true);
+}
 
 /** Whether the hub itself does what the answer of `decision` chooses (`runs.HUB_DECISION_CATEGORIES`). */
 export function isHubDecision(decision: Pick<Decision, "category">): boolean {
@@ -285,10 +293,14 @@ export function runLinkWords(decision: Pick<Decision, "category" | "plan_id">) {
   return decision.plan_id === null ? ("authorRunLink" as const) : ("runLink" as const);
 }
 
-/** What keeps an answer from going: nothing chosen or written, no option for a decision of the hub's, words too long. */
-export function answerProblem(option: string | null, text: string, hub = false): AnswerProblem {
+/**
+ * What keeps an answer from going: nothing chosen or written, no option for a decision of the hub's, words with an
+ * option that keeps the decision open (`waits`), words too long.
+ */
+export function answerProblem(option: string | null, text: string, hub = false, waits = false): AnswerProblem {
   if (option === null && text.trim() === "") return "empty";
   if (option === null && hub) return "option";
+  if (waits && text.trim() !== "") return "waits";
   if (utf8Bytes(text.trim()) > MAX_ANSWER_BYTES) return "long";
   return null;
 }

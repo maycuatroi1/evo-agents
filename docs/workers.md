@@ -253,6 +253,7 @@ does not name. The `worker` is the worker that holds the run, the `owner` is the
 | `waiting` | `parked` (no answer within 24 hours) | reaper |
 | `review` | `done` (approve), `cancelled` | owner |
 | `parked` | `done` (the owner answered, and the run that resumes it is queued) | owner |
+| `parked` | `done` (a wait of the run woke, and the run that resumes it is queued) | reaper |
 | `parked` | `cancelled` | owner, or the reaper after 7 days |
 | `leased`, `running`, `interactive`, `verifying`, `waiting` | `failed`, `cancelled` | worker or reaper |
 | `leased`, `running`, `interactive`, `verifying`, `waiting` | `lost` | reaper |
@@ -814,6 +815,12 @@ plan or after (The chat of an author run above). Its decisions follow the rules 
 asked before the run put a plan has no plan (`plan_id` null) and is read by whoever reads the run; the run waits for
 every decision its turn asked, or a reply in its chat, rather than the first answer; and a parked author run resumes
 only once none of its decisions is open. A plan run keeps waking at the first answer.
+
+A plan run's agent that needs a time, or an event of the hub (a baseline of a canvas approved, a claim or a task
+changing), waits for it with `evo-agents worker wait` instead of asking its owner to say when it came, and ends its
+turn: the run waits as on a decision, and the hub wakes it with a message naming the wait when the time or the event
+comes (`docs/notifications.md`, A wait). An option of a decision that only means not yet goes with `evo-agents worker
+ask --wait-option KEY`: choosing it leaves the decision open, and the agent hears nothing until another answer.
 
 A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
 in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels

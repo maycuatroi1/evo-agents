@@ -169,6 +169,8 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     assert {o["flags"][0] for o in notifications["options"]} == {
         "--unread",
         "--kind",
+        "--run",
+        "--search",
         "--project",
         "--limit",
         "--offset",
@@ -209,6 +211,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker triage invite",
         "worker triage plan",
         "worker triage rerun",
+        "worker wait",
     ]
     added = printed["worker playbook add"]
     assert [o["flags"] for o in added["options"]] == [["--text"], ["--evidence"], ["--lens"]]
@@ -265,7 +268,7 @@ def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():
     prompt = build_plan_prompt(plan, [{"repo": "evo-agents", "branch": None}])
     found = [f.text for f in find_commands(prompt, "prompt")]
     named = {text.split()[2] for text in found if text.split()[1] == "worker"}
-    assert named == {"plan", "step", "ask", "notify", "output"}
+    assert named == {"plan", "step", "ask", "wait", "notify", "output"}
     assert {text: check_command(commands(), text) for text in found} == {text: [] for text in found}
 
 
