@@ -74,6 +74,7 @@ export async function heartbeat(
     selfUpdate?: SelfUpdateReport | null;
     selfUpdateHours?: number;
     features?: string[] | null;
+    browser?: object | null;
   } = {},
 ): Promise<void> {
   const response = await fetch(`${STACK_URL}/workers/heartbeat`, {
@@ -86,6 +87,7 @@ export async function heartbeat(
       seconds_ago: report.secondsAgo ?? 0,
       ...(report.agentCommit !== undefined ? { agent_commit: report.agentCommit } : {}),
       ...(report.features !== undefined ? { features: report.features } : {}),
+      ...(report.browser !== undefined ? { browser: report.browser } : {}),
       ...(report.selfUpdate !== undefined ? { self_update: report.selfUpdate, self_update_hours: report.selfUpdateHours ?? 0 } : {}),
     }),
   });

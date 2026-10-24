@@ -205,6 +205,10 @@ AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-de
 # browser (evo_agents.worker.browser); its heartbeat's browser says how many at once, and only it gets such a run
 BROWSER = "browser"
 MAX_BROWSERS = 64  # the most browser runs a worker may say it holds at once
+# a daemon that installs Chromium when its owner asks from the hub (browser_install of the heartbeat answer), as
+# `evo-agents worker browser install` does, and reports in browser_install how a request it could not carry out ended;
+# the hub takes such a request for no other (evo_agents.hub.server.browser_install)
+BROWSER_INSTALL = "browser_install"
 # a daemon that runs `evo-agents worker doctor` when it starts and every 24 hours and sends what it found (POST
 # /v1/worker/doctor; evo_agents.worker.doctor_report): only a worker whose newest report is fresh and has no high
 # finding may be narrowed to units of the org chart (evo_agents.hub.server.worker_doctor)
@@ -229,6 +233,7 @@ WORKER_FEATURES = (
     AGENT_HOME,
     BROWSER,
     DOCTOR_REPORT,
+    BROWSER_INSTALL,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -411,6 +416,12 @@ NIGHTLY_TAG = "nightly"
 # locked or run by hand; self_update.reason says why). A daemon reports the last two in self_update.update_now.
 UPDATE_NOW_OUTCOMES = ("current", "cancelled", "failed", "impossible")
 UPDATE_NOW_DAEMON_ENDS = ("failed", "impossible")  # the outcomes a daemon reports
+# How an owner's Install browser of a worker ended (workers.browser_install_outcome): installed, its heartbeat lists
+# the feature browser; cancelled, the owner or a hub admin cancelled it; failed, the install failed (the daemon's
+# browser_install.error says how); impossible, its daemon no longer says browser_install. A daemon reports failed.
+BROWSER_INSTALL_OUTCOMES = ("installed", "cancelled", "failed", "impossible")
+BROWSER_INSTALL_DAEMON_ENDS = ("failed",)
+MAX_BROWSER_INSTALL_ERROR = 2000  # the characters of why an install failed that a heartbeat carries
 
 ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
     "agent_message_chunk",

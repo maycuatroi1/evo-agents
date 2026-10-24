@@ -7,12 +7,13 @@ while no other run holds one of them."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
 from evo_agents.hub.credentials import MAX_SECRET_NAME_CHARS, SECRET_NAME
-from evo_agents.hub.runs import MAX_BROWSERS
+from evo_agents.hub.runs import BROWSER_INSTALL, MAX_BROWSER_INSTALL_ERROR, MAX_BROWSERS
 
 CHROMIUM_VERSION = r"^[0-9]{1,4}(\.[0-9]{1,6}){0,3}$"
 DISPLAYS = ("headless", "screen")
@@ -44,6 +45,39 @@ class BrowserReport(BaseModel):
         description="whether Chromium runs with its own sandbox; false where the machine does not let it (no "
         "unprivileged user namespaces), as the install found"
     )
+
+
+class BrowserInstallRequest(BaseModel):
+    """An Install browser of the worker's owner, open until the daemon's heartbeat lists the feature browser or the
+    request ends (``evo_agents.hub.server.browser_install``)."""
+
+    requested_at: datetime = Field(description="when it was asked for; it names the request in browser_install")
+
+
+class BrowserInstallReport(BaseModel):
+    """Where the daemon stands with its owner's Install browser (browser_install of the heartbeat answer)."""
+
+    requested_at: datetime = Field(description="the request it is about: requested_at of the answer's browser_install")
+    ended: str | None = Field(
+        None,
+        pattern=r"^[a-z][a-z0-9_]{0,31}$",
+        description="null while the daemon installs; failed, the install failed (error says how). The hub ends the "
+        "request with it, and with a value it does not know ends nothing",
+    )
+    error: str | None = Field(
+        None, min_length=1, max_length=MAX_BROWSER_INSTALL_ERROR, description="why the install failed"
+    )
+
+
+INSTALL_REQUEST_HELP = (
+    "the owner asked the daemon to install Chromium, as `evo-agents worker browser install` does; once installed, its "
+    f"heartbeat lists the feature browser. Absent when no request is open; sent only to a daemon that says "
+    f"{BROWSER_INSTALL}"
+)
+INSTALL_REPORT_HELP = (
+    f"for a daemon that says {BROWSER_INSTALL}, where it stands with the owner's Install browser the answer carried; "
+    "null when it carries none"
+)
 
 
 def no_browser(value) -> bool:

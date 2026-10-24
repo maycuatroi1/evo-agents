@@ -1735,6 +1735,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workers/{worker_id}/browser-install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Browser Install
+         * @description Ask the worker's daemon to install Chromium for the runs dispatched with a browser, as `evo-agents worker
+         *     browser install` does on the machine; its runs and claims go on meanwhile. 409 with why when its daemon is too old
+         *     or has Chromium already.
+         */
+        post: operations["ask_browser_install_v1_workers__worker_id__browser_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}/browser-install/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Browser Install
+         * @description Withdraw the worker's open Install browser; an install the daemon began goes on to its end.
+         */
+        post: operations["cancel_browser_install_v1_workers__worker_id__browser_install_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workers/{worker_id}/dispatch-from": {
         parameters: {
             query?: never;
@@ -11423,6 +11465,41 @@ export interface components {
              */
             status: "active" | "needs_login" | "disabled";
         };
+        /**
+         * BrowserInstallReport
+         * @description Where the daemon stands with its owner's Install browser (browser_install of the heartbeat answer).
+         */
+        BrowserInstallReport: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description the request it is about: requested_at of the answer's browser_install
+             */
+            requested_at: string;
+            /**
+             * Ended
+             * @description null while the daemon installs; failed, the install failed (error says how). The hub ends the request with it, and with a value it does not know ends nothing
+             */
+            ended?: string | null;
+            /**
+             * Error
+             * @description why the install failed
+             */
+            error?: string | null;
+        };
+        /**
+         * BrowserInstallRequest
+         * @description An Install browser of the worker's owner, open until the daemon's heartbeat lists the feature browser or the
+         *     request ends (``evo_agents.hub.server.browser_install``).
+         */
+        BrowserInstallRequest: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when it was asked for; it names the request in browser_install
+             */
+            requested_at: string;
+        };
         /** BrowserLogin */
         BrowserLogin: {
             /**
@@ -16275,6 +16352,8 @@ export interface components {
             nightly?: components["schemas"]["NightlyRead"] | null;
             /** @description the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now */
             update_now?: components["schemas"]["UpdateNowRequest"] | null;
+            /** @description the owner asked the daemon to install Chromium, as `evo-agents worker browser install` does; once installed, its heartbeat lists the feature browser. Absent when no request is open; sent only to a daemon that says browser_install */
+            browser_install?: components["schemas"]["BrowserInstallRequest"] | null;
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
@@ -16322,6 +16401,8 @@ export interface components {
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
             /** @description the Chromium the daemon starts for a browser run, with the feature browser; null for a daemon without one */
             browser?: components["schemas"]["BrowserReport"] | null;
+            /** @description for a daemon that says browser_install, where it stands with the owner's Install browser the answer carried; null when it carries none */
+            browser_install?: components["schemas"]["BrowserInstallReport"] | null;
         };
         /** HeldAnswer */
         HeldAnswer: {
@@ -32871,6 +32952,8 @@ export interface components {
             browser?: components["schemas"]["BrowserReport"] | null;
             /** @description the last Update now its owner or a hub admin asked for, open or ended; null when none was */
             update_now: components["schemas"]["WorkerUpdateNow"] | null;
+            /** @description the last Install browser its owner or a hub admin asked for, open or ended; null when none was */
+            browser_install?: components["schemas"]["WorkerBrowserInstall"] | null;
             /** @description where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once */
             nightly: components["schemas"]["NightlyRead"] | null;
             /** Projects */
@@ -32923,6 +33006,33 @@ export interface components {
             drained_at: string | null;
             /** Revoked At */
             revoked_at: string | null;
+        };
+        /**
+         * WorkerBrowserInstall
+         * @description The last Install browser of a worker: open while ended_at is null (POST /v1/workers/{id}/browser-install).
+         */
+        WorkerBrowserInstall: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when its owner or a hub admin asked for it
+             */
+            requested_at: string;
+            /**
+             * Ended At
+             * @description when it ended; null while the daemon installs
+             */
+            ended_at: string | null;
+            /**
+             * Outcome
+             * @description how it ended: installed, its heartbeat lists the feature browser; cancelled; failed, the install failed (reason says how); impossible, its daemon no longer says browser_install; null while open
+             */
+            outcome: ("installed" | "cancelled" | "failed" | "impossible") | null;
+            /**
+             * Reason
+             * @description why it failed or was impossible, as the daemon or the hub said
+             */
+            reason: string | null;
         };
         /** WorkerCandidate */
         WorkerCandidate: {
@@ -39624,6 +39734,140 @@ export interface operations {
         };
     };
     cancel_update_now_v1_workers__worker_id__update_now_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_browser_install_v1_workers__worker_id__browser_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_browser_install_v1_workers__worker_id__browser_install_cancel_post: {
         parameters: {
             query?: never;
             header?: never;

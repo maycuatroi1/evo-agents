@@ -67,6 +67,10 @@ WORKER_UPDATE = "worker.update"
 # "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.update_now)
 WORKER_UPDATE_NOW = "worker.update_now"
 WORKER_UPDATE_NOW_CANCEL = "worker.update_now_cancel"
+# The owner or a hub admin asked the worker's daemon to install Chromium, or cancelled that request:
+# "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.browser_install)
+WORKER_BROWSER_INSTALL = "worker.browser_install"
+WORKER_BROWSER_INSTALL_CANCEL = "worker.browser_install_cancel"
 # The owner or a hub admin narrowed a shared worker to a unit of the org chart, or took the unit back
 # (evo_agents.hub.server.worker_shares): "worker:<id> name=<n> owner=<login> unit=<slug> by=<owner|admin>", then
 # " shared=false->true" when sharing turned the worker shared, " shared=true->false" when its last unit went.

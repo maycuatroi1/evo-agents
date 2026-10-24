@@ -5,6 +5,23 @@ A run dispatched with a browser gets a real Chromium that the worker's daemon bu
 hub, with the sites (domains) whose cookies it keeps. The dispatcher sees and drives the run's browser on the run page of
 the hub.
 
+## Installing Chromium on a worker
+
+A worker takes runs dispatched with a browser only once its daemon has Chromium: its heartbeat then lists the feature
+browser with the version, the display (headless), how many browsers it holds at once and whether Chromium has its own
+sandbox. There are two ways to put it there, both without sudo:
+
+- **From the hub**: Install browser on the worker's page (the foot of the Detected runtimes card), or `POST
+  /v1/workers/{id}/browser-install`. The worker's owner or a hub admin asks; the daemon installs in the background while
+  its runs go on, and the page shows the request until the heartbeat lists the browser, or why the install failed
+  ([Install browser](workers.md#install-browser)). It needs a daemon that says the feature `browser_install`.
+- **On the machine**: `evo-agents worker browser install [--max N]`, then restart the daemon (a daemon of this version also reads it at
+  its next look at the runtimes, every five minutes).
+
+Either way the install downloads Playwright's build of Chromium with `npx`, so the machine needs Node.js 18 or later on
+the daemon's PATH. On Linux, the libraries Chromium lacks are fetched with `apt-get download` into the worker's home;
+a machine without fontconfig (an Ubuntu server image) gets it, a font and a fontconfig file of its own there too.
+
 ## Identities
 
 | Owner | Who makes it | Who may use it |
