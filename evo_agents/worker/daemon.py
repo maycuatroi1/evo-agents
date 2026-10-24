@@ -65,6 +65,11 @@
   no more at once than the max it says. Each such run gets a Chromium of its own before its first agent
   (``browser.session``), which goes once the run ends here or is parked; at its start the daemon stops the browsers a
   daemon before it left, and removes their directories.
+- The answer's ``browser_install`` (its owner's Install browser, feature browser_install) has the daemon install
+  Chromium as that command does, in a thread next to the runs it holds, claims going on: once it is in, the next
+  heartbeat says the feature browser, which ends the request on the hub; an install that fails says why in the
+  heartbeat's ``browser_install`` until the hub ends the request. A request comes once per daemon: a new one, or the
+  same one after a restart, installs again, which changes nothing once Chromium is there.
 - A previous daemon that died with an agent started (``runs/<run>/agent.json``, ``orphans``) left it running. The
   first heartbeat that gets an answer also names those runs, and before any claim the daemon stops the process group
   of each one's agent, SIGTERM then SIGKILL. The run's worktree and its evo-run branch are removed when the hub no
@@ -218,6 +223,9 @@ class Daemon:
         self._kg_wrong: dict[str, tuple] = {}  # project -> what went wrong at its last look
         self.browser_report: dict | None = None  # the Chromium `worker browser install` installed, as heartbeats say it
         self.browsers: dict[int, browser_session.BrowserSession] = {}  # run id -> its Chromium, while it runs
+        # the owner's open Install browser, as heartbeats report it: {requested_at, ended, error}; None for none
+        self.install_asked: dict | None = None
+        self._installing: asyncio.Task | None = None  # the install of Chromium it carries out, while it runs
 
     # Shared with the runs
 
@@ -333,6 +341,8 @@ class Daemon:
         finally:
             if self.kg is not None:
                 self.kg.stop.set()
+            if self._installing is not None:  # its thread ends on its own; the daemon does not wait for it here
+                background.append(self._installing)
             for task in background:
                 task.cancel()
             for task in background:
@@ -487,6 +497,8 @@ class Daemon:
             body["kg_sync"] = report  # what the last looks found (0053)
         if self.browser_report is not None:
             body["browser"] = self.browser_report  # its Chromium, and how many browsers it holds at once (0119)
+        if self.install_asked is not None:  # where it stands with its owner's Install browser (0146)
+            body["browser_install"] = {key: value for key, value in self.install_asked.items() if value is not None}
         return body
 
     def _says(self, feature: str) -> bool:
@@ -509,9 +521,42 @@ class Daemon:
         else:
             self.updater.hear_lock(None)
         self.updater.hear_answer(answer.get("nightly"), answer.get("update_now"))
+        self._take_browser_install(answer.get("browser_install"))
         self._take_plugin_runtimes(answer.get("plugin_runtimes"))
         if self.kg_on:
             self._take_kg_duties(answer.get("kg_sync"))
+
+    def _take_browser_install(self, value) -> None:
+        """Its owner's Install browser, as the answer carries it: a request new to the daemon installs Chromium in the
+        background unless an install runs already, whose end then counts for it; none, the hub ended the request."""
+        requested_at = value.get("requested_at") if isinstance(value, dict) else None
+        if not isinstance(requested_at, str):
+            self.install_asked = None
+            return
+        if self.install_asked is not None and self.install_asked["requested_at"] == requested_at:
+            return
+        self.install_asked = {"requested_at": requested_at, "ended": None, "error": None}
+        if self._installing is None or self._installing.done():
+            self._installing = asyncio.create_task(self._install_browser())
+
+    async def _install_browser(self) -> None:
+        """Install Chromium as `evo-agents worker browser install` does, in a thread, without its progress on the
+        daemon's output; the heartbeats then say the feature browser, or why the install failed."""
+        log.info("installing a browser, as the owner asked from the hub")
+        try:
+            installed, _ = await asyncio.to_thread(
+                browser_install.install, self.home, self.env, say=log.info, quiet=True
+            )
+        except Exception as exc:  # an InstallError says why; anything else must not end the daemon either
+            if not isinstance(exc, browser_install.InstallError):
+                log.exception("the browser install broke")
+            error = (str(exc) or type(exc).__name__)[: runs.MAX_BROWSER_INSTALL_ERROR]
+            log.error("the browser could not be installed", extra={"error": error})
+            if self.install_asked is not None:
+                self.install_asked = {**self.install_asked, "ended": "failed", "error": error}
+            return
+        self.browser_report = installed.report()
+        log.info("browser installed", extra={"browser": self.browser_report})
 
     def _take_kg_duties(self, value) -> None:
         """The projects whose graph the hub asks this worker to keep fresh, with when it last took a run of each: a

@@ -626,3 +626,39 @@ test("the owner shares a worker from its Sharing card, which a hub admin does no
   await expect(main.getByTestId("worker-as-admin")).toBeVisible();
   await expect(main.getByTestId("worker-sharing")).toHaveCount(0);
 });
+
+test("its owner installs a browser on a worker from its page, sees it installing, cancels, and reads it installed", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("chromium"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, { runtimes: RUNTIMES, features: [] });
+  const installOf = async () => (await workersOf(me)).find((w) => w.id === worker.id)?.browser_install;
+
+  // An older daemon cannot install from the hub: the button is greyed with what to do instead.
+  await page.goto(`/workers/${worker.id}`);
+  const line = page.locator("#main").getByTestId("worker-browser");
+  await expect(line).toHaveAttribute("data-offer", "blocked");
+  await expect(line.getByTestId("worker-browser-hint")).toHaveAttribute("data-blocked", "true");
+  await expect(line.getByTestId("worker-browser-detail")).toContainText("No Chromium");
+
+  await heartbeat(worker.id, { features: ["browser_install"] });
+  await page.reload();
+  const ask = line.getByRole("button", { name: "Install browser" });
+  await expect(ask).toHaveAccessibleDescription(/downloads Chromium/);
+  await ask.click();
+  await expect(toast(page, `${worker.name} installs a browser`)).toContainText("downloads Chromium");
+  await expect(line.getByTestId("worker-browser-status")).toHaveAttribute("data-phase", "installing");
+  expect(await installOf()).toMatchObject({ ended_at: null, outcome: null });
+
+  await line.getByRole("button", { name: "Cancel" }).click();
+  await expect(toast(page, `Install browser of ${worker.name} cancelled`)).toBeVisible();
+  await expect(line.getByTestId("worker-browser-status")).toHaveCount(0);
+  expect(await installOf()).toMatchObject({ outcome: "cancelled" });
+
+  // Its heartbeat reports Chromium: the line says which, with no button.
+  const chromium = { chromium: "153.0.8010.12", display: "headless", max: 2, sandbox: true };
+  await heartbeat(worker.id, { features: ["browser_install", "browser"], browser: chromium });
+  await page.reload();
+  await expect(line).toHaveAttribute("data-offer", "installed");
+  await expect(line.getByTestId("worker-browser-detail")).toHaveText("Chromium 153.0.8010.12, headless, 2 browsers at once, its own sandbox");
+  await expect(line.getByRole("button")).toHaveCount(0);
+});

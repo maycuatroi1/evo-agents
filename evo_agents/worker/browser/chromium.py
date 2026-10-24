@@ -35,6 +35,7 @@ DIR_MODE = 0o700
 PLATFORMS = {"darwin": "Macintosh; Intel Mac OS X 10_15_7", "linux": "X11; Linux x86_64"}
 USER_AGENT = "Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
 TERM_GRACE = 5.0  # seconds a Chromium that was sent SIGTERM has to end before SIGKILL
+FONTS_CONF = "fonts.conf"  # beside the libraries the install unpacked, on a machine with no fontconfig file of its own
 
 
 def user_agent(version: str) -> str:
@@ -65,10 +66,15 @@ def flags(profile: Path, version: str, *, sandbox: bool, port: int = 0, headed: 
 
 
 def environment(base: Mapping[str, str], libraries: str | None) -> dict[str, str]:
-    """``base`` with the libraries the install unpacked for Chromium first on LD_LIBRARY_PATH (Linux; None for none)."""
+    """``base`` with the libraries the install unpacked for Chromium first on LD_LIBRARY_PATH (Linux; None for none),
+    and the fontconfig file it wrote beside them, on a machine that has none, as FONTCONFIG_FILE."""
     env = dict(base)
     if libraries:
         env["LD_LIBRARY_PATH"] = os.pathsep.join(item for item in (libraries, env.get("LD_LIBRARY_PATH")) if item)
+        parents = Path(libraries).parents  # <root>/usr/lib/<machine>-linux-gnu
+        fonts = parents[2] / FONTS_CONF if len(parents) > 2 else None
+        if fonts is not None and "FONTCONFIG_FILE" not in env and fonts.is_file():
+            env["FONTCONFIG_FILE"] = str(fonts)
     return env
 
 

@@ -28872,6 +28872,176 @@
           }
         }
       },
+      "/v1/workers/{worker_id}/browser-install": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Ask Browser Install",
+          "description": "Ask the worker's daemon to install Chromium for the runs dispatched with a browser, as `evo-agents worker\nbrowser install` does on the machine; its runs and claims go on meanwhile. 409 with why when its daemon is too old\nor has Chromium already.",
+          "operationId": "ask_browser_install_v1_workers__worker_id__browser_install_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/browser-install/cancel": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Cancel Browser Install",
+          "description": "Withdraw the worker's open Install browser; an install the daemon began goes on to its end.",
+          "operationId": "cancel_browser_install_v1_workers__worker_id__browser_install_cancel_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/workers/{worker_id}/dispatch-from": {
         "post": {
           "tags": [
@@ -77971,6 +78141,65 @@
           ],
           "title": "BrowserIdentityState"
         },
+        "BrowserInstallReport": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "the request it is about: requested_at of the answer's browser_install"
+            },
+            "ended": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended",
+              "description": "null while the daemon installs; failed, the install failed (error says how). The hub ends the request with it, and with a value it does not know ends nothing"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the install failed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at"
+          ],
+          "title": "BrowserInstallReport",
+          "description": "Where the daemon stands with its owner's Install browser (browser_install of the heartbeat answer)."
+        },
+        "BrowserInstallRequest": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "when it was asked for; it names the request in browser_install"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at"
+          ],
+          "title": "BrowserInstallRequest",
+          "description": "An Install browser of the worker's owner, open until the daemon's heartbeat lists the feature browser or the\nrequest ends (``evo_agents.hub.server.browser_install``)."
+        },
         "BrowserLogin": {
           "properties": {
             "worker": {
@@ -89102,6 +89331,17 @@
                 }
               ],
               "description": "the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now"
+            },
+            "browser_install": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BrowserInstallRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the owner asked the daemon to install Chromium, as `evo-agents worker browser install` does; once installed, its heartbeat lists the feature browser. Absent when no request is open; sent only to a daemon that says browser_install"
             }
           },
           "type": "object",
@@ -89248,6 +89488,17 @@
                 }
               ],
               "description": "the Chromium the daemon starts for a browser run, with the feature browser; null for a daemon without one"
+            },
+            "browser_install": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BrowserInstallReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a daemon that says browser_install, where it stands with the owner's Install browser the answer carried; null when it carries none"
             }
           },
           "type": "object",
@@ -127285,6 +127536,17 @@
               ],
               "description": "the last Update now its owner or a hub admin asked for, open or ended; null when none was"
             },
+            "browser_install": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkerBrowserInstall"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the last Install browser its owner or a hub admin asked for, open or ended; null when none was"
+            },
             "nightly": {
               "anyOf": [
                 {
@@ -127426,6 +127688,68 @@
             "revoked_at"
           ],
           "title": "Worker"
+        },
+        "WorkerBrowserInstall": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "when its owner or a hub admin asked for it"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At",
+              "description": "when it ended; null while the daemon installs"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "installed",
+                    "cancelled",
+                    "failed",
+                    "impossible"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "how it ended: installed, its heartbeat lists the feature browser; cancelled; failed, the install failed (reason says how); impossible, its daemon no longer says browser_install; null while open"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it failed or was impossible, as the daemon or the hub said"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at",
+            "ended_at",
+            "outcome",
+            "reason"
+          ],
+          "title": "WorkerBrowserInstall",
+          "description": "The last Install browser of a worker: open while ended_at is null (POST /v1/workers/{id}/browser-install)."
         },
         "WorkerCandidate": {
           "properties": {

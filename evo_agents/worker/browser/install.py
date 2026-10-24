@@ -6,7 +6,9 @@ It is Playwright's build of Chromium, pinned with Playwright (``PLAYWRIGHT``): `
 ~/Library/Caches/ms-playwright on macOS and ~/.cache/ms-playwright on Linux): the full binary, not the headless shell
 (spike decision 11), and the browsers of other versions of Playwright stay. On Linux, when ``ldd`` finds libraries
 Chromium lacks, the packages that hold them are fetched with ``apt-get download`` and unpacked with ``dpkg -x`` under
-the worker's browser directory, which Chromium then finds on LD_LIBRARY_PATH (decision 10). The install starts Chromium
+the worker's browser directory, which Chromium then finds on LD_LIBRARY_PATH (decision 10). A machine without fontconfig
+(an Ubuntu 22.04 server image) gets it and a font that way too, and, having no /etc/fonts, a fontconfig file of its own
+next to them (``FONTS_CONF``), which Chromium is pointed at (``chromium.environment``). The install starts Chromium
 once as a run does (``chromium.start``): with its own sandbox, else with --no-sandbox where this machine does not let
 it make one (decision 1). It writes what it found to ``browser/state.json`` in the worker's home: the binary, its
 version, the sandbox, the libraries, and how many browsers the worker holds at once, ``--max`` or else one per core
@@ -37,6 +39,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from evo_agents.hub.client import write_atomic
 from evo_agents.hub.runs import MAX_BROWSERS
@@ -86,7 +89,15 @@ LINUX_PACKAGES = (
     "libdatrie1",
     "libgraphite2-3",
     "libavahi-common-data",
+    # what a machine without fontconfig or a desktop lacks besides (an Ubuntu 22.04 server image), a font among them
+    "libfontconfig1",
+    "fontconfig-config",
+    "fonts-dejavu-core",
+    "libwayland-server0",
+    "libxcb-randr0",
+    "libxkbcommon0",
 )
+SYSTEM_FONTS_CONF = Path("/etc/fonts/fonts.conf")  # the file of the fontconfig the system has, if any
 GIB = 1024**3
 GIB_PER_BROWSER = 1.5
 DOWNLOAD_TIMEOUT = 1800.0
@@ -188,8 +199,9 @@ def locate(env: Mapping[str, str]) -> Path | None:
     return None
 
 
-def download(env: Mapping[str, str], say: Callable[[str], None]) -> Path:
-    """Have Playwright download Chromium into its cache; the binary."""
+def download(env: Mapping[str, str], say: Callable[[str], None], *, quiet: bool = False) -> Path:
+    """Have Playwright download Chromium into its cache; the binary. ``quiet`` keeps its progress off this process's
+    output (the daemon's log), and the end of it in the error of a download that fails."""
     npx = shutil.which("npx", path=env.get("PATH"))
     if npx is None:
         raise InstallError(
@@ -198,16 +210,21 @@ def download(env: Mapping[str, str], say: Callable[[str], None]) -> Path:
         )
     say(f"Downloading Chromium with {PLAYWRIGHT} into {cache_root(env)} (no sudo)...")
     command = [npx, "-y", PLAYWRIGHT, "install", "--no-shell", "--no-remove", "chromium"]
+    captured = {"capture_output": True, "text": True} if quiet else {}
     try:
-        done = subprocess.run(command, env=dict(env), stdin=subprocess.DEVNULL, timeout=DOWNLOAD_TIMEOUT, check=False)
+        done = subprocess.run(
+            command, env=dict(env), stdin=subprocess.DEVNULL, timeout=DOWNLOAD_TIMEOUT, check=False, **captured
+        )
     except subprocess.TimeoutExpired:
         raise InstallError(
             f"the download of Chromium took more than {DOWNLOAD_TIMEOUT:g}s: run `{COMMAND}` again"
         ) from None
     found = locate(env)
     if done.returncode != 0 or found is None:
+        said = chromium.tail_text((done.stdout or "") + (done.stderr or "")) if quiet else ""
         raise InstallError(
             f"`npx {PLAYWRIGHT} install chromium` exited {done.returncode} and left no Chromium in {cache_root(env)}"
+            + (f": {said}" if said else "")
         )
     return found
 
@@ -254,10 +271,22 @@ def linux_libraries(
                     break
         for deb in sorted(Path(debs).glob("*.deb")):
             _run(["dpkg", "-x", str(deb), str(root)], env, timeout=COMMAND_TIMEOUT)
+    if not SYSTEM_FONTS_CONF.exists():
+        say(f"This machine has no {SYSTEM_FONTS_CONF}: Chromium reads the fonts unpacked into {root}.")
+        write_atomic(root / chromium.FONTS_CONF, fonts_config(root).encode(), FILE_MODE)
     still = missing_libraries(executable, env, str(unpacked))
     if still:
         raise InstallError(f"Chromium still lacks {', '.join(still)}: install them with the system's package manager")
     return str(unpacked)
+
+
+def fonts_config(root: Path) -> str:
+    """The fontconfig file of a machine without one: the fonts unpacked under ``root``, and their cache there too."""
+    fonts, cache = escape(str(root / "usr" / "share" / "fonts")), escape(str(root / "fontconfig-cache"))
+    return (
+        '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n<fontconfig>\n'
+        f"  <dir>{fonts}</dir>\n  <cachedir>{cache}</cachedir>\n</fontconfig>\n"
+    )
 
 
 def chromium_version(executable: Path, env: Mapping[str, str], libraries: str | None) -> str:
@@ -329,10 +358,16 @@ def write(home: WorkerHome, installed: Installed) -> None:
 
 
 def install(
-    home: WorkerHome, env: Mapping[str, str], *, max_browsers: int | None = None, say: Callable[[str], None] = print
+    home: WorkerHome,
+    env: Mapping[str, str],
+    *,
+    max_browsers: int | None = None,
+    say: Callable[[str], None] = print,
+    quiet: bool = False,
 ) -> tuple[Installed, bool]:
     """Chromium installed for the daemon of ``home``, and whether this changed anything: nothing when state.json
-    already says what it would write."""
+    already says what it would write. ``quiet`` keeps the download's progress off this process's output, as the
+    daemon's install of an owner's Install browser does."""
     if max_browsers is not None and not 1 <= max_browsers <= MAX_BROWSERS:
         raise InstallError(f"--max takes 1 to {MAX_BROWSERS} browsers at once, not {max_browsers}")
     held, found = read(home), locate(env)
@@ -342,7 +377,7 @@ def install(
         installed = Installed(**{**asdict(held), "max": max_browsers})
         write(home, installed)
         return installed, True
-    found = found or download(env, say)
+    found = found or download(env, say, quiet=quiet)
     libraries = linux_libraries(found, home, env, say)
     version = chromium_version(found, env, libraries)
     sandbox, said = starts(found, version, env, libraries, sandbox=True)

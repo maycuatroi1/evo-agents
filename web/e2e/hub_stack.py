@@ -23,7 +23,7 @@ leave after a few weeks of a goal (``loop_seed.py``), since the stack runs no wo
 (``plugin_notice_seed.py``). POST /probes/seed writes a probe's weekly probe runs (``probe_seed.py``), since the stack
 runs no probe session. POST /growth/seed writes the contacts, channel accounts, posts and month's budget the core
 plugins crm and marketing would leave (``growth_seed.py``), since the stack runs neither their jobs nor a channel. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
-self_update_hours, features} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
+self_update_hours, features, browser} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
 reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
 ``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
 
@@ -264,7 +264,7 @@ def plugin_bundle(body: dict) -> dict:
 
 def stamp_heartbeat(dsn: str, body: dict) -> dict:
     """What a worker's heartbeat records: its time (``seconds_ago`` before now) and, when given, the runtimes and
-    checkouts it reports. ``agent_commit``, ``self_update`` and ``features`` are set when the body names them, as
+    checkouts it reports. ``agent_commit``, ``self_update``, ``features`` and ``browser`` are set when the body names them, as
     the heartbeat route sets them from each heartbeat; ``self_update_hours`` backdates when the hub first got that
     state, so a long wait need not take hours. 404 for a worker the stack does not have."""
     import psycopg
@@ -279,6 +279,9 @@ def stamp_heartbeat(dsn: str, body: dict) -> dict:
     if "features" in body:
         sets.append("features = %s")
         params.append(list(body["features"]) if isinstance(body["features"], list) else None)
+    if "browser" in body:
+        sets.append("browser = %s")
+        params.append(Jsonb(body["browser"]) if isinstance(body["browser"], dict) else None)
     if "self_update" in body:
         report = body["self_update"] if isinstance(body["self_update"], dict) else None
         sets.append("self_update = %s, self_update_since = CASE WHEN %s THEN now() - make_interval(secs => %s) END")

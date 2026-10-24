@@ -1056,6 +1056,124 @@ def test_the_heartbeat_answer_carries_an_open_update_now_until_a_heartbeat_shows
     assert ended() == ("impossible", "its daemon does not say update_now in its features")
 
 
+def browser_install_of(db, worker_id: int) -> tuple:
+    w = tables.workers
+    shown = select(
+        w.c.browser_install_requested_at,
+        w.c.browser_install_ended_at,
+        w.c.browser_install_outcome,
+        w.c.browser_install_reason,
+    )
+    return sql(db, shown.where(w.c.id == worker_id))[0]
+
+
+CHROMIUM = {"chromium": "153.0.8010.12", "display": "headless", "max": 2, "sandbox": True}
+
+
+def test_a_browser_install_is_asked_and_cancelled_with_the_rights_of_drain_and_audited_once(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path, target = f"/v1/workers/{worker_id}/browser-install", f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    beat = {"free_slots": 1, "features": ["browser_install"]}
+    assert client.post("/v1/worker/heartbeat", json=beat, headers=headers).status_code == 200
+    for credential in (hub["other"], worker_headers(answer["token"])):
+        assert client.post(path, headers=credential).status_code in (403, 404)
+        assert client.post(f"{path}/cancel", headers=credential).status_code in (403, 404)
+    assert client.post("/v1/workers/999999/browser-install", headers=hub["owner"]).status_code == 404
+    assert browser_install_of(hub_db, worker_id) == (None, None, None, None)
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["browser_install"] is None
+
+    for _ in range(2):  # the second request finds one open: nothing changes, no audit row
+        asked = client.post(path, headers=hub["owner"])
+        assert asked.status_code == 200, asked.text
+        shown = asked.json()["browser_install"]
+        assert (shown["ended_at"], shown["outcome"], shown["reason"]) == (None, None, None)
+    assert audit_rows(hub_db, "worker.browser_install") == [(target, OWNER)]
+    assert datetime.fromisoformat(shown["requested_at"]) == browser_install_of(hub_db, worker_id)[0]
+
+    for _ in range(2):  # cancelling when none is open changes nothing either
+        cancelled = client.post(f"{path}/cancel", headers=hub["owner"])
+        assert cancelled.status_code == 200 and cancelled.json()["browser_install"]["outcome"] == "cancelled"
+    assert audit_rows(hub_db, "worker.browser_install_cancel") == [(target, OWNER)]
+
+    # a hub admin may ask for and cancel another member's Install browser, as they may drain
+    assert client.post(path, headers=hub["admin"]).json()["browser_install"]["outcome"] is None
+    assert client.post(f"{path}/cancel", headers=hub["admin"]).json()["browser_install"]["outcome"] == "cancelled"
+    assert [login for _, login in audit_rows(hub_db, "worker.browser_install")] == [OWNER, ADMIN]
+
+    assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
+    for route in (path, f"{path}/cancel"):
+        gone = client.post(route, headers=hub["owner"])
+        assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+
+
+def test_a_browser_install_is_refused_with_why_when_the_daemon_is_too_old_or_has_chromium(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}/browser-install"
+
+    def refused(why: str) -> None:
+        response = client.post(path, headers=hub["owner"])
+        assert response.status_code == 409 and why in response.json()["message"], response.text
+
+    client.post("/v1/worker/heartbeat", json={"free_slots": 1}, headers=headers)
+    refused("does not say browser_install")
+    beat = {"free_slots": 1, "features": ["browser_install", "browser"], "browser": CHROMIUM}
+    client.post("/v1/worker/heartbeat", json=beat, headers=headers)
+    refused("Chromium 153.0.8010.12 installed already")
+    assert browser_install_of(hub_db, worker_id) == (None, None, None, None)
+    assert audit_rows(hub_db, "worker.browser_install") == []
+
+
+def test_the_heartbeat_answer_carries_an_open_browser_install_until_a_heartbeat_shows_it_ended(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}"
+    says = {"free_slots": 1, "features": ["browser_install"]}
+
+    def beat(**body) -> dict:
+        response = client.post("/v1/worker/heartbeat", json={**says, **body}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def ask() -> str:
+        asked = client.post(f"{path}/browser-install", headers=hub["owner"])
+        assert asked.status_code == 200, asked.text
+        return asked.json()["browser_install"]["requested_at"]
+
+    def ended() -> tuple:
+        shown = client.get(path, headers=hub["owner"]).json()["browser_install"]
+        listed = [x["browser_install"] for x in client.get("/v1/workers", headers=hub["owner"]).json()]
+        assert listed == [shown]
+        return shown["outcome"], shown["reason"]
+
+    assert "browser_install" not in beat()
+    requested_at = ask()
+    for _ in range(2):  # a daemon that installs says so; the hub keeps it open
+        answer = beat(browser_install={"requested_at": requested_at})
+        assert datetime.fromisoformat(answer["browser_install"]["requested_at"]) == datetime.fromisoformat(requested_at)
+    assert ended() == (None, None)
+    # failed as the daemon reports it for this request, with its error; an end of an earlier request is not this one's
+    stale = {"requested_at": "2026-01-01T00:00:00+00:00", "ended": "failed", "error": "old"}
+    assert "browser_install" in beat(browser_install=stale)
+    mine = {"requested_at": requested_at, "ended": "failed", "error": "npx is not on PATH: install Node.js"}
+    assert "browser_install" not in beat(browser_install=mine)
+    assert ended() == ("failed", "npx is not on PATH: install Node.js")
+    assert "browser_install" not in beat()  # an ended request is never carried again
+
+    # impossible: a daemon that drops browser_install
+    ask()
+    assert "browser_install" not in beat(features=[])
+    assert ended() == ("impossible", "its daemon does not say browser_install in its features")
+
+    # installed: the heartbeat lists the feature browser with its Chromium
+    beat()
+    ask()
+    assert "browser_install" not in beat(features=["browser_install", "browser"], browser=CHROMIUM)
+    assert ended() == ("installed", None)
+    assert client.get(path, headers=hub["owner"]).json()["browser"] == CHROMIUM
+
+
 def seed_plan(db, project: str = "demo") -> dict:
     """The plan worker-fleet at revision 1 in ``project``, as ``add_run`` expects it."""
     projects, users = tables.projects, tables.users

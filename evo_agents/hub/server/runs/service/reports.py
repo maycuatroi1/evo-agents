@@ -2,8 +2,9 @@
 runs, what the daemon found of updating itself and what it last did for the graphs it keeps fresh (kg_sync), extends
 the leases of the runs it holds and answers what to do with each, the worker's settings (its version lock among them),
 where the tag nightly pointed when the hub last read it, the owner's open Update now
-(``evo_agents.hub.server.update_now``, which the heartbeat may end), the Chromium a daemon of feature browser starts for
-a run (``_browser``), for a daemon that runs them the runtimes of the plugins its owner accepted
+(``evo_agents.hub.server.update_now``, which the heartbeat may end), the owner's open Install browser
+(``evo_agents.hub.server.browser_install``, which the heartbeat may end too), the Chromium a daemon of feature
+browser starts for a run (``_browser``), for a daemon that runs them the runtimes of the plugins its owner accepted
 (``plugin_runtimes.offered``), and for a daemon of feature kg_sync the projects whose graph it keeps fresh
 (``kg_duties``); and the move of a run it holds (POST /v1/worker/runs/{id}/state), checked against the transition table
 with the worker as actor."""
@@ -18,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import update_now
+from evo_agents.hub.server import browser_install, update_now
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
     NOT_HELD,
@@ -152,6 +153,7 @@ async def record_heartbeat(
         settings = WorkerSettings(**held.one()._mapping, projects=list((await conn.execute(served)).scalars()))
         nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
         asked = await update_now.settle(conn, worker_id, body, nightly)
+        install = await browser_install.settle(conn, worker_id, body)
         declared = []
         if runs.PLUGIN_RUNTIMES in (body.features or ()):
             declared = [
@@ -214,6 +216,7 @@ async def record_heartbeat(
         kg_sync=duties,
         nightly=nightly,
         update_now=asked,
+        browser_install=install,
     )
 
 
