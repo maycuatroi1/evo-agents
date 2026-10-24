@@ -13,6 +13,7 @@ import {
   GitMerge,
   Goal,
   Hammer,
+  Hourglass,
   Images,
   IterationCw,
   LogIn,
@@ -69,6 +70,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   login: LogIn,
   // What the hub asks the principal of a run before it merges, deploys or releases for it (K5, K6 at ask).
   autonomy: ShieldQuestionMark,
+  // What the agent of a plan run opens to wait for a time or an event of the hub, which the hub answers itself.
+  wait: Hourglass,
 };
 
 export function DecisionCategoryBadge({ category, className }: { category: DecisionCategory; className?: string }) {
@@ -134,6 +137,16 @@ export function DecisionKindBadge({ className }: { className?: string }) {
 }
 
 /** The option the agent recommends, as the kit's brand tag "Agent's pick". */
+/** An option that says not yet: choosing it keeps the decision open, and the agent hears nothing. */
+export function WaitsTag({ className }: { className?: string }) {
+  const t = useTranslations("inbox.decision");
+  return (
+    <Tag className={cn("bg-surface-sunken text-muted-foreground", className)} data-testid="decision-option-waits">
+      {t("keepsOpen")}
+    </Tag>
+  );
+}
+
 export function AgentPickTag({ className }: { className?: string }) {
   const t = useTranslations("inbox.decision");
   return (

@@ -196,7 +196,7 @@ WAIT_MOVES = {
     ("waiting", "failed"): {"worker", "reaper"},
     ("waiting", "cancelled"): {"worker", "reaper"},  # the worker stopped the agent on the owner's cancel
     ("waiting", "lost"): {"reaper"},  # the worker stopped extending the lease
-    ("parked", "done"): {"owner"},  # the owner's answer queued the run that resumes it
+    ("parked", "done"): {"owner", "reaper"},  # an answer, or a wait that woke, queued the run that resumes it
     ("parked", "cancelled"): {"owner", "reaper"},  # the owner gave up on it, or PARKED_DAYS passed
 }
 
@@ -225,8 +225,8 @@ def test_refusals_around_waiting_and_parked_name_who_may_move():
         check_transition("waiting", "parked", "worker")
     with pytest.raises(TransitionRefused, match="only the worker can"):
         check_transition("waiting", "running", "owner")
-    with pytest.raises(TransitionRefused, match="only the owner can"):
-        check_transition("parked", "done", "reaper")
+    with pytest.raises(TransitionRefused, match="only the owner or the reaper can"):
+        check_transition("parked", "done", "worker")
     with pytest.raises(TransitionRefused, match="only the owner or the reaper can"):
         check_transition("parked", "cancelled", "worker")
     with pytest.raises(TransitionRefused, match="cannot go from parked to running"):

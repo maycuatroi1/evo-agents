@@ -7130,6 +7130,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/waits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wait
+         * @description Wait, in a plan run this worker holds, for a time or an event of the hub: a decision of category wait the hub
+         *     answers when either comes.
+         */
+        post: operations["wait_v1_worker_runs__run_id__waits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/browser-profile": {
         parameters: {
             query?: never;
@@ -14447,7 +14468,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login" | "wait";
             /** Question */
             question: string;
             /**
@@ -14500,6 +14521,18 @@ export interface components {
              * @description when the worker handed the answer to the agent
              */
             delivered_at: string | null;
+            /**
+             * Held At
+             * @description when the person asked last chose an option that waits, leaving the decision open
+             */
+            held_at?: string | null;
+            /**
+             * Wake At
+             * @description a wait (category wait): when the hub answers it at the latest, its time come
+             */
+            wake_at?: string | null;
+            /** @description a wait: the event of the hub that answers it sooner */
+            wake_on?: components["schemas"]["WakeOn"] | null;
             /**
              * Outputs
              * @description the files of its run it carries, oldest first, each with the decision's URL of its bytes
@@ -14588,6 +14621,12 @@ export interface components {
             description: string | null;
             /** Recommended */
             recommended: boolean;
+            /**
+             * Waits
+             * @description choosing it leaves the decision open: the person answers later
+             * @default false
+             */
+            waits: boolean;
         };
         /** DiffLink */
         DiffLink: {
@@ -19393,6 +19432,11 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+            /**
+             * Waits
+             * @description true when the option says not yet: choosing it leaves the decision open and the run waiting, and no answer goes to the agent
+             */
+            waits?: boolean | null;
         };
         /**
          * OrgAutonomy
@@ -19871,7 +19915,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login" | "wait";
             /** Question */
             question: string;
             /**
@@ -31350,6 +31394,51 @@ export interface components {
              * Format: date-time
              */
             published_at: string;
+        };
+        /** WaitIn */
+        WaitIn: {
+            /**
+             * Reason
+             * @description what the run waits for and why, for the owner
+             */
+            reason: string;
+            /**
+             * Until
+             * @description when to wake at the latest, with a timezone, at most 7 days ahead
+             */
+            until?: string | null;
+            /**
+             * On
+             * @description a kind of hub event to wake on sooner, such as canvas.baseline
+             */
+            on?: string | null;
+            /**
+             * Contains
+             * @description what the event's payload contains, as JSONB containment reads it
+             */
+            contains?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Step Key
+             * @description the step of the plan it is about
+             */
+            step_key?: string | null;
+        };
+        /** WakeOn */
+        WakeOn: {
+            /**
+             * Kind
+             * @description the kind of hub event the wait wakes on, such as canvas.baseline
+             */
+            kind: string;
+            /**
+             * Contains
+             * @description what the event's payload contains, as JSONB containment reads it
+             */
+            contains: {
+                [key: string]: unknown;
+            };
         };
         /** WebhookAnswer */
         WebhookAnswer: {
@@ -58774,6 +58863,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrowserLoginAsked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    wait_v1_worker_runs__run_id__waits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaitIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decision"];
                 };
             };
             /** @description Unauthorized */

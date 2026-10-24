@@ -6,7 +6,9 @@ reader of the run may; a decision of a run that has put no plan (an author run b
 has none, and shows its run alone.
 ``decision answer ID`` answers one (POST .../decisions/{id}/answer) with an option of the decision (``--option KEY``),
 words of your own (``--text``, ``-`` reads them from stdin), or both; only the member who dispatched the run may, and
-the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. ``docs/notifications.md``
+the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. An option marked waits
+leaves the decision open and tells the agent nothing; a decision of category wait is a wait of the agent's for a time
+or an event, which the hub answers itself, and ``decision show`` says what it waits for. ``docs/notifications.md``
 describes decisions, their categories and their life.
 
 ``notifications`` lists your notifications, open decisions first, then newest first (GET /v1/me/notifications), with
@@ -21,6 +23,7 @@ Standard library only, like the rest of the client.
 
 from __future__ import annotations
 
+import json
 import sys
 from urllib.parse import urlencode
 
@@ -57,6 +60,9 @@ DECISION_KEYS = (
     "asked_at",
     "answered_at",
     "delivered_at",
+    "held_at",
+    "wake_at",
+    "wake_on",
     "outputs",
 )
 DECISION_LIST_KEYS = ("decisions", "total", "limit", "offset")
@@ -140,7 +146,8 @@ def cmd_list(args) -> int:
 def _answer_lines(decision: dict) -> list[tuple[str, str]]:
     if decision["state"] != "answered":
         return []
-    lines = [("answered", f"by {decision['answered_by']} at {_when(decision['answered_at'])} UTC")]
+    who = decision["answered_by"] or "the hub, as what it waited for came"
+    lines = [("answered", f"by {who} at {_when(decision['answered_at'])} UTC")]
     if decision["answer_option"]:
         label = _option_label(decision, decision["answer_option"])
         lines.append(("option", decision["answer_option"] + (f", {label}" if label else "")))
@@ -151,6 +158,22 @@ def _answer_lines(decision: dict) -> list[tuple[str, str]]:
         lines.append(("resumed", f"as run #{inbox}, whose inbox took the answer"))
     delivered = decision["delivered_at"]
     lines.append(("delivered", f"to the agent at {_when(delivered)} UTC" if delivered else "not to the agent yet"))
+    return lines
+
+
+def _wait_lines(decision: dict) -> list[tuple[str, str]]:
+    """What a wait waits for, and when the person asked chose an option that leaves a decision open."""
+    lines = []
+    if decision.get("wake_on"):
+        on = decision["wake_on"]
+        contains = (
+            f" whose payload contains {json.dumps(on['contains'], ensure_ascii=False)}" if on.get("contains") else ""
+        )
+        lines.append(("wakes on", f"an event {on['kind']} of the project{contains}"))
+    if decision.get("wake_at"):
+        lines.append(("wakes at", f"{_when(decision['wake_at'])} UTC at the latest"))
+    if decision.get("held_at") and decision["state"] == "open":
+        lines.append(("held", f"at {_when(decision['held_at'])} UTC: not yet, the run waits for a later answer"))
     return lines
 
 
@@ -173,7 +196,8 @@ def _print_options(decision: dict) -> None:
     print("Options:")
     width = max(len(option["key"]) for option in decision["options"])
     for option in decision["options"]:
-        marks = [mark for mark, on in (("recommended", option["recommended"]),) if on]
+        flags = (("recommended", option["recommended"]), ("leaves it open", option.get("waits")))
+        marks = [mark for mark, on in flags if on]
         if decision["answer_option"] == option["key"]:
             marks.append("chosen")
         label = option["label"] + (f" ({', '.join(marks)})" if marks else "")
@@ -205,6 +229,7 @@ def cmd_show(args) -> int:
         ("owner", decision["owner"]),
         ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
         ("asked", f"{_when(decision['asked_at'])} UTC"),
+        *_wait_lines(decision),
         *_answer_lines(decision),
     ]
     _print_fields(lines)
@@ -231,6 +256,12 @@ def cmd_answer(args) -> int:
     decision = hub.call("POST", _decisions_path(project, args.decision, "answer"), body)
     if args.json:
         _print_json(decision)
+        return 0
+    if decision["state"] == "open":  # an option that waits: not yet
+        print(
+            f"Decision #{decision['id']} stays open: the agent hears nothing, and run #{decision['run_id']} waits for "
+            "your answer with another option."
+        )
         return 0
     given = []
     if decision["answer_option"]:

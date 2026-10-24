@@ -9,12 +9,13 @@
   long-lived credential of its owner (``doctor``); exit status 2 when a finding is high.
 - ``attach N``: this terminal on the tmux session of run N while a person drives its agent (``evo-run-N``).
 - ``drain [--resume]``, ``revoke [--force]``, ``projects``: the owner's controls, with the machine token.
-- ``step KEY STATUS``, ``ask``, ``notify``, ``plan``: the commands of a plan run's agent, which report a step (the
-  verify commands run again, the repo committed and pushed), ask the run's owner a decision, send the owner a notice,
-  and print the plan as the hub holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record
-  there, call the hub with the worker's token, and refuse to run outside a plan run of this worker; ``ask`` and
-  ``plan`` work inside an author run too, whose agent asks its owner a question with options as a decision. ``ask``
-  notes the decision's id in the run's file of decisions (``home.decisions_path``), which the daemon waits on.
+- ``step KEY STATUS``, ``ask``, ``wait``, ``notify``, ``plan``: the commands of a plan run's agent, which report a
+  step (the verify commands run again, the repo committed and pushed), ask the run's owner a decision, wait for a time
+  or an event of the hub (``evo_agents.hub.server.run_waits``), send the owner a notice, and print the plan as the hub
+  holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record there, call the hub with the
+  worker's token, and refuse to run outside a plan run of this worker; ``ask`` and ``plan`` work inside an author run
+  too, whose agent asks its owner a question with options as a decision. ``ask`` and ``wait`` note the decision's id in
+  the run's file of decisions (``home.decisions_path``), which the daemon waits on.
 - ``finding`` and ``propose``: the commands of a review run's agent (the Curator's Reviewer), which record a finding
   and a proposal with their evidence (``evo_agents.hub.review.parse_evidence``); the hub computes a proposal's tier.
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
@@ -75,10 +76,12 @@ from evo_agents.worker.agent_input import (
     attest,
     decision_option,
     evidence_items,
+    payload_contains,
     plan_file,
     probe_file,
     promotion_file,
     read_text,
+    wait_until,
 )
 from evo_agents.worker.browser import register_browser
 from evo_agents.worker.home import (
@@ -700,6 +703,12 @@ def cmd_ask(args) -> int:
         raise WorkerStateError(f"a decision offers {fewest} to {most} options, each with a key of its own")
     if args.recommended is not None and args.recommended not in keys:
         raise WorkerStateError(f"--recommended names one of the options: {', '.join(keys)}")
+    for key in args.wait_option or []:
+        if key not in keys:
+            raise WorkerStateError(f"--wait-option names one of the options: {', '.join(keys)}")
+        options[keys.index(key)]["waits"] = True
+    if all(option.get("waits") for option in options):
+        raise WorkerStateError("a decision needs an option that answers it: --wait-option names every one")
     body: dict = {"category": args.category, "question": args.question, "options": options}
     context = read_text(args.context_file, "context", runs.MAX_DECISION_CONTEXT_BYTES) if args.context_file else None
     if context is not None:
@@ -713,13 +722,7 @@ def cmd_ask(args) -> int:
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
 
-    answer = with_hub(agent, work)
-    decision_id = answer.get("id") if isinstance(answer, dict) else None
-    if not isinstance(decision_id, int):
-        raise HubError("the hub did not answer with the decision's id")
-    noted = json.dumps({"id": decision_id, "asked_at": datetime.now(UTC).isoformat(timespec="seconds")})
-    with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:  # the daemon waits on it
-        handle.write(noted + "\n")
+    decision_id = _noted_decision(agent, with_hub(agent, work))
     print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")
     if agent.record.get("kind") == "author":
         print(
@@ -732,6 +735,49 @@ def cmd_ask(args) -> int:
     print(
         "Go on with the work that does not depend on the answer. When none is left, end your turn: the run waits "
         f"for its owner, and the answer comes back in this session as a message naming decision #{decision_id}."
+    )
+    return 0
+
+
+def _noted_decision(agent: _AgentRun, answer) -> int:
+    """The id of the decision the hub answered with, noted in the run's file of decisions, which the daemon waits on."""
+    decision_id = answer.get("id") if isinstance(answer, dict) else None
+    if not isinstance(decision_id, int):
+        raise HubError("the hub did not answer with the decision's id")
+    noted = json.dumps({"id": decision_id, "asked_at": datetime.now(UTC).isoformat(timespec="seconds")})
+    with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:
+        handle.write(noted + "\n")
+    return decision_id
+
+
+@worker_command
+def cmd_wait(args) -> int:
+    agent = agent_run("wait")
+    if args.until is None and args.on is None:
+        raise WorkerStateError("a wait wakes at a time (--until), on an event of the hub (--on), or both")
+    if args.contains and args.on is None:
+        raise WorkerStateError("--contains filters the event of --on: name its kind with --on")
+    body: dict = {"reason": args.reason}
+    if args.until is not None:
+        body["until"] = wait_until(args.until, datetime.now(UTC))
+    if args.on is not None:
+        body["on"] = args.on
+    if args.contains:
+        body["contains"] = payload_contains(args.contains)
+    if args.step is not None:
+        body["step_key"] = args.step
+
+    async def work(hub) -> dict:
+        return await hub.wait(agent.run_id, body)
+
+    answer = with_hub(agent, work)
+    decision_id = _noted_decision(agent, answer)
+    wake_at = str(answer.get("wake_at") or "")[:16].replace("T", " ")
+    sooner = f", or sooner on an event {args.on} of the project" if args.on is not None else ""
+    print(
+        f"Wait #{decision_id} is open: the run wakes at {wake_at} UTC at the latest{sooner}. End your turn once no "
+        "work that does not depend on it is left: the run waits without the agent, the time does not count toward its "
+        f"timeout, and this session goes on with a message naming decision #{decision_id} when it wakes."
     )
     return 0
 
@@ -1089,9 +1135,40 @@ def register(sub) -> None:
         help="an option; repeat it, 2 to 6 times",
     )
     ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
+    ask.add_argument(
+        "--wait-option",
+        action="append",
+        metavar="KEY",
+        help="an option that says not yet: choosing it leaves the decision open and the run waiting, and you hear "
+        "nothing; repeat it for another",
+    )
     ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
     output_cli.attach_option(ask, "the question")
     ask.set_defaults(func=cmd_ask)
+
+    wait = wsub.add_parser(
+        "wait",
+        help="inside a plan run: wait for a time or an event of the hub rather than ask the owner when it came; "
+        "prints the wait's id",
+    )
+    wait.add_argument("--reason", required=True, help="what the run waits for and why, for the owner to read")
+    wait.add_argument(
+        "--until",
+        metavar="TIME",
+        help=f"wake at this time at the latest: ISO 8601 with a timezone (2026-10-30T09:00Z) or a span (+6h, +90m, "
+        f"+5d), at most {runs.MAX_WAIT_DAYS} days ahead; without it, {runs.MAX_WAIT_DAYS} days",
+    )
+    wait.add_argument(
+        "--on", metavar="KIND", help="wake sooner on an event of the hub of this kind, such as canvas.baseline"
+    )
+    wait.add_argument(
+        "--contains",
+        action="append",
+        metavar="KEY=VALUE",
+        help="the event's payload has KEY equal to VALUE (read as JSON when it is); repeat it",
+    )
+    wait.add_argument("--step", help="the step of the run's plan it is about")
+    wait.set_defaults(func=cmd_wait)
 
     notify = wsub.add_parser(
         "notify", help="inside a plan run: tell the run's owner of a push or merge into a default branch"

@@ -5,7 +5,7 @@ import { type ReactNode, type Ref, useId } from "react";
 
 import { cn } from "@/lib/utils";
 
-import { AgentPickTag } from "./badges";
+import { AgentPickTag, WaitsTag } from "./badges";
 import type { Decision, DecisionOption } from "./queries";
 
 export type HeadingLevel = 2 | 3;
@@ -97,6 +97,7 @@ function OptionText({ option, id, screen = false }: { option: DecisionOption; id
         {option.label}
         {/* A space for the accessible name ("Deploy now Agent's pick"); a flex container does not draw it. */}
         {option.recommended ? <> <AgentPickTag /></> : null}
+        {option.waits ? <> <WaitsTag /></> : null}
       </span>
       {option.description ? (
         <span
