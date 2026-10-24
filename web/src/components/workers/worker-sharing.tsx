@@ -128,7 +128,7 @@ function Units({ worker, entry, blocked }: { worker: Worker; entry: WorkerShares
         </ul>
       )}
       <form
-        className="flex flex-col gap-1.5"
+        className="flex max-w-2xl flex-col gap-1.5"
         onSubmit={(event) => {
           event.preventDefault();
           if (unit && !blocked) void write(unit, true);
