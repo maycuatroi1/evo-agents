@@ -72,6 +72,8 @@ export type ItemsFilter = {
   open: boolean;
   /** Only the work items that go from this problem (P-<number>): a problem's page. */
   problem?: string | null;
+  /** Only the work items that go from this opportunity (O-<number>). */
+  opportunity?: string | null;
 };
 
 export const loopKeys = {
@@ -109,6 +111,7 @@ export const loopItemsQuery = (api: ApiSource, project: string, filter: ItemsFil
               ...(filter.goal ? { goal: filter.goal } : {}),
               ...(filter.open ? { open: true } : {}),
               ...(filter.problem ? { problem: filter.problem } : {}),
+              ...(filter.opportunity ? { opportunity: filter.opportunity } : {}),
             },
           },
           signal,

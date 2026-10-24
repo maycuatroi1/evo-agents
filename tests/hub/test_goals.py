@@ -479,3 +479,64 @@ def test_goal_set_problem_and_no_problem_from_the_command_line(hub_db, tmp_path,
         refused = goal("owner", "set", "G-1", "--problem", "P-7")
         assert refused.code == 1 and f"project {PROJECT} has no problem P-7" in refused.err
         assert_json_keys("hub goal list", as_json(goal("reader", "list", "--json")))
+
+
+# The opportunity a goal answers (plan opportunity-intake, criterion a5)
+
+OPPORTUNITY = {
+    "statement": "Sell the shelf scanner to the depot",
+    "beneficiary": "the depot's night shift",
+    "leverage": "the depot asked for a demo twice",
+}
+
+
+def _opportunity(hub, ref: str, **changes) -> dict:
+    response = hub.client.put(
+        f"/v1/projects/{PROJECT}/opportunities/{ref}", json={**OPPORTUNITY, **changes}, headers=hub.headers["alice"]
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@needs_pg
+def test_a_goal_answers_a_problem_or_an_opportunity_never_both_and_a_goal_of_a_problem_reads_as_before(hub):
+    _problem(hub, "P-1")
+    _opportunity(hub, "O-1")
+    _opportunity(hub, "O-2", statement="Offer the scanner to the fair")
+    closed = hub.client.post(
+        f"/v1/projects/{PROJECT}/opportunities/O-2/close",
+        json={"status": "dropped", "reason": "the fair is full"},
+        headers=hub.headers["alice"],
+    )
+    assert closed.status_code == 200, closed.text
+    # a goal of a problem keeps its behaviour: the opportunity is null
+    of_problem = _written(_put(hub, "owner", "G-1", {"statement": "Fewer searches find nothing", "problem": "P-1"}))
+    assert (of_problem["problem"], of_problem["opportunity"]) == ("P-1", None)
+    for body, said in (
+        ({"opportunity": "O-2"}, "opportunity: opportunity O-2 is dropped; a goal answers one that is not"),
+        ({"opportunity": "O-9"}, f"opportunity: project {PROJECT} has no opportunity O-9"),
+        ({"opportunity": "O-1", "problem": "P-1"}, "a goal answers a problem or an opportunity, not both"),
+    ):
+        refused = _put(hub, "owner", "G-2", {"statement": "Sell the scanner", **body})
+        assert refused.status_code == 422 and said in refused.json()["message"], refused.text
+    assert (
+        _put(hub, "owner", "G-2", {"statement": "x", "opportunity": "P-1"}).status_code == 422
+    )  # an opportunity's code
+    # a goal answers an opportunity; moving it from the problem takes the problem away in the same revision
+    named = _written(_put(hub, "owner", "G-1", {"statement": "Fewer searches find nothing", "opportunity": "O-1"}))
+    assert (named["revision"], named["problem"], named["opportunity"]) == (2, None, "O-1")
+    assert _get(hub, "reader", "/G-1")["opportunity"] == "O-1"
+    newest = _get(hub, "reader", "/G-1/revisions")[0]
+    assert (newest["revision"], newest["changed"]) == (2, ["problem", "opportunity"])
+    # the opportunity dropped since may stay; closing the goal keeps it
+    hub.client.post(
+        f"/v1/projects/{PROJECT}/opportunities/O-1/close",
+        json={"status": "dropped", "reason": "the depot left"},
+        headers=hub.headers["alice"],
+    )
+    kept = _written(_put(hub, "owner", "G-1", {"statement": "Fewer empty searches", "opportunity": "O-1"}))
+    assert (kept["revision"], kept["opportunity"]) == (3, "O-1")
+    done = _written(_close(hub, "owner", "G-1", {"reason": "achieved"}))
+    assert (done["status"], done["opportunity"]) == ("closed", "O-1")
+    cleared = _written(_put(hub, "owner", "G-1", {"statement": "Fewer empty searches", "status": "paused"}))
+    assert cleared["opportunity"] is None

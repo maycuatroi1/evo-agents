@@ -11897,6 +11897,11 @@ export interface components {
              * @description the codes of the problems of the project it answers, as P-3, each open or solved when a change adds it: the whole list, [] for none
              */
             problems?: string[] | null;
+            /**
+             * Opportunities
+             * @description the codes of the opportunities of the project it links, as O-3, each open, captured or missed when a change adds it: the whole list, [] for none
+             */
+            opportunities?: string[] | null;
         };
         /**
          * CanvasClaim
@@ -11957,6 +11962,11 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project it answers, by number
              */
             problems: string[];
+            /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
             /**
              * Rev
              * @description the rev it is at: an edit names it as base_rev
@@ -12051,6 +12061,11 @@ export interface components {
              */
             problems: string[];
             /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
+            /**
              * Rev
              * @description the rev it is at: an edit names it as base_rev
              */
@@ -12144,6 +12159,11 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project it answers, by number
              */
             problems: string[];
+            /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
         };
         /**
          * CanvasDetail
@@ -12402,6 +12422,11 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project it answers, by number
              */
             problems: string[];
+            /**
+             * Opportunities
+             * @description the codes (O-<number>) of the opportunities of the project it links, by number
+             */
+            opportunities?: string[];
             /** Code */
             code: string;
             /** Rev */
@@ -17966,6 +17991,11 @@ export interface components {
              * @description the code (P-<number>) of the problem it goes from: the one its goal answered when it was made
              */
             problem?: string | null;
+            /**
+             * Opportunity
+             * @description the code (O-<number>) of the opportunity it goes from: the one its goal answered when it was made, or its parent's
+             */
+            opportunity?: string | null;
             claim: components["schemas"]["LoopClaimRef"] | null;
             use_case: components["schemas"]["LoopUseCaseRef"] | null;
             /**
@@ -22986,6 +23016,11 @@ export interface components {
              */
             problem: string | null;
             /**
+             * Opportunity
+             * @description the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both
+             */
+            opportunity?: string | null;
+            /**
              * Rank
              * @description its place among the project's goals, 1 first
              */
@@ -23057,6 +23092,11 @@ export interface components {
              */
             problem?: string | null;
             /**
+             * Opportunity
+             * @description the code (O-<number>) of an opportunity of the project that is not dropped; null: none. Not with a problem
+             */
+            opportunity?: string | null;
+            /**
              * Rank
              * @description null: kept, or after the project's other goals for a new one
              */
@@ -23122,6 +23162,11 @@ export interface components {
              * @description the code (P-<number>) of the problem of the project it answers; null: none
              */
             problem: string | null;
+            /**
+             * Opportunity
+             * @description the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both
+             */
+            opportunity?: string | null;
             /**
              * Rank
              * @description its place among the project's goals, 1 first
@@ -67310,6 +67355,8 @@ export interface operations {
                 limit?: number;
                 /** @description a problem's code: the work items that go from it */
                 problem?: string | null;
+                /** @description an opportunity's code: the work items that go from it */
+                opportunity?: string | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;

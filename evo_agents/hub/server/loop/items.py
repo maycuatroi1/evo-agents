@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import goals, problems, tables
+from evo_agents.hub import goals, opportunities, problems, tables
 from evo_agents.hub.server.loop.board_items import Reading
 from evo_agents.hub.server.loop.model import ALL_REASONS, CYCLES, FINISHED, KINDS, STATES
 from evo_agents.hub.server.loop.view import COMPARE, measure
@@ -78,6 +78,11 @@ class LoopItem(BaseModel):
         default=None,
         description="the code (P-<number>) of the problem it goes from: the one its goal answered when it was made",
     )
+    opportunity: str | None = Field(
+        default=None,
+        description="the code (O-<number>) of the opportunity it goes from: the one its goal answered when it was "
+        "made, or its parent's",
+    )
     claim: LoopClaimRef | None
     use_case: LoopUseCaseRef | None
     task: int | None = Field(description="the number of its frame task in the plugin tasks")
@@ -127,9 +132,11 @@ def figures(reason: str | None, detail: Mapping) -> dict[str, Figure]:
 def _query():
     i, g, c, k = tables.loop_items, tables.goals, tables.canvas.claims, tables.canvas.canvases
     d, t, r, p = tables.srs.documents, tables.tasks.items, tables.runs, tables.problems
+    o = tables.opportunities
     joined = (
         i.outerjoin(g, g.c.id == i.c.goal_id)
         .outerjoin(p, p.c.id == i.c.problem_id)
+        .outerjoin(o, o.c.id == i.c.opportunity_id)
         .outerjoin(c, c.c.id == i.c.claim_id)
         .outerjoin(k, k.c.id == c.c.canvas_id)
         .outerjoin(d, d.c.id == i.c.srs_document_id)
@@ -140,6 +147,7 @@ def _query():
         i,
         g.c.number.label("goal_number"),
         p.c.number.label("problem_number"),
+        o.c.number.label("opportunity_number"),
         c.c.number.label("claim_number"),
         c.c.label.label("claim_label"),
         k.c.slug.label("canvas_slug"),
@@ -238,6 +246,7 @@ def _item(reading: Reading, row, root: int, labels: Mapping[str, Mapping]) -> Lo
         owner=row.owner,
         goal=goals.code(row.goal_number) if row.goal_number is not None else None,
         problem=problems.code(row.problem_number) if row.problem_number is not None else None,
+        opportunity=opportunities.code(row.opportunity_number) if row.opportunity_number is not None else None,
         claim=claim,
         use_case=use_case,
         task=task,
@@ -270,11 +279,15 @@ async def listed(
     open_only: bool = False,
     limit: int = DEFAULT_ITEMS,
     problem: str | None = None,
+    opportunity: str | None = None,
 ) -> LoopItems:
-    """The project's work items of ``state``, ``kind``, goal code ``goal`` and problem code ``problem`` (each when
-    given; only unfinished ones with ``open_only``), the newest ``limit``."""
-    i, g, p = tables.loop_items, tables.goals, tables.problems
+    """The project's work items of ``state``, ``kind``, goal code ``goal``, problem code ``problem`` and opportunity
+    code ``opportunity`` (each when given; only unfinished ones with ``open_only``), the newest ``limit``."""
+    i, g, p, o = tables.loop_items, tables.goals, tables.problems, tables.opportunities
     where = []
+    if opportunity is not None:
+        number = opportunities.number_of(opportunity)
+        where.append(o.c.number == number if number is not None else false())
     if problem is not None:
         number = problems.number_of(problem)
         where.append(p.c.number == number if number is not None else false())

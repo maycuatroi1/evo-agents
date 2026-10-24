@@ -82,6 +82,11 @@ function FactsCard({ project, goal }: { project: string; goal: ProjectGoal }) {
         <Fact label={t("problem")} testId="goal-problem">
           {goal.problem ? <ProblemChips project={project} codes={[goal.problem]} detail /> : t("noProblem")}
         </Fact>
+        {goal.opportunity ? (
+          <Fact label={t("opportunity")} testId="goal-opportunity">
+            <Identifier value={goal.opportunity} />
+          </Fact>
+        ) : null}
         <Fact label={t("deadline")}>{goal.deadline ?? t("noDeadline")}</Fact>
         <Fact label={t("owner")}>{goal.owner}</Fact>
         <Fact label={t("canvas")}>{goal.canvas ? <Identifier value={goal.canvas} href={canvasHref(project, goal.canvas)} /> : t("noCanvas")}</Fact>

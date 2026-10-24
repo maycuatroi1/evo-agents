@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -27,7 +28,9 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    column,
     func,
+    or_,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -67,6 +70,7 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("deadline", Date),
         Column("canvas_id", BigInteger),
         Column("problem_id", BigInteger),  # 0134
+        Column("opportunity_id", BigInteger),  # 0143, never with a problem
         Column("rank", Integer, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
         Column("status", Text, nullable=False),
@@ -78,6 +82,10 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         _key(name, "canvas_id", "canvas_canvases", ondelete="RESTRICT"),
         # NO ACTION, checked at the end of the statement: a project's goals and problems go with it in one delete.
         ForeignKeyConstraint(["problem_id"], ["problems.id"], name=f"{name}_problem_id_fkey"),
+        ForeignKeyConstraint(["opportunity_id"], ["opportunities.id"], name=f"{name}_opportunity_id_fkey"),
+        CheckConstraint(
+            or_(column("problem_id").is_(None), column("opportunity_id").is_(None)), name=f"{name}_one_answer_check"
+        ),
         _key(name, "owner_id", "users", ondelete="RESTRICT"),
         _key(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("goal_id", "revision", name="goal_revisions_pkey"),

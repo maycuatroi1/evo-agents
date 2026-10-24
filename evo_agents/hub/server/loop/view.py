@@ -123,6 +123,7 @@ async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> dict[
             r.c.rank,
             r.c.owner_id,
             r.c.problem_id,
+            r.c.opportunity_id,
         )
         .join_from(g, r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
         .where(g.c.project_id == project_id)
@@ -141,6 +142,7 @@ async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> dict[
             row.rank,
             row.owner_id,
             row.problem_id,
+            row.opportunity_id,
         )
     return found
 
@@ -169,6 +171,7 @@ def _item_query():
         i.c.attempts,
         i.c.failures,
         i.c.problem_id,
+        i.c.opportunity_id,
     )
 
 

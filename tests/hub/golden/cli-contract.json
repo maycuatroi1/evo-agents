@@ -3302,6 +3302,14 @@
         },
         {
           "flags": [
+            "--opportunities"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--archive"
           ],
           "value": null,
@@ -3995,6 +4003,7 @@
               "use_cases",
               "signal_keys",
               "problems",
+              "opportunities",
               "delivery",
               "rev",
               "evidence_count",
@@ -6812,6 +6821,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -6870,6 +6880,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -7020,6 +7031,22 @@
         },
         {
           "flags": [
+            "--opportunity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-opportunity"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--rank"
           ],
           "value": "integer",
@@ -7092,6 +7119,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -7153,6 +7181,7 @@
           "deadline",
           "canvas",
           "problem",
+          "opportunity",
           "rank",
           "owner",
           "status",
@@ -70974,6 +71003,25 @@
               "description": "a problem's code: the work items that go from it"
             },
             {
+              "name": "opportunity",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^O-[1-9][0-9]{0,8}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an opportunity's code: the work items that go from it",
+                "title": "Opportunity"
+              },
+              "description": "an opportunity's code: the work items that go from it"
+            },
+            {
               "name": "X-Evo-Sink",
               "in": "header",
               "required": false,
@@ -78059,6 +78107,22 @@
               ],
               "title": "Problems",
               "description": "the codes of the problems of the project it answers, as P-3, each open or solved when a change adds it: the whole list, [] for none"
+            },
+            "opportunities": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunities",
+              "description": "the codes of the opportunities of the project it links, as O-3, each open, captured or missed when a change adds it: the whole list, [] for none"
             }
           },
           "type": "object",
@@ -78167,6 +78231,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             },
             "rev": {
               "type": "integer",
@@ -78343,6 +78415,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             },
             "rev": {
               "type": "integer",
@@ -78536,6 +78616,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             }
           },
           "type": "object",
@@ -79141,6 +79229,14 @@
               "type": "array",
               "title": "Problems",
               "description": "the codes (P-<number>) of the problems of the project it answers, by number"
+            },
+            "opportunities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Opportunities",
+              "description": "the codes (O-<number>) of the opportunities of the project it links, by number"
             },
             "code": {
               "type": "string",
@@ -91969,6 +92065,18 @@
               "title": "Problem",
               "description": "the code (P-<number>) of the problem it goes from: the one its goal answered when it was made"
             },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of the opportunity it goes from: the one its goal answered when it was made, or its parent's"
+            },
             "claim": {
               "anyOf": [
                 {
@@ -103315,6 +103423,18 @@
               "title": "Problem",
               "description": "the code (P-<number>) of the problem of the project it answers; null: none"
             },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both"
+            },
             "rank": {
               "type": "integer",
               "title": "Rank",
@@ -103497,6 +103617,19 @@
               "title": "Problem",
               "description": "the code (P-<number>) of a problem of the project that is not dropped; null: none"
             },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^O-[1-9][0-9]{0,8}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of an opportunity of the project that is not dropped; null: none. Not with a problem"
+            },
             "rank": {
               "anyOf": [
                 {
@@ -103667,6 +103800,18 @@
               ],
               "title": "Problem",
               "description": "the code (P-<number>) of the problem of the project it answers; null: none"
+            },
+            "opportunity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opportunity",
+              "description": "the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both"
             },
             "rank": {
               "type": "integer",

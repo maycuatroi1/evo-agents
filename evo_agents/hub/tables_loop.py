@@ -107,6 +107,7 @@ def _items(metadata: MetaData) -> Table:
         _stamp("updated_at"),
         _when("finished_at"),
         Column("problem_id", BigInteger),  # 0136
+        Column("opportunity_id", BigInteger),  # 0143
         _key(name, "project_id", "projects", ondelete="CASCADE"),
         _key(name, "goal_id", "goals", ondelete="SET NULL"),
         _key(name, "claim_id", "canvas_claims", ondelete="SET NULL"),
@@ -116,6 +117,7 @@ def _items(metadata: MetaData) -> Table:
         _key(name, "parent_id", "loop_items", ondelete="SET NULL"),
         _key(name, "event_id", "hub_events", ondelete="SET NULL"),
         _key(name, "problem_id", "problems", ondelete="SET NULL"),
+        _key(name, "opportunity_id", "opportunities", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="loop_items_pkey"),
         UniqueConstraint("project_id", "key", name="loop_items_key_key"),
     )
@@ -128,6 +130,7 @@ def _items(metadata: MetaData) -> Table:
     Index("loop_items_claim_idx", table.c.claim_id, postgresql_where=table.c.claim_id.is_not(None))
     Index("loop_items_run_idx", table.c.run_id, postgresql_where=table.c.run_id.is_not(None))
     Index("loop_items_problem_idx", table.c.problem_id, postgresql_where=table.c.problem_id.is_not(None))
+    Index("loop_items_opportunity_idx", table.c.opportunity_id, postgresql_where=table.c.opportunity_id.is_not(None))
     return table
 
 

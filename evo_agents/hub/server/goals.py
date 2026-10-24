@@ -15,7 +15,8 @@ Tables goals and goal_revisions, schema 0091.
 
 A metric names a key of kind number of the project's registry of signals; a canvas, one of the project's canvases;
 a problem (plan problem-oriented-hub, criterion a2), one of the project's problems that is not dropped
-(``evo_agents.hub.server.problems``); the owner, a member with the writer role or above. An archived key or canvas, or
+(``evo_agents.hub.server.problems``), or an opportunity (plan opportunity-intake) that is not dropped, never both; the
+owner, a member with the writer role or above. An archived key or canvas, or
 a dropped problem, a revision names already may stay. Writes
 of one project's goals wait for each other (a transaction-level advisory lock). Each revision adds an audit row
 ``goal.set`` naming the goal, the revision and the fields whose value it changed, never a value.
@@ -41,6 +42,7 @@ from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, tables
+from evo_agents.hub import opportunities as opportunity_model
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
@@ -102,6 +104,11 @@ class ProjectGoal(BaseModel):
     problem: str | None = Field(
         description="the code (P-<number>) of the problem of the project it answers; null: none"
     )
+    opportunity: str | None = Field(
+        default=None,
+        description="the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers "
+        "a problem or an opportunity, never both",
+    )
     rank: int = Field(description="its place among the project's goals, 1 first")
     owner: str
     status: Literal[goals.STATUSES]
@@ -128,6 +135,12 @@ class ProjectGoalWrite(BaseModel):
         None,
         pattern=problem_model.REF,
         description="the code (P-<number>) of a problem of the project that is not dropped; null: none",
+    )
+    opportunity: str | None = Field(
+        None,
+        pattern=opportunity_model.REF,
+        description="the code (O-<number>) of an opportunity of the project that is not dropped; null: none. Not "
+        "with a problem",
     )
     rank: int | None = Field(
         None, ge=1, le=goals.MAX_RANK, description="null: kept, or after the project's other goals for a new one"
@@ -180,6 +193,7 @@ class GoalRevision(BaseModel):
 def _select():
     """A goal at a revision, with its owner's and writer's logins, its canvas's slug and its problem's number."""
     g, r, c, pr = tables.goals, tables.goal_revisions, tables.canvas.canvases, tables.problems
+    op = tables.opportunities
     owner, writer = tables.users.alias("owner"), tables.users.alias("writer")
     return (
         select(
@@ -194,6 +208,8 @@ def _select():
             c.c.slug.label("canvas"),
             r.c.problem_id,
             pr.c.number.label("problem_number"),
+            r.c.opportunity_id,
+            op.c.number.label("opportunity_number"),
             r.c.rank,
             r.c.owner_id,
             owner.c.login.label("owner"),
@@ -208,6 +224,7 @@ def _select():
         .join(writer, writer.c.id == r.c.created_by)
         .outerjoin(c, c.c.id == r.c.canvas_id)
         .outerjoin(pr, pr.c.id == r.c.problem_id)
+        .outerjoin(op, op.c.id == r.c.opportunity_id)
     )
 
 
@@ -237,6 +254,7 @@ def view(project: str, row) -> ProjectGoal:
         deadline=row.deadline,
         canvas=row.canvas,
         problem=_problem_code(row),
+        opportunity=_opportunity_code(row),
         rank=row.rank,
         owner=row.owner,
         status=row.status,
@@ -251,6 +269,10 @@ def _problem_code(row) -> str | None:
     return problem_model.code(row.problem_number) if row.problem_number is not None else None
 
 
+def _opportunity_code(row) -> str | None:
+    return opportunity_model.code(row.opportunity_number) if row.opportunity_number is not None else None
+
+
 def fields_of(row) -> dict:
     """The fields of goal ``row`` as a write names them (``ProjectGoalWrite``), the deadline as text."""
     return {
@@ -259,6 +281,7 @@ def fields_of(row) -> dict:
         "deadline": row.deadline.isoformat() if row.deadline is not None else None,
         "canvas": row.canvas,
         "problem": _problem_code(row),
+        "opportunity": _opportunity_code(row),
         "rank": row.rank,
         "owner": row.owner,
         "status": row.status,
@@ -274,6 +297,7 @@ def _stored(row) -> dict:
         "deadline": row.deadline,
         "canvas_id": row.canvas_id,
         "problem_id": row.problem_id,
+        "opportunity_id": row.opportunity_id,
         "rank": row.rank,
         "owner_id": row.owner_id,
         "status": row.status,
@@ -344,6 +368,7 @@ async def adopt_charter_goals(conn: AsyncConnection, project_id: int, project: s
             "deadline": None,
             "canvas_id": None,
             "problem_id": None,
+            "opportunity_id": None,
             "rank": min(rank + offset, goals.MAX_RANK),
             "owner_id": charter.created_by,
             "status": goals.ACTIVE,
@@ -462,6 +487,27 @@ async def _problem(conn: AsyncConnection, access: ProjectAccess, ref: str, held:
     return row.id, []
 
 
+async def _opportunity(
+    conn: AsyncConnection, access: ProjectAccess, ref: str, held: int | None
+) -> tuple[int | None, list]:
+    """The id of opportunity ``ref`` of the project, for a goal whose opportunity is ``held`` now, and why it cannot
+    be."""
+    o, r = tables.opportunities, tables.opportunity_revisions
+    query = (
+        select(o.c.id, r.c.status)
+        .join_from(o, r, and_(r.c.opportunity_id == o.c.id, r.c.revision == o.c.revision))
+        .where(o.c.project_id == access.project_id, o.c.number == opportunity_model.number_of(ref))
+    )
+    row = (await conn.execute(query)).first()
+    if row is None:
+        return None, [
+            f"opportunity: project {access.name} has no opportunity {ref}: see `evo-agents hub opportunity list`"
+        ]
+    if row.status == opportunity_model.DROPPED and row.id != held:
+        return None, [f"opportunity: opportunity {ref} is dropped; a goal answers one that is not"]
+    return row.id, []
+
+
 async def _values(
     conn: AsyncConnection, access: ProjectAccess, body: ProjectGoalWrite, held, writer_id: int
 ) -> tuple[dict, list[str]]:
@@ -480,6 +526,15 @@ async def _values(
     if body.problem is not None:
         problem_id, said = await _problem(conn, access, body.problem, held.problem_id if held is not None else None)
         problems += said
+    opportunity_id = None
+    if body.opportunity is not None:
+        if body.problem is not None:
+            problems.append("opportunity: a goal answers a problem or an opportunity, not both")
+        else:
+            opportunity_id, said = await _opportunity(
+                conn, access, body.opportunity, held.opportunity_id if held is not None else None
+            )
+            problems += said
     metric = body.metric.model_dump(exclude_none=True) if body.metric is not None else None
     if body.metric is not None:
         problems += await metric_problems(conn, access, body.metric.key, held.metric if held is not None else None)
@@ -490,6 +545,7 @@ async def _values(
         "deadline": body.deadline,
         "canvas_id": canvas_id,
         "problem_id": problem_id,
+        "opportunity_id": opportunity_id,
         "rank": rank,
         "owner_id": owner_id,
         "status": body.status,
