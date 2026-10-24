@@ -20,8 +20,13 @@ export type Evidence = Schemas["Evidence"];
 export type Neighbourhood = Schemas["Neighbourhood"];
 export type GraphNode = Schemas["GraphNode"];
 export type GraphEdge = Schemas["GraphEdge"];
+export type NeighbourGroup = Schemas["NeighbourGroup"];
+export type GraphShape = Schemas["GraphShape"];
+export type ShapeRow = Schemas["ShapeRow"];
 
 /** The neighbourhood's bounds, as the API enforces them (`evo_agents.hub.kg_web`). */
 export const MAX_HOPS = 2;
 export const MAX_NODES = 150;
 export type Hops = 1 | 2;
+/** Direct neighbours of each group the node page shows before the group is opened (`GROUP_SHOWN` of the API). */
+export const GROUP_SHOWN = 5;

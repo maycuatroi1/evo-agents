@@ -231,6 +231,7 @@ describe("the trace of an item in the knowledge graph", () => {
     aliases: [],
     hop: 1,
     hub: false,
+    degree: 1,
   });
   const edge = (src: string, rel: string, dst: string): GraphEdge => ({ id: `${src}-${rel}-${dst}`, src, rel, dst, status: "declared" });
 

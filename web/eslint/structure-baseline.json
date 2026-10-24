@@ -6,7 +6,6 @@
     "src/components/curator/curator-page.tsx": 442,
     "src/components/inbox/decision-view.tsx": 579,
     "src/components/inbox/mobile-decision.tsx": 442,
-    "src/components/kg/build-status.tsx": 429,
     "src/components/palette/command-palette.tsx": 698,
     "src/components/runs/queries.ts": 427,
     "src/components/runs/trace-model.ts": 548,

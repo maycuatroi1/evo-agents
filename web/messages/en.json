@@ -1820,7 +1820,8 @@
       "queue": "Queue",
       "queueEmpty": "No jobs",
       "queueCounts": "{waiting} waiting, {running} running",
-      "refreshing": "Refreshes every 5 seconds"
+      "refreshing": "Refreshes every 5 seconds",
+      "visibleEdges": "{count, plural, one {# edge} other {# edges}}, of what you can read"
     },
     "latest": {
       "title": "Build #{id}",
@@ -1974,11 +1975,14 @@
       "out": "outgoing",
       "in": "incoming",
       "select": "Select {name} in the graph",
-      "open": "Open the page of {name}"
+      "open": "Open the page of {name}",
+      "groupCount": "{shown} of {total}",
+      "degree": "{count, plural, one {# edge} other {# edges}}",
+      "showMore": "{count, plural, one {Show # more} other {Show # more}} ({rel}, {kind})"
     },
     "graph": {
       "title": "Neighbourhood",
-      "description": "Nodes and edges within {hops, plural, one {# step} other {# steps}} of this node, at most {limit} nodes.",
+      "description": "Nodes and edges within {hops, plural, one {# step} other {# steps}} of this node, at most {limit} nodes. Of each group of direct neighbours, the {group} most connected show first.",
       "hops": "Steps",
       "hopsValue": "{count, plural, one {# step} other {# steps}}",
       "layout": "Layout",
@@ -1998,7 +2002,20 @@
       "truncatedTitle": "Cut: the graph draws {shown} nodes, the limit is {limit}",
       "truncatedDescription": "{leftOut, plural, one {# more node within reach is not drawn.} other {# more nodes within reach are not drawn.}} This node has {neighbours} direct neighbours: see them all under <link>Relations by edge type</link>, or open a neighbour to see its own area.",
       "smallScreen": "Narrow screen: the graph is replaced by the table of neighbours.",
-      "selected": "Selected {name} ({kind}), {count} edges"
+      "selected": "Selected {name} ({kind}), {count} edges",
+      "legendMore": "More neighbours of a group: click to show them"
+    },
+    "shape": {
+      "title": "Shape of the graph",
+      "description": "How many edges of each type join each kind of node to another, counted over what you can read.",
+      "columns": {
+        "source": "From kind",
+        "rel": "Edge type",
+        "target": "To kind",
+        "count": "Edges"
+      },
+      "empty": "No edge you can read in this graph.",
+      "caption": "{count, plural, one {# combination of kinds and edge type} other {# combinations of kinds and edge type}}"
     }
   },
   "workers": {

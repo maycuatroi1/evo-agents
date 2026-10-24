@@ -1259,6 +1259,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/shape": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Graph Shape
+         * @description How many edges the member can see join each kind of node to each other, by edge type, most first.
+         */
+        get: operations["graph_shape_v1_kg__project__shape_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/nodes": {
         parameters: {
             query?: never;
@@ -15569,6 +15589,11 @@ export interface components {
              * @description left unexpanded: it has more than 150 visible edges
              */
             hub: boolean;
+            /**
+             * Degree
+             * @description the node's visible edges in the whole graph
+             */
+            degree: number;
         };
         /** GraphRef */
         GraphRef: {
@@ -15590,6 +15615,16 @@ export interface components {
              * @description false when the blob store did not answer and an older cached build answered
              */
             latest: boolean;
+        };
+        /** GraphShape */
+        GraphShape: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Shape
+             * @description visible edges by source kind, edge type and target kind, most first
+             */
+            shape: components["schemas"]["ShapeRow"][];
         };
         /** GraphSummary */
         GraphSummary: {
@@ -18957,6 +18992,36 @@ export interface components {
             /** Description */
             description: string | null;
         };
+        /** NeighbourGroup */
+        NeighbourGroup: {
+            /**
+             * Key
+             * @description direction:rel:kind, as the open parameter names the group
+             */
+            key: string;
+            /** Rel */
+            rel: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "out" | "in";
+            /**
+             * Kind
+             * @description the kind of the neighbours
+             */
+            kind: string;
+            /**
+             * Total
+             * @description visible direct neighbours in the group
+             */
+            total: number;
+            /**
+             * Shown
+             * @description the ids of those in nodes, most visible edges first
+             */
+            shown: string[];
+        };
         /** Neighbourhood */
         Neighbourhood: {
             graph: components["schemas"]["GraphRef"];
@@ -18969,10 +19034,20 @@ export interface components {
             hops: number;
             /** Limit */
             limit: number;
+            /**
+             * Group
+             * @description direct neighbours shown of each group not opened; null for all
+             */
+            group: number | null;
             /** Nodes */
             nodes: components["schemas"]["GraphNode"][];
             /** Edges */
             edges: components["schemas"]["GraphEdge"][];
+            /**
+             * Groups
+             * @description the node's direct neighbours by edge type, direction and kind
+             */
+            groups: components["schemas"]["NeighbourGroup"][];
             /**
              * Neighbours
              * @description visible direct neighbours of the node
@@ -27444,6 +27519,17 @@ export interface components {
              * @description 409 unless the layer is at this version now
              */
             if_version?: number | null;
+        };
+        /** ShapeRow */
+        ShapeRow: {
+            /** Src Kind */
+            src_kind: string;
+            /** Rel */
+            rel: string;
+            /** Dst Kind */
+            dst_kind: string;
+            /** Count */
+            count: number;
         };
         /** ShareWrite */
         ShareWrite: {
@@ -36423,6 +36509,82 @@ export interface operations {
             };
         };
     };
+    graph_shape_v1_kg__project__shape_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphShape"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     search_nodes_v1_kg__project__nodes_get: {
         parameters: {
             query: {
@@ -36591,6 +36753,10 @@ export interface operations {
                 id: string;
                 hops?: number;
                 limit?: number;
+                /** @description direct neighbours shown of each group; all when absent */
+                group?: number | null;
+                /** @description keys of the groups shown whole (direction:rel:kind) */
+                open?: string[] | null;
             };
             header?: never;
             path: {

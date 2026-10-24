@@ -18430,7 +18430,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.41.0"
+      "version": "0.42.1"
     },
     "paths": {
       "/v1/health": {
@@ -24945,6 +24945,100 @@
           }
         }
       },
+      "/v1/kg/{project}/shape": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Graph Shape",
+          "description": "How many edges the member can see join each kind of node to each other, by edge type, most first.",
+          "operationId": "graph_shape_v1_kg__project__shape_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GraphShape"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/nodes": {
         "get": {
           "tags": [
@@ -25248,6 +25342,48 @@
                 "default": 150,
                 "title": "Limit"
               }
+            },
+            {
+              "name": "group",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 150,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "direct neighbours shown of each group; all when absent",
+                "title": "Group"
+              },
+              "description": "direct neighbours shown of each group; all when absent"
+            },
+            {
+              "name": "open",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "keys of the groups shown whole (direction:rel:kind)",
+                "title": "Open"
+              },
+              "description": "keys of the groups shown whole (direction:rel:kind)"
             }
           ],
           "responses": {
@@ -85036,6 +85172,11 @@
               "type": "boolean",
               "title": "Hub",
               "description": "left unexpanded: it has more than 150 visible edges"
+            },
+            "degree": {
+              "type": "integer",
+              "title": "Degree",
+              "description": "the node's visible edges in the whole graph"
             }
           },
           "type": "object",
@@ -85049,7 +85190,8 @@
             "props",
             "aliases",
             "hop",
-            "hub"
+            "hub",
+            "degree"
           ],
           "title": "GraphNode"
         },
@@ -85092,6 +85234,35 @@
             "latest"
           ],
           "title": "GraphRef"
+        },
+        "GraphShape": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "shape": {
+              "items": {
+                "$ref": "#/components/schemas/ShapeRow"
+              },
+              "type": "array",
+              "title": "Shape",
+              "description": "visible edges by source kind, edge type and target kind, most first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "shape"
+          ],
+          "title": "GraphShape"
         },
         "GraphSummary": {
           "properties": {
@@ -93070,6 +93241,55 @@
           ],
           "title": "NamedGroup"
         },
+        "NeighbourGroup": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "direction:rel:kind, as the open parameter names the group"
+            },
+            "rel": {
+              "type": "string",
+              "title": "Rel"
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "out",
+                "in"
+              ],
+              "title": "Direction"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "the kind of the neighbours"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "visible direct neighbours in the group"
+            },
+            "shown": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Shown",
+              "description": "the ids of those in nodes, most visible edges first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "rel",
+            "direction",
+            "kind",
+            "total",
+            "shown"
+          ],
+          "title": "NeighbourGroup"
+        },
         "Neighbourhood": {
           "properties": {
             "graph": {
@@ -93088,6 +93308,18 @@
               "type": "integer",
               "title": "Limit"
             },
+            "group": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group",
+              "description": "direct neighbours shown of each group not opened; null for all"
+            },
             "nodes": {
               "items": {
                 "$ref": "#/components/schemas/GraphNode"
@@ -93101,6 +93333,14 @@
               },
               "type": "array",
               "title": "Edges"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/components/schemas/NeighbourGroup"
+              },
+              "type": "array",
+              "title": "Groups",
+              "description": "the node's direct neighbours by edge type, direction and kind"
             },
             "neighbours": {
               "type": "integer",
@@ -93123,8 +93363,10 @@
             "focus",
             "hops",
             "limit",
+            "group",
             "nodes",
             "edges",
+            "groups",
             "neighbours",
             "left_out",
             "truncated"
@@ -112092,6 +112334,34 @@
           "type": "object",
           "title": "SettingsWrite",
           "description": "The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."
+        },
+        "ShapeRow": {
+          "properties": {
+            "src_kind": {
+              "type": "string",
+              "title": "Src Kind"
+            },
+            "rel": {
+              "type": "string",
+              "title": "Rel"
+            },
+            "dst_kind": {
+              "type": "string",
+              "title": "Dst Kind"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count"
+            }
+          },
+          "type": "object",
+          "required": [
+            "src_kind",
+            "rel",
+            "dst_kind",
+            "count"
+          ],
+          "title": "ShapeRow"
         },
         "ShareWrite": {
           "properties": {
