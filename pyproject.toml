@@ -194,6 +194,7 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.curator",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
+    "evo_agents.hub.worker -> evo_agents.hub.server.opportunity_deadlines",
     "evo_agents.hub.worker -> evo_agents.hub.server.notifications",
     "evo_agents.hub.worker -> evo_agents.hub.server.outcomes",
     "evo_agents.hub.worker -> evo_agents.hub.server.run_state",

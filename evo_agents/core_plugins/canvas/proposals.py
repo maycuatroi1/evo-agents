@@ -38,6 +38,7 @@ NEW_CLAIM_FIELDS = (  # what a proposed new claim may set
     "use_cases",
     "signal_keys",
     "problems",
+    "opportunities",
 )
 
 

@@ -3,7 +3,8 @@ over the routes under /v1/projects/{p}/intakes.
 
 ``start --source KIND:LABEL[:NAME]`` (once for each source) opens intake I-<n>: the kinds and labels of what the session
 will read, with a short name for each, never its content. ``put CODE FILE`` sends the result as an ``evo-intake/1``
-document (FILE, or ``-`` for standard input): candidate problems with their evidence, promises and questions. The hub
+document (FILE, or ``-`` for standard input): candidate problems with their evidence, promises and questions; an
+``evo-intake/2`` document adds candidate opportunities (``intake2.schema.json``). The hub
 checks it against ``evo_agents/harness/schemas/intake.schema.json`` and refuses with 422, naming each reason and
 writing nothing, a candidate with one independent source that nobody confirmed. A result makes a pending proposal of
 @builder for each candidate, and a task of the plugin tasks for each promise when the project enabled it. ``show CODE``
@@ -40,6 +41,7 @@ INTAKE_KEYS = (
     "candidates",
     "promises",
     "questions",
+    "opportunities",
     "outcome",
 )
 
@@ -77,10 +79,14 @@ def _show(found: dict) -> None:
     print(
         f"Put by {found['put_by']}: {found['candidates']} candidates, {found['promises']} promises, "
         f"{found['questions']} questions"
+        + (f", {found['opportunities']} opportunities" if found.get("opportunities") else "")
     )
     for proposal in outcome["proposals"]:
         what = "new problem" if proposal["kind"] == "new_problem" else "evidence for"
         print(f"  proposal {proposal['proposal_id']}: {what} {proposal['problem']} ({proposal['lines']} lines)")
+    for proposal in outcome.get("opportunity_proposals") or []:
+        what = "new opportunity" if proposal["kind"] == "new_opportunity" else "evidence for"
+        print(f"  proposal {proposal['proposal_id']}: {what} {proposal['opportunity']} ({proposal['lines']} lines)")
     for task in outcome["tasks"]:
         due = f", due {task['due_on']}" if task["due_on"] else ""
         print(f"  task {task['task']}: promise {task['promise']}, assigned to {task['assignee']}{due}")
@@ -182,9 +188,13 @@ def register_intake(hsub) -> None:
     json_option(started, returns_object(*INTAKE_KEYS, schema="Intake"))
     started.set_defaults(func=cmd_start)
 
-    put = isub.add_parser("put", help="put the evo-intake/1 result of an intake, once (the writer role)")
+    put = isub.add_parser(
+        "put", help="put the evo-intake/1 or evo-intake/2 result of an intake, once (the writer role)"
+    )
     put.add_argument("code", metavar="CODE", help="the intake's code (I-<number>)")
-    put.add_argument("file", metavar="FILE", help="the evo-intake/1 JSON document, or - for standard input")
+    put.add_argument(
+        "file", metavar="FILE", help="the evo-intake/1 or evo-intake/2 JSON document, or - for standard input"
+    )
     put.add_argument("--project", help=PROJECT_HELP)
     json_option(put, returns_object(*INTAKE_KEYS, schema="Intake"))
     put.set_defaults(func=cmd_put)

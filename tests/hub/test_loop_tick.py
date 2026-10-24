@@ -474,6 +474,26 @@ def test_loop_tick_rules2_goes_from_a_problem_to_a_build_of_a_claim_and_a_discov
     assert counts(hub_db) == before
 
 
+def test_loop_tick_rules2_goes_from_an_opportunity_a_goal_answers_and_lists_its_work_items(client, hub, hub_db):
+    body = {"statement": "Sell the scanner to the depot", "beneficiary": "the night shift", "leverage": "two demos"}
+    written = client.put(f"/v1/projects/{PROJECT}/opportunities/O-1", json=body, headers=hub["chi"])
+    assert written.status_code == 200, written.text
+    goal = {"statement": "Corner shops reorder every week", "metric": METRIC, "canvas": SLUG, "opportunity": "O-1"}
+    named = client.put(f"{GOALS}/G-1", json=goal, headers=hub["owner"])
+    assert named.status_code == 200 and named.json()["opportunity"] == "O-1", named.text
+    policy(client, hub, {"enabled": True, "use_cases": "never"})
+    ticked(client, hub_db)
+    o, i = tables.opportunities, tables.loop_items
+    opportunity_id = sql(hub_db, select(o.c.id).where(o.c.number == 1))[0][0]
+    assert sql(hub_db, select(i.c.key, i.c.opportunity_id, i.c.problem_id)) == [
+        ("brainstorm:G-1:r2", opportunity_id, None)
+    ]
+    listed = client.get(LOOP_ITEMS, params={"opportunity": "O-1"}, headers=hub["reader"]).json()["items"]
+    assert [(entry["kind"], entry["opportunity"]) for entry in listed] == [("brainstorm", "O-1")]
+    assert client.get(LOOP_ITEMS, params={"opportunity": "O-9"}, headers=hub["reader"]).json()["items"] == []
+    assert client.get(LOOP_ITEMS, params={"opportunity": "P-1"}, headers=hub["reader"]).status_code == 422
+
+
 def test_loop_tick_rules2_goes_on_from_the_cursor_rules1_left_and_moves_its_work_items(client, hub, hub_db):
     policy(client, hub, {"enabled": True})
     start = state(hub_db)[1]

@@ -462,6 +462,7 @@ def test_the_docs_of_this_repository_pass():
         docs / "releases.md",
         docs / "merge-queue.md",
         docs / "problems.md",
+        docs / "opportunities.md",
     ]
     count, problems = contract.check_files(commands(), [str(path) for path in files])
     assert problems == []

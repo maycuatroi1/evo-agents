@@ -9,8 +9,9 @@ testing only with a hypothesis, a test and a deadline (``evo_agents.core_plugins
 
 A claim also links the use cases of the plugin srs that realize it, by code (``use_cases``), the keys of the
 project's registry of signals that measure it (``signal_keys``), and the problems of the project it answers, by code
-P-<number> (``problems``, plan problem-oriented-hub): each a set, kept sorted, at most MAX_LINKS. Here they are checked
-for their shape alone; ``links`` checks a link a write adds against the project's SRS, registry and problems, and names
+P-<number> (``problems``, plan problem-oriented-hub), and the opportunities of the project it links, by code O-<number>
+(``opportunities``, plan opportunity-intake): each a set, kept sorted, at most MAX_LINKS. Here they are checked
+for their shape alone; ``links`` checks a link a write adds against the project's SRS, registry, problems and opportunities, and names
 a use case by its code as the SRS holds it. A rev written before links existed reads as linking nothing.
 """
 
@@ -21,6 +22,7 @@ import re
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 
+from evo_agents.hub import opportunities as opportunity_model
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.tables_canvas import CELLS, CONFIDENCES, DEFAULT_DELIVERY, DELIVERIES, MAX_TEXT_CHARS, STATUSES
 from evo_agents.hub.tables_srs import MAX_CODE_CHARS, code_key
@@ -34,9 +36,15 @@ MAX_CARD_TEXT_CHARS = 2_000  # of a test card's hypothesis and test
 MAX_TENANT_CHARS = 100
 MAX_SAMPLES = 1_000_000
 MAX_WINDOW_DAYS = 90
-MAX_LINKS = 20  # use cases a claim links, signal keys, and problems
-LINKS = ("use_cases", "signal_keys", "problems")  # the fields of a claim's content that link it, each a sorted tuple
+MAX_LINKS = 20  # use cases a claim links, signal keys, problems, and opportunities
+LINKS = (
+    "use_cases",
+    "signal_keys",
+    "problems",
+    "opportunities",
+)  # the fields of a claim's content that link it, each a sorted tuple
 PROBLEM = re.compile(problem_model.REF)  # a problem's code, P-<number>
+OPPORTUNITY = re.compile(opportunity_model.REF)  # an opportunity's code, O-<number>
 FIELDS = (
     "cell",
     "position",
@@ -102,6 +110,7 @@ class Content:
     use_cases: tuple[str, ...] = ()
     signal_keys: tuple[str, ...] = ()
     problems: tuple[str, ...] = ()
+    opportunities: tuple[str, ...] = ()  # plan opportunity-intake
 
     def as_json(self) -> dict:
         return {**asdict(self), **{name: list(getattr(self, name)) for name in LINKS}}
@@ -184,6 +193,14 @@ def _problem(value) -> str:
     return value.strip()
 
 
+def _opportunity(value) -> str:
+    if not (isinstance(value, str) and OPPORTUNITY.match(value.strip())):
+        raise CanvasError(
+            422, f"opportunities takes the codes of opportunities of the project, as O-3; {value!r} is not"
+        )
+    return value.strip()
+
+
 def checked_use_cases(value) -> tuple[str, ...]:
     """The use case codes ``value`` gives, each with its whitespace runs as one space, sorted, without repeats."""
     return _links("use_cases", value, _use_case)
@@ -200,6 +217,14 @@ def checked_problems(value) -> tuple[str, ...]:
         raise CanvasError(422, f"problems takes a list of at most {MAX_LINKS}")
     found = {_problem(item) for item in value}
     return tuple(sorted(found, key=problem_model.number_of))
+
+
+def checked_opportunities(value) -> tuple[str, ...]:
+    """The opportunity codes ``value`` gives, by number, without repeats."""
+    if not isinstance(value, list | tuple) or len(value) > MAX_LINKS:
+        raise CanvasError(422, f"opportunities takes a list of at most {MAX_LINKS}")
+    found = {_opportunity(item) for item in value}
+    return tuple(sorted(found, key=opportunity_model.number_of))
 
 
 CARD_CHECKS = {  # field of a test card -> what checks it and gives the value kept
@@ -242,6 +267,7 @@ CHECKS = {  # field of a claim -> what checks it and gives the value kept
     "use_cases": checked_use_cases,
     "signal_keys": checked_signal_keys,
     "problems": checked_problems,
+    "opportunities": checked_opportunities,
 }
 
 

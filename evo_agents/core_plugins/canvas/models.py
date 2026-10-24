@@ -56,6 +56,9 @@ Reason = Field("", max_length=MAX_REASON_CHARS, description="why, kept with each
 UseCases = Field(description="the codes of the use cases of the plugin srs it links, sorted")
 SignalKeys = Field(description="the keys of the project's signals it links, sorted")
 Problems = Field(description="the codes (P-<number>) of the problems of the project it answers, by number")
+Opportunities = Field(
+    default_factory=list, description="the codes (O-<number>) of the opportunities of the project it links, by number"
+)
 CardText = Field(None, min_length=1, max_length=MAX_CARD_TEXT_CHARS)
 
 
@@ -128,6 +131,7 @@ class CanvasContent(BaseModel):
     use_cases: list[str] = UseCases
     signal_keys: list[str] = SignalKeys
     problems: list[str] = Problems
+    opportunities: list[str] = Opportunities
 
 
 class CanvasClaim(BaseModel):
@@ -148,6 +152,7 @@ class CanvasClaim(BaseModel):
     use_cases: list[str] = UseCases
     signal_keys: list[str] = SignalKeys
     problems: list[str] = Problems
+    opportunities: list[str] = Opportunities
     rev: int = Field(description="the rev it is at: an edit names it as base_rev")
     evidence_count: int = Field(description="the pieces of evidence the caller may read, withdrawn ones included")
     real_support_count: int = Field(description="those that are real and support it, which validated needs")
@@ -392,6 +397,12 @@ class CanvasChangeIn(BaseModel):
         description="the codes of the problems of the project it answers, as P-3, each open or solved when a change "
         "adds it: the whole list, [] for none",
     )
+    opportunities: list[str] | None = Field(
+        None,
+        max_length=MAX_LINKS,
+        description="the codes of the opportunities of the project it links, as O-3, each open, captured or missed "
+        "when a change adds it: the whole list, [] for none",
+    )
 
     def values(self) -> dict:
         given = self.model_dump(exclude_unset=True, exclude={"claim", "base_rev"}, mode="json")
@@ -469,6 +480,7 @@ def claim_model(row: ClaimRow, evidence: list[EvidenceRow]) -> CanvasClaim:
         use_cases=list(row.use_cases),
         signal_keys=list(row.signal_keys),
         problems=list(row.problems),
+        opportunities=list(row.opportunities),
         rev=row.rev,
         evidence_count=len(evidence),
         real_support_count=len(rules.real_support([item.facts() for item in evidence])),

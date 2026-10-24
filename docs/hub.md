@@ -133,9 +133,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 38 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 41 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`problem_list`, `problem_show` and `problem_evidence` (the project's problems and their evidence), `intake_list` and `intake_show` (its intakes, `docs/problems.md`), `ask_member` (a question of a local session,
+`problem_list`, `problem_show` and `problem_evidence` (the project's problems and their evidence), `opportunity_list`, `opportunity_show` and `opportunity_evidence` (its opportunities and their evidence, `docs/opportunities.md`), `intake_list` and `intake_show` (its intakes, `docs/problems.md`), `ask_member` (a question of a local session,
 `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
 what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`, `decision_list`,
 `curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), `curator_probe_report` (the
@@ -2011,6 +2011,15 @@ evo-agents hub intake put I-1 result.json --project demo       # an evo-intake/1
 evo-agents hub intake show I-1 --project demo
 evo-agents hub intake list --status open --project demo
 ```
+
+```sh
+evo-agents hub opportunity list --project demo                  # by rank; --closing-within 14 for windows that close soon
+evo-agents hub opportunity show O-1 --project demo
+evo-agents hub opportunity set --statement "..." --beneficiary "..." --leverage "..." --window-until 2026-12-01 --project demo
+evo-agents hub opportunity close O-1 --status captured --reason "..." --project demo
+```
+
+`docs/opportunities.md` has the opportunities (O-n), their answers to problems of other projects, the reminders of the window and the evidence.
 
 `docs/intake.md` has the intakes and `docs/problems.md` the evidence. The MCP tools `problem_list` and `problem_show` read the same. The web lists a project's problems at
 `/p/{p}/problems` and shows one at `/p/{p}/problems/P-1`, where a writer adds, edits, closes and reopens it.

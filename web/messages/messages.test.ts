@@ -15,7 +15,8 @@ function leaves(tree: Tree, prefix = ""): Map<string, string> {
   return found;
 }
 
-const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\s*[,}]/g)].map((match) => match[1]).sort();
+// A select branch (`1 {Cluster}`, `other {...}`) is text, not a placeholder.
+const placeholders = (text: string) => [...text.matchAll(/(?<!\b(?:\d+|other)\s*)\{(\w+)\s*[,}]/g)].map((match) => match[1]).sort();
 
 describe("messages", () => {
   const viLeaves = leaves(vi);

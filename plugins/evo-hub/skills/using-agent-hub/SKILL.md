@@ -100,6 +100,9 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
 | `problem_list` | the project's problems (P-<number>) by rank, with status, owner and metric |
 | `problem_show` | one problem whole: what hurts, who, when, the workaround, its metric, and the goals that answer it |
 | `problem_evidence` | the lines of evidence of a problem (E-<number>): source, place, speaker, excerpt, signal, label, who confirmed, and the count of independent sources |
+| `opportunity_list` | the project's opportunities (O-<number>) by rank, with status, owner and window |
+| `opportunity_show` | one opportunity whole: what could be won, who benefits, the leverage, the window, the problems it answers (a count for those you hold no grant on), and its evidence count |
+| `opportunity_evidence` | the lines of evidence of an opportunity (E-<number>): source, place, speaker, excerpt, signal, label, who confirmed, and the count of independent sources |
 | `intake_list` | the intakes of a project (I-<number>): status, requester, sources by kind and label, and the counts of candidates and promises |
 | `intake_show` | one intake: its sources, the proposals of @builder its result made, the tasks its promises became, and the questions left open |
 | `ask_member` | ask the person a 2 to 6 option question in a session of a hub project: it reaches them on the web, in Telegram and in the Inbox, and the first answer comes back |

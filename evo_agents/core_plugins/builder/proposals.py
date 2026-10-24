@@ -23,6 +23,13 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
   problem-intake, criterion a1): lines of sources that show the problem hurts, each as the evidence route takes one,
   which the hub makes with the problem when a writer approves; a proposal of lines alone names an existing problem,
   sets nothing, and writes no revision. Rolling back takes the lines it made away.
+- ``opportunity``: an opportunity of the project (``evo_agents.hub.opportunities``), new or one that exists
+  (``target.opportunity``, its code), its fields named as the opportunity's route names them (statement, beneficiary,
+  leverage, window_until, window_note, answers, metric, rank, owner, status, close_reason); its version is the
+  opportunity's revision, 0 for a new one. A writer of the project decides it, and the hub writes the next revision as
+  the opportunity's route does; rolling back a new one drops it. It may carry ``evidence`` as a problem does (plan
+  opportunity-intake, criterion a2), with the seven signals of an opportunity too; the logic is
+  ``builder.opportunity_changes``.
 - ``goal``: a goal of the project (``evo_agents.hub.goals``), new or one that exists (``target.goal``, its code or
   alias), its fields named as the goal's route names them (statement, metric, deadline, canvas, problem, rank, owner,
   status, close_reason); its version is the goal's revision, 0 for a new one, whose code the hub picks when it is
@@ -52,7 +59,8 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import ARRAY, Text, any_, func, insert, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.builder import MAX_FIELDS, MAX_SUMMARY_CHARS
+from evo_agents.core_plugins.builder import MAX_FIELDS, MAX_SUMMARY_CHARS, opportunity_changes
+from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
 from evo_agents.hub import autonomy, branding, chats, features, goals, tables
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
@@ -71,10 +79,10 @@ from evo_agents.plugins import config as plugin_config
 
 log = logging.getLogger(__name__)
 
-BRANDING, FEATURES, PLUGIN_CONFIG, AGENT, POLICY, PROBLEM, GOAL = PROPOSAL_KINDS
+BRANDING, FEATURES, PLUGIN_CONFIG, AGENT, POLICY, PROBLEM, GOAL, OPPORTUNITY = PROPOSAL_KINDS
 PENDING, APPLIED, REJECTED, FAILED, ROLLED_BACK = PROPOSAL_STATES
 HUB_WIDE = (BRANDING, FEATURES)  # a hub admin decides them; an admin of the project the others
-BY_WRITERS = (PROBLEM,)  # but these, which a writer of the project decides
+BY_WRITERS = (PROBLEM, OPPORTUNITY)  # but these, which a writer of the project decides
 APPROVE, REJECT, ROLLBACK = "approve", "reject", "rollback"
 BRANDING_FIELDS = tuple(name for name in branding.FIELDS if name not in branding.ASSETS)
 AGENT_FIELDS = ("name", "description", "instructions", "packs")
@@ -87,22 +95,13 @@ TARGET_KEYS = {  # kind -> (the keys its target needs, those it may have)
     POLICY: ((), ()),
     PROBLEM: ((), ("problem",)),
     GOAL: ((), ("goal",)),
+    OPPORTUNITY: ((), ("opportunity",)),
 }
 MAX_ERROR_CHARS = 2000
 MAX_SHOWN_BYTES = 3000  # of the values a proposal sets, in its message in the thread
 NOTICE = "builder_proposal"  # evo_agents.hub.runs.NOTICE_KINDS
 AUDIT_PROPOSE = "builder.propose"  # the agent of a run proposed a change, for the run's dispatcher
 AUDIT_DECIDE = "builder.decide"  # an admin approved, rejected or rolled back a proposal
-NOTHING = "nothing changed"
-
-
-class ProposalError(Exception):
-    """Why a proposal cannot be made, decided or rolled back, with the HTTP status a route answers; nothing changed."""
-
-    def __init__(self, status: int, message: str):
-        super().__init__(message)
-        self.status = status
-        self.message = message
 
 
 @dataclass(frozen=True)
@@ -123,7 +122,7 @@ class Change:
     @property
     def evidence_only(self) -> bool:
         """A proposal of a problem that carries lines of evidence and changes no field of the problem."""
-        return self.kind == PROBLEM and bool(self.evidence) and not self.sets and not self.unset
+        return self.kind in (PROBLEM, OPPORTUNITY) and bool(self.evidence) and not self.sets and not self.unset
 
 
 @dataclass(frozen=True)
@@ -140,6 +139,7 @@ class Target:
     policy: dict | None = None  # the body of the policy's revision now, for a policy
     goal: dict | None = None  # the fields of the goal now as its route names them, {} for a new one, for a goal
     problem: dict | None = None  # the same of the problem now, for a problem
+    opportunity: dict | None = None  # the same of the opportunity now, for an opportunity
     names: dict = field(default_factory=dict)  # what the hub adds to the target it keeps: a goal's or problem's code
 
 
@@ -285,8 +285,10 @@ def _evidence_of(kind: str, given: object) -> tuple[list[dict], list[str]]:
     """The lines of evidence a proposal of ``kind`` carries as the hub keeps them, and what is wrong with them."""
     if given is None or given == []:
         return [], []
-    if kind != PROBLEM:
-        return [], ["evidence belongs to a problem proposal"]
+    if kind not in (PROBLEM, OPPORTUNITY):
+        return [], ["evidence belongs to a problem or opportunity proposal"]
+    if kind == OPPORTUNITY:
+        return opportunity_changes.evidence_of(given)
     if not isinstance(given, list) or len(given) > problem_model.MAX_PROPOSED_EVIDENCE:
         return [], [f"evidence is a list of at most {problem_model.MAX_PROPOSED_EVIDENCE} lines"]
     lines, wrong = [], []
@@ -321,11 +323,15 @@ def change_of(arguments: Mapping) -> Change:
         problems.append("target.goal is a goal's code (G-<number>) or its alias")
     if kind == PROBLEM and not re.fullmatch(problem_model.REF, str(target.get("problem", "P-1"))):
         problems.append("target.problem is a problem's code (P-<number>)")
+    if kind == OPPORTUNITY:
+        problems.extend(opportunity_changes.target_problems(target))
     lines, said = _evidence_of(kind, arguments.get("evidence"))
     problems.extend(said)
     if lines and not sets and not unset:
-        if "problem" not in target:
+        if "problem" not in target and kind == PROBLEM:
             problems.append("a proposal of evidence alone names the problem: target.problem")
+        if "opportunity" not in target and kind == OPPORTUNITY:
+            problems.append("a proposal of evidence alone names the opportunity: target.opportunity")
     else:
         problems.extend(_field_problems(sets, unset))
     if problems:
@@ -426,6 +432,11 @@ async def _problem_target(conn: AsyncConnection, access: ProjectAccess, change: 
     )
 
 
+async def _opportunity_target(conn: AsyncConnection, access: ProjectAccess, change: Change) -> Target:
+    title, version, held, fields, code = await opportunity_changes.locate(conn, access, change.target)
+    return Target(title, version, held, opportunity=fields, names={"opportunity": code})
+
+
 async def locate(conn: AsyncConnection, access: ProjectAccess, change: Change, *, lock: bool = False) -> Target:
     """Where ``change`` applies, as it is now; ProposalError when the project has no such place."""
     if change.kind in HUB_WIDE:
@@ -438,6 +449,8 @@ async def locate(conn: AsyncConnection, access: ProjectAccess, change: Change, *
         return await _goal_target(conn, access, change)
     if change.kind == PROBLEM:
         return await _problem_target(conn, access, change)
+    if change.kind == OPPORTUNITY:
+        return await _opportunity_target(conn, access, change)
     return await _agent_target(conn, access, change, lock=lock)
 
 
@@ -609,6 +622,9 @@ async def check(conn: AsyncConnection, access: ProjectAccess, change: Change, ta
         problems = await _goal_problems(conn, access, change, target)
     elif change.kind == PROBLEM:
         problems = await _problem_wrong(conn, access, change, target)
+    elif change.kind == OPPORTUNITY:
+        code = target.names["opportunity"]
+        problems = await opportunity_changes.wrong(conn, access, change, code, target.version, target.opportunity)
     else:
         problems = CHECKS[change.kind](change, target) or _layer_problems(change, target)
     if problems:
@@ -766,6 +782,9 @@ async def apply(
         return await _write_goal(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
     if change.kind == PROBLEM:
         return await _apply_problem(conn, user, access, change, target, base, proposal_id)
+    if change.kind == OPPORTUNITY:
+        code = target.names["opportunity"]
+        return await opportunity_changes.apply(conn, user, access, change, code, target.opportunity, base, proposal_id)
     await check(conn, access, change, target, hub_version)
     if change.kind == PLUGIN_CONFIG:
         return await _apply_config(conn, user, change, target, base)
@@ -902,6 +921,9 @@ async def roll_back(
         return await _roll_back_goal(conn, user, access, target, applied, proposal_id)
     if change.kind == PROBLEM:
         return await _roll_back_problem(conn, user, access, change, target, applied, proposal_id)
+    if change.kind == OPPORTUNITY:
+        code = target.names["opportunity"]
+        return await opportunity_changes.roll_back(conn, user, access, change, code, applied, proposal_id)
     return await _roll_back_layer(conn, user, target, applied)
 
 

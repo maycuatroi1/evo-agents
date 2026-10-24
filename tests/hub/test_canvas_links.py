@@ -269,6 +269,109 @@ def test_problem_show_lists_the_claims_that_link_it_and_an_export_holds_them(cli
     assert shown(client, hub["eve"], "CL-4", slug="fabrikam-milk")["problems"] == ["P-1"]
 
 
+DEPOT = {
+    "statement": "Sell the shelf scanner to the depot",
+    "beneficiary": "the depot's night shift",
+    "leverage": "the depot asked for a demo twice",
+}
+
+
+def opportunity_made(client, headers, ref: str, body: dict = DEPOT) -> dict:
+    answer = client.put(f"/v1/projects/{PROJECT}/opportunities/{ref}", json=body, headers=headers)
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+def test_canvas_claim_links_opportunities_that_are_not_dropped_and_keeps_one_dropped_since(client, hub):
+    """Plan opportunity-intake, criterion a5: a claim links at most 20 opportunities of its project beside its
+    problems, through an edit, its revs, an undo, an export and an import."""
+    for ref in ("O-1", "O-2", "O-3"):
+        opportunity_made(client, hub["alice"], ref, {**DEPOT, "statement": f"{DEPOT['statement']} ({ref})"})
+    closed = client.post(
+        f"/v1/projects/{PROJECT}/opportunities/O-3/close",
+        json={"status": "missed", "reason": "the fair is over"},
+        headers=hub["alice"],
+    )
+    assert closed.status_code == 200, closed.text
+    made_one = edit(client, hub["alice"], problem(opportunities=["O-3", "O-1", "O-1"]))
+    assert made_one["claims"][0]["opportunities"] == ["O-1", "O-3"]  # by number, once each; a missed one links
+    assert made_one["claims"][0]["problems"] == []
+    changed = edit(client, hub["bao"], {"claim": "CL-1", "base_rev": 1, "opportunities": ["O-2", "O-1"]})
+    assert changed["claims"][0]["opportunities"] == ["O-1", "O-2"]
+    whole = shown(client, hub["eve"], "CL-1")
+    assert [(c["field"], c["before"], c["after"]) for c in whole["revs"][1]["changes"]] == [
+        ("opportunities", ["O-1", "O-3"], ["O-1", "O-2"])
+    ]
+    assert whole["opportunities"] == ["O-1", "O-2"]
+    for change, why in (
+        ({"opportunities": ["O-9"]}, f"project {PROJECT} has no opportunity O-9"),
+        ({"opportunities": ["P-1"]}, "opportunities takes the codes of opportunities of the project, as O-3"),
+        ({"opportunities": [f"O-{n}" for n in range(1, 22)]}, ""),
+    ):
+        answer = client.post(
+            f"{BASE}/canvases/{SLUG}/edit", json={"changes": [problem(**change)]}, headers=hub["alice"]
+        )
+        assert answer.status_code == 422 and why in answer.json()["message"], answer.text
+    assert shown(client, hub["eve"], "CL-1")["rev"] == 2  # nothing was written
+
+    dropped = client.post(
+        f"/v1/projects/{PROJECT}/opportunities/O-2/close",
+        json={"status": "dropped", "reason": "the depot left"},
+        headers=hub["alice"],
+    )
+    assert dropped.status_code == 200, dropped.text
+    kept = edit(client, hub["alice"], {"claim": "CL-1", "base_rev": 2, "text": "Shops run out by Thursday"})
+    assert kept["claims"][0]["opportunities"] == ["O-1", "O-2"]  # linked before it was dropped: it stays
+    refused(client, hub["alice"], problem(opportunities=["O-2"]), f"opportunity O-2 of project {PROJECT} is dropped")
+    taken_back = undo(client, hub["bao"], ("CL-1", 3))["claims"][0]
+    assert taken_back["opportunities"] == ["O-1", "O-2"]
+    exported = client.get(f"{BASE}/canvases/{SLUG}/export", headers=hub["eve"]).json()
+    assert [claim["opportunities"] for claim in exported["claims"]] == [["O-1", "O-2"]]
+    file = copy.deepcopy(exported)
+    file["canvas"] = {"slug": "fabrikam-milk", "name": "Fabrikam Milk"}
+    file["claims"] = [{"cell": "problem", "text": "Milk runs out", "opportunities": ["O-1", "O-9"]}]
+    done = client.post(f"{BASE}/canvases/import", json={"data": file}, headers=hub["alice"])
+    assert done.status_code == 200, done.text
+    (warning,) = done.json()["problems"]
+    assert "link O-9 left out" in warning["message"] and "has no opportunity O-9" in warning["message"]
+    assert shown(client, hub["eve"], "CL-2", slug="fabrikam-milk")["opportunities"] == ["O-1"]
+    cleared = edit(client, hub["alice"], {"claim": "CL-1", "base_rev": 4, "opportunities": []})
+    assert cleared["claims"][0]["opportunities"] == []
+
+
+def test_canvas_read_names_the_opportunities_a_claim_links():
+    from datetime import UTC, datetime
+
+    from evo_agents.core_plugins.canvas import tools
+    from evo_agents.core_plugins.canvas.agent import CLAIM_FIELDS, _claim_lines
+    from evo_agents.core_plugins.canvas.store import ClaimRow
+    from evo_agents.hub import opportunities as opportunity_model
+
+    now = datetime.now(UTC)
+    row = ClaimRow(
+        id=1,
+        canvas_id=1,
+        number=3,
+        cell="problem",
+        position=0,
+        text="Shops run out of milk",
+        status="assumption",
+        confidence="medium",
+        test_card=None,
+        rev=1,
+        label={},
+        created_by="alice",
+        created_at=now,
+        updated_at=now,
+        archived_at=None,
+        opportunities=["O-1", "O-4"],
+    )
+    assert "  opportunities: O-1, O-4" in _claim_lines(row, [])
+    assert "opportunities" in CLAIM_FIELDS
+    assert "opportunities" in tools.EDIT_SCHEMA["properties"]["changes"]["items"]["properties"]
+    assert tools.OPPORTUNITY_REF == opportunity_model.REF
+
+
 def test_canvas_read_names_the_problems_a_claim_links():
     from datetime import UTC, datetime
 

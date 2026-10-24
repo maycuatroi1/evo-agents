@@ -114,6 +114,7 @@ async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id
         "engine": engine,
         "event_id": event_id,
         "problem_id": spec.problem_id,
+        "opportunity_id": spec.opportunity_id,
     }
     query = pg_insert(i).values(values).on_conflict_do_nothing(index_elements=[i.c.project_id, i.c.key])
     item_id = await conn.scalar(query.returning(i.c.id))

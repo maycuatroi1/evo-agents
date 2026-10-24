@@ -48,6 +48,7 @@ from evo_agents.hub import (
     tables_memory_agents,
     tables_merge,
     tables_night,
+    tables_opportunities,
     tables_org,
     tables_outputs,
     tables_plugin_notices,
@@ -973,6 +974,10 @@ goals, goal_revisions = tables_goals.goal_tables(metadata)  # the goals of a pro
 problems, problem_revisions = tables_problems.problem_tables(metadata)  # the problems of a project (0134)
 problem_evidence = tables_problems.evidence_table(metadata)  # the lines of evidence of a problem (0137)
 intakes = tables_intake.intake_table(metadata)  # the intakes of a project (0138)
+opportunities, opportunity_revisions, opportunity_answers = tables_opportunities.opportunity_tables(
+    metadata
+)  # the opportunities of a project (0143)
+opportunity_evidence = tables_opportunities.evidence_table(metadata)  # the lines of evidence of an opportunity (0143)
 loop_states, loop_items, loop_item_events = tables_loop.loop_tables(metadata)  # the Loop of a project (0093)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
 history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0059

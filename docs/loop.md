@@ -31,7 +31,8 @@ did, the Curator runs as it did, and every older command and route is there.
 
 A goal says what a project is for and how to tell it is reached: a statement, an optional metric (a signal key of kind
 number, an aggregate over a window, a comparator and a target), a deadline, the canvas it drives, the problem of the
-project it answers (`P-<number>`, optional, `docs/problems.md`), a rank, an owner and a status (`active`, `paused`,
+project it answers (`P-<number>`, optional, `docs/problems.md`) or the opportunity it answers (`O-<number>`, optional,
+`docs/opportunities.md`; never both), a rank, an owner and a status (`active`, `paused`,
 `closed` with a reason). Its code is `G-<number>`. An admin writes a goal as its next
 revision and every revision is kept; the agent of a run only proposes one through @builder (kind `goal`). A goal of
 the Curator's charter becomes a goal without a metric the first time the goals are read. A goal has no budget.
@@ -51,6 +52,8 @@ A work item (table `loop_items`) is one piece of work the Loop keeps track of. I
   and the work item it came of (`parent_id`), so a chain reads from the problem and the goal to the release;
 - the problem it goes from (`problem_id`): the one its goal answered when `rules/2` made it, or the one of the work
   item it came of; none for a goal that answers no problem, or a work item `rules/1` made;
+- the opportunity it goes from (`opportunity_id`), stamped the same way from the goal that answers an opportunity;
+  `GET /loop/items?opportunity=O-1` lists them;
 - a key, unique in the project (below);
 - a state and, for some states, a reason;
 - how often a run was handed out for it (`attempts`) and how often one failed (`failures`);
