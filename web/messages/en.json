@@ -1942,7 +1942,8 @@
       "notFoundTitle": "Node not found",
       "notFoundDescription": "The node is not in the current graph, or its label is above your visibility.",
       "searchInstead": "Search the graph",
-      "olderBuild": "The blob store did not answer, so this page reads build #{id}, older than the latest one."
+      "olderBuild": "The blob store did not answer, so this page reads build #{id}, older than the latest one.",
+      "deprecated": "Deprecated by decision {number}: {reason}. The kg tools leave it out unless asked."
     },
     "evidence": {
       "title": "Evidence",
@@ -2126,6 +2127,68 @@
       "forbidden": "Dismissing needs the writer role on the project.",
       "gone": "That item is no longer in the queue you can see.",
       "readerNote": "You can read the queue; a writer of the project can dismiss its items."
+    },
+    "decisions": {
+      "title": "Decisions",
+      "clusterTitle": "Decisions about this cluster's members",
+      "reviewTitle": "Decisions to review",
+      "none": "No decision names this yet.",
+      "readerNote": "Deciding needs the writer role on this project.",
+      "proposed": "Proposed by agents",
+      "noProposals": "No proposal waits for a writer.",
+      "orphans": "Orphaned",
+      "orphansNote": "Their node or edge is no longer in the latest build; the build skips them. Undo the ones that no longer apply.",
+      "noOrphans": "No decision is orphaned.",
+      "kinds": {
+        "deprecate": "Deprecate",
+        "merge": "Merge",
+        "link": "Link"
+      },
+      "states": {
+        "proposed": "Proposed",
+        "active": "In force",
+        "rejected": "Rejected",
+        "undone": "Undone",
+        "orphan": "Orphaned"
+      },
+      "actions": {
+        "propose": "{by} proposed decision {number}",
+        "decide": "{by} took decision {number}",
+        "accept": "{by} accepted decision {number}",
+        "reject": "{by} rejected decision {number}",
+        "undo": "{by} undid decision {number}"
+      },
+      "steps": {
+        "accept": "Accept",
+        "reject": "Reject",
+        "undo": "Undo"
+      },
+      "take": {
+        "deprecate": "Deprecate",
+        "merge": "Merge",
+        "link": "Add link"
+      },
+      "hints": {
+        "deprecate": "Deprecates this node, or with a relation and another node, the edge between them. The tools then leave it out.",
+        "merge": "Merges this node with another: they mean the same, and the smaller id keeps the other as an alias.",
+        "link": "Adds an edge from this node to another; the relation must exist in the ontology."
+      },
+      "kindLabel": "Decision",
+      "relLabel": "Relation",
+      "toLabel": "Other node id",
+      "reasonLabel": "Why",
+      "reasonPlaceholder": "Say why, for the people who read the graph later",
+      "cancel": "Cancel",
+      "done": {
+        "take": "Decision saved; the next build applies it.",
+        "accept": "Decision {number} accepted; the next build applies it.",
+        "reject": "Decision {number} rejected.",
+        "undo": "Decision {number} undone; the next build drops it."
+      },
+      "forbidden": "Deciding needs the writer role on this project.",
+      "gone": "The node, edge or decision is not in the graph you can see.",
+      "stale": "Someone decided in the meantime. Reload the decisions and try again.",
+      "invalid": "The hub refused this decision."
     }
   },
   "workers": {

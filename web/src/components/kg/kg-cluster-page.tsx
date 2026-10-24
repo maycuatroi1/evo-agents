@@ -23,6 +23,7 @@ import { clusterHref, KG_MAP_ID, kgHref, nodeHref } from "@/lib/kg/routes";
 import type { ClusterDetail, MapNode } from "@/lib/kg/types";
 
 import { KindBadge } from "./badges";
+import { ClusterDecisions } from "./decisions";
 import { ClusterTable, kindsText, Swatch } from "./cluster-table";
 import type { CosmosData } from "./cosmos-canvas";
 
@@ -212,6 +213,7 @@ function Cluster({ project, detail }: { project: string; detail: ClusterDetail }
         </div>
         <Neighbours project={project} detail={detail} />
       </div>
+      <ClusterDecisions project={project} ids={detail.members.map((member) => member.id)} />
     </>
   );
 }
