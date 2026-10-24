@@ -197,20 +197,25 @@ test.describe("knowledge graph", () => {
     expect(refused).toEqual([]);
   });
 
-  test("a node with more than 150 neighbours says the graph was cut", async ({ page, signInAs }) => {
+  test("a node with more than 150 neighbours shows 5 of a group, and says the graph was cut once the group is opened", async ({ page, signInAs }) => {
     const kg = await sharedKg();
     const reader = newAccount("kg-reader");
     await grantOn(kg.project, reader.login, "reader", "internal");
     await signInAs(reader);
     await open(page, nodePath(kg.project, HUB_NODE));
+    await graphReady(page);
+    // the page draws the first 5 neighbours of the group; the graph is not cut yet
+    await expect(page.getByTestId("kg-truncated")).toHaveCount(0);
+    expect(await neighbourRows(page)).toHaveLength(5);
+    // the full list is under the relations, by edge type
+    await expect(page.getByTestId("relation-row")).toHaveCount(NOTES);
+    // opening the group asks for all 160: the view holds 150 nodes and says so
+    await page.getByTestId("neighbour-group-more").click();
     const cut = page.getByTestId("kg-truncated");
     await expect(cut).toBeVisible();
     await expect(cut).toContainText("150");
     await expect(cut).toContainText(`${NOTES} hàng xóm trực tiếp`);
-    await graphReady(page);
     expect(await neighbourRows(page)).toHaveLength(149); // the node itself and 149 of its 160 neighbours
-    // the full list is under the relations, by edge type
-    await expect(page.getByTestId("relation-row")).toHaveCount(NOTES);
     await cut.getByRole("link").click();
     await expect(page.locator("#kg-relations")).toBeInViewport();
   });

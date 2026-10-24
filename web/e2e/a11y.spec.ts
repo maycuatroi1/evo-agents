@@ -639,10 +639,12 @@ const PAGES: Entry[] = [
   {
     name: "knowledge graph node with its neighbourhood",
     open: async ({ page, me }) => {
+      test.slow(true, "axe over the 150 neighbours of the opened group went past 30 s on a loaded machine");
       const kg = await sharedKg();
       await grantOn(kg.project, me.login, "reader", "customer");
       await open(page, nodePath(kg.project, HUB_NODE));
       await graphReady(page);
+      await page.getByTestId("neighbour-group-more").click(); // all 160 neighbours: the view is cut at 150 nodes
       await expect(page.getByTestId("kg-truncated")).toBeVisible();
     },
   },
