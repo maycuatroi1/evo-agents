@@ -36,6 +36,7 @@ KINDS = (
     "policy",
     "problem",
     "goal",
+    "opportunity",
 )  # tables_settings.PROPOSAL_KINDS
 # The vocabulary of a line of evidence, copies of evo_agents.hub.problems (this package is read for its manifest alone;
 # tests.hub.test_builder keeps them equal).
@@ -49,7 +50,14 @@ EVIDENCE_SIGNALS = [
     "proposed_solution",
     "contradiction",
     "decision_without_reason",
-]
+    "wish",
+    "external_demand",
+    "window",
+    "reusable_asset",
+    "pull",
+    "intro",
+    "idle_capacity",
+]  # the last seven: an opportunity's lines only
 EVIDENCE_LABELS = ["public", "internal"]
 MAX_SUMMARY_CHARS = 500
 MAX_FIELDS = 50  # fields one proposal sets or unsets
@@ -76,7 +84,9 @@ PROPOSE_SCHEMA = {
             "(key, aggregate, window_days, tenant; no target), rank, owner, status (open, solved, dropped) and "
             "close_reason, which a writer approves; goal: a goal of the project (target.goal, its code; none for a "
             "new goal), its fields statement, metric, deadline, canvas, problem (a problem's code), rank, owner, "
-            "status and close_reason",
+            "status and close_reason; opportunity: an opportunity of the project (target.opportunity, its code; none for a "
+            "new one), its fields statement, beneficiary, leverage, window_until, window_note, answers (problem codes), "
+            "metric, rank, owner, status (open, captured, missed, dropped) and close_reason, which a writer approves",
         },
         "summary": {
             "type": "string",
@@ -105,14 +115,20 @@ PROPOSE_SCHEMA = {
                     "pattern": "^P-[1-9][0-9]{0,8}$",
                     "description": "problem: the problem's code (P-<number>); left out for a new problem",
                 },
+                "opportunity": {
+                    "type": "string",
+                    "pattern": "^O-[1-9][0-9]{0,8}$",
+                    "description": "opportunity: the opportunity's code (O-<number>); left out for a new one",
+                },
             },
         },
         "set": {"type": "object", "description": "field -> new value"},
         "evidence": {
             "type": "array",
             "maxItems": 20,
-            "description": "problem only: lines of sources that show the problem hurts, made with the problem when a "
-            "writer approves; with target.problem and no set or unset, they are added to that problem",
+            "description": "problem or opportunity only: lines of sources that show the problem hurts or the opportunity "
+            "is there, made with it when a writer approves; with target.problem (target.opportunity) and no set or "
+            "unset, they are added to that one",
             "items": {
                 "type": "object",
                 "additionalProperties": False,

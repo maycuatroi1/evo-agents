@@ -875,3 +875,108 @@ def test_builder_proposals_of_an_intake_are_approved_like_any_other(client, hub)
     assert answer(client, hub["owner"], proposal_id, "approve").json()["state"] == "applied"
     found = problem(client, hub["reader"], "P-1")
     assert (found["statement"], found["evidence_count"], found["source_count"]) == (candidate["statement"], 2, 2)
+
+
+# Proposals of an opportunity (plan opportunity-intake, criteria a1 and a2)
+
+OPPORTUNITY = {
+    "statement": "Sell the shelf scanner to the depot",
+    "beneficiary": "the depot's night shift",
+    "leverage": "the depot asked for a demo twice",
+}
+
+
+def opportunity(client, headers, ref: str) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/opportunities/{ref}", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_builder_proposal_of_an_opportunity_waits_for_a_writer_makes_it_writes_its_next_revision_and_rolls_back(
+    client, hub
+):
+    run = started(client, hub, "@builder note the depot opportunity")
+    for arguments, said in (
+        ({"set": {**OPPORTUNITY, "budget_usd": 5}}, "budget_usd: an opportunity has no such field; nothing changed"),
+        ({"set": {"statement": "x"}}, "beneficiary: Field required"),
+        ({"set": {"rank": 2}, "unset": ["leverage"]}, "leverage: an opportunity always has one"),
+        ({"target": {"opportunity": "O-4"}, "set": OPPORTUNITY}, f"project {PROJECT} has no opportunity O-4"),
+        (
+            {"target": {"opportunity": "o-1"}, "set": OPPORTUNITY},
+            "bad arguments for builder__propose: target.opportunity",
+        ),
+        ({"set": {**OPPORTUNITY, "status": "missed"}}, "close_reason"),
+        ({"set": {**OPPORTUNITY, "answers": ["P-7"]}}, "P-7"),
+        ({"set": {**OPPORTUNITY, "owner": READER}}, READER),
+        ({"target": {"problem": "P-1"}, "set": OPPORTUNITY}, "the target of a opportunity proposal names opportunity"),
+    ):
+        text = proposed(client, run["agent"], kind="opportunity", summary="s", **arguments)
+        assert text.startswith("error:") and said in text, (arguments, text)
+    new = made_proposal(client, run["agent"], kind="opportunity", summary="The depot", set=OPPORTUNITY)
+    assert (shown(client, hub["reader"], new)["approver"], shown(client, hub["reader"], new)["base_version"]) == (
+        "project_writer",
+        0,
+    )
+    assert shown(client, hub["reader"], new)["target"] == {"opportunity": "O-1"}
+    assert answer(client, hub["reader"], new, "approve").status_code == 403
+    assert answer(client, hub["other"], new, "approve").json()["state"] == "applied"
+    made = opportunity(client, hub["reader"], "O-1")
+    assert (made["revision"], made["statement"], made["created_by"]) == (1, OPPORTUNITY["statement"], OTHER)
+    changed = made_proposal(
+        client,
+        run["agent"],
+        kind="opportunity",
+        summary="Close it",
+        target={"opportunity": "O-1"},
+        set={"status": "captured", "close_reason": "the depot signed"},
+    )
+    assert answer(client, hub["owner"], changed, "approve").json()["applied_version"] == 2
+    assert opportunity(client, hub["reader"], "O-1")["status"] == "captured"
+    again = answer(client, hub["owner"], changed, "approve")
+    assert again.status_code == 409
+    assert rollback(client, hub["owner"], changed).json()["state"] == "rolled_back"
+    back = opportunity(client, hub["reader"], "O-1")
+    assert (back["revision"], back["status"], back["close_reason"]) == (3, "open", None)
+    assert rollback(client, hub["owner"], new).status_code == 409  # it changed since: roll back by hand
+
+
+def test_builder_proposal_of_an_opportunity_carries_evidence_made_with_it_or_alone_and_removed_on_rollback(client, hub):
+    run = started(client, hub, "@builder note the depot opportunity")
+    line = {
+        "source_kind": "email",
+        "source_uri": "email://depot/42",
+        "excerpt": "Could you show the scanner to the night shift?",
+        "signal": "wish",
+        "label": "internal",
+    }
+    wrong = proposed(client, run["agent"], kind="problem", summary="s", set=PROBLEM, evidence=[line])
+    assert wrong.startswith("error:") and "evidence" in wrong, wrong
+    for bad in ({**line, "label": "personal"}, {**line, "excerpt": "x" * 301}, {**line, "signal": "rumour"}):
+        text = proposed(client, run["agent"], kind="opportunity", summary="s", set=OPPORTUNITY, evidence=[bad])
+        assert text.startswith("error:") and "evidence" in text, text
+    twice = proposed(client, run["agent"], kind="opportunity", summary="s", set=OPPORTUNITY, evidence=[line, line])
+    assert twice.startswith("error:"), twice
+    first = made_proposal(client, run["agent"], kind="opportunity", summary="Depot", set=OPPORTUNITY, evidence=[line])
+    assert "evidence" in shown(client, hub["reader"], first)["change"]
+    assert answer(client, hub["other"], first, "approve").json()["state"] == "applied"
+    url = f"/v1/projects/{PROJECT}/opportunities/O-1/evidence"
+    listed = client.get(url, headers=hub["reader"]).json()
+    assert [(e["code"], e["signal"], e["added_by"]) for e in listed] == [("E-1", "wish", OTHER)]
+    found = opportunity(client, hub["reader"], "O-1")
+    assert (found["evidence_count"], found["source_count"]) == (1, 1)
+    second = made_proposal(
+        client,
+        run["agent"],
+        kind="opportunity",
+        summary="More",
+        target={"opportunity": "O-1"},
+        evidence=[{**line, "source_uri": "email://depot/43", "signal": "external_demand"}],
+    )
+    assert shown(client, hub["owner"], second)["base_version"] == 1
+    assert answer(client, hub["owner"], second, "approve").json()["applied_version"] == 1
+    assert opportunity(client, hub["reader"], "O-1")["revision"] == 1
+    assert [e["code"] for e in client.get(url, headers=hub["reader"]).json()] == ["E-1", "E-2"]
+    assert rollback(client, hub["owner"], second).json()["state"] == "rolled_back"
+    assert [e["code"] for e in client.get(url, headers=hub["reader"]).json()] == ["E-1"]
+    alone = proposed(client, run["agent"], kind="opportunity", summary="Alone", evidence=[line])
+    assert alone.startswith("error:") and "target.opportunity" in alone, alone

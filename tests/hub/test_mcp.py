@@ -1,12 +1,12 @@
 """MCP on the hub (POST /mcp, ``evo_agents.hub.server.mcp``) and the stdio proxy ``evo-agents hub mcp``
 (``evo_agents.hub.mcp_proxy``).
 
-Checked here, as step 8 asks: tools/list names exactly the 38 tools, the kg_* ones with the schemas of ``kg serve``;
+Checked here, as step 8 asks: tools/list names exactly the 41 tools, the kg_* ones with the schemas of ``kg serve``;
 kg_* answer as ``kg serve`` does on the same store (the graph a machine built is the artifact the hub answers from); a
 memory alice writes with memory_write reaches bob's memory_search only when the read rule lets it through; POST /mcp
 without the trailing slash answers 200, never a 307; a request without a Bearer token is 401; a Host outside the
 allow-list is refused; and ``printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\\n' | evo-agents hub mcp`` prints
-the 38 tools against ``hub serve``. Also the failure paths around them: a web session cookie, a revoked token, a
+the 41 tools against ``hub serve``. Also the failure paths around them: a web session cookie, a revoked token, a
 foreign Origin, malformed session headers, an oversized body and Postgres away at the gate; an undeclared sink, a
 missing project, a reader writing, a stale revision and bad arguments at the tools; and for the proxy, a hub that
 does not answer, refuses the token, restarts, or answers too slowly, and credentials that are missing. Neither the
@@ -101,6 +101,9 @@ HUB_TOOL_NAMES = [
     "problem_list",
     "problem_show",
     "problem_evidence",
+    "opportunity_list",
+    "opportunity_show",
+    "opportunity_evidence",
     "intake_list",
     "intake_show",
     "ask_member",
@@ -132,9 +135,9 @@ def doc(key: str, body: str) -> dict:
 # The tool list
 
 
-def test_the_endpoint_has_thirty_eight_tools_and_the_kg_ones_are_those_of_kg_serve():
+def test_the_endpoint_has_forty_one_tools_and_the_kg_ones_are_those_of_kg_serve():
     names = [tool["name"] for tool in mcp_tools.TOOLS]
-    assert len(names) == len(set(names)) == 38
+    assert len(names) == len(set(names)) == 41
     assert names == [tool["name"] for tool in serve.TOOLS] + HUB_TOOL_NAMES
     assert mcp_tools.TOOLS[:7] == serve.TOOLS  # same objects: names and schemas cannot drift
     for tool in mcp_tools.HUB_TOOLS + mcp_tools.REVIEW_TOOLS + mcp_tools.HISTORY_READ_TOOLS + mcp_tools.CHAT_TOOLS:
@@ -965,11 +968,11 @@ def failed(hub, member: str, name: str, arguments: dict | None = None, **options
 
 
 @needs_pg
-def test_tools_list_names_the_thirty_eight_tools_and_initialize_names_the_hub(hub):
+def test_tools_list_names_the_forty_one_tools_and_initialize_names_the_hub(hub):
     listed = rpc(hub, "alice", request(1, "tools/list"))
     assert listed.status_code == 200 and listed.headers["content-type"].startswith("application/json")
     tools = listed.json()["result"]["tools"]
-    assert len(tools) == 38
+    assert len(tools) == 41
     assert [t["name"] for t in tools] == [t["name"] for t in mcp_tools.TOOLS]
     assert {t["name"]: t["inputSchema"] for t in tools[:7]} == {t["name"]: t["inputSchema"] for t in serve.TOOLS}
     assert all(t["description"] == m["description"] for t, m in zip(tools, mcp_tools.TOOLS, strict=True))
@@ -985,7 +988,7 @@ def test_post_mcp_without_the_slash_answers_in_place_and_other_paths_and_methods
     for path in ("/mcp", "/mcp/"):
         response = rpc(hub, "alice", request(1, "tools/list"), path=path)
         assert response.status_code == 200, (path, response.status_code, response.headers.get("location"))
-        assert len(response.json()["result"]["tools"]) == 38
+        assert len(response.json()["result"]["tools"]) == 41
     got = hub.client.get("/mcp", headers=hub.alice, follow_redirects=False)
     assert got.status_code == 405 and got.headers["allow"] == "POST" and got.json()["error"] == "method_not_allowed"
     assert hub.client.delete("/mcp/", headers=hub.alice).status_code == 405
@@ -1518,6 +1521,49 @@ def test_problem_evidence_tool_lists_the_lines_of_a_problem_with_the_count_of_in
     assert failed(hub, "eve", "problem_evidence", {"code": "P-1"}).startswith("error: no project")
 
 
+DEPOT = {
+    "statement": "Sell the shelf scanner to the depot",
+    "beneficiary": "the depot's night shift",
+    "leverage": "the depot asked for a demo twice",
+}
+
+
+@needs_pg
+def test_opportunity_tools_list_and_show_the_opportunities_of_a_project_and_the_evidence_tool_lists_their_lines(hub):
+    url = f"/v1/projects/{PROJECT}/opportunities/O-1"
+    empty = ok(hub, "bob", "opportunity_list")
+    assert empty["content"][0]["text"] == f"project {PROJECT} has no opportunity on the hub"
+    made = hub.client.put(url, json={**DEPOT, "window_note": "the fair"}, headers=hub.alice)
+    assert made.status_code == 200, made.text
+    listed = ok(hub, "bob", "opportunity_list")
+    assert listed["content"][0]["text"].startswith("O-1 (open, rank 1, owner alice, (the fair)): Sell the shelf")
+    assert [o["code"] for o in listed["structuredContent"]["opportunities"]] == ["O-1"]
+    assert ok(hub, "bob", "opportunity_list", {"status": "missed"})["structuredContent"]["opportunities"] == []
+    shown = ok(hub, "bob", "opportunity_show", {"code": "O-1"})
+    assert shown["content"][0]["text"].splitlines()[0] == f"# Opportunity O-1 of project {PROJECT}, revision 1"
+    assert shown["structuredContent"]["opportunity"]["beneficiary"] == DEPOT["beneficiary"]
+    assert "has no opportunity O-9" in failed(hub, "bob", "opportunity_show", {"code": "O-9"})
+    assert "bad arguments for opportunity_show" in failed(hub, "bob", "opportunity_show", {"code": "P-1"})
+    assert failed(hub, "eve", "opportunity_list").startswith(f"error: no project {PROJECT} that you can see")
+    empty = ok(hub, "bob", "opportunity_evidence", {"code": "O-1"})
+    assert empty["content"][0]["text"] == f"opportunity O-1 of project {PROJECT} has no evidence yet"
+    line = {"source_kind": "email", "source_uri": "email://depot/42", "excerpt": "Show us the scanner."}
+    line |= {"signal": "wish", "label": "internal"}
+    for uri in ("email://depot/42", "email://depot/43"):
+        added = hub.client.post(f"{url}/evidence", json={**line, "source_uri": uri}, headers=hub.alice)
+        assert added.status_code == 201, added.text
+    lines = ok(hub, "bob", "opportunity_evidence", {"code": "O-1"})
+    assert lines["content"][0]["text"].splitlines()[0] == (
+        f"# Evidence of opportunity O-1 of project {PROJECT}: 2 lines from 2 sources"
+    )
+    assert [e["code"] for e in lines["structuredContent"]["evidence"]] == ["E-1", "E-2"]
+    assert (
+        "evidence: 2 lines from 2 independent sources"
+        in ok(hub, "bob", "opportunity_show", {"code": "O-1"})["content"][0]["text"]
+    )
+    assert "bad arguments for opportunity_evidence" in failed(hub, "bob", "opportunity_evidence", {"code": "G-1"})
+
+
 # Skills, projects, arguments
 
 
@@ -1964,7 +2010,7 @@ def hub_mcp(env: dict, stdin: str, *args: str, cwd: Path | None = None) -> subpr
 
 
 @needs_pg
-def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_thirty_eight_tools(hub_db, tmp_path):
+def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_forty_one_tools(hub_db, tmp_path):
     with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
         token = live.insert_token(hub_db, "alice")
         home = sign_in(tmp_path / "home", served.url, "alice", token)
@@ -1975,7 +2021,7 @@ def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_thirty_eight_tools
         assert listed.returncode == 0, listed.stderr
         (line,) = listed.stdout.splitlines()
         answer = json.loads(line)
-        assert answer["id"] == 1 and len(answer["result"]["tools"]) == 38
+        assert answer["id"] == 1 and len(answer["result"]["tools"]) == 41
         assert [t["name"] for t in answer["result"]["tools"]] == [t["name"] for t in mcp_tools.TOOLS]
         assert "the hub at" not in listed.stderr  # the hub answered: no outage was reported
         assert '"path": "/mcp"' in served.log() and '"status": 200' in served.log()
