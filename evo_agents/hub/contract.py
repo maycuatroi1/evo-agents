@@ -41,7 +41,7 @@ EXIT_USAGE = 2
 
 # `evo-agents worker ...` that the agent of a run runs: a plan run's, a review run's, an author run's, then those of
 # group chats, which a chat run's agent runs and a step, plan or author run's too
-AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose", "put")
+AGENT_COMMANDS = ("step", "ask", "wait", "notify", "plan", "finding", "propose", "put")
 AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention", "chat read")
 AGENT_COMMANDS += ("triage rerun", "triage plan", "triage invite")
 AGENT_COMMANDS += ("playbook add", "playbook helpful", "playbook harmful", "playbook retire")  # a review run's, too

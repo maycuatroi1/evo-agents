@@ -80,8 +80,8 @@ const ASKED: Decision = {
   question: "Which runs does the first revision cover?",
   context: "The plan can cover **plan runs** only, or author runs as well.",
   options: [
-    { key: "plan", label: "Plan runs only", description: null, recommended: true },
-    { key: "both", label: "Plan and author runs", description: "One more step.", recommended: false },
+    { key: "plan", label: "Plan runs only", description: null, recommended: true, waits: false },
+    { key: "both", label: "Plan and author runs", description: "One more step.", recommended: false, waits: false },
   ],
   recommended: "plan",
   state: "open",

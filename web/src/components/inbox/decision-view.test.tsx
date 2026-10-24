@@ -44,8 +44,8 @@ const DECISION: Decision = {
   question: "Deploy the build to staging now?",
   context: "The checkpoint deploys **staging**.\n\n<script>alert(1)</script>",
   options: [
-    { key: "deploy", label: "Deploy to staging now", description: "Takes ten minutes.", recommended: true },
-    { key: "wait", label: "Wait until tomorrow", description: null, recommended: false },
+    { key: "deploy", label: "Deploy to staging now", description: "Takes ten minutes.", recommended: true, waits: false },
+    { key: "wait", label: "Wait until tomorrow", description: null, recommended: false, waits: false },
   ],
   recommended: "deploy",
   state: "open",
@@ -304,6 +304,47 @@ describe("DecisionCard", () => {
     expect(within(answer).getByTestId("decision-answer-text")).toHaveTextContent("Go ahead.");
     expect(within(answer).getByTestId("decision-delivery")).toHaveAttribute("data-delivered", "false");
     expect(within(answer).getByTestId("decision-resumed").querySelector("a")).toHaveAttribute("href", "/p/demo/runs/15");
+  });
+
+  it("keeps a decision open on an option that waits: tags it, refuses words with it, and says so in a toast", async () => {
+    const later = { key: "later", label: "Not yet", description: null, recommended: false, waits: true };
+    const decision = { ...DECISION, options: [...DECISION.options, later] };
+    api.answer = () => Response.json({ ...decision, held_at: "2026-10-05T07:04:00Z" });
+    const { user } = setup(decision);
+    const card = screen.getByTestId("decision-choice-later");
+    expect(within(card).getByTestId("decision-option-waits")).toHaveTextContent("Giữ mở");
+    expect(within(screen.getByTestId("decision-choice-deploy")).queryByTestId("decision-option-waits")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: /Not yet/ }));
+    await user.type(screen.getByTestId("decision-text"), "ask me after the 30th");
+    await user.click(screen.getByTestId("decision-send"));
+    expect(screen.getByTestId("decision-problem")).toHaveTextContent("Phương án này giữ decision mở");
+    expect(posts()).toHaveLength(0);
+    await user.clear(screen.getByTestId("decision-text"));
+    await user.click(screen.getByTestId("decision-send"));
+    expect(await findToast("Vẫn để mở")).toHaveTextContent("Run #12 vẫn chờ câu trả lời của bạn");
+    expect(JSON.parse(posts()[0].body)).toEqual({ option: "later" });
+  });
+
+  it("says when the owner said not yet on a decision still open", () => {
+    setup({ ...DECISION, held_at: "2026-10-05T07:04:00Z" });
+    expect(screen.getByTestId("decision-held")).toHaveTextContent("bạn đã chọn chưa trả lời");
+  });
+
+  it("names the hub as what woke a wait, whose time or event came", () => {
+    setup({
+      ...DECISION,
+      category: "wait",
+      run_state: "running",
+      state: "answered",
+      answer_text: "Decision #7 (wait) woke: its time came (2026-10-30T09:00:00Z).",
+      answered_by: null,
+      answer_run_id: 12,
+      answered_at: "2026-10-30T09:00:30Z",
+      wake_at: "2026-10-30T09:00:00Z",
+    });
+    const head = screen.getByTestId("decision-head");
+    expect(within(head).getByTestId("decision-category")).toHaveTextContent("Chờ");
+    expect(within(head).getByTestId("decision-answered-by")).toHaveTextContent(/^hub tự đánh thức/);
   });
 
   it("shows another member the options and why they cannot answer, but no form", () => {

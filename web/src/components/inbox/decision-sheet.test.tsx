@@ -46,8 +46,8 @@ const DECISION: Decision = {
   question: "Deploy the build to staging now?",
   context: "The checkpoint deploys **staging**.",
   options: [
-    { key: "deploy", label: "Deploy to staging now", description: null, recommended: true },
-    { key: "wait", label: "Wait until tomorrow", description: null, recommended: false },
+    { key: "deploy", label: "Deploy to staging now", description: null, recommended: true, waits: false },
+    { key: "wait", label: "Wait until tomorrow", description: null, recommended: false, waits: false },
   ],
   recommended: "deploy",
   state: "open",

@@ -789,16 +789,22 @@ async def park_waiting(
         waited = (await conn.execute(query)).scalars().all()
     for run_id in waited:
         async with engine.begin() as conn:
+            d = tables.decisions
+            waits = exists().where(
+                d.c.run_id == r.c.id, d.c.state == "open", d.c.category == runs.WAIT_DECISION_CATEGORY
+            )
             lock = (
-                select(r.c.cancel_requested_at.is_not(None).label("cancel"), r.c.kind)
+                select(r.c.cancel_requested_at.is_not(None).label("cancel"), r.c.kind, waits.label("waits"))
                 .where(r.c.id == run_id, *waited_long)
-                .with_for_update(skip_locked=True)
+                .with_for_update(of=r, skip_locked=True)
             )
             row = (await conn.execute(lock)).one_or_none()
             if row is None:  # answered, ended or taken by another pass meanwhile
                 continue
             if row.kind == "author":  # it waits for a reply in its chat, not for an answer to a decision
                 reason = f"nobody replied in its chat within {_hours(wait)}"
+            elif row.waits:  # it waits for a time or an event of the hub (``run_waits``), which resumes it
+                reason = f"its wait for a time or an event of the hub went on past {_hours(wait)}"
             else:
                 reason = f"nobody answered its decision within {_hours(chat_wait if row.kind == 'chat' else wait)}"
             new = "cancelled" if row.cancel else "parked"
@@ -808,9 +814,16 @@ async def park_waiting(
 
 async def expire_parked(engine: AsyncEngine, batch: int, parked_for: timedelta, ended: Counter) -> None:
     """Cancel every run parked for ``parked_for``, its open decisions expired, each in a transaction of its own;
-    count them in ``ended``."""
-    r = tables.runs
-    parked_long = (r.c.state == "parked", r.c.parked_at < func.now() - parked_for)
+    count them in ``ended``. A run with an open wait whose time has not come stays: the wait wakes it
+    (``run_waits``)."""
+    r, d = tables.runs, tables.decisions
+    waits = exists().where(
+        d.c.run_id == r.c.id,
+        d.c.state == "open",
+        d.c.category == runs.WAIT_DECISION_CATEGORY,
+        d.c.wake_at > func.now(),
+    )
+    parked_long = (r.c.state == "parked", r.c.parked_at < func.now() - parked_for, ~waits)
     async with engine.begin() as conn:
         query = select(r.c.id).where(*parked_long).order_by(r.c.parked_at).limit(batch)
         parked = (await conn.execute(query)).scalars().all()
@@ -855,8 +868,9 @@ async def recover_runs(
     github_app: GitHubApp | None = None,
 ) -> dict:
     """One pass of the reaper: every held run past its timeout ends as ``end_timed_out`` says, then every held run
-    whose lease ran out ends as ``end_held`` says, a run that waited ``decision_wait`` for an answer is parked and one
-    parked for ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
+    whose lease ran out ends as ``end_held`` says, the waits whose time or event came wake their runs
+    (``run_waits.wake_waits``), a run that waited ``decision_wait`` for an answer is parked and one parked for
+    ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
@@ -897,6 +911,9 @@ async def recover_runs(
                     reason=reason,
                 )
             ] += 1
+    from evo_agents.hub.server import run_waits  # it moves runs through this module
+
+    await run_waits.wake_waits(engine, batch)  # first, so a wait that came wakes before its run is parked or expires
     await park_waiting(engine, batch, decision_wait, ended, min(decision_wait, CHAT_DECISION_WAIT))
     await expire_parked(engine, batch, parked_for, ended)
     from evo_agents.hub.server import local_runs  # it moves runs through this module

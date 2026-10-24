@@ -336,6 +336,10 @@ class WorkerHub:
     async def decision(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/decisions", body)
 
+    async def wait(self, run_id: int, body: dict) -> dict:
+        """Wait, in plan run ``run_id``, for a time or an event of the hub (``evo_agents.hub.server.run_waits``)."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/waits", body)
+
     async def notice(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
 
