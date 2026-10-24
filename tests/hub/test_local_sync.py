@@ -20,6 +20,7 @@ from evo_agents.hub import hooks, local_account, local_sync, plan_cli
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.memory import MemorySync
 from tests.hub import live, pg
+from tests.hub.test_digest import signature
 
 SESSION = "0199a3c1-0000-7000-8000-0000000000c3"
 TOKEN = "evo_test_token_never_printed"
@@ -200,6 +201,27 @@ def test_the_log_holds_the_agent_s_words_and_the_tools_redacted_on_this_machine(
     assert SECRET not in wire and TOKEN not in wire and "***" in wire
     assert fake.events[0]["body"]["text"] == "using sk-ant-***"
     assert SECRET not in (own_home / ".evo" / "hub" / "local" / f"{SESSION}.json").read_text(encoding="utf-8")
+
+
+def test_the_log_holds_the_narrations_the_claude_app_shows_but_not_the_thinking(own_home, fake, monkeypatch, capsys):
+    no_throttle(monkeypatch)
+    transcript = own_home / "transcript.jsonl"
+    transcript.write_text("", encoding="utf-8")
+    fire("user-prompt", payload(own_home, prompt="go", transcript_path=str(transcript)), monkeypatch, capsys)
+    narration = "Found the three problems; checking the e2e tests first.\n\n"
+    blocks = [
+        {"type": "thinking", "thinking": "", "signature": signature("thinking")},
+        {"type": "thinking", "thinking": "A summary of the thinking.", "signature": signature("thinking")},
+        {"type": "thinking", "thinking": narration, "signature": signature("narration")},
+        {"type": "text", "text": "Now the edit."},
+    ]
+    lines = [{"type": "assistant", "message": {"content": [block]}} for block in blocks]
+    transcript.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    fire("local-tool", tool_data(own_home, 1, transcript_path=str(transcript)), monkeypatch, capsys)
+
+    words = [e["body"]["text"] for e in fake.events if e["kind"] == "agent_message_chunk"]
+    assert words == [narration.strip(), "Now the edit."]
+    assert "summary" not in json.dumps(fake.calls)
 
 
 def test_a_tool_hook_asks_the_hub_at_most_once_in_a_while_and_stop_sends_the_rest(own_home, fake, monkeypatch, capsys):
