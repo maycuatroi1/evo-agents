@@ -1,7 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { Route } from "next";
 
-import { decisionHref } from "@/components/runs/queries";
+import { decisionHref, runHref } from "@/components/runs/queries";
 import { type ApiClient, call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
 import { isApiError } from "@/lib/api/errors";
@@ -83,13 +83,16 @@ export const MAX_READ_IDS = 500;
 
 export const INBOX_HREF = "/inbox" as Route;
 
-export { decisionHref };
+export { decisionHref, runHref };
 
 /** The filters of GET /v1/me/notifications that the Inbox uses. */
 export type InboxQuery = {
   kind: NotificationKind | null;
   project: string | null;
   unread: boolean;
+  /** Words of the title or the body; empty for none. */
+  q: string;
+  run: number | null;
   limit: number;
   offset: number;
 };
@@ -131,6 +134,8 @@ export const notificationsQuery = (api: ApiSource, query: InboxQuery) =>
               ...(query.kind ? { kind: query.kind } : {}),
               ...(query.project ? { project: query.project } : {}),
               ...(query.unread ? { unread: true } : {}),
+              ...(query.run !== null ? { run: query.run } : {}),
+              ...(query.q ? { q: query.q } : {}),
               limit: query.limit,
               offset: query.offset,
             },

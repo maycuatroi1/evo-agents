@@ -272,8 +272,7 @@
     "mergeQueueFigures": "Số liệu",
     "mergeQueuePolicy": "Policy",
     "org": "Sơ đồ tổ chức",
-    "browser": "Trình duyệt"
-,
+    "browser": "Trình duyệt",
     "groups": {
       "delivery": "Bàn giao",
       "improvement": "Cải tiến",
@@ -384,12 +383,15 @@
       "send": "Gửi câu trả lời hoặc tin nhắn",
       "chatSend": "Gửi tin trong chat",
       "chatLine": "Xuống dòng trong tin chat",
-      "goCurator": "Curator"
+      "goCurator": "Curator",
+      "nextItem": "Thông báo kế tiếp",
+      "previousItem": "Thông báo trước đó"
     },
     "where": {
       "project": "Của dự án đang mở",
       "writer": "Trên các trang của dự án, với vai trò Ghi",
-      "chat": "Trong ô soạn tin của chat"
+      "chat": "Trong ô soạn tin của chat",
+      "inbox": "Trong Inbox"
     },
     "keys": {
       "command": "Command",
@@ -402,7 +404,7 @@
     },
     "single": {
       "label": "Phím tắt một phím",
-      "hint": "/, ?, D và các phím G. Tắt đi nếu chúng vướng việc nhập bằng giọng nói hay một công cụ khác."
+      "hint": "/, ?, D, J, K và các phím G. Tắt đi nếu chúng vướng việc nhập bằng giọng nói hay một công cụ khác."
     },
     "needProject": {
       "title": "Mở một dự án trước",
@@ -5818,7 +5820,12 @@
       "notices": "Thông báo",
       "project": "Dự án",
       "allProjects": "Mọi dự án",
-      "proposals": "Đề xuất"
+      "proposals": "Đề xuất",
+      "search": "Tìm thông báo",
+      "searchPlaceholder": "Tìm trong tiêu đề và nội dung",
+      "clearSearch": "Xoá ô tìm",
+      "run": "Run #{id}",
+      "clearRun": "Hiện mọi run, không chỉ run #{id}"
     },
     "empty": {
       "title": "Inbox đang trống",
@@ -6097,6 +6104,20 @@
       },
       "saved": "{on, select, true {Bạn sẽ nhận lại thông báo} other {Bạn sẽ không nhận thông báo nữa}}: {kind}",
       "failed": "Không đổi được thông báo"
+    },
+    "group": {
+      "title": "Run #{id}",
+      "count": "{count, plural, other {# cập nhật}}",
+      "unread": "{count} chưa đọc",
+      "markRead": "Đánh dấu {count, plural, other {# thông báo chưa đọc}} của run #{id} là đã đọc",
+      "openRun": "Mở run #{id}",
+      "onlyRun": "Chỉ run này",
+      "itemsLabel": "Thông báo của run #{id}"
+    },
+    "days": {
+      "today": "Hôm nay",
+      "yesterday": "Hôm qua",
+      "summary": "{count, plural, other {# thông báo}}{unread, plural, =0 {} other {, # chưa đọc}}"
     }
   },
   "toast": {
