@@ -165,11 +165,11 @@
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
     },
     "/p/[project]/kg/builds": {
-      "kB": 320.1,
+      "kB": 318.5,
       "reason": "The knowledge graph's Builds tab (kg-explorer): the status, the commits read, the shape and the build history that /p/[project]/kg showed before the explorer took its place, under the graph's tabs."
     },
     "/p/[project]/kg/cluster": {
-      "kB": 319.4,
+      "kB": 318,
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
     },
     "/p/[project]/kg/node": {
@@ -177,7 +177,7 @@
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
     },
     "/p/[project]/kg/review": {
-      "kB": 306.4,
+      "kB": 304.7,
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
     },
     "/p/[project]/loop": {

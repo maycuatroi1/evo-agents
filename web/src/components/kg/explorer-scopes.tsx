@@ -254,8 +254,13 @@ export function ClusterScope({ id, project, hiddenKinds, layout, onLayout, searc
       legend={
         <Legend
           scope="cluster"
+          circles={drawing?.mode === "parts"}
           kinds={kindsOfMembers(data?.members ?? []).map((k) => k.kind)}
-          counts={t("countsCluster", { drawn: drawing?.drawn ?? 0, total: drawing?.total ?? 0 })}
+          counts={
+            drawing?.mode === "parts"
+              ? t("countsParts", { parts: drawing.drawn, total: drawing.total })
+              : t("countsCluster", { drawn: drawing?.drawn ?? 0, total: drawing?.total ?? 0 })
+          }
         />
       }
       inspector={inspector}

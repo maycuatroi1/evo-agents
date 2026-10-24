@@ -8,7 +8,6 @@ import { Tag } from "@/components/data/identifier";
 import { TabNav } from "@/components/data/tab-nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { buildsHref, explorerHref, reviewHref } from "@/lib/kg/routes";
-import { OVERVIEW } from "@/lib/kg/explorer";
 
 export type KgTab = "explore" | "builds" | "review";
 
@@ -19,7 +18,7 @@ export type KgTab = "explore" | "builds" | "review";
 export function KgHeader({ project, current, actions }: { project: string; current: KgTab; actions?: ReactNode }) {
   const t = useTranslations("kg");
   const tabs = [
-    { id: "explore", label: t("tabs.explore"), href: explorerHref(project, OVERVIEW), icon: Waypoints },
+    { id: "explore", label: t("tabs.explore"), href: explorerHref(project, { kind: "overview" }), icon: Waypoints },
     { id: "builds", label: t("tabs.builds"), href: buildsHref(project), icon: Network },
     { id: "review", label: t("tabs.review"), href: reviewHref(project), icon: ListChecks },
   ];
