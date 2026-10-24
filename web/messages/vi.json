@@ -383,12 +383,15 @@
       "send": "Gửi câu trả lời hoặc tin nhắn",
       "chatSend": "Gửi tin trong chat",
       "chatLine": "Xuống dòng trong tin chat",
-      "goCurator": "Curator"
+      "goCurator": "Curator",
+      "nextItem": "Thông báo kế tiếp",
+      "previousItem": "Thông báo trước đó"
     },
     "where": {
       "project": "Của dự án đang mở",
       "writer": "Trên các trang của dự án, với vai trò Ghi",
-      "chat": "Trong ô soạn tin của chat"
+      "chat": "Trong ô soạn tin của chat",
+      "inbox": "Trong Inbox"
     },
     "keys": {
       "command": "Command",
@@ -401,7 +404,7 @@
     },
     "single": {
       "label": "Phím tắt một phím",
-      "hint": "/, ?, D và các phím G. Tắt đi nếu chúng vướng việc nhập bằng giọng nói hay một công cụ khác."
+      "hint": "/, ?, D, J, K và các phím G. Tắt đi nếu chúng vướng việc nhập bằng giọng nói hay một công cụ khác."
     },
     "needProject": {
       "title": "Mở một dự án trước",
@@ -5942,7 +5945,12 @@
       "notices": "Thông báo",
       "project": "Dự án",
       "allProjects": "Mọi dự án",
-      "proposals": "Đề xuất"
+      "proposals": "Đề xuất",
+      "search": "Tìm thông báo",
+      "searchPlaceholder": "Tìm trong tiêu đề và nội dung",
+      "clearSearch": "Xoá ô tìm",
+      "run": "Run #{id}",
+      "clearRun": "Hiện mọi run, không chỉ run #{id}"
     },
     "empty": {
       "title": "Inbox đang trống",
@@ -5979,7 +5987,8 @@
       "release": "Phát hành",
       "loop": "Loop",
       "login": "Đăng nhập",
-      "autonomy": "Mức tự chủ"
+      "autonomy": "Mức tự chủ",
+      "wait": "Chờ"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",
@@ -6058,6 +6067,7 @@
       "context": "Bối cảnh agent đưa ra",
       "answerTitle": "Câu trả lời",
       "answeredBy": "<who>{login}</who> đã trả lời",
+      "woke": "hub tự đánh thức",
       "answerOption": "Phương án:",
       "answerText": "Lời nhắn kèm:",
       "delivered": "Agent đã nhận câu trả lời",
@@ -6072,9 +6082,11 @@
       "waitingFor": "Đang chờ {owner}",
       "parksIn": "tạm gác sau {duration}",
       "parked": "tạm gác <time></time>",
+      "held": "bạn đã chọn chưa trả lời <time></time>",
       "showMore": "Xem thêm",
       "showLess": "Thu gọn",
       "agentsPick": "Agent đề xuất",
+      "keepsOpen": "Giữ mở",
       "authorRunLink": "Author run #{id}",
       "authorRun": "author run #{id}",
       "triageRunLink": "Run xử lý lỗi #{id}",
@@ -6088,6 +6100,7 @@
       "text": "Câu trả lời của bạn",
       "bytes": "{count} trên {max} byte",
       "empty": "Hãy chọn một phương án hoặc viết câu trả lời trước.",
+      "waitsWords": "Phương án này giữ decision mở nên agent sẽ không đọc lời bạn viết: gửi kèm phương án khác, hoặc gửi riêng lời.",
       "option": "Hãy chọn một phương án: hub làm đúng điều phương án đó nói.",
       "long": "Lời trả lời tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
       "send": "Gửi câu trả lời",
@@ -6097,6 +6110,8 @@
       "sentText": "Worker chuyển cho agent ở lượt kế tiếp.",
       "sentHubTitle": "Đã nhận câu trả lời",
       "sentHubText": "Hub đã làm điều phương án được chọn nói.",
+      "heldTitle": "Vẫn để mở",
+      "heldText": "Run #{run} vẫn chờ câu trả lời của bạn; agent không nhận được gì.",
       "sentResumedTitle": "Đã gửi câu trả lời",
       "openRun": "Mở run #{id}",
       "failed": "Không gửi được câu trả lời",
@@ -6221,6 +6236,20 @@
       },
       "saved": "{on, select, true {Bạn sẽ nhận lại thông báo} other {Bạn sẽ không nhận thông báo nữa}}: {kind}",
       "failed": "Không đổi được thông báo"
+    },
+    "group": {
+      "title": "Run #{id}",
+      "count": "{count, plural, other {# cập nhật}}",
+      "unread": "{count} chưa đọc",
+      "markRead": "Đánh dấu {count, plural, other {# thông báo chưa đọc}} của run #{id} là đã đọc",
+      "openRun": "Mở run #{id}",
+      "onlyRun": "Chỉ run này",
+      "itemsLabel": "Thông báo của run #{id}"
+    },
+    "days": {
+      "today": "Hôm nay",
+      "yesterday": "Hôm qua",
+      "summary": "{count, plural, other {# thông báo}}{unread, plural, =0 {} other {, # chưa đọc}}"
     }
   },
   "toast": {

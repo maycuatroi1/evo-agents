@@ -383,12 +383,15 @@
       "send": "Send an answer or a message",
       "chatSend": "Send a chat message",
       "chatLine": "Add a line to a chat message",
-      "goCurator": "Curator"
+      "goCurator": "Curator",
+      "nextItem": "Next notification",
+      "previousItem": "Previous notification"
     },
     "where": {
       "project": "Of the project you are in",
       "writer": "On a project's pages, with the Writer role",
-      "chat": "In a chat's message box"
+      "chat": "In a chat's message box",
+      "inbox": "In the Inbox"
     },
     "keys": {
       "command": "Command",
@@ -401,7 +404,7 @@
     },
     "single": {
       "label": "Single-key shortcuts",
-      "hint": "/, ?, D and the G keys. Turn them off if they get in the way of speech input or another tool."
+      "hint": "/, ?, D, J, K and the G keys. Turn them off if they get in the way of speech input or another tool."
     },
     "needProject": {
       "title": "Open a project first",
@@ -5942,7 +5945,12 @@
       "notices": "Notices",
       "project": "Project",
       "allProjects": "All projects",
-      "proposals": "Proposals"
+      "proposals": "Proposals",
+      "search": "Search notifications",
+      "searchPlaceholder": "Search titles and text",
+      "clearSearch": "Clear the search",
+      "run": "Run #{id}",
+      "clearRun": "Show every run, not only run #{id}"
     },
     "empty": {
       "title": "Your inbox is empty",
@@ -5979,7 +5987,8 @@
       "release": "Release",
       "loop": "Loop",
       "login": "Login",
-      "autonomy": "Autonomy"
+      "autonomy": "Autonomy",
+      "wait": "Wait"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",
@@ -6058,6 +6067,7 @@
       "context": "Context from the agent",
       "answerTitle": "Answer",
       "answeredBy": "by <who>{login}</who>",
+      "woke": "woken by the hub",
       "answerOption": "Option:",
       "answerText": "In their words:",
       "delivered": "The agent got the answer",
@@ -6072,9 +6082,11 @@
       "waitingFor": "Waiting for {owner}",
       "parksIn": "parks in {duration}",
       "parked": "parked <time></time>",
+      "held": "you said not yet <time></time>",
       "showMore": "Show more",
       "showLess": "Show less",
       "agentsPick": "Agent's pick",
+      "keepsOpen": "Keeps it open",
       "authorRunLink": "Author run #{id}",
       "authorRun": "author run #{id}",
       "triageRunLink": "Triage run #{id}",
@@ -6088,6 +6100,7 @@
       "text": "Your answer",
       "bytes": "{count} of {max} bytes",
       "empty": "Pick an option or write an answer first.",
+      "waitsWords": "This option keeps the decision open, so the agent would never read your words: send them with another option, or alone.",
       "option": "Pick one of the options: the hub does what it says.",
       "long": "The words of an answer are at most {max} bytes of UTF-8. Shorten them.",
       "send": "Send answer",
@@ -6097,6 +6110,8 @@
       "sentText": "The worker hands it to the agent at its next turn.",
       "sentHubTitle": "Answer taken",
       "sentHubText": "The hub did what the option chose.",
+      "heldTitle": "Kept open",
+      "heldText": "Run #{run} waits for your answer; its agent heard nothing.",
       "sentResumedTitle": "Answer sent",
       "openRun": "Open run #{id}",
       "failed": "Couldn't send the answer",
@@ -6221,6 +6236,20 @@
       },
       "saved": "{on, select, true {You get the notice again} other {You no longer get the notice}}: {kind}",
       "failed": "Couldn't change the notice"
+    },
+    "group": {
+      "title": "Run #{id}",
+      "count": "{count, plural, one {# update} other {# updates}}",
+      "unread": "{count} unread",
+      "markRead": "Mark the {count, plural, one {# unread notification} other {# unread notifications}} of run #{id} as read",
+      "openRun": "Open run #{id}",
+      "onlyRun": "Only this run",
+      "itemsLabel": "Notifications of run #{id}"
+    },
+    "days": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "summary": "{count, plural, one {# notification} other {# notifications}}{unread, plural, =0 {} other {, # unread}}"
     }
   },
   "toast": {

@@ -3361,7 +3361,7 @@ def test_0138_keeps_the_intakes_of_a_project_and_going_back_drops_them(hub_db):
 
 
 def test_0141_keeps_the_dismissed_review_items_of_a_project_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0139")
+    move_to(hub_db, "0140")
     before = query(hub_db, SNAPSHOT)
     move_to(hub_db, "0141")
     d = hub_tables.kg_review_dismissals
@@ -3386,7 +3386,7 @@ def test_0141_keeps_the_dismissed_review_items_of_a_project_and_going_back_drops
         ):
             with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
                 conn.execute(insert(d).values(bad))
-    move_to(hub_db, "0139", down=True)
+    move_to(hub_db, "0140", down=True)
     assert "kg_review_dismissals" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0141") :]

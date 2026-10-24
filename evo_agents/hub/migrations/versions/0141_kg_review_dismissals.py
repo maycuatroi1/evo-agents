@@ -1,7 +1,7 @@
 """The dismissed items of a project's knowledge graph review queue.
 
 Revision ID: 0141
-Revises: 0139
+Revises: 0140
 Create Date: 2026-10-24
 
 The names below are copies of ``evo_agents.hub.tables_kg`` and ``evo_agents.kg.review`` as of this revision, never
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0141"
-down_revision = "0139"
+down_revision = "0140"
 branch_labels = None
 depends_on = None
 

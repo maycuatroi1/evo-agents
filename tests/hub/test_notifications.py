@@ -406,6 +406,26 @@ def test_an_answered_decision_is_listed_by_age_and_the_project_filter_keeps_the_
     assert listed(client, hub["owner"], project=PROJECT, kind="notice", limit=1)["total"] == 2
 
 
+def test_the_list_finds_words_of_a_title_or_body_and_keeps_one_runs_own(client, hub):
+    worker, run = started(client, hub)
+    pushed = notice(
+        client, worker, run["id"], title="Pushed 100% of the docs", body="The catalog now lists runs."
+    ).json()
+    merged = notice(client, worker, run["id"], kind="merge_default_branch", title="Merged into main").json()
+    assert [item["id"] for item in listed(client, hub["owner"], q="merged")["notifications"]] == [merged["id"]]
+    assert [item["id"] for item in listed(client, hub["owner"], q=" CATALOG ")["notifications"]] == [pushed["id"]]
+    # the words are taken as they are: % and _ match only themselves
+    assert [item["id"] for item in listed(client, hub["owner"], q="100%")["notifications"]] == [pushed["id"]]
+    assert listed(client, hub["owner"], q="%")["total"] == 1
+    assert listed(client, hub["owner"], q="_")["total"] == 0
+    assert listed(client, hub["owner"], q="   ")["total"] == 2
+    assert listed(client, hub["owner"], run=run["id"])["total"] == 2
+    assert listed(client, hub["owner"], run=run["id"] + 1)["total"] == 0
+    assert listed(client, hub["other"], q="merged")["total"] == 0  # not theirs
+    too_long = client.get("/v1/me/notifications", params={"q": "x" * 201}, headers=hub["owner"])
+    assert too_long.status_code == 422
+
+
 def test_a_notification_is_one_line_of_at_most_200_characters():
     assert notifications.one_line("Pushed\n\tmain   of\x00 evo-agents") == "Pushed main of evo-agents"
     long = notifications.one_line("x" * 300)

@@ -66,6 +66,12 @@ markdown of at most 16 KiB, and 2 to 6 options. An option has a key (letters, di
 characters, starting with a letter or digit), a label, an optional description, and whether it is the one the agent
 recommends; at most one is. The owner answers with an option, with text of their own, or with both.
 
+An option may also say not yet (`waits`, which `evo-agents worker ask --wait-option KEY` sets): choosing it leaves
+the decision `open` with `held_at` set and its notification read, sends nothing to the agent, and the run goes on
+waiting, or parked, for a later answer with another option. Words with such an option are 422, since no agent would
+read them; at least one option of a decision does not wait. The audit row `decision.answer` ends `held`, and the web
+says "you said not yet" on the open card.
+
 ### Its life, and the run's
 
 | Decision | Run | What happened |
@@ -174,6 +180,26 @@ waits for its owner, holding its slot and its browser; the Inbox and Telegram ca
 saves the browser's profile to the identity and the agent goes on signed in; Skip saves nothing. A second call while one
 is open returns the open decision. A run that cannot wait (a step run) gets no decision: its identity is set
 `needs_login` and the run fails.
+
+### A wait
+
+The agent of a plan run that needs a time, or something that happens on the hub, waits for it rather than asking its
+owner to say when it came: `evo-agents worker wait --reason TEXT --until TIME --on KIND --contains KEY=VALUE --step
+KEY` (POST /v1/worker/runs/{id}/waits, `evo_agents.hub.server.run_waits`). It stores a decision of category `wait`
+whose question is the reason, whose context says what the run waits for, and whose options are `now` (Go on now) and
+`stop` (Stop waiting). It notifies nobody, since it asks nobody anything, and intern escalation leaves it alone; it is
+open like any decision, so the run is `waiting` at the end of the agent's turn and the reaper parks it after a day.
+
+`wake_at` is when it wakes at the latest: `--until` (a time with a timezone, or a span such as `+6h`), at most
+`MAX_WAIT_DAYS` (7) days ahead, and that far when only `--on` is given. `wake_on` is the event that wakes it sooner: an
+event of the run's project in hub_events of kind `--on` (`canvas.claim`, `canvas.baseline`, `signal.posted`,
+`srs.version.approved`, `tasks.status`, or a kind a core plugin records of its own) whose payload contains each
+`--contains` pair (JSONB containment), written after the wait was asked. On each pass, every minute, the reaper answers
+every open wait whose event or time came, before it parks or expires runs: the decision is `answered` by nobody
+(`answered_by` null, which only a wait may be; migration 0140), its `answer_text` the message the agent gets, which
+names the decision, the event with its payload or the time, and the reason. A parked run is resumed by the reaper, as an
+answer resumes it, and a parked run whose wait has not come is not cancelled at `PARKED_DAYS`. The person asked may
+answer a wait sooner like any decision.
 
 ## Notices
 
@@ -320,7 +346,7 @@ For members, with a web session or a machine token:
 | `GET /v1/projects/{p}/decisions` | readers of the decision's run: of its plan, or of the project's runs on no plan for an author run without one | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
 | `GET /v1/projects/{p}/decisions/{id}` | readers of the decision's run, as above | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
 | `POST /v1/projects/{p}/decisions/{id}/answer` | the person it is asked of (`asked_of`, above), else the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
-| `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
+| `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind`, `project`, `run` and `q` (words anywhere in the title or the body, at most 200 characters, `%` and `_` taken as they are), with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
 | `GET /v1/me/notification-settings` | the member | each kind of notice they may turn off (`run_outputs`), and whether it is on |

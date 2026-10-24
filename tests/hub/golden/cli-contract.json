@@ -6486,6 +6486,9 @@
           "asked_at",
           "answered_at",
           "delivered_at",
+          "held_at",
+          "wake_at",
+          "wake_on",
           "outputs"
         ],
         "schema": "Decision"
@@ -6622,6 +6625,9 @@
           "asked_at",
           "answered_at",
           "delivered_at",
+          "held_at",
+          "wake_at",
+          "wake_on",
           "outputs"
         ],
         "schema": "Decision"
@@ -9130,6 +9136,22 @@
         {
           "flags": [
             "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--search"
           ],
           "value": "string",
           "required": false,
@@ -17595,6 +17617,14 @@
         },
         {
           "flags": [
+            "--wait-option"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--step"
           ],
           "value": "string",
@@ -18594,6 +18624,52 @@
             "--confirm-cause"
           ],
           "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker wait": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--until"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--contains"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
           "required": false,
           "repeatable": false
         }
@@ -33346,6 +33422,45 @@
                 "title": "Project"
               },
               "description": "only this project's"
+            },
+            {
+              "name": "run",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only this run's",
+                "title": "Run"
+              },
+              "description": "only this run's"
+            },
+            {
+              "name": "q",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only those whose title or body holds these words",
+                "title": "Q"
+              },
+              "description": "only those whose title or body holds these words"
             },
             {
               "name": "limit",
@@ -59981,6 +60096,101 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/waits": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Wait",
+          "description": "Wait, in a plan run this worker holds, for a time or an event of the hub: a decision of category wait the hub\nanswers when either comes.",
+          "operationId": "wait_v1_worker_runs__run_id__waits_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/browser-profile": {
         "post": {
           "tags": [
@@ -83541,7 +83751,8 @@
                 "release",
                 "loop",
                 "autonomy",
-                "login"
+                "login",
+                "wait"
               ],
               "title": "Category"
             },
@@ -83674,6 +83885,43 @@
               ],
               "title": "Delivered At",
               "description": "when the worker handed the answer to the agent"
+            },
+            "held_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Held At",
+              "description": "when the person asked last chose an option that waits, leaving the decision open"
+            },
+            "wake_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wake At",
+              "description": "a wait (category wait): when the hub answers it at the latest, its time come"
+            },
+            "wake_on": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WakeOn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a wait: the event of the hub that answers it sooner"
             },
             "outputs": {
               "items": {
@@ -83911,6 +84159,12 @@
             "recommended": {
               "type": "boolean",
               "title": "Recommended"
+            },
+            "waits": {
+              "type": "boolean",
+              "title": "Waits",
+              "description": "choosing it leaves the decision open: the person answers later",
+              "default": false
             }
           },
           "type": "object",
@@ -95399,6 +95653,18 @@
                 }
               ],
               "title": "Description"
+            },
+            "waits": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waits",
+              "description": "true when the option says not yet: choosing it leaves the decision open and the run waiting, and no answer goes to the agent"
             }
           },
           "type": "object",
@@ -96464,7 +96730,8 @@
                 "release",
                 "loop",
                 "autonomy",
-                "login"
+                "login",
+                "wait"
               ],
               "title": "Category"
             },
@@ -123102,6 +123369,91 @@
             "published_at"
           ],
           "title": "Version"
+        },
+        "WaitIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "what the run waits for and why, for the owner"
+            },
+            "until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until",
+              "description": "when to wake at the latest, with a timezone, at most 7 days ahead"
+            },
+            "on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On",
+              "description": "a kind of hub event to wake on sooner, such as canvas.baseline"
+            },
+            "contains": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Contains",
+              "description": "what the event's payload contains, as JSONB containment reads it"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step of the plan it is about"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "WaitIn"
+        },
+        "WakeOn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "the kind of hub event the wait wakes on, such as canvas.baseline"
+            },
+            "contains": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Contains",
+              "description": "what the event's payload contains, as JSONB containment reads it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "contains"
+          ],
+          "title": "WakeOn"
         },
         "WebhookAnswer": {
           "properties": {

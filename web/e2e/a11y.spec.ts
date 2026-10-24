@@ -1538,6 +1538,7 @@ const PAGES: Entry[] = [
       });
       await open(page, "/inbox");
       await expect(page.locator("#main").getByTestId("inbox-waiting").getByTestId("notification")).toHaveCount(1);
+      await page.locator("#main").getByTestId("notification-toggle").click();
       await expect(page.locator("#main").getByTestId("notice-commits")).toBeVisible();
       await expect(page.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "2");
       await page.locator("#main").getByTestId("notification-body-toggle").click();

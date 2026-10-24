@@ -1107,13 +1107,26 @@ Shared pieces built on them:
   to the Inbox with the number of unread notifications (99+ past 99) in an `attention` pill raised beside the glyph, never
   over it, read from `GET /v1/me/notifications/count` every 10 seconds; its accessible name says that number and the decisions waiting for the visitor's answer, and a polite live
   region says how many arrived when the number grows. The Inbox (`/inbox`, also at the top of the sidebar) lists the
-  member's notifications 50 a page, refreshed every 10 seconds: the decisions still open first under "Waiting for your
-  answer", then the notices and the decisions answered, expired or cancelled, newest first. Facets for unread, kind and
-  project live in the URL like the runs page's; Mark as read on each unread one, and Mark all as read in the header (Mark
-  these as read, by id, while a filter is on). An unread notification says Unread in words beside a dot and has a
-  heavier title. A notice of a push or merge into a default branch names its repo, branch and commits (seven digits,
-  the full name for screen readers, five shown and the rest a click away); its body folds to three lines; its kind is
-  a tag (an icon and a word, square corners), not a pill.
+  member's notifications 50 a page, refreshed every 10 seconds: the decisions and proposals still open first under
+  "Waiting for your answer", as cards with their answer, then the notices and the decisions answered, expired or
+  cancelled, newest first, as rows (`notification-row.tsx`). The toolbar is one line with no card around it
+  (`inbox-toolbar.tsx`): a search of titles and bodies (`q`, with `/`), the facets for unread and kind, and the project
+  as a select, since a member of many projects would get a wall of chips; all of it lives in the URL like the runs
+  page's, and a filter by run (`run`, set from a run's row) shows as a chip that clears it. The rows group by day of the
+  page's time zone ("Today", "Yesterday", then the date) under a 13 px heading that stays under the top bar, each day in
+  one frame with hairlines between its rows, and the notifications one run sent that day fold into one row ("Run #707",
+  "5 updates", "2 unread", the newest title under it) that opens to each of them, with Open run and Only this run. A row
+  is the kind's icon, the title on one line (two on a phone) and, while unread, the first line of the body; the project
+  (from 1024 px) and the time sit at its end. A notice opens in place (the row is one button, `aria-expanded`) to its
+  kind's tag, its facts, its body and its links; one that asks something of its reader (an answer of the merge queue, a
+  baseline to review, a page that wants a sign-in) opens by itself while unread, and so does the run's row that holds
+  one; the Curator's morning brief of each project stays folded to its first line. A decision or a proposal no longer open is a link to its sheet, with its state
+  as a pill. Mark as read sits at the end of each unread row (and of a run's row, for its unread ones), shown from
+  768 px while the pointer or focus is on that row; Mark all as read is in the header (Mark these as read, by id, while
+  a filter is on). J and K move focus from row to row. An unread notification has a `brand` dot, the word Unread for
+  screen readers and a heavier title. A notice of a push or merge into a default branch names its repo, branch and
+  commits (seven digits, the full name for screen readers, five shown and the rest a click away); its body folds to
+  three lines; its kind is a tag (an icon and a word, square corners), not a pill.
 - `components/inbox/telegram-dialog.tsx`: Telegram in the Inbox's header, a `secondary` button that opens a dialog
   (docs/notifications.md, Telegram). It says where the member's link stands and offers what fits: on a hub without a
   bot an info box and nothing else; with no chat linked, Make a link; then the one-time link in `code-small` with Copy,
@@ -1831,7 +1844,8 @@ so the server renders a page the same way for everyone who has not picked a lang
   palette, `/` focuses the page's search, G then H, I, P, R, C or W goes to Home, Inbox, Plans, Runs, the Curator or
   Workers, D
   opens Dispatch on a writer's project page, `?` lists the keys, Cmd or Ctrl with Enter sends an answer or a message,
-  Enter sends a chat's message and Shift with Enter adds a line to it, Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
+  Enter sends a chat's message and Shift with Enter adds a line to it, J and K move between the Inbox's rows, Ctrl or
+  Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
   or in the palette's foot. A single key never takes a key pressed with Cmd, Ctrl or Alt (the browser's and the
   screen reader's own), nor one typed in a text field, the web terminal, a menu, a list or a dialog
   (`characterKeyBlocked` in `lib/keyboard.ts`); a screen reader in browse mode keeps its letters, since the page never
