@@ -145,8 +145,8 @@ class Event:
 @dataclass(frozen=True)
 class GoalView:
     """A goal at its newest revision: ``reached`` is whether its metric meets its target now (None: no metric, or no
-    signal in its window); ``problem_id`` the problem of the project it answers (plan problem-oriented-hub), None for
-    none."""
+    signal in its window); ``problem_id`` the problem of the project it answers (plan problem-oriented-hub),
+    ``opportunity_id`` the opportunity it answers (plan opportunity-intake; never both), None for none."""
 
     id: int
     code: str
@@ -158,6 +158,7 @@ class GoalView:
     rank: int
     owner_id: int
     problem_id: int | None = None
+    opportunity_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -178,7 +179,8 @@ class ClaimView:
 @dataclass(frozen=True)
 class ItemView:
     """A work item as the engine reads it; ``runs`` holds every run handed out for it, ``problem_id`` the problem its
-    goal answered when it was made (None: none, or made before rules/2)."""
+    goal answered when it was made (None: none, or made before rules/2), ``opportunity_id`` the opportunity its goal
+    answered or its parent carried (None: none, or made before opportunities)."""
 
     id: int
     kind: str
@@ -199,6 +201,7 @@ class ItemView:
     attempts: int = 0
     failures: int = 0
     problem_id: int | None = None
+    opportunity_id: int | None = None
 
     @property
     def finished(self) -> bool:
@@ -352,7 +355,7 @@ class View:
 @dataclass(frozen=True)
 class WorkSpec:
     """A work item that should exist; the tick makes it unless its key is taken. ``parent_id`` names the work item it
-    comes of, ``problem_id`` the problem its goal answers."""
+    comes of, ``problem_id`` the problem its goal answers, ``opportunity_id`` the opportunity it answers."""
 
     kind: str
     key: str
@@ -369,6 +372,7 @@ class WorkSpec:
     owner: str | None = None
     detail: Mapping = field(default_factory=dict)
     problem_id: int | None = None
+    opportunity_id: int | None = None
 
 
 @dataclass(frozen=True)

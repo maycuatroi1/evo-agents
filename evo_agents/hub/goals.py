@@ -6,7 +6,8 @@ A goal says what the project is for in one statement, and may name how to tell i
 the project's registry of signals, summed up over a window as a test card of the plugin canvas does it (``aggregate``
 of AGGREGATES over ``window_days``, of one ``tenant`` when it names one), compared by ``comparator`` with ``target``.
 It may also have a deadline, the canvas whose product it drives, the problem of the project it answers (``P-<number>``,
-``evo_agents.hub.problems``; at most one, and not a dropped one), a rank among the project's goals (1 is the first),
+``evo_agents.hub.problems``; at most one, and not a dropped one) or the opportunity of the project it answers
+(``O-<number>``, ``evo_agents.hub.opportunities``; a goal answers a problem or an opportunity, not both), a rank among the project's goals (1 is the first),
 an owner (a member with the writer role or above) and a status: active, paused, or closed with a reason (achieved,
 dropped, expired). A goal has no budget. A goal without a metric is read by the Curator, and nothing else is done for
 it.
@@ -45,12 +46,20 @@ FIELDS = (
     "deadline",
     "canvas",
     "problem",
+    "opportunity",
     "rank",
     "owner",
     "status",
     "close_reason",
 )  # a revision's
-CLEARABLE = ("metric", "deadline", "canvas", "problem", "close_reason")  # the fields a revision may leave empty
+CLEARABLE = (
+    "metric",
+    "deadline",
+    "canvas",
+    "problem",
+    "opportunity",
+    "close_reason",
+)  # the fields a revision may leave empty
 METRIC_FIELDS = ("key", "aggregate", "window_days", "comparator", "target", "tenant")
 
 
@@ -100,4 +109,6 @@ def curator_line(goal: Mapping) -> dict:
         what += f"; drives canvas {goal['canvas']}"
     if goal.get("problem"):
         what += f"; answers problem {goal['problem']}"
+    if goal.get("opportunity"):
+        what += f"; answers opportunity {goal['opportunity']}"
     return {"id": ref, "what": what}

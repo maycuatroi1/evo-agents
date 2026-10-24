@@ -119,6 +119,7 @@ def _claim_lines(row: store.ClaimRow, evidence: list[store.EvidenceRow]) -> list
         *([f"  use cases: {', '.join(row.use_cases)}"] if row.use_cases else []),
         *([f"  signal keys: {', '.join(row.signal_keys)}"] if row.signal_keys else []),
         *([f"  problems: {', '.join(row.problems)}"] if row.problems else []),
+        *([f"  opportunities: {', '.join(row.opportunities)}"] if row.opportunities else []),
         f"  {_evidence_counts(evidence)}",
     ]
 

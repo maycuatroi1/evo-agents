@@ -10,7 +10,7 @@ metadata as ``tables.canvas``: queries name them there (``tables.canvas.claims``
   never given again), its cell (one of the nine of a Lean Canvas), its place in the cell, its text, status, confidence
   and test card, its rev (1 and up, one more on every change) and when it was archived; and what it links (0078): the
   codes of the use cases of the plugin srs that realize it and the keys of the project's signals that measure it, and
-  the codes of the problems of the project it answers (0135), each sorted, as its rev's content holds them.
+  the codes of the problems of the project it answers (0135) and of the opportunities it links (0143), each sorted, as its rev's content holds them.
 - canvas_claim_revs: every rev of every claim, never changed: the whole content of the claim at that rev, what kind of
   change made it (``undo_of`` names the rev an undo took back), and its provenance: a person, an agent or the hub, the
   member the write was made for, the run with its runtime and model, the chat message that asked for it, and why.
@@ -192,6 +192,7 @@ def _claims(metadata: MetaData) -> Table:
         Column("use_cases", ARRAY(Text), nullable=False, server_default="{}"),  # 0078
         Column("signal_keys", ARRAY(Text), nullable=False, server_default="{}"),  # 0078
         Column("problems", ARRAY(Text), nullable=False, server_default="{}"),  # 0135
+        Column("opportunities", ARRAY(Text), nullable=False, server_default="{}"),  # 0143
         Column("delivery", Text, nullable=False, server_default="code"),  # 0139
         _key(name, "project_id", "projects", ondelete="RESTRICT"),
         _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),

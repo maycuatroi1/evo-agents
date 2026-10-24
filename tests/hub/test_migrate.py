@@ -3416,3 +3416,57 @@ def test_0142_notices_take_the_opportunity_window_and_going_back_deletes_those_n
         conn.execute(delete(n).where(n.c.notice_kind.in_(("curator_probe_report", "release"))))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0142") :]
+
+
+def test_0143_keeps_the_opportunities_a_claim_links_the_answer_of_a_goal_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0142")
+    t = hub_tables
+    k, o, g, gr = t.canvas, t.opportunities, t.goals, t.goal_revisions
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "cell": "problem", "text": "Shops run out of milk", "label": {}, **owner}
+        conn.execute(insert(k.claims).values(number=1, problems=["P-1"], **claim))
+    assert "opportunity_id" not in columns(hub_db, "goal_revisions")
+    assert "opportunity_id" not in columns(hub_db, "loop_items")
+    move_to(hub_db, "0143")
+    assert "opportunities" in columns(hub_db, "canvas_claims")
+    assert "opportunity_id" in columns(hub_db, "goal_revisions")
+    assert "opportunity_id" in columns(hub_db, "loop_items")
+    assert query(hub_db, select(k.claims.c.opportunities)) == [([],)]  # a claim of 0142 links none
+    goal_row = {"revision": 1, "statement": "Win the depot", "rank": 1, "owner_id": ids["user"]}
+    goal_row |= {"status": "active", "created_by": ids["user"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(k.claims).values(number=2, opportunities=["O-1", "O-2"], **claim))
+        with pytest.raises(errors.CheckViolation):  # at most 20 of each link
+            conn.execute(insert(k.claims).values(number=3, opportunities=[f"O-{n}" for n in range(1, 22)], **claim))
+    with live.connect(hub_db) as conn:
+        opportunity_id = one(conn, insert(o).values(project_id=ids["project"], number=1, revision=1).returning(o.c.id))
+        problem_id = one(
+            conn, insert(t.problems).values(project_id=ids["project"], number=1, revision=1).returning(t.problems.c.id)
+        )
+        goal_id = one(conn, insert(g).values(project_id=ids["project"], number=1, revision=1).returning(g.c.id))
+        conn.execute(insert(gr).values({**goal_row, "goal_id": goal_id, "opportunity_id": opportunity_id}))
+        with pytest.raises(errors.CheckViolation):  # a goal answers a problem or an opportunity, not both
+            conn.execute(
+                insert(gr).values(
+                    {**goal_row, "goal_id": goal_id, "revision": 2, "opportunity_id": opportunity_id}
+                    | {"problem_id": problem_id}
+                )
+            )
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(insert(gr).values({**goal_row, "goal_id": goal_id, "revision": 2, "opportunity_id": 9999}))
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(gr).where(gr.c.opportunity_id.is_not(None)))
+        conn.execute(delete(k.claims).where(k.claims.c.number > 1))
+    move_to(hub_db, "0142", down=True)
+    assert "opportunities" not in columns(hub_db, "canvas_claims")
+    assert "opportunity_id" not in columns(hub_db, "goal_revisions")
+    assert "opportunity_id" not in columns(hub_db, "loop_items")
+    held = select(k.claims.c.number, k.claims.c.problems)
+    assert query(hub_db, held) == [(1, ["P-1"])]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0143") :]

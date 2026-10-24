@@ -9,7 +9,7 @@ who wrote it. ``create SLUG --name NAME`` makes a canvas. ``edit SLUG`` changes 
 rev it was read at, ``--base-rev``) or makes one (no ``--claim``; ``--cell`` and ``--text``), or applies ``--file``,
 JSON ``{"changes": [...], "reason": "..."}`` as the route takes it, all or nothing. A claim changed since the rev it was
 read at refuses the edit: the error lists, per claim, the rev it is at, who changed it and what differs.
-``--use-cases``, ``--signal-keys`` and ``--problems`` give the whole list of what the claim links, comma-separated.
+``--use-cases``, ``--signal-keys``, ``--problems`` and ``--opportunities`` give the whole list of what the claim links, comma-separated.
 ``undo SLUG CL-3`` takes back the claim's current rev (``--rev`` names it; read from the hub when left out). ``evidence
 add|withdraw|confirm`` keeps a claim's evidence. ``proposal list SLUG`` prints what an agent or the hub proposed (the
 open ones unless ``--status`` names others), ``proposal accept SLUG ID`` writes one as the caller's rev and ``proposal
@@ -76,6 +76,7 @@ CLAIM_KEYS = (
     "use_cases",
     "signal_keys",
     "problems",
+    "opportunities",
     "delivery",
     "rev",
     "evidence_count",
@@ -268,6 +269,7 @@ def _print_claim(claim: dict) -> None:
     print(f"  use cases: {', '.join(claim['use_cases']) or '-'}")
     print(f"  signal keys: {', '.join(claim['signal_keys']) or '-'}")
     print(f"  problems: {', '.join(claim['problems']) or '-'}")
+    print(f"  opportunities: {', '.join(claim.get('opportunities') or []) or '-'}")
     print("Evidence:" if claim["evidence"] else "No evidence.")
     for item in claim["evidence"]:
         real = "real" if item["real"] else f"not real: {item['not_real_because']}"
@@ -339,6 +341,7 @@ def _change(args) -> dict:
         "use_cases": _listed(args.use_cases),
         "signal_keys": _listed(args.signal_keys),
         "problems": _listed(args.problems),
+        "opportunities": _listed(args.opportunities),
     }
     change = {name: value for name, value in change.items() if value is not None}
     given, card = _test_card(args)
@@ -578,6 +581,11 @@ def _edit_options(edit) -> None:
         "--problems",
         metavar="CODES",
         help='the problems of the project it answers, comma-separated, as "P-1,P-3"; "" for none',
+    )
+    edit.add_argument(
+        "--opportunities",
+        metavar="CODES",
+        help='the opportunities of the project it links, comma-separated, as "O-1,O-3"; "" for none',
     )
     edit.add_argument("--archive", action="store_true", help="archive the claim")
     edit.add_argument("--unarchive", action="store_true", help="bring an archived claim back")

@@ -106,3 +106,10 @@ window ends within DAYS days of today, one already past included, the nearest en
 An opportunity is an `Opportunity` node (`opportunity:O-1`) found by its code or by the words of its text. It
 `answers` the Problem nodes of the same project. An answer that names another project's problem lives only in the hub's
 table: the graph of a project holds what the project's members read.
+
+## Links
+
+A canvas claim links opportunities (`--opportunities O-1,O-2`, at most 20; a dropped one is refused, an open, captured
+or missed one links). A goal answers a problem or an opportunity (`goal set --opportunity O-1`), not both; the Loop
+stamps its work items with it and the brainstorm, discover and claim requests name who gains, what it leans on and its
+window.
