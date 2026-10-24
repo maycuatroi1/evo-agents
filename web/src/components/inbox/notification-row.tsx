@@ -370,7 +370,7 @@ export function InboxDays({
             id={`inbox-day-${day.key}`}
             className="sticky top-13 z-[2] flex items-baseline gap-2 bg-background py-1.5 text-[13px] leading-[18px] font-semibold text-foreground"
           >
-            <DayTitle dayKey={day.key} />
+            <DayTitle dayKey={day.key} />{" "}
             <span className="text-xs font-normal text-fg-subtle tabular-nums">
               {t("summary", { count: day.total, unread: day.unread })}
             </span>
