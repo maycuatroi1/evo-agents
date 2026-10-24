@@ -1,7 +1,9 @@
 """``evo-agents hub opportunity list|show|set|close`` and ``opportunity evidence add|list|confirm``: the opportunities
 of a project (``evo_agents.hub.opportunities``), over GET and PUT /v1/projects/{p}/opportunities and the routes below it.
 
-``list`` prints the project's opportunities by rank, those of one ``--status`` alone when given. ``show CODE`` prints an
+``list`` prints the project's opportunities by rank, those of one ``--status`` alone when given. ``--closing-within
+DAYS`` prints the open ones whose window ends within DAYS days of today (one already past included), the nearest end
+first. ``show CODE`` prints an
 opportunity (O-<number>) at its newest revision or at ``--revision``, with the problems it answers, how many problems
 of other projects it answers that you hold no grant on, its lines of evidence counted, and its revisions.
 
@@ -104,7 +106,12 @@ def _clip(text: str, most: int) -> str:
 def cmd_list(args) -> int:
     hub, _ = signed_in()
     project = project_of(args)
-    found = hub.call("GET", _path(project, f"?status={args.status}" if args.status else ""))
+    query = []
+    if args.status:
+        query.append(f"status={args.status}")
+    if args.closing_within is not None:
+        query.append(f"closing_within={args.closing_within}")
+    found = hub.call("GET", _path(project, "?" + "&".join(query) if query else ""))
     if args.json:
         print_json(found)
         return 0
@@ -368,6 +375,12 @@ def register_opportunities(hsub) -> None:
 
     listed = osub.add_parser("list", help="the project's opportunities by rank")
     listed.add_argument("--status", choices=opportunities.STATUSES, help="those of this status alone")
+    listed.add_argument(
+        "--closing-within",
+        type=int,
+        metavar="DAYS",
+        help="the open ones whose window ends within DAYS days (one already past included), nearest end first",
+    )
     listed.add_argument("--project", help=PROJECT_HELP)
     json_option(listed, returns_array(*OPPORTUNITY_KEYS, schema="ProjectOpportunity"))
     listed.set_defaults(func=cmd_list)

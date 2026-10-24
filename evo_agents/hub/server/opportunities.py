@@ -46,6 +46,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.opportunity_deadlines import closing_filter
 from evo_agents.hub.server.problems import ProblemMetric
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -636,14 +637,23 @@ async def one(conn: AsyncConnection, access: ProjectAccess, ref: str, revision: 
 
 
 async def listed(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, status: str | None = None
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    status: str | None = None,
+    closing_within: int | None = None,
 ) -> list[ProjectOpportunity]:
-    """The project's opportunities as they are now, by rank, then by code; those of ``status`` alone when given."""
+    """The project's opportunities as they are now, by rank, then by code; those of ``status`` alone when given;
+    with ``closing_within`` the open ones whose window ends within that many days, nearest end first."""
     o, r = tables.opportunities, tables.opportunity_revisions
     query = _select().where(o.c.project_id == access.project_id, r.c.revision == o.c.revision)
     if status is not None:
         query = query.where(r.c.status == status)
-    rows = (await conn.execute(query.order_by(r.c.rank, o.c.number))).all()
+    if closing_within is not None:
+        query = closing_filter(query, closing_within).order_by(r.c.window_until, r.c.rank, o.c.number)
+    else:
+        query = query.order_by(r.c.rank, o.c.number)
+    rows = (await conn.execute(query)).all()
     sight = Sight(conn, user, access)
     return [
         await view(conn, sight, SimpleNamespace(**row._mapping, answers=await answers_of(conn, row.id, row.revision)))
@@ -667,11 +677,20 @@ async def list_opportunities(
     project: ProjectName,
     user: CurrentUser,
     status: Annotated[Literal[opportunities.STATUSES] | None, Query(description="those of this status alone")] = None,
+    closing_within: Annotated[
+        int | None,
+        Query(
+            ge=0,
+            le=3650,
+            description="the open ones whose window ends within this many days (one already past included), "
+            "nearest end first; with it, status is open",
+        ),
+    ] = None,
 ) -> list[ProjectOpportunity]:
     """The project's opportunities as they are now, by rank, then by code."""
     async with request.app.state.engine.begin() as conn:
         access = await reader(conn, user, project)
-        return await listed(conn, user, access, status)
+        return await listed(conn, user, access, status, closing_within)
 
 
 @router.get("/{project}/opportunities/{ref}", response_model=ProjectOpportunityShown, responses=REFUSALS)
