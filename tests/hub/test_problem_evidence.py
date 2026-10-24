@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("sqlalchemy")
 
 from evo_agents.core_plugins import builder
-from evo_agents.hub import problems
+from evo_agents.hub import opportunities, problems
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
@@ -53,7 +53,8 @@ def test_independent_sources_are_the_distinct_kind_and_address_pairs():
 
 def test_the_builder_plugin_copies_the_vocabulary_of_the_model():
     assert tuple(builder.EVIDENCE_SOURCE_KINDS) == problems.SOURCE_KINDS
-    assert tuple(builder.EVIDENCE_SIGNALS) == problems.SIGNALS
+    assert tuple(builder.EVIDENCE_SIGNALS) == opportunities.SIGNALS
+    assert opportunities.SIGNALS[: len(problems.SIGNALS)] == problems.SIGNALS
     assert tuple(builder.EVIDENCE_LABELS) == problems.EVIDENCE_LABELS
 
 

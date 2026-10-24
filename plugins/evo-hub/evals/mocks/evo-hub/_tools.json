@@ -538,6 +538,82 @@
       }
     },
     {
+      "name": "opportunity_list",
+      "description": "The opportunities of a project on the hub by rank, each with its code (O-<number>), status (open, captured, missed, dropped), owner and window: what the project could win. opportunity_show reads one whole; opportunity_evidence reads the lines that show it is there.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "captured",
+              "missed",
+              "dropped"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "opportunity_show",
+      "description": "One opportunity of a project on the hub by its code: what could be won, who benefits, the leverage, the window, the problems it answers (the number of those of projects you hold no grant on, not their codes), its metric, rank, owner, status, revision, and the count of its lines of evidence and independent sources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^O-[1-9][0-9]{0,8}$",
+            "description": "O-<number>"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "an older one"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "opportunity_evidence",
+      "description": "The evidence of an opportunity of a project on the hub by its code (plan opportunity-intake): each line (E-<number>) names the kind and address of its source, where in it, who spoke, an excerpt of at most 300 characters, the signal it shows (the eight of a problem, and wish, external_demand, window, reusable_asset, pull, intro, idle_capacity), its label, who added it and who confirmed it, with the count of independent sources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^O-[1-9][0-9]{0,8}$",
+            "description": "O-<number>"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "intake_list",
       "description": "The intakes of a project on the hub, newest first (plan problem-intake): each is one reading of vague context by a member's session, with its code (I-<number>), status (open, done), requester, sources (kind and label, never content) and the count of candidates and promises its result held. intake_show reads one.",
       "inputSchema": {

@@ -140,6 +140,7 @@ TABLES |= pg.PROBE_RUN_TABLES  # migration 0131
 TABLES |= pg.PROBLEM_TABLES  # migration 0134
 TABLES |= pg.PROBLEM_EVIDENCE_TABLES  # migration 0137
 TABLES |= pg.INTAKE_TABLES  # migration 0138
+TABLES |= pg.OPPORTUNITY_TABLES  # migration 0141
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -3357,3 +3358,37 @@ def test_0138_keeps_the_intakes_of_a_project_and_going_back_drops_them(hub_db):
     assert "intakes" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0138") :]
+
+
+def test_0141_keeps_the_opportunities_of_a_project_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0140")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0141")
+    t = hub_tables
+    assert pg.OPPORTUNITY_TABLES <= set(tables(hub_db))
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        o = t.opportunities
+        made = insert(o).values(project_id=ids["project"], number=1, revision=1).returning(o.c.id)
+        opportunity_id = one(conn, made)
+        texts = {"statement": "Sell to the depot", "beneficiary": "shops", "leverage": "an open door"}
+        row = {**texts, "revision": 1, "rank": 1, "owner_id": ids["user"], "status": "open"}
+        row |= {"created_by": ids["user"], "opportunity_id": opportunity_id}
+        conn.execute(insert(t.opportunity_revisions).values(row))
+        for bad in (
+            {**row, "revision": 2, "status": "won"},
+            {**row, "revision": 2, "status": "missed"},  # closed without its reason
+            {**row, "revision": 2, "close_reason": "late"},  # a reason while open
+            {**row, "revision": 2, "statement": ""},
+            {**row, "revision": 2, "rank": 0},
+            {**row, "revision": 2, "metric": []},
+            {**row, "revision": 1},
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(insert(t.opportunity_revisions).values(bad))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(o).values(project_id=ids["project"], number=1, revision=1))
+    move_to(hub_db, "0140", down=True)
+    assert not pg.OPPORTUNITY_TABLES & set(tables(hub_db))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0141") :]

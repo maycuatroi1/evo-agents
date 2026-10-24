@@ -206,6 +206,14 @@ PROBLEM_SET = "problem.set"
 # approved a proposal of @builder that carried them, or " removed proposal=<id>" when a rollback took them away; never
 # an excerpt.
 PROBLEM_EVIDENCE = "problem.evidence"
+# A revision of an opportunity of a project written (evo_agents.hub.server.opportunities), in the project:
+# "<project>/opportunity O-<n> revision=<n> fields=<the fields whose value changed>", then " proposal=<id>" when a writer
+# approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
+OPPORTUNITY_SET = "opportunity.set"
+# Lines of evidence of an opportunity added or confirmed (evo_agents.hub.server.opportunity_evidence), in the project:
+# "<project>/opportunity O-<n> evidence=E-<n>[,E-<n>...]" with " added" or " confirmed", then " proposal=<id>" when a
+# writer approved a proposal that carried them, or " removed proposal=<id>" for a rollback; never an excerpt.
+OPPORTUNITY_EVIDENCE = "opportunity.evidence"
 # An intake of a project started or its result put (evo_agents.hub.server.intake), in the project: "<project>/intake
 # I-<n>" with " started sources=<count>", or " put candidates=<n> promises=<n> questions=<n> proposals=<ids>
 # tasks=<count>"; never a source's name or an excerpt.
