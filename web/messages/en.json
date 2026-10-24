@@ -2355,7 +2355,6 @@
       "facts": "{os} {arch} on {hostname}. Owner {owner}. Daemon evo-agents {version}, registered {date}.",
       "notFoundTitle": "Worker not found",
       "notFoundDescription": "This worker does not exist, or it belongs to another member.",
-      "actionsHelp": "Drain: the worker finishes the runs it holds, then claims no new ones. Revoke: its token stops working at once, and the runs it holds go back to the queue.",
       "asAdmin": "You see this worker as a hub admin. You may drain or revoke it; only {owner} can resume it or dispatch runs to it.",
       "revoked": "Revoked {time}. Its token no longer works, and its name is free for a new worker.",
       "draining": "Draining since {time}. It finishes the runs it holds and claims no new ones until you resume it.",
@@ -2397,8 +2396,11 @@
       "checkouts": {
         "title": "Checkouts",
         "description": "Repositories its last heartbeat found; a run works in a worktree of one of them.",
+        "descriptionIn": "Repositories its last heartbeat found, all in <code>{path}</code>; a run works in a worktree of one of them.",
         "empty": "Shown after its first heartbeat.",
-        "none": "Its last heartbeat reported no checkout."
+        "none": "Its last heartbeat reported no checkout.",
+        "showAll": "Show all {count} checkouts",
+        "showFewer": "Show fewer"
       },
       "heartbeat": {
         "title": "Heartbeat, last 60 minutes",

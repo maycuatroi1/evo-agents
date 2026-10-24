@@ -41,6 +41,24 @@ A call into another file needs evidence: an import of the caller's file binds th
 the callee's file in scope without one (the same Go directory, Java or Kotlin package, C# namespace). A call that only
 shares its name with a symbol elsewhere gets no edge.
 
+### Cross-repo bindings
+
+Python module lookup is confined to the caller's indexed source, for imports, calls, base classes and return types.
+Within that source, calls try the exact dotted module path, then suffixes for a `src/` layout. Imports use the exact
+module path. There is no fallback to a same-named module in another source: each repo can install a different
+package under that name. Even two sources of the same repo may read different revisions, so they remain separate
+lookup scopes. This restriction does not change explicit bindings or references in documents.
+
+Declare a cross-repo dependency with a qualified `from`, `rel: depends_on` and `to` in `bindings/*.yaml` (the
+[README example](../README.md#trace-a-schema-change-across-repos)). The binding enters the graph as `declared`;
+`kg_impact` follows it across sources. An endpoint that does not resolve fails the build instead of dropping the
+dependency silently. Declaring a relationship asserts that it exists; the graph does not verify runtime behavior
+or schema compatibility for you.
+
+After upgrading the resolver, run `evo-agents kg build` for existing local graphs, or rebuild the project graph on
+the hub. The link-stage version invalidates old memo entries, including on an unchanged corpus, so the new snapshot
+removes previously inferred cross-source Python edges. Installing the code alone does not rewrite an existing graph.
+
 ### Seeds with many dependents
 
 `kg_impact` reads the edges into a seed 500 at a time, up to 2,000: only edges of the relations above, of a status it

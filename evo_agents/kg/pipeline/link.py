@@ -11,7 +11,9 @@ A call into another file (a ``calls`` reference of the structure stage) links it
 the file's imports name, ``resolved``: each ``via`` entry names the files to look in (a module, candidate
 paths, a package, a Go import path, a JS or TS specifier read through the nearest tsconfig) and the
 qualified name to find there. The first entry that finds a definition decides; two definitions are
-ambiguous and link nothing. A call through ``this``, ``self`` or ``super`` names a class of its own file
+ambiguous and link nothing. Python module names resolve only inside the caller's source: a matching
+module in another repo does not prove a dependency. Cross-repo dependencies can be declared in bindings.
+A call through ``this``, ``self`` or ``super`` names a class of its own file
 instead; the index's class hierarchy (``pipeline.hierarchy``) finds the method up that class's chain, and
 gives each class its ``inherits`` edges and each method its ``overrides`` edges. A Python call through a typed
 receiver (``extract.pytypes``) names the class by a type expression: the class an annotation names, or what a
@@ -42,7 +44,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "11"
+LINK_VERSION = "12"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -461,16 +463,14 @@ class Linker:
 
     def _module_files(self, module: str, source: str | None) -> list[str]:
         """Files of a Python module: its exact dotted path, else a module whose path ends with it (the
-        directory a ``src/`` layout puts on sys.path); the caller's own source first. Only calls use the
-        second form: the qualified name they look up must then be defined there too."""
-        found = []
+        directory a ``src/`` layout puts on sys.path), in the caller's source only. Another source may
+        have a different dependency environment. Only calls use the suffix form."""
         for table in ("module", "modsuffix"):
             entries = self.index[table].get(module, [])
             same = [e["node"] for e in entries if e["source"] == source]
             if same:
                 return same
-            found = found or [e["node"] for e in entries]
-        return found
+        return []
 
     def commit_target(self, sha: str, repo: str | None = None, strict: bool = False) -> str | None:
         """The item of the one commit read whose SHA starts with ``sha``: among the commits of ``repo`` alone when
@@ -572,7 +572,7 @@ class Linker:
             return self.commit_target(target["value"], target.get("repo"), strict=True)
         entries = self.index["module"].get(target["value"], [])
         same = [e for e in entries if e["source"] == target.get("source")]
-        return _unique(same or entries)
+        return _unique(same)
 
     # -- scanning -------------------------------------------------------------------------------
 
