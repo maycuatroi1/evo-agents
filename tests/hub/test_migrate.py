@@ -141,6 +141,7 @@ TABLES |= pg.PROBLEM_TABLES  # migration 0134
 TABLES |= pg.PROBLEM_EVIDENCE_TABLES  # migration 0137
 TABLES |= pg.INTAKE_TABLES  # migration 0138
 TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
+TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -3390,3 +3391,46 @@ def test_0141_keeps_the_dismissed_review_items_of_a_project_and_going_back_drops
     assert "kg_review_dismissals" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0141") :]
+
+
+def test_0142_keeps_the_kg_decisions_of_a_project_with_their_history_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0141")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0142")
+    d, e = hub_tables.kg_decisions, hub_tables.kg_decision_events
+    assert {"kg_decisions", "kg_decision_events"} <= tables(hub_db)
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        project = ids["project"]
+        node = {"project_id": project, "kind": "deprecate", "state": "active", "src": "app:file:a.py"}
+        first = conn.execute(insert(d).values({**node, "number": 1}).returning(d.c.id)).scalar_one()
+        conn.execute(insert(d).values({**node, "number": 2, "rel": "calls", "dst": "app:file:b.py"}))
+        conn.execute(insert(d).values({**node, "number": 3, "kind": "merge", "dst": "app:file:b.py"}))
+        conn.execute(insert(d).values({**node, "number": 4, "kind": "link", "rel": "implements", "dst": "usecase:X"}))
+        for bad in (
+            {**node, "number": 5, "kind": "rename"},
+            {**node, "number": 5, "state": "orphan"},  # an orphan is worked out when read, never stored
+            {**node, "number": 5, "rel": "calls"},  # an edge needs both rel and dst
+            {**node, "number": 5, "kind": "merge"},  # a merge names two nodes
+            {**node, "number": 5, "kind": "merge", "dst": "app:file:a.py"},  # two different ones
+            {**node, "number": 5, "kind": "link", "dst": "app:file:b.py"},  # a link names its relation
+            {**node, "number": 5, "src": ""},
+            {**node, "number": 0},
+            {**node, "number": 1},  # one decision per number of a project
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(insert(d).values(bad))
+        event = {"project_id": project, "rev": 1, "decision_id": first, "action": "decide", "actor_id": ids["user"]}
+        conn.execute(insert(e).values({**event, "reason": "replaced by b.py"}))
+        for bad in (
+            {**event, "rev": 2, "action": "approve", "reason": "x"},
+            {**event, "rev": 2, "reason": "   "},
+            {**event, "rev": 2, "reason": "x" * 1001},
+            {**event, "reason": "again"},  # one event per revision of a project
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(insert(e).values(bad))
+    move_to(hub_db, "0141", down=True)
+    assert not {"kg_decisions", "kg_decision_events"} & tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0142") :]

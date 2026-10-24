@@ -34,7 +34,8 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
-from evo_agents.kg.pipeline.binding import BINDING_VERSION, binding_item
+from evo_agents.kg.pipeline import curation
+from evo_agents.kg.pipeline.binding import BINDING_VERSION
 from evo_agents.kg.pipeline.link import LINK_VERSION, Held, build_index, index_digest, link_traced
 from evo_agents.kg.pipeline.stages import (
     DIRECTORY_CONNECTORS,
@@ -216,7 +217,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     edges: dict[tuple, dict] = {}
     derivs: dict[str, list[dict]] = defaultdict(list)
     where: dict[str, set] = defaultdict(set)
-    same: list[tuple[str, str]] = []
+    same: list[dict] = []  # identities, and the deprecations a curation item declared
     notes: dict[str, list[str]] = defaultdict(list)  # node id -> descriptions and docstrings, for search
     errors: list[str] = []
     issues: list[str] = []
@@ -249,8 +250,8 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
                     _strongest(edges[key], f)
                 derivs[key].append({"units": f["units"], "needs": sorted(set(f["needs"]) | {f["src"], f["dst"]})})
                 where[key].update(tuple(w) for w in f.get("where", []))
-            elif t == "same":
-                same.append((f["a"], f["b"]))
+            elif t in curation.CURATION_FACTS:
+                same.append(f)
             elif t in ("text", "doc") and f.get("field") not in UNSEARCHED_FIELDS:
                 notes[f["src"]].append(f["text"])
             elif t == "error":
@@ -272,7 +273,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
 
     # Entity resolution: declared identities only, smallest id represents the class.
     uf = _UnionFind()
-    for a, b in same:
+    for a, b in curation.split(same, graph.deprecations):
         if a in nodes and b in nodes:
             uf.union(a, b)
     rep = {n: uf.find(n) for n in nodes}
@@ -388,9 +389,9 @@ def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Co
             idx = idx or index_digest(index)
             out, _ = memo.run(
                 "binding",
-                BINDING_VERSION,
+                f"{BINDING_VERSION}.{curation.CURATION_VERSION}",
                 {"item": rec.item_id, "hash": r["hash"], "index": idx},
-                lambda rec=rec, r=r: binding_item(r, body(rec), index),
+                lambda rec=rec, r=r: curation.bind(r, body(rec), index),
             )
         else:
             out, _ = memo.run_traced(
@@ -597,6 +598,7 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         if errors:
             report.errors = errors
             return
+        add_curation(graph, coverage)
         target = project.root / "graph.sqlite"
         warm = previous_clusters(store, target)
         add_clusters(project, graph, coverage, warm)
@@ -632,6 +634,13 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         corpus.close()
     report.seconds = round(time.monotonic() - started, 3)
     return None
+
+
+def add_curation(graph: Graph, coverage: dict) -> None:
+    """Mark the parts of ``graph`` its deprecations name (``evo_agents.kg.pipeline.curation``) and count them in
+    ``coverage["curation"]``; a graph without a deprecation keeps its coverage as it is."""
+    if graph.deprecations:
+        coverage["curation"] = curation.apply(graph)
 
 
 def add_clusters(project: Project, graph: Graph, coverage: dict, warm: Clusters | None) -> None:
