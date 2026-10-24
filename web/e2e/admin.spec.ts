@@ -80,7 +80,7 @@ test.describe("overview", () => {
     await expect(failing).toContainText(`1 lần build đồ thị lỗi ở ${project}`);
     await expect(failing).toContainText(`Lỗi gần nhất: build #${build.id}`);
     await failing.getByRole("link").click();
-    await expect(page).toHaveURL(new RegExp(`/p/${project}/kg\\?builds=failed#build-history$`));
+    await expect(page).toHaveURL(new RegExp(`/p/${project}/kg/builds\\?builds=failed#build-history$`));
     const history = page.getByTestId("kg-history");
     await expect(history).toHaveAttribute("data-filter", "failed");
     await expect(history.getByTestId("history-failed")).toHaveAttribute("aria-pressed", "true");
@@ -89,7 +89,7 @@ test.describe("overview", () => {
     await expect(rows.first()).toContainText(`#${build.id}`);
     await history.getByTestId("history-all").click(); // every build again, and the URL without the filter
     await expect(history).toHaveAttribute("data-filter", "all");
-    await expect(page).toHaveURL(new RegExp(`/p/${project}/kg$`));
+    await expect(page).toHaveURL(new RegExp(`/p/${project}/kg/builds$`));
 
     // Tokens about to expire, opening the token list on them; the idle token is among them, still active.
     await page.goto("/admin");
