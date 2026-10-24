@@ -26,6 +26,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.kg import audit
+from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import search as text_search
 from evo_agents.kg import store as kg_store
 from evo_agents.kg.corpus import Corpus
@@ -51,7 +52,7 @@ from evo_agents.kg.policy import Label, Policy, any_of, join_all
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds
-from evo_agents.kg.store import Graph, StaleSchema, Store, edge_id, key_conflicts, label_columns
+from evo_agents.kg.store import Clusters, Graph, StaleSchema, Store, edge_id, key_conflicts, label_columns
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
@@ -501,9 +502,9 @@ def build_project(
     report = BuildReport(project.name, ok=False)
     crashed = None
     try:
-        _build(project, report, store, memo)
+        warm = _build(project, report, store, memo)
         if verify and report.ok:
-            report.verify = verify_build(project, report.content_hash, cold=cold)
+            report.verify = verify_build(project, report.content_hash, cold=cold, warm=warm)
             report.ok = report.verify["match"]
     except BaseException as exc:
         crashed = type(exc).__name__
@@ -515,8 +516,8 @@ def build_project(
 
 def build_inputs(project: Project, corpus: Corpus) -> str | None:
     """Digest of what a build makes of the corpus state besides the state: the code (evo-agents' version, the store
-    schema, each stage's version, the graphify it would use), the project's knowledge.yaml and ontology, and the
-    cursors its coverage copies (``freshness.add_reads``). None when the ontology does not load, which fails a build."""
+    schema, each stage's version, the graphify it would use, the clustering's version, parameters and engine), the
+    project's knowledge.yaml and ontology, and the cursors its coverage copies (``freshness.add_reads``). None when the ontology does not load, which fails a build."""
     from evo_agents.kg.extract import graphify as gfy
 
     try:
@@ -530,6 +531,7 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
         "knowledge": project.knowledge,
         "ontology": ontology,
         "cursors": {sid: corpus.cursor(sid) for sid in sources},
+        "clusters": kg_clusters.inputs(),
     }
     return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
 
@@ -566,7 +568,8 @@ def unchanged(project: Project) -> BuildReport | None:
     return report
 
 
-def _build(project: Project, report: BuildReport, store: Store | None, memo: Memo | None) -> None:
+def _build(project: Project, report: BuildReport, store: Store | None, memo: Memo | None) -> Clusters | None:
+    """Build into ``store`` (the project's graph.sqlite when None); the clusters the build started from."""
     started = time.monotonic()
     corpus = project.corpus()
     own_memo, own_store = memo is None, store is None
@@ -586,6 +589,8 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
             report.errors = errors
             return
         target = project.root / "graph.sqlite"
+        warm = previous_clusters(store, target)
+        add_clusters(project, graph, coverage, warm)
         if store is None:
             found = Store.stored_schema(target)
             if found not in (None, kg_store.SCHEMA_VERSION):
@@ -606,6 +611,7 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         report.content_hash = store.build_row(b)["content_hash"]
         report.nodes, report.edges, report.units = counts["nodes"], counts["edges"], counts["units"]
         report.dangling_edges = coverage["dangling_edges"]
+        return warm
     finally:
         # Since Python 3.11 a connection left open is freed only by the cycle collector (its statement cache refers back
         # to it), and Windows cannot replace a file a connection holds: the next rebuild would fail on graph.sqlite-wal.
@@ -615,11 +621,85 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
             memo.close()
         corpus.close()
     report.seconds = round(time.monotonic() - started, 3)
+    return None
 
 
-def verify_build(project: Project, expected: str, *, cold: bool = False) -> dict:
+def add_clusters(project: Project, graph: Graph, coverage: dict, warm: Clusters | None) -> None:
+    """Compute ``graph``'s clusters from ``warm`` when the extra is installed (``evo_agents.kg.clusters``), and say
+    in ``coverage["clusters"]`` what came of it. A graph whose clustering fails is built without clusters."""
+    if not kg_clusters.available():
+        coverage["clusters"] = kg_clusters.missing()
+        return
+    try:
+        graph.clusters = kg_clusters.compute(graph, project.policy, warm)
+    except Exception as exc:  # the engine's errors are its own classes; the graph stands without clusters
+        coverage["clusters"] = {"computed": False, "reason": f"clustering failed: {type(exc).__name__}: {exc}"}
+        return
+    coverage["clusters"] = {**kg_clusters.coverage(graph.clusters), "warm": warm is not None}
+
+
+def previous_clusters(
+    store: Store | None, target: Path, *, before: int | None = None, close: bool = False
+) -> Clusters | None:
+    """The clusters a build starts from: those of the latest ready build of ``store`` (before build ``before``), or,
+    when ``store`` is None or has none and is not ``target`` (a staging store), those of the latest build in
+    ``target``. None without one, and for a file of another schema. ``close`` closes ``store``."""
+    try:
+        if store is not None:
+            b = store.latest_ready(before)
+            if b is not None:
+                return store.clusters(b)
+            if before is not None or store.path == target:
+                return None
+        if not target.exists():
+            return None
+        try:
+            found = Store.open_file(target)
+        except (StaleSchema, sqlite3.Error):
+            return None
+        try:
+            b = found.latest_ready()
+            return found.clusters(b) if b is not None else None
+        finally:
+            found.close()
+    finally:
+        if close and store is not None:
+            store.close()
+
+
+def warm_start_of(project: Project, content_hash: str) -> Clusters | None:
+    """The clusters the project's ready build of ``content_hash`` started from: those of the ready build before it
+    in the project's store. None when the store, that build or the one before it is gone."""
+    target = project.root / "graph.sqlite"
+    if not target.exists():
+        return None
+    try:
+        store = Store.open_file(target)
+    except (StaleSchema, sqlite3.Error):
+        return None
+    try:
+        b = store.ready_build_of(content_hash)
+    except sqlite3.Error:
+        store.close()
+        return None
+    if b is None:
+        store.close()
+        return None
+    return previous_clusters(store, target, before=b, close=True)
+
+
+_FIND = object()
+
+
+def verify_build(
+    project: Project, expected: str, *, cold: bool = False, warm: Clusters | None | object = _FIND
+) -> dict:
     """Rebuild from the corpus into an empty store and compare content hashes (property P1).
-    With ``cold`` the memo starts empty too, which also checks that memoized outputs are faithful."""
+    With ``cold`` the memo starts empty too, which also checks that memoized outputs are faithful. ``warm`` is the
+    clusters the build started from; by default those of the build before the project's ready build of
+    ``expected`` (``warm_start_of``), since cluster ids follow the build before."""
+    if warm is _FIND:
+        warm = warm_start_of(project, expected)
     tmp = Path(tempfile.mkdtemp(prefix="evo-kg-verify-"))
     try:
         store = Store(tmp / "graph.sqlite")
@@ -628,6 +708,7 @@ def verify_build(project: Project, expected: str, *, cold: bool = False) -> dict
         graph, coverage, errors, _ = run_pipeline(project, corpus, memo)
         if errors:
             return {"match": False, "errors": errors[:10]}
+        add_clusters(project, graph, coverage, warm)
         b = store.write(graph, state_digest=corpus.state_digest(), coverage=coverage, stats={}, policy=project.policy)
         got = store.build_row(b)["content_hash"]
         store.close()
