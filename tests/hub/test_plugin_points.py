@@ -313,7 +313,7 @@ def test_plugin_mcp_tool_is_listed_with_the_installed_description_only_where_ena
     assert "does not enable plugin sample" in rpc(client, hub["owner"], call(2, "sample__echo"))["content"][0]["text"]
     enable(client, hub["owner"])
     listed = rpc(client, hub["owner"], request(1, "tools/list"))["tools"]
-    assert len(listed) == 39 and listed[-1]["name"] == "sample__echo"  # the hub's 38 tools, then the plugin's
+    assert len(listed) == 40 and listed[-1]["name"] == "sample__echo"  # the hub's 39 tools, then the plugin's
     assert listed[-1]["description"] == "Echo"  # the manifest's title, as no description is given: never the backend's
     assert listed[-1]["inputSchema"] == {"type": "object"}
     assert tool_names(client, hub["owner"], project=None)[-1] != "sample__echo"  # no project, no plugin tools
