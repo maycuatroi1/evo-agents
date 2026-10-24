@@ -1439,6 +1439,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Decisions
+         * @description The decisions on the graph you can see, newest first, with their history and the revision to write against.
+         */
+        get: operations["list_decisions_v1_kg__project__decisions_get"];
+        put?: never;
+        /**
+         * Take Decision
+         * @description Deprecate a node or an edge, merge two node ids or link two nodes, with a reason: active at once.
+         */
+        post: operations["take_decision_v1_kg__project__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/decisions/{number}/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step Decision
+         * @description Accept or reject a proposal, or undo an active decision, with a reason.
+         */
+        post: operations["step_decision_v1_kg__project__decisions__number___step__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/audit": {
         parameters: {
             query?: never;
@@ -17168,6 +17212,104 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** KgDecision */
+        KgDecision: {
+            /**
+             * Number
+             * @description the decision's number in the project, from 1
+             */
+            number: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "deprecate" | "merge" | "link";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "proposed" | "active" | "rejected" | "undone" | "orphan";
+            /**
+             * Src
+             * @description the node deprecated, the first node merged, or the edge's source
+             */
+            src: string;
+            /**
+             * Rel
+             * @description the edge's type, for an edge deprecated or linked
+             */
+            rel: string | null;
+            /**
+             * Dst
+             * @description the edge's target, or the node merged into src's id
+             */
+            dst: string | null;
+            /**
+             * History
+             * @description oldest first; the first step says why it was taken
+             */
+            history: components["schemas"]["KgDecisionEvent"][];
+        };
+        /** KgDecisionEvent */
+        KgDecisionEvent: {
+            /**
+             * Rev
+             * @description the project's decision revision this step made
+             */
+            rev: number;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "propose" | "decide" | "accept" | "reject" | "undo";
+            /**
+             * By
+             * @description the login of the member, or of the agent's owner, who took the step
+             */
+            by: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Build Id
+             * @description the build the graph was at; null once that build is gone
+             */
+            build_id: number | null;
+        };
+        /** KgDecisionList */
+        KgDecisionList: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Rev
+             * @description the project's decision revision: what a write names as base_rev
+             */
+            rev: number;
+            /**
+             * Can Decide
+             * @description true for a writer of the project
+             */
+            can_decide: boolean;
+            /**
+             * Decisions
+             * @description newest first
+             */
+            decisions: components["schemas"]["KgDecision"][];
+        };
+        /** KgDecisionStep */
+        KgDecisionStep: {
+            /** Reason */
+            reason: string;
+            /**
+             * Base Rev
+             * @description the decision revision you read
+             */
+            base_rev: number;
+        };
         /**
          * KgDuty
          * @description A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it.
@@ -19363,6 +19505,27 @@ export interface components {
             left_out: number;
             /** Truncated */
             truncated: boolean;
+        };
+        /** NewKgDecision */
+        NewKgDecision: {
+            /** Reason */
+            reason: string;
+            /**
+             * Base Rev
+             * @description the decision revision you read
+             */
+            base_rev: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "deprecate" | "merge" | "link";
+            /** Src */
+            src: string;
+            /** Rel */
+            rel?: string | null;
+            /** Dst */
+            dst?: string | null;
         };
         /** Night */
         Night: {
@@ -37683,6 +37846,276 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_decisions_v1_kg__project__decisions_get: {
+        parameters: {
+            query?: {
+                /** @description only the decisions in this state */
+                state?: ("proposed" | "active" | "rejected" | "undone" | "orphan") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgDecisionList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    take_decision_v1_kg__project__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewKgDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgDecision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    step_decision_v1_kg__project__decisions__number___step__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the decision's number in the project */
+                number: number;
+                /** @description accept or reject a proposal, or undo an active decision */
+                step: "accept" | "reject" | "undo";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KgDecisionStep"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgDecision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

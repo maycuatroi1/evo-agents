@@ -1942,7 +1942,8 @@
       "notFoundTitle": "Không tìm thấy node",
       "notFoundDescription": "Node không có trong đồ thị hiện tại, hoặc nhãn của nó cao hơn mức hiển thị của bạn.",
       "searchInstead": "Tìm trong đồ thị",
-      "olderBuild": "Kho blob chưa trả lời nên trang đang đọc build #{id}, cũ hơn build mới nhất."
+      "olderBuild": "Kho blob chưa trả lời nên trang đang đọc build #{id}, cũ hơn build mới nhất.",
+      "deprecated": "Đã cho nghỉ theo quyết định {number}: {reason}. Các công cụ kg bỏ qua nó trừ khi được yêu cầu."
     },
     "evidence": {
       "title": "Bằng chứng",
@@ -2126,6 +2127,68 @@
       "forbidden": "Cần vai trò writer trên dự án để bỏ qua mục.",
       "gone": "Mục đó không còn trong hàng đợi bạn thấy.",
       "readerNote": "Bạn đọc được hàng đợi; writer của dự án mới bỏ qua được mục."
+    },
+    "decisions": {
+      "title": "Quyết định",
+      "clusterTitle": "Quyết định về các thành viên của cụm",
+      "reviewTitle": "Quyết định cần rà duyệt",
+      "none": "Chưa có quyết định nào nhắc tới mục này.",
+      "readerNote": "Cần vai trò người viết trong dự án này để quyết định.",
+      "proposed": "Do tác tử đề xuất",
+      "noProposals": "Không có đề xuất nào đang chờ người viết.",
+      "orphans": "Mồ côi",
+      "orphansNote": "Nút hoặc cạnh của chúng không còn trong lần dựng mới nhất; lần dựng bỏ qua chúng. Hãy hoàn tác những quyết định không còn đúng.",
+      "noOrphans": "Không có quyết định nào mồ côi.",
+      "kinds": {
+        "deprecate": "Cho nghỉ",
+        "merge": "Gộp",
+        "link": "Liên kết"
+      },
+      "states": {
+        "proposed": "Đã đề xuất",
+        "active": "Đang áp dụng",
+        "rejected": "Đã từ chối",
+        "undone": "Đã hoàn tác",
+        "orphan": "Mồ côi"
+      },
+      "actions": {
+        "propose": "{by} đã đề xuất quyết định {number}",
+        "decide": "{by} đã đưa ra quyết định {number}",
+        "accept": "{by} đã chấp nhận quyết định {number}",
+        "reject": "{by} đã từ chối quyết định {number}",
+        "undo": "{by} đã hoàn tác quyết định {number}"
+      },
+      "steps": {
+        "accept": "Chấp nhận",
+        "reject": "Từ chối",
+        "undo": "Hoàn tác"
+      },
+      "take": {
+        "deprecate": "Cho nghỉ",
+        "merge": "Gộp",
+        "link": "Thêm liên kết"
+      },
+      "hints": {
+        "deprecate": "Cho nghỉ nút này, hoặc khi có quan hệ và nút kia thì cho nghỉ cạnh giữa chúng. Các công cụ sau đó sẽ bỏ qua nó.",
+        "merge": "Gộp nút này với nút khác: chúng cùng nghĩa, id nhỏ hơn giữ id kia làm bí danh.",
+        "link": "Thêm một cạnh từ nút này tới nút khác; quan hệ phải có trong bản thể học."
+      },
+      "kindLabel": "Quyết định",
+      "relLabel": "Quan hệ",
+      "toLabel": "Id của nút kia",
+      "reasonLabel": "Vì sao",
+      "reasonPlaceholder": "Nói rõ lý do, cho người đọc đồ thị sau này",
+      "cancel": "Hủy",
+      "done": {
+        "take": "Đã lưu quyết định; lần dựng sau sẽ áp dụng.",
+        "accept": "Đã chấp nhận quyết định {number}; lần dựng sau sẽ áp dụng.",
+        "reject": "Đã từ chối quyết định {number}.",
+        "undo": "Đã hoàn tác quyết định {number}; lần dựng sau sẽ bỏ nó."
+      },
+      "forbidden": "Cần vai trò người viết trong dự án này để quyết định.",
+      "gone": "Nút, cạnh hoặc quyết định không có trong đồ thị bạn xem được.",
+      "stale": "Ai đó vừa quyết định trước bạn. Hãy tải lại các quyết định rồi thử lại.",
+      "invalid": "Hub đã từ chối quyết định này."
     }
   },
   "workers": {

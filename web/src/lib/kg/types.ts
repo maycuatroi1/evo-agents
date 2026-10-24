@@ -37,6 +37,12 @@ export type ReviewNode = Schemas["ReviewNode"];
 export type RuleCount = Schemas["RuleCount"];
 export type Dismissal = Schemas["Dismissal"];
 export type ReviewRule = ReviewItem["rule"];
+export type KgDecision = Schemas["KgDecision"];
+export type KgDecisionEvent = Schemas["KgDecisionEvent"];
+export type KgDecisionList = Schemas["KgDecisionList"];
+export type NewKgDecision = Schemas["NewKgDecision"];
+export type DecisionKind = KgDecision["kind"];
+export type DecisionState = KgDecision["state"];
 
 /** The neighbourhood's bounds, as the API enforces them (`evo_agents.hub.kg_web`). */
 export const MAX_HOPS = 2;

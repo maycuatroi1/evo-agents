@@ -25,6 +25,7 @@ import { clusterHref, kgHref, nodeHref, type ReviewFilter, type ReviewState, rev
 import type { ReviewItem, ReviewQueue } from "@/lib/kg/types";
 
 import { KindBadge } from "./badges";
+import { ReviewDecisions } from "./decisions";
 
 const STATES: readonly ReviewState[] = ["open", "dismissed", "all"];
 
@@ -243,6 +244,7 @@ export function KgReviewPage({ project, filter, error }: { project: string; filt
       <QueryView state={state} loading={<PageSkeleton />}>
         {(queue) => <Queue project={project} filter={filter} queue={queue} />}
       </QueryView>
+      <ReviewDecisions project={project} />
     </>
   );
 }

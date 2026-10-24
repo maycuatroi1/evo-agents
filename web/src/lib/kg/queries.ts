@@ -9,7 +9,8 @@ import { GROUP_SHOWN, type Hops, type KgBuilds } from "./types";
 /**
  * The knowledge graph pages' reads of the API, as TanStack Query options shared by the server (prefetch) and the
  * browser. All of them are reads: the web never queues a build. The review queue's read and its one write, a writer
- * dismissing an item, are in `./review`, which only the review page loads.
+ * dismissing an item, are in `./review`, which only the review page loads; the decisions and a writer's steps on them
+ * are in `./decisions`.
  */
 export const BUILDS_SHOWN = 20;
 /** While a build waits or runs, the status page asks again this often (ms). */
@@ -33,6 +34,7 @@ export const kgKeys = {
   review: (project: string) => ["kg", project, "review"] as const,
   reviewList: (project: string, filter: ReviewFilter) =>
     ["kg", project, "review", filter.rule ?? "", filter.cluster ?? "", filter.state ?? "open"] as const,
+  decisions: (project: string) => ["kg", project, "decisions"] as const,
 };
 
 /**
