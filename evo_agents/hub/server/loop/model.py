@@ -26,18 +26,25 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol
 
 ENGINES = ("rules/1", "rules/2")  # loop_items.engine of the core work items, oldest first
 RULES_1, RULES_2 = ENGINES
 ENGINE = RULES_2  # the engine of this release (plan problem-oriented-hub): it goes from the problem a goal answers
 
-KINDS = ("brainstorm", "use_case", "build", "deliver", "discover")
-BRAINSTORM, USE_CASE, BUILD, DELIVER, DISCOVER = KINDS
+KINDS = ("brainstorm", "use_case", "build", "deliver", "discover", "act")
+BRAINSTORM, USE_CASE, BUILD, DELIVER, DISCOVER, ACT = KINDS
 CYCLES = ("business", "development")
 BUSINESS, DEVELOPMENT = CYCLES
-CYCLE_OF = {BRAINSTORM: BUSINESS, USE_CASE: BUSINESS, BUILD: DEVELOPMENT, DELIVER: DEVELOPMENT, DISCOVER: BUSINESS}
+CYCLE_OF = {
+    BRAINSTORM: BUSINESS,
+    USE_CASE: BUSINESS,
+    BUILD: DEVELOPMENT,
+    DELIVER: DEVELOPMENT,
+    DISCOVER: BUSINESS,
+    ACT: BUSINESS,
+}
 # The kinds a core plugin's Loop rules make (extension point loop_rules): of cycle business, so they count against
 # ``loop.business.max_running`` with the core work items of that cycle. The routes and the web know the core kinds of
 # KINDS alone: a work item of these kinds is read through its plugin until the Loop's pages show them.
@@ -104,6 +111,7 @@ SOLUTION_CELLS = ("solution", "unique_value_proposition")
 # plugin srs is on in the project and it has an SRS document not archived
 USE_CASE_MODES = ("always", "never", "auto")
 ALWAYS, NEVER, AUTO_MODE = USE_CASE_MODES
+ACT_KEY = "act:"  # the start of the key of an act: ``act:<canvas>:<claim>:b<baseline>`` (loop/1 addition, rules/2)
 CLAIM_BUILD = "build:claim:"  # the start of the key of a build rules/2 made straight from a claim
 
 # Claims, goals, tasks and runs as the engine reads them
@@ -164,6 +172,7 @@ class ClaimView:
     status: str | None
     use_cases: tuple[str, ...] = ()
     cell: str | None = None
+    delivery: str = "code"  # canvas_claims.delivery: code takes the build path, action an act work item
 
 
 @dataclass(frozen=True)
@@ -210,6 +219,7 @@ class TaskView:
     number: int
     group: str | None
     sprint_active: bool = False
+    due_on: date | None = None
 
     @property
     def open(self) -> bool:

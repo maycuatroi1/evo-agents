@@ -23,8 +23,8 @@ import { changeOf, type ClaimForm, conflictsOf, formOf, LIMITS, rebase, testCard
 
 /** The content of a claim as it is now: what an edit starts from. */
 function contentOf(claim: CanvasClaimDetail): CanvasContent {
-  const { cell, position, text, status, confidence, test_card, archived, use_cases, signal_keys, problems } = claim;
-  return { cell, position, text, status, confidence, test_card, archived, use_cases, signal_keys, problems };
+  const { cell, position, text, status, confidence, delivery, test_card, archived, use_cases, signal_keys, problems } = claim;
+  return { cell, position, text, status, confidence, delivery, test_card, archived, use_cases, signal_keys, problems };
 }
 
 /**

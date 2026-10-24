@@ -9,7 +9,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-import { CELLS, type ClaimForm, CONFIDENCES, LIMITS, type SignalKeyOption, STATUSES } from "./model";
+import { CELLS, type ClaimForm, CONFIDENCES, DELIVERIES, LIMITS, type SignalKeyOption, STATUSES } from "./model";
 import { TestCardFields } from "./test-card-fields";
 
 const FIELD = "flex min-w-0 flex-col gap-1.5";
@@ -68,6 +68,7 @@ export function ClaimFields({
   const tCell = useTranslations("canvas.cell");
   const tStatus = useTranslations("canvas.status");
   const tConfidence = useTranslations("canvas.confidence");
+  const tDelivery = useTranslations("canvas.delivery");
   const ids = useId();
   const set = <K extends keyof ClaimForm>(field: K, value: ClaimForm[K]) => onChange({ ...form, [field]: value });
   return (
@@ -140,6 +141,26 @@ export function ClaimFields({
       <p id={`${ids}-status-help`} className="-mt-3 text-xs text-fg-subtle">
         {form.status === "validated" ? t("validatedHelp") : form.status === "testing" ? t("testingHelp") : t("statusHelp")}
       </p>
+      <div className={FIELD}>
+        <Label htmlFor={`${ids}-delivery`}>{t("delivery")}</Label>
+        <NativeSelect
+          id={`${ids}-delivery`}
+          value={form.delivery}
+          onChange={(event) => set("delivery", event.target.value as ClaimForm["delivery"])}
+          className="w-full sm:w-1/3"
+          aria-describedby={`${ids}-delivery-help`}
+          data-testid="claim-delivery"
+        >
+          {DELIVERIES.map((delivery) => (
+            <NativeSelectOption key={delivery} value={delivery}>
+              {tDelivery(delivery)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <p id={`${ids}-delivery-help`} className="text-xs text-fg-subtle">
+          {t("deliveryHelp")}
+        </p>
+      </div>
       <TestCardFields form={form} onChange={onChange} keys={keys} lacks={lacks} />
       <fieldset className="flex min-w-0 flex-col gap-4">
         <legend className="mb-3 text-[13px] font-semibold text-foreground">{t("links")}</legend>
