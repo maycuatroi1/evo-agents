@@ -1999,7 +1999,18 @@ evo-agents hub problem close P-1 --status solved --reason "fuzzy search shipped"
 evo-agents hub problem set P-1 --reopen --project demo
 ```
 
-The MCP tools `problem_list` and `problem_show` read the same. The web lists a project's problems at
+```sh
+evo-agents hub problem evidence add P-1 --source-kind hub_chat --source-uri hub://demo/chats/12 --locator "message 40" \
+  --excerpt "Searches for an old name find nothing." --signal complaint --label internal --project demo
+evo-agents hub problem evidence list P-1 --project demo        # E-1, E-2, ... with who confirmed each
+evo-agents hub problem evidence confirm P-1 E-1 --project demo
+evo-agents hub intake start --source messenger:internal:"Shop group" --project demo   # I-<next>
+evo-agents hub intake put I-1 result.json --project demo       # an evo-intake/1 document; see docs/intake.md
+evo-agents hub intake show I-1 --project demo
+evo-agents hub intake list --status open --project demo
+```
+
+`docs/intake.md` has the intakes and `docs/problems.md` the evidence. The MCP tools `problem_list` and `problem_show` read the same. The web lists a project's problems at
 `/p/{p}/problems` and shows one at `/p/{p}/problems/P-1`, where a writer adds, edits, closes and reopens it.
 
 ## Goals

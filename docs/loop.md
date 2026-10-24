@@ -45,8 +45,8 @@ names no canvas.
 
 A work item (table `loop_items`) is one piece of work the Loop keeps track of. It has:
 
-- a kind and its cycle: `brainstorm`, `use_case` and `discover` of the business cycle, `build` and `deliver` of the
-  development cycle;
+- a kind and its cycle: `brainstorm`, `use_case`, `discover` and `act` of the business cycle, `build` and `deliver` of
+  the development cycle;
 - its ancestors: the goal, the claim, the SRS document, use case and version, the frame task, the plan and the run;
   and the work item it came of (`parent_id`), so a chain reads from the problem and the goal to the release;
 - the problem it goes from (`problem_id`): the one its goal answered when `rules/2` made it, or the one of the work
@@ -111,12 +111,22 @@ is `rules/1`'s.
 | 3a | `canvas.baseline` moves a claim of the cell Solution or Unique value proposition to testing | the claim serves an active goal with a metric, and the project is in use cases (`loop.use_cases`) | a `use_case`, as `rules/1`'s row 3, and its chain as rows 6 to 11 | `use_case:<canvas>:<claim>:b<baseline>` |
 | 3b | the same | the project is not in use cases | a `build` straight from the claim, its author run's request the problem, the goal, the claim and its test card; then rows 9 to 11 | `build:claim:<canvas>:<claim>:b<baseline>` |
 | 3c | `canvas.baseline` moves a claim of the Problem cell to testing | the claim serves an active goal with a metric | a `discover` of `@strategist`: a task run that runs the claim's test card, adds what it finds as evidence and proposes what the evidence argues for; done once the run is done | `discover:<canvas>:<claim>:b<baseline>` |
+| 3e | `canvas.baseline` moves a claim of the cell Solution or Unique value proposition to testing | the claim's `delivery` is `action`, and the claim serves an active goal with a metric | an `act` (below), in place of rows 3a and 3b | `act:<canvas>:<claim>:b<baseline>` |
 | 3d | `canvas.baseline` moves a claim of any other cell to testing | | no core work item; a core plugin's rule decides (`docs/marketing-plugin.md` for the cells Channels and Customer segments) | |
 
 Each work item of 3a to 3c waits in `watching` (`stable`) until the baseline has been approved `loop.stable_hours`. A
 `discover` whose run fails, is lost or stops on its caps counts a failure as any kind does (below), and one whose claim
 is invalidated or retired is cancelled. A project is in use cases when `loop.use_cases` is `always`, or `auto` (the
 default) and the plugin srs is on in the project and it has an SRS document not archived; `never` puts none in.
+
+A claim has a field `delivery`, `code` (the default) or `action`. A claim whose delivery is `code` goes the way of rows 3a
+and 3b as before. For a solution that needs no code (a call, a training, a change of a process), row 3e makes an `act`
+work item: the Loop hands out no run but a task of the plugin tasks that carries the problem, the goal, the claim and
+its test card, assigned to the claim's owner, else the goal's owner, else a writer of the project. The work item is
+`done` when the task is done; a task cancelled or past its due day is a failure like any other, so it goes to triage.
+An `act` is held by the breaker only, not by the caps of concurrency and rate, because it starts no run. Set the
+field with `evo-agents hub canvas edit --claim CL-3 --delivery action` or in the claim's page. Contract loop/1 grew by
+additions only: the kind `act`, the field `delivery` and the key form `act:`; a work item made earlier reads as it did.
 
 Every work item `rules/2` makes carries the problem its goal answers (`loop_items.problem_id`), and one that comes of
 another work item carries that one's when it has one: the `build` of a use case, the `deliver` of a build. A work item
