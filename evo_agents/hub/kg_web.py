@@ -1,6 +1,7 @@
 """What the hub's web pages read of a project's knowledge graph: node search, one node with its neighbours, the
 neighbourhood the graph view draws, how many visible nodes of each kind the graph holds, its shape (visible edges by
-source kind, edge type and target kind), and the commit each source the member can see read.
+source kind, edge type and target kind), the commit each source the member can see read, and the cluster map with one
+cluster and the compact whole graph (``evo_agents.hub.kg_map``).
 
 Each read opens the project's latest successful build the way the kg_* tools do (``evo_agents.hub.kg_graph``: the
 verified artifact cache, the fallback to a cached build when the blob store does not answer) and answers with the
@@ -30,6 +31,7 @@ from collections import deque
 from collections.abc import Callable
 from typing import TypeVar
 
+from evo_agents.hub import kg_map
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
 from evo_agents.kg import freshness
@@ -134,6 +136,31 @@ class WebSession(HubSession):
                 counts[key] = counts.get(key, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return [{"src_kind": k[0], "rel": k[1], "dst_kind": k[2], "count": count} for k, count in ordered]
+
+    def cluster_map(self, with_nodes: bool = True) -> dict:
+        """The visible level-1 clusters, the links between them and (``with_nodes``) their visible members
+        (``evo_agents.hub.kg_map``); empty with a reason when the build has none or none is visible."""
+        if self.error:
+            return kg_map.cluster_map(kg_map.View(reason=kg_map.NO_VISIBLE), with_nodes)
+        store, b = self._visible_store()
+        return kg_map.cluster_map(kg_map.view(store, b, self.visible), with_nodes)
+
+    def cluster(self, cluster_id: str) -> dict:
+        """One visible cluster with its subclusters, members and neighbours. Raises NotVisible."""
+        if self.error:
+            raise NotVisible(cluster_id)
+        store, b = self._visible_store()
+        found = kg_map.cluster_detail(kg_map.view(store, b, self.visible), cluster_id)
+        if found is None:
+            raise NotVisible(cluster_id)
+        return found
+
+    def whole_graph(self, limit: int = kg_map.WHOLE_NODES) -> dict:
+        """Every visible node (at most ``limit``) and edge between them, compact, with each node's level-1 cluster."""
+        if self.error:
+            return {"nodes": [], "rels": [], "edges": [], "truncated": False}
+        store, b = self._visible_store()
+        return kg_map.whole(store, b, self.visible, limit)
 
     def _degrees(self, store: Store, ids, b: int) -> dict[str, int]:
         """Visible edges of each node of ``ids``, by the same ceiling ``visible`` compares labels with."""

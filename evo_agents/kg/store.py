@@ -141,6 +141,25 @@ HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov", *CLUST
 KEEP_BUILDS = 2
 
 
+def _live(t: str) -> str:
+    """LIVE for the rows of table alias ``t``."""
+    return f"{t}.tx_from <= :b AND ({t}.tx_to IS NULL OR {t}.tx_to > :b)"
+
+
+def _owner(t: str) -> str:
+    """The node clusters count the node of table alias ``t`` as (``evo_agents.kg.clusters.project``): a Symbol's
+    ``props.file``, a Section's ``props.item``, any other node itself."""
+    return (
+        f"CASE {t}.kind WHEN 'Symbol' THEN json_extract({t}.props, '$.file')"
+        f" WHEN 'Section' THEN json_extract({t}.props, '$.item') ELSE {t}.node_id END"
+    )
+
+
+def _seen(t: str) -> str:
+    """SEEN for the rows of table alias ``t``."""
+    return f"({t}.label_aud IS NULL OR aud_seen({t}.label_aud))"
+
+
 def edge_id(src: str, rel: str, dst: str) -> str:
     return "e:" + sha256(f"{src}\x1f{rel}\x1f{dst}")[7:23]
 
@@ -872,6 +891,86 @@ class Store:
             {"b": b},
         )
         return [(r[0], r[1], r[2], tuple(r[3:6]), tuple(r[6:9]), tuple(r[9:12]), r[12]) for r in rows]
+
+    def cluster_nodes(self, b: int) -> list[dict]:
+        """The live members of build b's clusters whose node is live and has an audience within ``reader``: each with
+        its node's id, kind, name, path, label (level, location, integrity, audience), level-1 cluster and level-2
+        cluster (None outside one), by id. Empty for a file without the cluster tables."""
+        if not self.has_clusters():
+            return []
+        rows = self.db.execute(
+            "SELECT m.node_id, n.kind, n.name, json_extract(n.props, '$.path'), m.cluster_id, m.sub_id,"
+            " n.label_lvl, n.label_loc, n.label_int, n.label_aud FROM cluster_members m"
+            f" JOIN nodes n ON n.node_id = m.node_id AND {_live('n')} AND {_seen('n')}"
+            f" WHERE {_live('m')} ORDER BY m.node_id",
+            {"b": b},
+        )
+        return [
+            {
+                "id": r[0],
+                "kind": r[1],
+                "name": r[2],
+                "path": r[3],
+                "cluster": r[4],
+                "sub": r[5],
+                "label": (r[6], r[7], r[8], stored_audience(r[9])),
+            }
+            for r in rows
+        ]
+
+    def member_links(self, b: int, skip_rels) -> list[tuple]:
+        """The live edges of build b between two members of its clusters, as clusters project them
+        (``evo_agents.kg.clusters``): a Symbol counts as the file of its ``props.file``, a Section as the item of its
+        ``props.item``. Edges of ``skip_rels``, edges whose node is not live or has an audience beyond ``reader``, and
+        edges inside one member are left out. Rows of (source member, target member, edge label, source label, target
+        label, count), each label (level, location, integrity, audience), in no particular order."""
+        if not self.has_clusters():
+            return []
+        skip = sorted(skip_rels)
+        marks = ", ".join(f":r{i}" for i in range(len(skip))) or "''"
+
+        def label(t: str) -> str:
+            return f"{t}.label_lvl, {t}.label_loc, {t}.label_int, {t}.label_aud"
+
+        members = f"(SELECT node_id FROM cluster_members m WHERE {_live('m')})"
+        rows = self.db.execute(
+            f"SELECT {_owner('s')} AS a, {_owner('d')} AS z, {label('e')}, {label('s')}, {label('d')}, count(*)"
+            " FROM edges e"
+            f" JOIN nodes s ON s.node_id = e.src AND {_live('s')} AND {_seen('s')}"
+            f" JOIN nodes d ON d.node_id = e.dst AND {_live('d')} AND {_seen('d')}"
+            f" WHERE {_live('e')} AND {_seen('e')} AND e.rel NOT IN ({marks})"
+            f" AND a IN {members} AND z IN {members} AND a <> z"
+            f" GROUP BY a, z, {label('e')}, {label('s')}, {label('d')}",
+            {"b": b, **{f"r{i}": rel for i, rel in enumerate(skip)}},
+        )
+
+        def as_label(r, i: int) -> tuple:
+            return (r[i], r[i + 1], r[i + 2], stored_audience(r[i + 3]))
+
+        return [(r[0], r[1], as_label(r, 2), as_label(r, 6), as_label(r, 10), r[14]) for r in rows]
+
+    def live_graph(self, b: int) -> tuple[list[dict], list[tuple]]:
+        """Build b's live nodes with an audience within ``reader``, by id, each with its id, kind, name, owner (the
+        node clusters count it as: a Symbol's ``props.file``, a Section's ``props.item``, else itself) and label
+        (level, location, integrity, audience); and its live edges with an audience within ``reader``, as rows of
+        (source, type, target, label)."""
+        nodes = [
+            {"id": r[0], "kind": r[1], "name": r[2], "owner": r[3], "label": (r[4], r[5], r[6], stored_audience(r[7]))}
+            for r in self.db.execute(
+                f"SELECT node_id, kind, name, {_owner('nodes')}, label_lvl, label_loc, label_int, label_aud FROM nodes"
+                f" WHERE {LIVE} AND {SEEN} ORDER BY node_id",
+                {"b": b},
+            )
+        ]
+        edges = [
+            (r[0], r[1], r[2], (r[3], r[4], r[5], stored_audience(r[6])))
+            for r in self.db.execute(
+                f"SELECT src, rel, dst, label_lvl, label_loc, label_int, label_aud FROM edges WHERE {LIVE} AND {SEEN}"
+                " ORDER BY src, rel, dst",
+                {"b": b},
+            )
+        ]
+        return nodes, edges
 
     def search(
         self, query: str, b: int, limit: int = 50, *, kinds: list[str] | None = None, any_word: bool = True

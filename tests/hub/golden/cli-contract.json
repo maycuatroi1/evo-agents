@@ -7492,6 +7492,72 @@
         "schema": "Builds"
       }
     },
+    "hub kg clusters": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "show"
+          ]
+        },
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "level",
+          "parent",
+          "label",
+          "size",
+          "kinds",
+          "subclusters"
+        ],
+        "schema": "ClusterSummary",
+        "with": {
+          "show": {
+            "kind": "object",
+            "keys": [
+              "graph",
+              "cluster",
+              "subclusters",
+              "members",
+              "edges",
+              "neighbours"
+            ],
+            "schema": "ClusterDetail"
+          }
+        }
+      }
+    },
     "hub kg forget-source": {
       "positionals": [],
       "options": [
@@ -25393,6 +25459,325 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/Neighbourhood"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/clusters": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Cluster Map",
+          "description": "The level-1 clusters of the graph you can see, the links between them and, for the map, their members.",
+          "operationId": "cluster_map_v1_kg__project__clusters_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "nodes",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "include the members and their edges, for the map",
+                "default": true,
+                "title": "Nodes"
+              },
+              "description": "include the members and their edges, for the map"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ClusterMap"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/cluster": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Show Cluster",
+          "description": "One cluster you can see a member of: its subclusters, members, their edges and its neighbouring clusters.",
+          "operationId": "show_cluster_v1_kg__project__cluster_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "id",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "a cluster id",
+                "title": "Id"
+              },
+              "description": "a cluster id"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ClusterDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/whole": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Whole Graph",
+          "description": "Every node you can see, at most ``limit``, and every edge you can see between two of them, compact.",
+          "operationId": "whole_graph_v1_kg__project__whole_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 20000,
+                "minimum": 1,
+                "default": 20000,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WholeGraph"
                   }
                 }
               }
@@ -81325,6 +81710,250 @@
           ],
           "title": "Clearance"
         },
+        "ClusterDetail": {
+          "properties": {
+            "graph": {
+              "$ref": "#/components/schemas/GraphRef"
+            },
+            "cluster": {
+              "$ref": "#/components/schemas/ClusterSummary"
+            },
+            "subclusters": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterSummary"
+              },
+              "type": "array",
+              "title": "Subclusters",
+              "description": "its level-2 clusters you can see, largest first"
+            },
+            "members": {
+              "items": {
+                "$ref": "#/components/schemas/MapNode"
+              },
+              "type": "array",
+              "title": "Members",
+              "description": "its members you can see, by id"
+            },
+            "edges": {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "the edges between two members, as [index, index, weight] into members"
+            },
+            "neighbours": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterNeighbour"
+              },
+              "type": "array",
+              "title": "Neighbours",
+              "description": "clusters of its level its edges reach, heaviest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "cluster",
+            "subclusters",
+            "members",
+            "edges",
+            "neighbours"
+          ],
+          "title": "ClusterDetail"
+        },
+        "ClusterLink": {
+          "properties": {
+            "a": {
+              "type": "string",
+              "title": "A"
+            },
+            "b": {
+              "type": "string",
+              "title": "B"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "the edges you can see joining members of the two clusters"
+            }
+          },
+          "type": "object",
+          "required": [
+            "a",
+            "b",
+            "weight"
+          ],
+          "title": "ClusterLink"
+        },
+        "ClusterMap": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "computed": {
+              "type": "boolean",
+              "title": "Computed",
+              "description": "false when there is no cluster to show; reason says why"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "clusters": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterSummary"
+              },
+              "type": "array",
+              "title": "Clusters",
+              "description": "the level-1 clusters you can see, largest first"
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/ClusterLink"
+              },
+              "type": "array",
+              "title": "Links",
+              "description": "level-1 clusters joined by edges you can see, heaviest first"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/MapNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "the members you can see, by id; empty with nodes=false"
+            },
+            "edges": {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "the edges you can see between two members, as [index, index, weight] into nodes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "computed",
+            "reason",
+            "clusters",
+            "links",
+            "nodes",
+            "edges"
+          ],
+          "title": "ClusterMap"
+        },
+        "ClusterNeighbour": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "the edges you can see joining it to the cluster"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "label",
+            "size",
+            "weight"
+          ],
+          "title": "ClusterNeighbour"
+        },
+        "ClusterSummary": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "level": {
+              "type": "integer",
+              "title": "Level",
+              "description": "1 for a cluster of the whole graph, 2 for a part of a large level-1 cluster"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the level-1 cluster of a level-2 cluster"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label",
+              "description": "its words by c-TF-IDF over the names and paths of the members you can see"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size",
+              "description": "its members you can see"
+            },
+            "kinds": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Kinds",
+              "description": "its members you can see, by kind"
+            },
+            "subclusters": {
+              "type": "integer",
+              "title": "Subclusters",
+              "description": "its level-2 clusters with a member you can see"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "level",
+            "parent",
+            "label",
+            "size",
+            "kinds",
+            "subclusters"
+          ],
+          "title": "ClusterSummary"
+        },
         "CommandCount": {
           "properties": {
             "command": {
@@ -90693,6 +91322,55 @@
             "version"
           ],
           "title": "LoopUseCaseRef"
+        },
+        "MapNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "cluster": {
+              "type": "string",
+              "title": "Cluster",
+              "description": "its level-1 cluster"
+            },
+            "sub": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sub",
+              "description": "its level-2 cluster, if any"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "cluster",
+            "sub"
+          ],
+          "title": "MapNode"
         },
         "MarketingBrowserClaim": {
           "properties": {
@@ -121823,6 +122501,105 @@
             "grants"
           ],
           "title": "WhoAmI"
+        },
+        "WholeGraph": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/WholeNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "the nodes you can see, by id, at most limit"
+            },
+            "rels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Rels",
+              "description": "the edge types edges index"
+            },
+            "edges": {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "[source index, target index, type index into rels]"
+            },
+            "truncated": {
+              "type": "boolean",
+              "title": "Truncated",
+              "description": "true when you can see more nodes than limit"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "nodes",
+            "rels",
+            "edges",
+            "truncated"
+          ],
+          "title": "WholeGraph"
+        },
+        "WholeNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "cluster": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster",
+              "description": "the level-1 cluster it counts in, if one you can see"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "cluster"
+          ],
+          "title": "WholeNode"
         },
         "Window": {
           "properties": {
