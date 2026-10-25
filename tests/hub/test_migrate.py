@@ -144,7 +144,7 @@ TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
 TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
-TABLES |= pg.PUSH_TABLES  # migration 0148
+TABLES |= pg.PUSH_TABLES  # migration 0149
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -3661,14 +3661,14 @@ def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_t
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]
 
 
-def test_0147_keeps_the_recommended_reason_reversible_undo_and_decision_evidence_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0146")
+def test_0148_keeps_the_recommended_reason_reversible_undo_and_decision_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0147")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         run_id = one(conn, _author_run(ids))
         before = one(conn, _decision_row(ids, run_id, "wait-helper"))
-    move_to(hub_db, "0147")
+    move_to(hub_db, "0148")
     added = {"recommended_reason", "reversible", "undo", "evidence"}
     assert added <= columns(hub_db, "decisions")
     d = t.decisions
@@ -3698,13 +3698,13 @@ def test_0147_keeps_the_recommended_reason_reversible_undo_and_decision_evidence
                 conn.execute(_decision_row(ids, run_id, "wait-helper").values(**bad))
     found = select(d.c.recommended_reason, d.c.reversible, d.c.undo, d.c.evidence).where(d.c.id == kept)
     assert query(hub_db, found) == [("A is cheaper.", True, "Revert it.", full["evidence"])]
-    move_to(hub_db, "0146", down=True)
+    move_to(hub_db, "0147", down=True)
     assert not added & columns(hub_db, "decisions")
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]
 
 
-def test_0148_keeps_push_devices_their_deliveries_and_preferences_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0147")
+def test_0149_keeps_push_devices_their_deliveries_and_preferences_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0148")
     t = hub_tables
     n, dl = t.notifications, t.notification_deliveries
     with live.connect(hub_db) as conn:
@@ -3713,7 +3713,7 @@ def test_0148_keeps_push_devices_their_deliveries_and_preferences_and_going_back
         stored = insert(n).values(user_id=ids["user"], kind="notice", notice_kind="plan_finished", title="Done")
         notification = one(conn, stored.returning(n.c.id))
         one(conn, insert(dl).values(notification_id=notification).returning(dl.c.id))  # the web's
-    move_to(hub_db, "0148")
+    move_to(hub_db, "0149")
     added = {"push_devices", "notification_preferences"}
     assert added <= tables(hub_db) and "device_id" in columns(hub_db, "notification_deliveries")
     d, p, c = t.push_devices, t.notification_preferences, t.notification_channels
@@ -3754,24 +3754,24 @@ def test_0148_keeps_push_devices_their_deliveries_and_preferences_and_going_back
         conn.execute(delete(t.tokens).where(t.tokens.c.id == token))  # a token's devices go with it
     assert query(hub_db, select(func.count()).select_from(d)) == [(0,)]
     assert query(hub_db, count) == [(2,)]
-    move_to(hub_db, "0147", down=True)
+    move_to(hub_db, "0148", down=True)
     assert not added & tables(hub_db) and "device_id" not in columns(hub_db, "notification_deliveries")
     assert query(hub_db, count) == [(2,)]  # the web's and the channel's stay
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0149") :]
 
 
-def test_0149_keeps_the_tiers_quiet_hours_time_zone_and_summary_time_of_a_member_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0148")
+def test_0150_keeps_the_tiers_quiet_hours_time_zone_and_summary_time_of_a_member_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0149")
     t = hub_tables
     p = t.notification_preferences
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         conn.execute(insert(p).values(user_id=ids["user"], hide_details=True))
-    move_to(hub_db, "0149")
+    move_to(hub_db, "0150")
     added = {"tiers", "quiet_start", "quiet_end", "time_zone", "digest_at"}
     assert added <= columns(hub_db, "notification_preferences")
     shown = select(p.c.hide_details, p.c.tiers, p.c.quiet_start, p.c.quiet_end, p.c.time_zone, p.c.digest_at)
-    assert query(hub_db, shown) == [(True, {}, None, None, None, None)], "a member's row of 0148 gets the defaults"
+    assert query(hub_db, shown) == [(True, {}, None, None, None, None)], "a member's row of 0149 gets the defaults"
     chosen = {
         "tiers": {"decision": "off", "plan_finished": "interrupt", "run_failed": "brief"},
         "quiet_start": "22:00",
@@ -3800,7 +3800,7 @@ def test_0149_keeps_the_tiers_quiet_hours_time_zone_and_summary_time_of_a_member
                 conn.execute(update(p).values(**bad).where(p.c.user_id == ids["user"]))
         conn.execute(update(p).values(quiet_start=None, quiet_end=None, time_zone=None, digest_at=None))
     assert query(hub_db, select(p.c.tiers, p.c.quiet_start)) == [(chosen["tiers"], None)]
-    move_to(hub_db, "0148", down=True)
+    move_to(hub_db, "0149", down=True)
     assert not added & columns(hub_db, "notification_preferences")
     assert query(hub_db, select(p.c.hide_details)) == [(True,)]
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0149") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0150") :]

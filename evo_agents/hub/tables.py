@@ -581,10 +581,10 @@ decisions = Table(
     _when("wake_at"),  # a wait (category wait, 0140): when the hub answers it at the latest
     Column("wake_on", JSONB),  # and the event of hub_events it wakes on sooner: kind, contains, after (0140)
     _when("held_at"),  # when the person asked last chose an option that leaves it open (0140)
-    Column("recommended_reason", Text),  # why the agent recommends its option (0147)
-    Column("reversible", Boolean),  # whether the act it asks about can be undone (0147)
-    Column("undo", Text),  # and how (0147)
-    Column("evidence", JSONB(none_as_null=True)),  # the refs it rests on, an array of texts; None is SQL NULL (0147)
+    Column("recommended_reason", Text),  # why the agent recommends its option (0148)
+    Column("reversible", Boolean),  # whether the act it asks about can be undone (0148)
+    Column("undo", Text),  # and how (0148)
+    Column("evidence", JSONB(none_as_null=True)),  # the refs it rests on, an array of texts; None is SQL NULL (0148)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
@@ -683,7 +683,7 @@ notification_deliveries = Table(
     _stamp("created_at"),
     _when("delivered_at"),
     Column("external_id", Text),
-    Column("device_id", BigInteger),  # a delivery to a push device, never with a channel (0148)
+    Column("device_id", BigInteger),  # a delivery to a push device, never with a channel (0149)
     ForeignKeyConstraint(
         ["channel_id"],
         ["notification_channels.id"],
@@ -703,7 +703,7 @@ notification_deliveries = Table(
     Index("notification_deliveries_channel_key", "notification_id", "channel_id", unique=True),
     Index("notification_deliveries_device_key", "device_id", "notification_id", unique=True),
 )
-Index(  # the web's delivery: no channel and no device (0148)
+Index(  # the web's delivery: no channel and no device (0149)
     "notification_deliveries_web_key",
     notification_deliveries.c.notification_id,
     unique=True,
@@ -978,7 +978,7 @@ hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_ta
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
-push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0148)
+push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0149)
 attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077

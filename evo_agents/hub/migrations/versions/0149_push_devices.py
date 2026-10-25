@@ -1,7 +1,7 @@
 """The devices members receive push notifications on, their deliveries, and the members' notification preferences.
 
-Revision ID: 0148
-Revises: 0147
+Revision ID: 0149
+Revises: 0148
 Create Date: 2026-10-25
 
 The names below are copies of ``evo_agents.hub.tables_push`` as of this revision, never imports, so a later change to
@@ -28,8 +28,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0148"
-down_revision = "0147"
+revision = "0149"
+down_revision = "0148"
 branch_labels = None
 depends_on = None
 

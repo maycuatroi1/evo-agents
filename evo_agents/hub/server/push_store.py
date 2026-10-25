@@ -1,4 +1,4 @@
-"""The push devices of members as the hub keeps them, in SQLAlchemy Core on ``evo_agents.hub.tables`` (schema 0148):
+"""The push devices of members as the hub keeps them, in SQLAlchemy Core on ``evo_agents.hub.tables`` (schema 0149):
 adding, listing and removing a member's devices, which of them still reach their member, the deliveries a
 notification gets on them, and the member's preference to hide details. ``evo_agents.hub.server.push`` has the routes
 and the senders, ``evo_agents.hub.server.notifications`` the outbox and the job these deliveries go through.
