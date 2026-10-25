@@ -1,6 +1,6 @@
 """The browser script of the CLI (``client`` browser_post of a plugin's command, ``evo_agents.hub.cli_plugin_commands``):
 it posts one text a plugin's gate passed to a channel that has no posting API, in the logged-in browser session of the
-account. The core plugin marketing is the one that uses it (``docs/marketing-plugin.md``, Browser adapter).
+account. The core plugin marketing is the one that uses it (``docs/marketing-plugin.md`` of evo-agents-core-plugins, Browser adapter).
 
 It is deterministic code and no model drives the browser: a ``Profile`` names the page, the fields and the button of one
 channel, and ``run_post`` goes to the page, fills the text, presses the button and reads the address of the page it ends

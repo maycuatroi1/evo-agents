@@ -42,8 +42,8 @@ hub's image installs them into its virtualenv, `/opt/venv`, which the api, the w
 share, from two sources:
 
 - **Pinned in evo-agents.** `deploy/hub/core-plugins.txt` holds the core plugins evo-agents ships with the hub, one
-  wheel a line, `name==version --hash=sha256:<64 hex>`, installed from PyPI: today `evo-agents-core-plugins`, with
-  telegram and chats (`docs/plugins.md`, section Core plugins). Every image of a release and every build of main has
+  wheel a line, `name==version --hash=sha256:<64 hex>`, installed from PyPI: today `evo-agents-core-plugins` 2.x, with
+  telegram, chats, crm, pm and marketing (`docs/plugins.md`, section Core plugins). Every image of a release and every build of main has
   them; no variable is needed.
 - **A hub's own**, from two variables the build reads, in the environment compose reads (the platform's, or a `.env`
   next to `deploy/hub/docker-compose.yml`):

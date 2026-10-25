@@ -1,6 +1,6 @@
 """The CLI's browser clients, ``client`` browser_post and browser_login of a plugin's command
 (``evo_agents.hub.cli_plugin_commands``): the client half of a browser adapter, which the core plugin marketing has
-(``evo-agents hub marketing browser-post|login``, ``docs/marketing-plugin.md``, Browser adapter).
+(``evo-agents hub marketing browser-post|login``, ``docs/marketing-plugin.md`` of evo-agents-core-plugins, Browser adapter).
 
 ``login --project P CHANNEL_ID`` opens a visible Chromium on the login page of the account's channel; the member logs in
 by hand (password, two-factor, captcha: the script never types or solves any of them), presses Enter, and the session

@@ -16,6 +16,7 @@ import sys
 import time
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -29,6 +30,7 @@ from alembic.script import ScriptDirectory
 from psycopg import errors
 from sqlalchemy import (
     Boolean,
+    MetaData,
     Text,
     cast,
     column,
@@ -228,12 +230,21 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_eighty_four_tables(hub_db):
-    assert len(TABLES) == 184  # the name of this test counts them: a new table renames it
+def plugin_tables(db, *names: str) -> SimpleNamespace:
+    """The tables ``names`` as the database holds them at the revision the test moved it to: tables the hub's chain
+    made and a core plugin now keeps (``evo_agents.hub.migrations.owned``), which the hub's metadata no longer holds."""
+    metadata = MetaData()
+    with live.engine(db).connect() as conn:
+        metadata.reflect(conn, only=names)
+    return SimpleNamespace(**metadata.tables)
+
+
+def test_a_fresh_database_gets_the_one_hundred_and_eighty_seven_tables(hub_db):
+    assert len(TABLES) == 187  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
-    assert tables(hub_db) == TABLES | {"alembic_version"}
+    assert tables(hub_db) == TABLES | {"alembic_version"} | pg.plugin_version_tables()
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
     # are the sealed values of credentials (0011) and their nonces, the sealed tokens of OAuth accounts (0066), the
@@ -264,6 +275,7 @@ def test_a_fresh_database_gets_the_one_hundred_and_eighty_four_tables(hub_db):
 
 def test_a_second_migrate_changes_nothing(hub_db):
     move_to(hub_db, "head")
+    migrate(hub_db.dsn)  # the hub's chain is at head: this runs the installed core plugins' chains
     before = query(hub_db, SNAPSHOT)
     result = migrate(hub_db.dsn)
     assert (result.before, result.applied, result.after) == ((HEAD,), (), (HEAD,))
@@ -318,12 +330,14 @@ def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db, w
 
     logs = [pg.log_lines(err) for _, err in outputs]
     upgrades = [line for lines in logs for line in lines if line["msg"].startswith("Running upgrade")]
-    assert len(upgrades) == len(ALL)  # one line per revision, all from the process that took the lock first
+    # one line per revision of the hub's chain and of the installed core plugins', all from the process that took the
+    # lock first
+    assert len(upgrades) == len(ALL) + pg.plugin_revision_count()
     outcomes = [outcome(lines) for lines in logs]
     assert sorted(line.get("applied", []) for line in outcomes) == [[], list(ALL)]
     assert all(any(line["msg"].startswith("waiting for the migration lock") for line in lines) for lines in logs)
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
-    assert tables(hub_db) == TABLES | {"alembic_version"}
+    assert tables(hub_db) == TABLES | {"alembic_version"} | pg.plugin_version_tables()
 
 
 def test_a_database_at_an_unknown_revision_is_refused(hub_db):
@@ -2126,7 +2140,7 @@ def test_0086_keeps_one_send_a_day_and_the_pm_notices_and_going_back_drops_them(
         ids = seed(conn)
     before = query(hub_db, SNAPSHOT)
     move_to(hub_db, "0086")
-    s, n = t.pm_sends, t.notifications
+    s, n = plugin_tables(hub_db, "pm_sends").pm_sends, t.notifications
     sent = {"project_id": ids["project"], "day": date(2026, 10, 21), "kind": "digest"}
     notice = {"user_id": ids["user"], "kind": "notice", "title": "Digest", "project_id": ids["project"]}
     with live.connect(hub_db) as conn:
@@ -2888,7 +2902,7 @@ def test_0124_crm_keeps_one_contact_a_login_and_going_back_drops_the_tables(hub_
         ids = seed(conn)
     before = query(hub_db, SNAPSHOT)
     move_to(hub_db, "0124")
-    t = hub_tables
+    t = plugin_tables(hub_db, "crm_contacts", "crm_touchpoints", "crm_stage_history")
     contact = {"project_id": ids["project"], "login": "octocat", "profile_url": "https://github.com/octocat"}
     contact |= {"source": "issue"}
     with live.connect(hub_db) as conn:
@@ -2926,7 +2940,7 @@ def test_0125_marketing_keeps_the_registry_rules_in_the_database_and_going_back_
         ids = seed(conn)
     before = query(hub_db, SNAPSHOT)
     move_to(hub_db, "0125")
-    t = hub_tables
+    t = plugin_tables(hub_db, "marketing_channels", "marketing_posts", "marketing_metrics", "marketing_denylist")
     account = {"project_id": ids["project"], "channel": "x", "account": "evo_agents", "account_kind": "project"}
     personal = {**account, "channel": "tiktok", "account": "me", "account_kind": "personal", "owner_id": ids["user"]}
     with live.connect(hub_db) as conn:
@@ -2967,7 +2981,7 @@ def test_0126_marketing_browser_adds_the_queue_states_and_the_session_and_going_
     move_to(hub_db, "0125")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    t = hub_tables
+    t = plugin_tables(hub_db, "marketing_channels", "marketing_posts")
     account = {"project_id": ids["project"], "channel": "viblo", "account": "evo", "account_kind": "project"}
     with live.connect(hub_db) as conn:
         channel_id = one(conn, insert(t.marketing_channels).values(account).returning(t.marketing_channels.c.id))
@@ -2976,6 +2990,7 @@ def test_0126_marketing_browser_adds_the_queue_states_and_the_session_and_going_
         with pytest.raises(errors.CheckViolation):
             conn.execute(insert(t.marketing_posts).values({**post, "state": "queued"}))  # not a state yet
     move_to(hub_db, "0126")
+    t = plugin_tables(hub_db, "marketing_channels", "marketing_posts")
     with live.connect(hub_db) as conn:
         assert one(conn, select(t.marketing_channels.c.session_state)) == "none"  # the safe default
         for state in ("queued", "posting"):
