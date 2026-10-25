@@ -575,29 +575,79 @@ a run that holds it runs the agent's code: an admin, through the instructions of
 them); a writer, through the agent of any run they dispatch; the owner of the worker and a root user on it, for every
 account bound to it; and every other run on that worker, as for any lease (see "What is still a risk").
 
+### Provider accounts
+
+A **provider account** is an API key of a model provider with the endpoint it calls and the models it serves
+(`evo_agents/hub/server/provider_accounts.py`, migration 0151). It is a secret of kind `provider`, whose sealed value is
+the key, plus a row of `provider_accounts`: `provider`, the id of an entry of the model catalog; `base_url`, an https
+root; `api_format` (`openai`, `anthropic`, `openai-responses` or `gemini`); and `models`, the names a run may ask for.
+The catalog (`GET /v1/model-catalog`, `evo-agents hub model-catalog`) is generated from OmniRoute's provider registry at
+the version the gateway image pins (`evo_agents/hub/model_catalog.py`, `GATEWAY_VERSION`). It lists each chat provider
+an API key reaches, plus `custom-openai` and `custom-anthropic` for an endpoint the member names, and `claude`, whose
+accounts keep the sign-in of the section above.
+
+- A member writes theirs under `/v1/provider-accounts`, through `evo-agents hub provider-account` (`add`, `set`,
+  `pause`, `resume`, `show`, `list`, `delete`, `test`, `models`) or the Providers tab of `/accounts`. PUT creates or replaces an account whole. PATCH changes what it is given, and
+  needs no key, so a model or a binding changes without the key being typed again. A new key keeps the
+  account's id, so its weight, priority, rotation, runs and shares go on. `from_secret` takes the key of one of the
+  member's env secrets (`zhipu-glm` for `ZHIPU_API_KEY`): the hub opens it and seals it again under the new account,
+  and the env secret stays as it was. An admin of a project writes an agent's provider accounts under
+  `/v1/projects/{project}/agents/{handle}/provider-accounts`, by value only.
+- The hub keeps a base URL only when every address its host resolves to is public. It refuses loopback, private,
+  link-local, CGNAT, metadata, multicast and ULA addresses, single-label names and names under private suffixes, and
+  checks them again at each call. Test connection and Fetch models (`POST .../probe`) call the endpoint from the hub,
+  pinned to the address it checked, with the host in Host and SNI.
+- The key is never leased: kind `provider` is not in `LEASED_KINDS`, and no route, log line, audit row, event or error
+  holds it. `/v1/secrets` does not list it.
+- A provider account is an account like the others: bound to projects and workers, with a weight, a priority, a pause,
+  a cooldown and an end, shared through `/v1/secrets/{name}/shares`, picked by the rules of the section Accounts.
+
+**The gateway.** The model calls of such accounts go through OmniRoute, the hub's `gateway` service: it runs on a
+network only the api joins, with no port and no domain, and the hub reconciles its connections from the provider
+accounts (`server/gateway_sync.py`; `docs/hub.md`, section Model gateway). It holds the keys, opened by the hub, so a
+worker never does.
+
+**A run on a provider's model.** A run whose model reads `<alias>/<model>`, with the catalog's alias of a provider
+account's provider (or `evo-<id>` for a custom endpoint), is a gateway run (`evo_agents/hub/gateway_runs.py`,
+migration 0152), on Claude Code, opencode or Codex. Only a daemon of `GATEWAY_RUN_AGENT` (0.46.0) or later claims it.
+When the worker asks for the run's credentials, the hub has the gateway make a key for that run alone
+(`server/gateway_leases.py`): it reaches only the connections of the accounts the run may use, ends 300 seconds after
+the run's timeout would, and logs no request. The hub keeps that key sealed under the lease's id. The worker gets one
+lease of kind `gateway`: the hub's route `<hub>/v1`, the **run token** `evr_...`, the model and the API format of the
+runtime. The run token is an HMAC of the lease's id under the run's key. The hub stores only its SHA-256, and the
+daemon masks it as it does every lease. The route (`/v1/messages`, `/v1/chat/completions`, `/v1/responses`,
+`/v1/models`, `server/gateway_proxy.py`) takes the token, refuses it once the run leaves its held states or the lease is
+revoked, and forwards the call with the run's key in its place. On Claude Code, `ANTHROPIC_BASE_URL` is the hub,
+`ANTHROPIC_AUTH_TOKEN` the token, and the run's own config dir holds no Claude login. opencode and Codex read the
+token from `EVO_GATEWAY_TOKEN` (`evo_agents/worker/runtimes/gateway.py`). When the run ends, the sweep reads the key's
+usage into the run's figures, cost included, and revokes the key.
+
 ### Compared with a proxy
 
 CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
 that the CLI reaches through `ANTHROPIC_BASE_URL`, which logs in to each account with OAuth, keeps its refresh token,
 and picks an account for each request (`routing.strategy` round-robin or fill-first, with weights), retries a request on
 another account when one answers with its quota spent (`request-retry`), cools that account down, keeps a session on
-one account while it can (`session-affinity`), and has a management panel. The hub takes the same rules (round-robin,
-weighted, fill-first, cooldown, failover, a page that shows each account) and applies them per run, not per request:
+one account while it can (`session-affinity`), and has a management panel. The hub now does both, by credential:
 
-- a run keeps one account for its whole life, and moves only when that account hits its limit, so the session's prompt
-  cache and the account's usage figures stay with one account, and what a run cost is the cost on the account it ran on;
-- the value stays a lease, as every secret here: the worker holds it in memory for the run that needs it, and the hub
-  revokes it when the run ends or fails over. A proxy would hold every account's token, and its refresh token, for as
-  long as it runs, on a path every request of every agent goes through, and would see each prompt;
-- nothing sits between the CLI and Anthropic: no process to keep up on each worker or on the hub, no request rewritten,
-  no identity changed, and the CLI's own `rate_limit_event` says when an account is spent;
-- an account is either the token `claude setup-token` makes, which the hub leases as it is, or an OAuth account
-  (`account oauth-login`), whose tokens the hub keeps sealed and refreshes when a run asks for its credentials, never
-  per request.
+- **A Claude subscription goes straight to Anthropic.** A Claude account is the token `claude setup-token` makes,
+  which the hub leases as it is, or an OAuth account (`account oauth-login`), whose tokens the hub keeps sealed and
+  refreshes when a run asks for its credentials. Nothing sits between the CLI and Anthropic: no request rewritten, no
+  identity changed, and the CLI's own `rate_limit_event` says when an account is spent. The hub applies the proxy's
+  rules (round-robin, weighted, fill-first, cooldown, failover) per run, not per request: a run keeps one account for
+  its whole life and moves only when that account hits its limit, so the session's prompt cache, usage figures and
+  cost stay with one account. The value stays a lease, held in the worker's memory for the run that needs it and
+  revoked when the run ends.
+- **A provider account with an API key goes through the gateway.** These are the keys a proxy is made for: one call
+  shape per format, many providers, limits that differ by provider. Here the proxy is the hub's own gateway, not a
+  process on each worker. It holds the keys, the worker holds only a run token that dies with the run, and it may move
+  a request between the accounts of the same provider the run may use (a run never moves between providers). The
+  price is the one the first point avoids: the gateway, and the hub's route in front of it, see each prompt and answer
+  of such runs (section What is still a risk).
 
-What the proxy does that the hub does not: it moves a request, not a run, so an agent in a terminal pane goes on by
-itself, and it covers other providers and their limits. Here an interactive pane only shows the event, and only Claude
-Code reports a limit; the usage an account shows is what the CLI said last.
+What the proxy does that the hub does not, for a Claude account: it moves a request, not a run, so an agent in a
+terminal pane goes on by itself. Here an interactive pane only shows the event, and only Claude Code reports a limit;
+the usage an account shows is what the CLI said last.
 
 The proxy's `--claude-login` is a PKCE login on claude.ai with Claude Code's client id, whose access and refresh
 tokens the proxy keeps and refreshes. `hub account oauth-login` does the same flow on the member's machine, and the hub
@@ -857,6 +907,12 @@ medium findings as `warning:` lines; they never stop the install.
 
 ## What is still a risk
 
+- **The gateway sees the prompts of a provider account's runs.** A run on a provider's model sends each request
+  and answer through the hub's route and the gateway, in clear inside the hub: whoever runs the hub's host, or takes
+  over its api or gateway container, reads them, and the keys the gateway holds. The gateway's keys log no request
+  (`noLog`), the route logs no body, token or key, and the gateway has no port or domain. Still, those protections hold
+  only as far as the host is trusted. A Claude subscription does not take this path. Keep a model whose prompts must
+  not reach the hub on a Claude account or a worker's own `env` lease.
 - Root on the worker reads the leases a run is using: the agent's environment, the daemon's memory, the run's
   socket. A GitHub token so read lasts at most an hour and covers only the run's repos.
 - **The agent can act as its worker.** A run's agent runs as the daemon's user, with no sandbox, so it can read
