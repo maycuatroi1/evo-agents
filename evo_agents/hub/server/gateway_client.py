@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import httpx
 from pydantic import SecretStr
@@ -45,6 +46,12 @@ RELAY_TIMEOUT = httpx.Timeout(600.0, connect=TIMEOUT)  # a model's answer, strea
 HEALTH_TIMEOUT = 3.0
 SESSION_COOKIE = "auth_token"  # OmniRoute's dashboard session
 OFF = "the model gateway is not configured: set EVO_HUB_GATEWAY_SECRET (docs/hub.md, section Model gateway)"
+
+
+def zulu(moment: datetime) -> str:
+    """``moment`` in UTC as the gateway's expiresAt takes it, ending in Z: OmniRoute's zod datetime() refuses an
+    offset such as +00:00 with a 400."""
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def derive(secret: str, label: str) -> str:
@@ -273,10 +280,11 @@ class GatewayClient:
         found = await self._call("GET", "/api/keys", "list its API keys")
         return [_key(item) for item in found.get("keys") or []]
 
-    async def create_key(self, name: str, connections: list[str], expires_at: str | None = None) -> IssuedKey:
-        """A key that reaches only ``connections``, until ``expires_at`` (ISO 8601) when given; no request made
-        with it is logged."""
-        body = {"name": name, "allowedConnections": list(connections), "noLog": True, "expiresAt": expires_at}
+    async def create_key(self, name: str, connections: list[str], expires_at: datetime | None = None) -> IssuedKey:
+        """A key that reaches only ``connections``, until ``expires_at`` when given; no request made with it is
+        logged."""
+        ends = None if expires_at is None else zulu(expires_at)
+        body = {"name": name, "allowedConnections": list(connections), "noLog": True, "expiresAt": ends}
         found = await self._call("POST", "/api/keys", "create an API key", body)
         register_secret(found.get("key"))
         made = _key(found)
