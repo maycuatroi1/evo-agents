@@ -1355,3 +1355,22 @@ another standalone build, not from `actions/setup-python`. The plugin host build
 nothing, so it has no `LD_LIBRARY_PATH`, and the Python that setup-python installs on a self-hosted runner finds its
 `libpython` only through that variable: `plugin test` fails at the environment check. Making the host pass the
 variable on would open the environment it builds from nothing, so the runner adapts instead.
+
+### Publishing through a market
+
+To be installed from a hub's market (`docs/market.md`), a plugin publishes each version as a GitHub release of its
+repository, tagged `vX.Y.Z`, with two assets: the bundle `plugin pack` writes, `ID-X.Y.Z.tar.gz`, and its signature
+beside it, `ID-X.Y.Z.tar.gz.sigstore.json` from the sign job above or `ID-X.Y.Z.tar.gz.sig.json` from `plugin sign`.
+The market's index, `market.json` (plugin-market-v1, `evo_agents/harness/schemas/plugin-market.schema.json`), lists
+the plugin with its repository and its publisher's signer, `sigstore:OWNER/REPO/.github/workflows/ci.yml` or
+`ed25519:<public key>`, which the hub checks the release against. The market's owner checks the index, and with
+`--releases` the latest release of each free plugin, before publishing it:
+
+```sh
+evo-agents plugin market-check market.json
+evo-agents plugin market-check market.json --releases   # downloads and verifies each free plugin's latest release
+```
+
+A hub admin may also install a release without any market, naming the signer when it is not the repository's
+`ci.yml`: `evo-agents hub plugin install --github acme/my-plugin@v1.0.0 --signer ed25519:<public key>`. The manifest
+does not change for a market: plugin-v1 stays as it is.
