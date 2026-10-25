@@ -12,12 +12,12 @@ from contextlib import AbstractAsyncContextManager
 from types import MappingProxyType
 
 from fastapi import Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables, telegram
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.plugin_calls import ApiContext, core_registry, effective_grant, enabled_in
+from evo_agents.hub.plugin_calls import ApiContext, core_registry, effective_grant, enabled_in, enabled_query
 from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server import member_channels
 from evo_agents.hub.server.core_plugin_api._types import (
@@ -25,6 +25,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     NotACorePlugin,
     Plugin,
     PluginConfig,
+    ProjectConfig,
     Refused,
     Session,
     issue_plugin,
@@ -32,6 +33,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     own_clearance,
     own_plugin,
     own_session,
+    session_principal,
 )
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.plugin_tokens import layer_config
@@ -94,13 +96,13 @@ def web_session(request: Request, user: CurrentUser) -> Session:
     if user.kind != WEB:
         raise Refused(403, member_channels.FROM_SESSION)
     _from_this_hub(request)
-    return issue_session(user.user_id, user.login, user.token_id, True)
+    return issue_session(user.user_id, user.login, user.token_id, True, principal=user)
 
 
 def caller(user: CurrentUser) -> Session:
     """The caller, a member signed in with any credential the hub's own routes take: ``web`` for a web session, which
     alone links a channel. The hub's middleware has checked a web session's write for its CSRF header."""
-    return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB)
+    return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB, principal=user)
 
 
 def hub_admin(request: Request, user: AdminUser) -> Session:
@@ -108,7 +110,7 @@ def hub_admin(request: Request, user: AdminUser) -> Session:
     token; a write made with a web session carries the Origin of the hub's public URL."""
     if user.kind == WEB:
         _from_this_hub(request)
-    return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB, admin=True)
+    return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB, admin=True, principal=user)
 
 
 def begin(request: Request) -> AbstractAsyncContextManager[AsyncConnection]:
@@ -183,6 +185,35 @@ async def plugin_config(
     return PluginConfig(MappingProxyType(dict(values)), tuple(missing))
 
 
+async def project_configs(conn: AsyncConnection, plugin: Plugin, config: HubConfig) -> list[ProjectConfig]:
+    """The plugin's effective config in each project that enables it, by project name: what a job that works across
+    projects reads once. Empty when the plugin is not installed and on."""
+    own_plugin(plugin)
+    installed = await _installed(conn, plugin.id)
+    if installed is None:
+        return []
+    sealer = Sealer.from_config(config) if config is not None else None
+    schema = installed.manifest.get("config")
+    query = enabled_query().where(tables.plugins.c.name == plugin.id).order_by(tables.projects.c.name)
+    c = tables.plugin_configs.c
+    versions = dict(
+        (
+            await conn.execute(
+                select(c.project_id, func.max(c.version))
+                .where(c.plugin_id == installed.id, c.layer == "project", c.profile_id.is_(None))
+                .group_by(c.project_id)
+            )
+        ).all()
+    )
+    found = []
+    for row in (await conn.execute(query)).all():
+        values, missing = await layer_config(conn, sealer, installed.id, plugin.id, schema, row.project_id, row.project)
+        found.append(
+            ProjectConfig(row.project, MappingProxyType(dict(values)), versions.get(row.project_id), tuple(missing))
+        )
+    return found
+
+
 async def granted(conn: AsyncConnection, plugin: Plugin, project: str, permission: str) -> bool:
     """Whether ``project`` enables the plugin and its grant there, granted and still asked for, holds
     ``permission``."""
@@ -221,4 +252,5 @@ async def audit(conn: AsyncConnection, plugin: Plugin, actor: Session, action: s
         raise ValueError(f"a plugin's audit action is {plugin.id}.<word> or <a kind of its channels>.<word>")
     if not isinstance(target, str) or len(target) > MAX_AUDIT_TARGET or "\n" in target or "\r" in target:
         raise ValueError(f"an audit target is one line of at most {MAX_AUDIT_TARGET} characters")
-    await audit_log.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
+    principal = session_principal(actor)
+    await audit_log.record(conn, actor_id=actor.user_id, token_id=principal.token_id, action=action, target=target)

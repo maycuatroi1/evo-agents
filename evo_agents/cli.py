@@ -140,7 +140,13 @@ def main(argv: list[str] | None = None) -> int:
         def run() -> int:
             return run_hook(argv[2:])
     else:
-        args = build_parser().parse_args(argv)
+        parser = build_parser()
+        if argv[:1] == ["hub"]:
+            from evo_agents.hub.cli_plugin_commands import refreshed
+
+            if refreshed(argv):  # a command a plugin added since the list was kept: read the hub's list again
+                parser = build_parser()
+        args = parser.parse_args(argv)
         if args.group == "worker" and os.name == "nt":
             print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
             return 2

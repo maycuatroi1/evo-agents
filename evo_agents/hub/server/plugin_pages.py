@@ -2,8 +2,10 @@
 tickets of the URLs that frame an isolated plugin's pages (``evo_agents.hub.server.plugin_ui`` serves their files).
 
 A page lives at /p/<project>/x/<plugin>/<page> on the web, in a project that enabled the plugin. A core plugin's page
-is native, a page of the web itself (web/src), so the hub only says it exists (``native``). An isolated plugin's page
-is an HTML file of its bundle under ``pages/``; the web frames ``url``, which ``plugin_ui`` serves:
+without an entry is native, a page of the web itself (web/src), so the hub only says it exists (``native``). An
+isolated plugin's page is an HTML file of its bundle under ``pages/``, and so is the page with an entry of a core
+plugin whose manifest names ``ui``, under ``pages/`` of that directory of its package; the web frames ``url``, which
+``plugin_ui`` serves:
 
     GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<path>
 
@@ -12,7 +14,7 @@ page loads its scripts, styles and images by relative URL. The frame is sandboxe
 document has an opaque origin, its requests carry no cookie of the hub, and it reaches the hub only through the bridge
 of the web (docs/plugins.md, Pages). The ticket is therefore the credential, and these paths are public
 (``security.PUBLIC_PREFIXES``): ``<expires>.<mac>``, an HMAC of the plugin, the project, the SHA-256 of the installed
-bundle and the expiry under the hub's session secret (``security.keyed_digest``, purpose PURPOSE), handed out with
+bundle (of a core plugin, of its installed manifest) and the expiry under the hub's session secret (``security.keyed_digest``, purpose PURPOSE), handed out with
 the project's plugins (GET /v1/projects/{p}/plugins) to whoever may read them. It lasts 12 hours past the hour it was
 made in, so a menu read twice in an hour frames the same URL, and only while that bundle is installed: after an
 upgrade, the tickets of the version before frame nothing. Every file is checked again as it is served: the plugin
@@ -98,10 +100,12 @@ def pages_of(
     ``project`` sees them. A hub without a session secret (EVO_HUB_SESSION_SECRET, which the web's sign-in needs too)
     signs no ticket, so its framed pages have no URL."""
     isolated = manifest.get("tier", "isolated") == "isolated"
-    framed = isolated and enabled and bool(secret)
+    from_ui = not isolated and bool(manifest.get("ui"))  # a core plugin whose pages are files of its package
     found = []
     for item in (manifest.get("contributes") or {}).get("pages") or []:
         entry = item.get("entry")
+        native = not isolated and not (from_ui and entry)
+        framed = not native and enabled and bool(secret)
         found.append(
             PluginPage(
                 name=item["name"],
@@ -109,7 +113,7 @@ def pages_of(
                 description=item.get("description", ""),
                 icon=item.get("icon", DEFAULT_ICON),
                 menu=item.get("menu", True),
-                native=not isolated,
+                native=native,
                 url=page_url(secret, plugin, project, sha256, entry) if framed and entry else None,
             )
         )
