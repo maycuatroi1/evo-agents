@@ -67,7 +67,8 @@ refuses every bundle. EVO_HUB_PLUGIN_CORE_PUBLISHERS lists, comma-separated, the
 core plugins, with Python in the hub's processes; each must be in EVO_HUB_PLUGIN_PUBLISHERS. A hub admin may trust
 more publishers from the web or the CLI as they install from a market (``plugin_publishers``, docs/market.md), unless
 EVO_HUB_PLUGIN_PUBLISHERS_LOCKED is true. EVO_HUB_MARKET_DEFAULT_SOURCE is the GitHub repo OWNER/REPO of the market the
-hub lists unless its admins remove it, maycuatroi1/evo-agents-market when unset, none when set empty.
+hub lists unless its admins remove it, maycuatroi1/evo-agents-market when unset, none when set to
+``none`` or empty.
 
 The backends of isolated plugins run in the plugin host, ``evo-agents hub plugin-host``, a service of its own that
 holds none of the hub's variables (docs/plugins.md). EVO_HUB_PLUGIN_HOST_URL is where the api reaches it (on the
@@ -514,9 +515,10 @@ def _plugins(env: Mapping[str, str]) -> dict:
     locked = (_text(env, locked_name) or "false").lower()
     if locked not in ("true", "false", "1", "0", "yes", "no"):
         raise ConfigError(locked_name, f"{locked_name} is true or false, not {locked!r}")
-    market = env.get(market_name, DEFAULT_MARKET).strip() or None
+    market = env.get(market_name, DEFAULT_MARKET).strip()
+    market = None if market.lower() in ("", "none") else market
     if market is not None and not MARKET_REPO.fullmatch(market):
-        raise ConfigError(market_name, f"{market_name} is a GitHub repo OWNER/REPO, or empty for none, not {market!r}")
+        raise ConfigError(market_name, f"{market_name} is a GitHub repo OWNER/REPO, or none, not {market!r}")
     return {
         "plugin_publishers": publishers,
         "plugin_core_publishers": frozenset(core),

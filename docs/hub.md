@@ -2680,6 +2680,26 @@ the plugin's `engines` or `plugin_api`). A signature the hub cannot check now, S
 503 and records nothing. Each write is audited as `plugin.publish`, `plugin.install`, `plugin.upgrade` or
 `plugin.remove`, naming `plugin:<name>@<version>`.
 
+Besides publishing a bundle by hand, a hub admin installs a free isolated plugin from a **market**, a GitHub
+repository whose `market.json` lists plugins with their publisher, signer, tier and price (plugin-market-v1), or
+straight from a plugin repository's GitHub release. The hub downloads the release's bundle and signature, checks the
+identity that signed it against the publisher, asks before it trusts a new signer, and then publishes and installs it
+through the store as above. A signer a hub admin trusted so is kept in the database (table `plugin_publishers`) beside
+`EVO_HUB_PLUGIN_PUBLISHERS`, shown and removed from Administration, Market, unless the operator sets
+`EVO_HUB_PLUGIN_PUBLISHERS_LOCKED=true`, which the api enforces. `EVO_HUB_MARKET_DEFAULT_SOURCE` names the operator's
+market, `maycuatroi1/evo-agents-market` unless set, and `none` for none. Every member browses the markets under Market,
+and a project's admin asks the hub admins for a plugin there. How markets, trust, installing and requests work is in
+`docs/market.md`:
+
+```sh
+evo-agents hub market source add northwind/market    # a hub admin: a market the hub reads every six hours
+evo-agents hub market list --search notes            # any member: what the markets list, and each one's status
+evo-agents hub market install lumen-notes --trust    # a hub admin: the latest release, trusting its signer
+evo-agents hub market request lumen-notes --project atlas   # a project's admin: ask the hub admins
+evo-agents hub plugin install --github lumen-labs/lumen-notes@v1.2.0 --trust
+evo-agents hub plugin publisher list                 # the signers hub admins trusted, beside the operator's
+```
+
 As the api starts, it turns off every installed plugin whose version no longer runs on its release, the hub having
 been upgraded past the plugin's `engines`: the plugin shows `disabled` with the reason, the audit trail
 `plugin.disable`, and every hub admin who has signed in gets the notice `plugin_disabled`. The hub serves on, and a
@@ -3151,6 +3171,8 @@ environment, never in a committed file.
 | `EVO_HUB_TELEGRAM_BOT_TOKEN`, `EVO_HUB_TELEGRAM_WEBHOOK_SECRET` | api, worker | the hub's Telegram bot, as @BotFather gives its token, and the secret Telegram sends back with each update (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`); without either the Telegram channel is off and the hub runs on (`docs/notifications.md`). `evo-agents hub admin telegram --set-webhook` then points the bot at `EVO_HUB_PUBLIC_URL/v1/telegram/webhook` |
 | `EVO_HUB_PLUGIN_PUBLISHERS` | api | the publishers whose signed plugin bundles the hub accepts: comma-separated `ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml` (a GitHub Actions workflow that signs keyless with Sigstore) or `ID=ed25519:KEY` (a public key, 32 bytes in base64) entries, several for one id; unset trusts nobody and every bundle is refused (section Plugins) |
 | `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
+| `EVO_HUB_PLUGIN_PUBLISHERS_LOCKED` | api | `true` refuses every publisher signer a hub admin would trust from the market or a GitHub release, so the hub trusts only `EVO_HUB_PLUGIN_PUBLISHERS`; `false` by default (`docs/market.md`) |
+| `EVO_HUB_MARKET_DEFAULT_SOURCE` | api | the operator's market, a GitHub `OWNER/REPO` whose `market.json` the hub lists and its admins cannot remove: `maycuatroi1/evo-agents-market` when unset, none when `none` (`docs/market.md`) |
 | `EVO_HUB_PLUGIN_HOST_URL` | api, worker | where the api reaches the plugin host, such as `http://evo-agents-hub-plugins:8090`; with the token below, both or the api runs no isolated backend (section Isolated backends) |
 | `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
