@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.0 evo-agents hub hook session-start || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.0, so evo-agents from PATH runs hub hook session-start' >&2 && evo-agents hub hook session-start; } || echo 'evo-hub: hub hook session-start did not run: uvx could not run evo-ak==0.47.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.1 evo-agents hub hook session-start || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.1, so evo-agents from PATH runs hub hook session-start' >&2 && evo-agents hub hook session-start; } || echo 'evo-hub: hub hook session-start did not run: uvx could not run evo-ak==0.47.1 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 30
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.0 evo-agents hub hook stop || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.0, so evo-agents from PATH runs hub hook stop' >&2 && evo-agents hub hook stop; } || echo 'evo-hub: hub hook stop did not run: uvx could not run evo-ak==0.47.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.1 evo-agents hub hook stop || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.1, so evo-agents from PATH runs hub hook stop' >&2 && evo-agents hub hook stop; } || echo 'evo-hub: hub hook stop did not run: uvx could not run evo-ak==0.47.1 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 25
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.0 evo-agents hub hook post-tool-use || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.0, so evo-agents from PATH runs hub hook post-tool-use' >&2 && evo-agents hub hook post-tool-use; } || echo 'evo-hub: hub hook post-tool-use did not run: uvx could not run evo-ak==0.47.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.1 evo-agents hub hook post-tool-use || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.1, so evo-agents from PATH runs hub hook post-tool-use' >&2 && evo-agents hub hook post-tool-use; } || echo 'evo-hub: hub hook post-tool-use did not run: uvx could not run evo-ak==0.47.1 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 10
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.0 evo-agents hub hook local-tool || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.0, so evo-agents from PATH runs hub hook local-tool' >&2 && evo-agents hub hook local-tool; } || echo 'evo-hub: hub hook local-tool did not run: uvx could not run evo-ak==0.47.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.1 evo-agents hub hook local-tool || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.1, so evo-agents from PATH runs hub hook local-tool' >&2 && evo-agents hub hook local-tool; } || echo 'evo-hub: hub hook local-tool did not run: uvx could not run evo-ak==0.47.1 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 15
           }
         ]
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.0 evo-agents hub hook user-prompt || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.0, so evo-agents from PATH runs hub hook user-prompt' >&2 && evo-agents hub hook user-prompt; } || echo 'evo-hub: hub hook user-prompt did not run: uvx could not run evo-ak==0.47.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.1 evo-agents hub hook user-prompt || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.1, so evo-agents from PATH runs hub hook user-prompt' >&2 && evo-agents hub hook user-prompt; } || echo 'evo-hub: hub hook user-prompt did not run: uvx could not run evo-ak==0.47.1 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 20
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.0 evo-agents hub hook session-end || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.0, so evo-agents from PATH runs hub hook session-end' >&2 && evo-agents hub hook session-end; } || echo 'evo-hub: hub hook session-end did not run: uvx could not run evo-ak==0.47.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.1 evo-agents hub hook session-end || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.1, so evo-agents from PATH runs hub hook session-end' >&2 && evo-agents hub hook session-end; } || echo 'evo-hub: hub hook session-end did not run: uvx could not run evo-ak==0.47.1 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 20
           }
         ]
@@ -72,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.0 evo-agents hub hook local-ask || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.0, so evo-agents from PATH runs hub hook local-ask' >&2 && evo-agents hub hook local-ask; } || echo 'evo-hub: hub hook local-ask did not run: uvx could not run evo-ak==0.47.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.47.1 evo-agents hub hook local-ask || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.47.1, so evo-agents from PATH runs hub hook local-ask' >&2 && evo-agents hub hook local-ask; } || echo 'evo-hub: hub hook local-ask did not run: uvx could not run evo-ak==0.47.1 and evo-agents from PATH is missing or failed' >&2; true",
             "timeout": 15
           }
         ]
