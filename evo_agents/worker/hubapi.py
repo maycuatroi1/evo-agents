@@ -203,8 +203,10 @@ class WorkerHub:
 
     # The protocol
 
-    async def join(self, code: str, host: dict) -> dict:
-        return await self.call("POST", "/v1/worker/join", {"code": code, **host})
+    async def join(self, code: str | None, host: dict, *, token: str | None = None) -> dict:
+        """A new worker for a pairing code, or for a pool's join token instead."""
+        secret = {"code": code} if token is None else {"token": token}
+        return await self.call("POST", "/v1/worker/join", {**secret, **host})
 
     async def claim(self, wait_s: float = CLAIM_WAIT_SECONDS) -> dict | None:
         answer = await self.call("POST", "/v1/worker/claim", {"wait_s": wait_s}, timeout=wait_s + CLAIM_SLACK)

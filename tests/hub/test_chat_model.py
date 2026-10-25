@@ -130,6 +130,28 @@ def test_a_chat_run_prompt_has_the_rules_the_repos_and_the_message_whole():
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES and "detail detail" in prompt
 
 
+def test_a_chat_run_merges_its_own_pull_request_only_when_its_card_leaves_merging_to_it():
+    from evo_agents.hub import chat_runs
+
+    def prompt(**extra) -> str:
+        return chat_runs.build_chat_prompt(
+            agent={"handle": "lumen", "project": "northwind"},
+            chat={"id": 7, "title": "Ops", "people": ["owner"], "agents": ["lumen"]},
+            trigger=_message(3, "@lumen merge it"),
+            login="owner",
+            hop=1,
+            branch="chat/41",
+            blocks=[],
+            **extra,
+        )
+
+    held = prompt()
+    assert "Never push, merge, switch branches or open a pull request yourself" in held and "gh pr merge" not in held
+    ships = prompt(ships=True)
+    assert "Never push, merge" not in ships and "merge it yourself: commit, push chat/41 (never forced)" in ships
+    assert "`gh pr merge --merge`" in ships and "never push to a default branch directly" in ships
+
+
 def test_a_chat_runs_rules_have_it_act_without_asking_and_warn_of_no_secret_that_stayed_on_the_hub():
     from evo_agents.hub import chat_runs
 

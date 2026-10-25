@@ -45,7 +45,7 @@ LEASED_KINDS = ("env", "git")  # the kinds a run is leased; a forge secret never
 TEST_ENVIRONMENT = "test"
 SECRET_ENVIRONMENTS = (TEST_ENVIRONMENT,)
 FORGE_KIND = "forge"  # a GitLab token only the hub's process opens, to drive merge requests (server/forge.py)
-# The API key of a provider account (schema 0148, server/provider_accounts.py): never leased raw, as LEASED_KINDS
+# The API key of a provider account (schema 0151, server/provider_accounts.py): never leased raw, as LEASED_KINDS
 # leaves it out, and written through /v1/provider-accounts, never /v1/secrets
 PROVIDER_KIND = "provider"
 PROVIDERS = ("secret", "github-app")  # a member's secret, or an installation token the hub's GitHub App makes

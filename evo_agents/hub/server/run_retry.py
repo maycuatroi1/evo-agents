@@ -46,6 +46,8 @@ def next_attempt(run_id: int):
         "pulls",
         "browser",
         "browser_identities",
+        "selector",
+        "tolerations",
         "principal_id",
         "autonomy",
         *CHAT_COLUMNS,

@@ -14,6 +14,7 @@ that only this machine's own credentials would make."""
 
 from __future__ import annotations
 
+import json
 import secrets
 import sys
 from datetime import UTC, datetime, timedelta
@@ -87,6 +88,29 @@ def test_a_release_run_pushes_release_version_of_its_repo_and_tells_the_hub(mach
         assert any(f"The agent picked 0.25.0: {DECISION}" in text for text in texts)
         assert any("The hub took release/0.25.0 of alpha" in text for text in texts)
         assert len(machine.starts()) == 1, "one turn"
+
+    with_daemon(machine, body)
+
+
+def test_a_release_run_reads_a_result_file_the_agent_wrote_in_the_worktree_and_does_not_commit_it(machine):  # noqa: F811
+    stray = json.dumps({"version": "0.25.0", "decision": DECISION, "summary": "Bumped."})
+    machine.scenarios(
+        {
+            "release": [
+                {
+                    "sh": "echo 0.25.0 > alpha/VERSION && git -C alpha add -A && git -C alpha commit -qm 'Release 0.25.0'"
+                },
+                {"write": {"alpha/.evo-run/result.json": stray}},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_release_run("alpha", machine.seeds["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert any("in the worktree of alpha" in text for text in hub.texts(run_id))
+        files = machine.origin("alpha", "ls-tree", "-r", "--name-only", "release/0.25.0").splitlines()
+        assert not any(name.startswith(".evo-run/") for name in files), files
 
     with_daemon(machine, body)
 

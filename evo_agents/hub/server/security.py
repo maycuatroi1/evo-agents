@@ -92,7 +92,7 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/github",
         "/v1/auth/web/login",
         "/v1/auth/web/callback",
-        "/v1/worker/join",  # a pairing code is the credential
+        "/v1/worker/join",  # a pairing code or a pool's join token is the credential
         "/v1/invites/preview",  # an invite link's token is the credential; it shows what the link gives, never more
         # the secret token Telegram sends is the credential: the named exception of the core plugin telegram, whose
         # webhook kept its path when the other core plugins' went under HOOKS_PREFIX

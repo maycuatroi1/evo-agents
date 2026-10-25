@@ -16,7 +16,7 @@ import re
 from evo_agents.hub import model_catalog
 
 GATEWAY = "gateway"  # credential_leases.provider and the kind of a gateway lease
-GATEWAY_RUN_AGENT = (0, 45, 0)  # the first daemon release that runs a run through the gateway route
+GATEWAY_RUN_AGENT = (0, 46, 0)  # the first daemon release that runs a run through the gateway route
 RUNTIME_FORMATS = {"claude-code": "anthropic", "opencode": "openai", "codex": "openai-responses"}
 GATEWAY_RUNTIMES = tuple(RUNTIME_FORMATS)
 CUSTOM_PROVIDERS = ("custom-openai", "custom-anthropic")  # a node of its own at the gateway, prefixed evo-<id>

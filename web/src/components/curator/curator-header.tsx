@@ -192,7 +192,7 @@ export function CuratorHeader({ project, status, actions }: { project: string; s
           end: charter.window.end,
           timezone: charter.window.timezone,
           owner: charter.schedule_owner,
-          worker: () => <Identifier value={charter.worker} className="align-baseline" />,
+          worker: () => <Identifier value={charter.worker ?? `pool=${charter.pool}`} className="align-baseline" />,
         })
     : null;
   return (

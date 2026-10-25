@@ -79,7 +79,7 @@ BRIEF_GRACE = timedelta(hours=3)  # a morning brief the hub could not send this 
 
 # What `charter show --json` prints besides the charter body; `charter set` leaves them out of what it sends, and the
 # api ignores them in a write, so what was shown can be written back.
-CHARTER_META = ("project", "revision", "updated_by", "updated_at", "worker_id", "schedule_owner")
+CHARTER_META = ("project", "revision", "updated_by", "updated_at", "worker_id", "pool_id", "schedule_owner")
 BUDGET_KEYS = ("max_usd", "max_turns", "max_seconds")  # a run's caps (runs.budget)
 SPENT_KEYS = ("spent_usd", "spent_seconds")  # added to them in a claim
 

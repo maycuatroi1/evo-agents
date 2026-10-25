@@ -129,6 +129,8 @@ def run_select():
             r.c.session_per_step,
             r.c.browser,
             r.c.browser_identities,
+            r.c.selector,
+            r.c.tolerations,
             ap.c.handle.label("profile"),
             r.c.profile_id,
             r.c.profile_version,

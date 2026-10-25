@@ -10,7 +10,7 @@ tokens (0066: oauth_sealed, oauth_nonce, oauth_key_id, all null for any other ac
 has the defaults. account_policies holds a member's policy for a project; none means DEFAULT_POLICY. run_accounts
 holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
 
-provider_accounts (0148) holds what a provider account calls, for its secret of kind provider, whose sealed value is
+provider_accounts (0151) holds what a provider account calls, for its secret of kind provider, whose sealed value is
 its API key (``evo_agents.hub.server.provider_accounts``): the catalog id of its provider, its base URL, its API
 format and the names of its models. Its weight, priority, pause and cooldown are its ``accounts`` row, as for any
 account.
@@ -23,8 +23,8 @@ credential_shares holds each share an owner gave of a secret or an account (``ev
 one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
 moment its owner acknowledged the terms warning, and when it was revoked; never deleted. credential_share_projects
 holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
-made for and the share it came under (0106), and the hash of a gateway lease's run token (0149); runs gains the
-provider prefix of a run that goes through the model gateway (0149, ``evo_agents.hub.gateway_runs``).
+made for and the share it came under (0106), and the hash of a gateway lease's run token (0152); runs gains the
+provider prefix of a run that goes through the model gateway (0152, ``evo_agents.hub.gateway_runs``).
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ def email_table(metadata: MetaData) -> Table:
 
 def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table]:
     """(accounts, account_policies, run_accounts, user_emails, provider_accounts), added to ``metadata`` (0027, 0066,
-    0068, 0148)."""
+    0068, 0151)."""
     accounts = Table(
         "accounts",
         metadata,
