@@ -2916,6 +2916,7 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 | `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
 | `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` and the worker's `/v1/worker/kg/{project}...` answer 404, the `kg_*` tools of `/mcp` return that error, and the heartbeat names the project to no worker for its graph |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
+| `seller` | the hub | off by default; off means no Selling page, `/v1/seller...` and the public `/v1/seller-api/...` answer 404, and the hub sells no plugin (`docs/market.md`, section Selling plugins) |
 | `canvas`, `srs`, `tasks` | the hub or a project | off by default; off means no page of it in the project's menu, its routes under `/v1/x/<name>/{project}...` answer 404, its `<name>__*` tools of `/mcp` return that error, and its events, jobs and sources of the knowledge graph skip the project (`docs/plugins.md`, Core plugins) |
 
 A feature is on until a layer turns it off, but for canvas, srs and tasks, plugins until migration 0147: each is off

@@ -85,3 +85,66 @@ export function repoOf(text: string): string {
   const found = /^(?:https?:\/\/)?github\.com\/([^/\s]+\/[^/\s#?]+)/i.exec(trimmed);
   return (found ? found[1] : trimmed).replace(/\.git$/, "");
 }
+
+/** The most months one order may cover (evo_agents.hub.tables_seller.MAX_MONTHS). */
+export const MAX_MONTHS = 36;
+
+/**
+ * What a hub admin may do with a paid plugin: buy it while the hub has none, renew it once installed (a renewal starts
+ * where the last licence ends), or nothing for a free or core one.
+ */
+export function buyAction(plugin: Pick<MarketPlugin, "status" | "tier" | "price">): "buy" | "renew" | null {
+  if (plugin.tier !== "isolated" || plugin.price.kind === "free") return null;
+  if (plugin.status === "needs_license") return "buy";
+  if (plugin.status === "installed" || plugin.status === "upgrade") return "renew";
+  return null;
+}
+
+/** The months typed into the Buy dialog, when they are a whole number the seller takes. */
+export function parseMonths(text: string): number | null {
+  if (!/^\d{1,2}$/.test(text.trim())) return null;
+  const months = Number(text.trim());
+  return months >= 1 && months <= MAX_MONTHS ? months : null;
+}
+
+/** What `months` months cost at `usdPerMonth`, to the cent, as the seller totals an order; null without a price. */
+export function orderTotal(usdPerMonth: number | null | undefined, months: number | null): number | null {
+  if (usdPerMonth === null || usdPerMonth === undefined || months === null) return null;
+  return Math.round(usdPerMonth * 100 * months) / 100;
+}
+
+/** Whether `email` reads as an address the seller takes (one @, a dot in its domain). */
+export function isEmail(email: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+}
+
+/** YYYY-MM of `now` in UTC, the month the seller's revenue reads by default. */
+export function monthOf(now: Date): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** The month before YYYY-MM `month`. */
+export function previousMonth(month: string): string {
+  const [year, number] = month.split("-").map(Number);
+  return number === 1 ? `${year - 1}-12` : `${year}-${String(number - 1).padStart(2, "0")}`;
+}
+
+/** Whether YYYY-MM `month` is over at `now`, in UTC: a publisher's share is paid out only after it. */
+export function monthOver(month: string, now: Date): boolean {
+  return month < monthOf(now);
+}
+
+/** Whether a hub admin may mark this publisher's share of `month` paid out: once, after the month, when there is one. */
+export function mayPayOut(line: { publisher_usd: number; paid_out?: unknown }, month: string, now: Date): boolean {
+  return !line.paid_out && line.publisher_usd > 0 && monthOver(month, now);
+}
+
+export type LicenseTone = "success" | "attention" | "danger" | "neutral";
+
+/** How a purchase's licence reads: active, in its grace week, lapsed, or still waiting for payment. */
+export function licenseTone(state: string | null | undefined): LicenseTone {
+  if (state === "active") return "success";
+  if (state === "grace") return "attention";
+  if (state === "lapsed" || state === "cancelled") return "danger";
+  return "neutral";
+}

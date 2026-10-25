@@ -15,6 +15,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
 
+import { BuyDialog } from "./buy-dialog";
 import { InstallActions, RequestInstall } from "./install-actions";
 import { requestableProjects } from "./model";
 import { MarketStatusBadge, NoInstallReason, PriceTag, TierTag } from "./parts";
@@ -126,7 +127,14 @@ function DetailBody({ plugin }: { plugin: MarketPluginDetail }) {
             <Identifier value={plugin.id} />
           </>
         }
-        actions={hubAdmin ? <InstallActions plugin={plugin} /> : null}
+        actions={
+          hubAdmin ? (
+            <>
+              <InstallActions plugin={plugin} />
+              <BuyDialog plugin={plugin} />
+            </>
+          ) : null
+        }
         sub={t("from", { market: plugin.market, publisher: plugin.publisher.name ?? plugin.publisher.id })}
       />
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -179,6 +187,9 @@ function DetailBody({ plugin }: { plugin: MarketPluginDetail }) {
           {plugin.price.kind !== "free" ? (
             <Card className="min-w-0" data-testid="market-license">
               <CardHead icon={KeyRound} title={t("licenseTitle")} description={t("licenseDescription")} />
+              <CardContent className="min-w-0">
+                <p className="text-sm text-pretty text-muted-foreground">{hubAdmin ? t("licenseAdmin") : t("licenseMember")}</p>
+              </CardContent>
             </Card>
           ) : null}
           {!hubAdmin && wanted && plugin.tier === "isolated" && plugin.price.kind === "free" ? (

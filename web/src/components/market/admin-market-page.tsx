@@ -1,6 +1,8 @@
 "use client";
 
-import { BadgeCheck, Lock, RefreshCw, Store, Trash2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { BadgeCheck, Banknote, Lock, RefreshCw, Store, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
@@ -19,9 +21,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { featureOn, featuresQuery } from "@/lib/hub-settings";
 
 import { useMarketFailure, useRemoveTrust, useSourceAction } from "./data";
-import { type MarketSource, marketSourcesQuery, type PluginPublisher, trustedPublishersQuery } from "./queries";
+import { LicensesCard } from "./licenses-card";
+import { type MarketSource, marketSourcesQuery, type PluginPublisher, sellerHref, trustedPublishersQuery } from "./queries";
 import { AddSourceDialog } from "./source-dialog";
 
 const NARROW_HIDDEN = { plugins: "hidden sm:table-cell", fetched: "hidden md:table-cell" };
@@ -194,6 +198,8 @@ export function AdminMarketPage({ initialError }: { initialError: ApiErrorInfo |
   const [asked, setAsked] = useState<Asked | null>(null);
   const [refused, setRefused] = useState<WriteFailure | null>(null);
   const pending = sourceAction.isPending || removeTrust.isPending;
+  const { data: features } = useQuery(featuresQuery(browserApi));
+  const selling = features !== undefined && featureOn(features, "seller");
 
   const confirm = async () => {
     if (!asked) return;
@@ -214,7 +220,22 @@ export function AdminMarketPage({ initialError }: { initialError: ApiErrorInfo |
 
   return (
     <>
-      <PageHeader title={t("title")} actions={<AddSourceDialog />} />
+      <PageHeader
+        title={t("title")}
+        actions={
+          <>
+            {selling ? (
+              <Button asChild variant="outline" data-testid="market-seller-link">
+                <Link href={sellerHref()}>
+                  <Banknote aria-hidden="true" />
+                  {t("seller")}
+                </Link>
+              </Button>
+            ) : null}
+            <AddSourceDialog />
+          </>
+        }
+      />
       <QueryView state={state} loading={<TableSkeleton rows={3} />}>
         {(held) => (
           <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -233,11 +254,14 @@ export function AdminMarketPage({ initialError }: { initialError: ApiErrorInfo |
                 </DataCard>
               )}
             </div>
-            <TrustedCard
-              publishers={publishers.status === "success" ? publishers.data : []}
-              locked={held.publishers_locked}
-              onRemove={setAsked}
-            />
+            <div className="flex min-w-0 flex-col gap-6">
+              <TrustedCard
+                publishers={publishers.status === "success" ? publishers.data : []}
+                locked={held.publishers_locked}
+                onRemove={setAsked}
+              />
+              <LicensesCard />
+            </div>
           </div>
         )}
       </QueryView>
