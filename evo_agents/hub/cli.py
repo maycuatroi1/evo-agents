@@ -211,6 +211,10 @@ def _register_client_commands(hsub) -> None:
 
     register_plugins(hsub)
 
+    from evo_agents.hub.cli_market import register_market
+
+    register_market(hsub)
+
     from evo_agents.hub.cli_srs import register_srs
 
     register_srs(hsub)
