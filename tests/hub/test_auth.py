@@ -485,7 +485,15 @@ def test_admin_stats_counts_the_rows_of_every_table(client, github, hub_db):
 # Server: GitHub's side
 
 
-def test_github_down_or_slow_is_a_502_naming_github(client, github):
+@pytest.fixture
+def client_2s(hub_db, tmp_path, github):
+    """A hub that gives each call to GitHub 2 s, for the test that makes GitHub slower than that."""
+    with TestClient(create_app(live.hub_config(hub_db, tmp_path, github, github_timeout=2.0))) as client:
+        yield client
+
+
+def test_github_down_or_slow_is_a_502_naming_github(client_2s, github):
+    client = client_2s
     github_token = github.issue_token(Account("octo", 101))
     body = {"github_token": github_token, "host": "laptop"}
 
