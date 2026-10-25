@@ -54,6 +54,7 @@ from evo_agents.hub import (
     tables_plugin_notices,
     tables_plugins,
     tables_pm,
+    tables_pools,
     tables_problems,
     tables_profiles,
     tables_release,
@@ -410,6 +411,7 @@ Index(
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
 workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0119
+worker_pools, worker_pool_projects, worker_join_tokens = tables_pools.pool_tables(metadata, workers)  # 0147
 
 runs = Table(
     "runs",

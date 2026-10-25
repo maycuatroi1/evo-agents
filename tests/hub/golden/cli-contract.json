@@ -29222,13 +29222,550 @@
           }
         }
       },
+      "/v1/worker-pools": {
+        "get": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "List Pools",
+          "description": "The caller's pools, by name, each with its nodes that are not revoked.",
+          "operationId": "list_pools_v1_worker_pools_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/Pool"
+                    },
+                    "type": "array",
+                    "title": "Response List Pools V1 Worker Pools Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Create Pool",
+          "description": "A new pool of the caller's, without nodes until a machine joins with one of its join tokens.",
+          "operationId": "create_pool_v1_worker_pools_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker-pools/{name}": {
+        "get": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Show Pool",
+          "description": "One of the caller's pools with its nodes that are not revoked.",
+          "operationId": "show_pool_v1_worker_pools__name__get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Update Pool",
+          "description": "Change the pool's settings; its nodes take them, and their daemons learn them from their next heartbeat.",
+          "operationId": "update_pool_v1_worker_pools__name__patch",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolUpdate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker-pools/{name}/tokens": {
+        "post": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Create Join Token",
+          "description": "A join token of the pool, which machines join it with (`evo-agents worker join --token`); shown once.",
+          "operationId": "create_join_token_v1_worker_pools__name__tokens_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinTokenRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/IssuedJoinToken"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "List Join Tokens",
+          "description": "The join tokens of the pool, newest first, without the tokens themselves.",
+          "operationId": "list_join_tokens_v1_worker_pools__name__tokens_get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/JoinToken"
+                    },
+                    "title": "Response List Join Tokens V1 Worker Pools  Name  Tokens Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker-pools/{name}/tokens/{token_id}/revoke": {
+        "post": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Revoke Join Token",
+          "description": "Revoke a join token of the pool: no machine joins with it any more; the nodes that joined with it stay.",
+          "operationId": "revoke_join_token_v1_worker_pools__name__tokens__token_id__revoke_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            },
+            {
+              "name": "token_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Token Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/JoinToken"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/join": {
         "post": {
           "tags": [
             "worker protocol"
           ],
           "summary": "Join",
-          "description": "Trade a pairing code for the token of a new worker; the token is shown once.",
+          "description": "Trade a pairing code, or a pool's join token, for the token of a new worker; the token is shown once.",
           "operationId": "join_v1_worker_join_post",
           "requestBody": {
             "content": {
@@ -91649,6 +92186,95 @@
           ],
           "title": "InviteRow"
         },
+        "IssuedJoinToken": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "pool": {
+              "type": "string",
+              "title": "Pool"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "live",
+                "expired",
+                "revoked",
+                "used"
+              ],
+              "title": "Status"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "max_uses": {
+              "type": "integer",
+              "title": "Max Uses"
+            },
+            "uses": {
+              "type": "integer",
+              "title": "Uses",
+              "description": "machines that joined with it"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "token": {
+              "type": "string",
+              "title": "Token",
+              "description": "evj_...; shown once, the hub keeps only its SHA-256"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "pool",
+            "status",
+            "created_by",
+            "created_at",
+            "expires_at",
+            "max_uses",
+            "uses",
+            "last_used_at",
+            "revoked_at",
+            "token"
+          ],
+          "title": "IssuedJoinToken"
+        },
         "Job": {
           "properties": {
             "job_id": {
@@ -91715,11 +92341,32 @@
               "description": "of the evo-agents daemon"
             },
             "code": {
-              "type": "string",
-              "maxLength": 32,
-              "minLength": 1,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Code",
               "description": "the pairing code, XXXX-XXXX"
+            },
+            "token": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token",
+              "description": "instead of a code: the join token of a pool, evj_..."
             }
           },
           "type": "object",
@@ -91727,10 +92374,114 @@
             "hostname",
             "os",
             "arch",
-            "agent_version",
-            "code"
+            "agent_version"
           ],
           "title": "JoinRequest"
+        },
+        "JoinToken": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "pool": {
+              "type": "string",
+              "title": "Pool"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "live",
+                "expired",
+                "revoked",
+                "used"
+              ],
+              "title": "Status"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "max_uses": {
+              "type": "integer",
+              "title": "Max Uses"
+            },
+            "uses": {
+              "type": "integer",
+              "title": "Uses",
+              "description": "machines that joined with it"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "pool",
+            "status",
+            "created_by",
+            "created_at",
+            "expires_at",
+            "max_uses",
+            "uses",
+            "last_used_at",
+            "revoked_at"
+          ],
+          "title": "JoinToken"
+        },
+        "JoinTokenRequest": {
+          "properties": {
+            "hours": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 1.0,
+              "title": "Hours",
+              "description": "how long it works: 1 hour to 30 days",
+              "default": 24
+            },
+            "max_uses": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Max Uses",
+              "description": "machines that may join with it, 1 to 100",
+              "default": 1
+            }
+          },
+          "type": "object",
+          "title": "JoinTokenRequest"
         },
         "Judge": {
           "properties": {
@@ -103591,6 +104342,332 @@
             "changed"
           ],
           "title": "PolicyWritten"
+        },
+        "Pool": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who made it"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "taints": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Taints"
+            },
+            "accepted_findings": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Accepted Findings"
+            },
+            "reap_after_days": {
+              "type": "integer",
+              "title": "Reap After Days"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/PoolNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "its nodes that are not revoked, newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "owner",
+            "projects",
+            "slots",
+            "labels",
+            "taints",
+            "accepted_findings",
+            "reap_after_days",
+            "created_at",
+            "updated_at",
+            "nodes"
+          ],
+          "title": "Pool"
+        },
+        "PoolNode": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "hostname": {
+              "type": "string",
+              "title": "Hostname"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline",
+                "draining",
+                "revoked"
+              ],
+              "title": "Status"
+            },
+            "agent_version": {
+              "type": "string",
+              "title": "Agent Version"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels",
+              "description": "its own labels, its pool's, and pool=<name>"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_heartbeat_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Heartbeat At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "hostname",
+            "status",
+            "agent_version",
+            "labels",
+            "created_at",
+            "last_heartbeat_at"
+          ],
+          "title": "PoolNode"
+        },
+        "PoolRequest": {
+          "properties": {
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "the projects its nodes take runs of; the writer role on each"
+            },
+            "slots": {
+              "type": "integer",
+              "maximum": 16.0,
+              "minimum": 1.0,
+              "title": "Slots",
+              "description": "runs each node holds at once",
+              "default": 1
+            },
+            "labels": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Labels"
+            },
+            "taints": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Taints"
+            },
+            "accepted_findings": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$"
+              },
+              "type": "array",
+              "maxItems": 32,
+              "title": "Accepted Findings"
+            },
+            "reap_after_days": {
+              "type": "integer",
+              "maximum": 90.0,
+              "minimum": 1.0,
+              "title": "Reap After Days",
+              "default": 7
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+              "title": "Name",
+              "description": "unique among the owner's pools; it starts its nodes' names"
+            }
+          },
+          "type": "object",
+          "required": [
+            "projects",
+            "name"
+          ],
+          "title": "PoolRequest"
+        },
+        "PoolUpdate": {
+          "properties": {
+            "projects": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Projects",
+              "description": "the projects its nodes take runs of; the writer role on each"
+            },
+            "slots": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 16.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slots",
+              "description": "runs each node holds at once"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels every node has, a word or key=value; the hub adds pool=<name> itself"
+            },
+            "taints": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Taints",
+              "description": "taints every node has: a node takes only the runs that tolerate each of them"
+            },
+            "accepted_findings": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,62}$"
+                  },
+                  "type": "array",
+                  "maxItems": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accepted Findings",
+              "description": "codes of high doctor findings a node may have and still be ready (`evo-agents worker doctor`)"
+            },
+            "reap_after_days": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 90.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reap After Days",
+              "description": "days a node stays offline before the hub revokes it"
+            }
+          },
+          "type": "object",
+          "title": "PoolUpdate"
         },
         "PrefSet": {
           "properties": {
@@ -127471,7 +128548,20 @@
                 "type": "string"
               },
               "type": "array",
-              "title": "Labels"
+              "title": "Labels",
+              "description": "its own labels, then for a node of a pool the pool's labels and pool=<name>, which the pool sets"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool it joined with a join token; null for one paired or registered"
             },
             "plugins": {
               "items": {
