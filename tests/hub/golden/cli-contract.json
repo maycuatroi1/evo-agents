@@ -9326,6 +9326,36 @@
       ],
       "json": null
     },
+    "hub model-catalog": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--group"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "source",
+          "groups",
+          "providers"
+        ],
+        "schema": "ModelCatalog"
+      }
+    },
     "hub notifications": {
       "positionals": [],
       "options": [
@@ -68529,6 +68559,71 @@
           }
         }
       },
+      "/v1/model-catalog": {
+        "get": {
+          "tags": [
+            "model-catalog"
+          ],
+          "summary": "Get Model Catalog",
+          "description": "The providers a member can add an account for, with where the catalog came from.",
+          "operationId": "get_model_catalog_v1_model_catalog_get",
+          "parameters": [
+            {
+              "name": "group",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the providers of this group",
+                "title": "Group"
+              },
+              "description": "only the providers of this group"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ModelCatalog"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "304": {
+              "description": "unchanged"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/signals/{project}": {
         "post": {
           "tags": [
@@ -82174,6 +82269,141 @@
             "reason"
           ],
           "title": "CanvasWithdrawIn"
+        },
+        "CatalogProvider": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "alias": {
+              "type": "string",
+              "title": "Alias",
+              "description": "what the gateway reads before the slash of a model name"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "group": {
+              "type": "string",
+              "title": "Group"
+            },
+            "color": {
+              "type": "string",
+              "title": "Color"
+            },
+            "text_icon": {
+              "type": "string",
+              "title": "Text Icon"
+            },
+            "website": {
+              "type": "string",
+              "title": "Website"
+            },
+            "key_hint": {
+              "type": "string",
+              "title": "Key Hint"
+            },
+            "base_url": {
+              "type": "string",
+              "title": "Base Url",
+              "description": "the root of the API; empty for the custom entries and the Claude subscription"
+            },
+            "api_format": {
+              "type": "string",
+              "enum": [
+                "openai",
+                "anthropic",
+                "openai-responses",
+                "gemini"
+              ],
+              "title": "Api Format"
+            },
+            "default_model": {
+              "type": "string",
+              "title": "Default Model"
+            },
+            "key_required": {
+              "type": "boolean",
+              "title": "Key Required"
+            },
+            "free": {
+              "type": "boolean",
+              "title": "Free"
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "gateway",
+                "login"
+              ],
+              "title": "Via",
+              "description": "login: the Claude subscription, which skips the gateway"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "alias",
+            "name",
+            "group",
+            "color",
+            "text_icon",
+            "website",
+            "key_hint",
+            "base_url",
+            "api_format",
+            "default_model",
+            "key_required",
+            "free",
+            "via"
+          ],
+          "title": "CatalogProvider"
+        },
+        "CatalogSource": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "repository": {
+              "type": "string",
+              "title": "Repository"
+            },
+            "tag": {
+              "type": "string",
+              "title": "Tag"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the OmniRoute version, the one of the gateway image"
+            },
+            "commit": {
+              "type": "string",
+              "title": "Commit"
+            },
+            "license": {
+              "type": "string",
+              "title": "License"
+            },
+            "copyright": {
+              "type": "string",
+              "title": "Copyright"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "repository",
+            "tag",
+            "version",
+            "commit",
+            "license",
+            "copyright"
+          ],
+          "title": "CatalogSource"
         },
         "CeilingSet": {
           "properties": {
@@ -97199,6 +97429,34 @@
           ],
           "title": "MissingOrigin",
           "description": "A repo of the run whose origin no lease covers: git uses the machine's own credentials for it."
+        },
+        "ModelCatalog": {
+          "properties": {
+            "source": {
+              "$ref": "#/components/schemas/CatalogSource"
+            },
+            "groups": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Groups"
+            },
+            "providers": {
+              "items": {
+                "$ref": "#/components/schemas/CatalogProvider"
+              },
+              "type": "array",
+              "title": "Providers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "groups",
+            "providers"
+          ],
+          "title": "ModelCatalog"
         },
         "ModelCount": {
           "properties": {

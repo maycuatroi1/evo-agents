@@ -64,6 +64,7 @@ from evo_agents.hub.accounts import (
     STRATEGIES,
 )
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_model_catalog import register_model_catalog
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import (
     FORGE_KIND,
@@ -339,6 +340,7 @@ def register_secrets(hsub) -> None:
     cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
+    register_model_catalog(hsub)  # the providers an account is added for
 
 
 # `hub account`: the env secrets as accounts (docs/credentials.md, section Accounts)
