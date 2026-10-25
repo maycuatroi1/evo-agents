@@ -102,6 +102,10 @@ import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUN
  * Pages render in the default language, English, and entries find what they click by role, test id or ARIA
  * state rather than by copy.
  */
+/** The frame of a plugin's page in the main column, and a plugin's panel of a slot there (web/DESIGN.md, Plugins). */
+const PLUGIN_FRAME = '[data-testid="plugin-frame"]';
+const PANEL_FRAME = '[data-testid="plugin-frame"][data-panel]';
+
 type Context = { page: Page; me: Member; hidden: string };
 type Entry = { name: string; open: (context: Context) => Promise<void>; deployed?: boolean };
 
@@ -2017,7 +2021,7 @@ const PAGES: Entry[] = [
       await new HubAdmin().grant(project, me.login, "admin", "customer");
       await seedPm(me, project);
       await open(page, pmPath(project));
-      await expect(page.locator("#main").getByTestId("pm-report")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("pm-report")).toBeVisible();
       await expectNoSeriousViolations(page, "PM daily");
       await page.setViewportSize({ width: 375, height: 812 });
       await expectNoSeriousViolations(page, "PM daily at 375 px");
@@ -2030,15 +2034,15 @@ const PAGES: Entry[] = [
       await new HubAdmin().grant(project, me.login, "admin", "customer");
       await seedGrowth(me, project, { long: true });
       await open(page, contactsPath(project));
-      await expect(page.locator("#main").getByTestId("crm-contact-row").first()).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-contact-row").first()).toBeVisible();
       await expectNoSeriousViolations(page, "Contacts");
       await open(page, contactPath(project, CONTACTS.longLead));
-      await expect(page.locator("#main").getByTestId("crm-note-form")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-note-form")).toBeVisible();
       await expectNoSeriousViolations(page, "a contact");
       await page.setViewportSize({ width: 375, height: 812 });
       await expectNoSeriousViolations(page, "a contact at 375 px");
-      await page.locator("#main").getByTestId("crm-delete").click();
-      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-delete").click();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByRole("alertdialog")).toBeVisible();
     },
   },
   {
@@ -2048,21 +2052,21 @@ const PAGES: Entry[] = [
       await new HubAdmin().grant(project, me.login, "admin", "customer");
       await seedGrowth(me, project, { spent: 50 });
       await open(page, marketingPath(project, "posts"));
-      await expect(page.locator("#main").getByTestId("marketing-group-drafts")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-group-drafts")).toBeVisible();
       await expectNoSeriousViolations(page, "Marketing posts");
       await open(page, marketingPath(project, "weekly"));
-      await expect(page.locator("#main").getByTestId("weekly-report")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("weekly-report")).toBeVisible();
       await expectNoSeriousViolations(page, "Growth weekly");
       await open(page, decidePath(project));
-      await expect(page.locator("#main").getByTestId("decide-growth")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PANEL_FRAME).getByTestId("decide-growth")).toBeVisible();
       await expectNoSeriousViolations(page, "growth decisions");
       await open(page, marketingPath(project));
-      await expect(page.locator("#main").getByTestId("marketing-channels")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-channels")).toBeVisible();
       await expectNoSeriousViolations(page, "Marketing overview");
       await page.setViewportSize({ width: 375, height: 812 });
       await expectNoSeriousViolations(page, "Marketing overview at 375 px");
-      await page.locator("#main").getByTestId("marketing-kill").click();
-      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-kill").click();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByRole("alertdialog")).toBeVisible();
     },
   },
   {
@@ -2074,13 +2078,13 @@ const PAGES: Entry[] = [
       await seedGrowth(owner, project);
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, contactsPath(project));
-      await expect(page.locator("#main").getByTestId("crm-read-only")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-read-only")).toBeVisible();
       await expectNoSeriousViolations(page, "Contacts as a reader at 375 px");
       await open(page, marketingPath(project, "posts"));
-      await expect(page.locator("#main").getByTestId("marketing-read-only")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-read-only")).toBeVisible();
       await expectNoSeriousViolations(page, "Marketing posts as a reader at 375 px");
       await open(page, marketingPath(project));
-      await expect(page.locator("#main").getByTestId("marketing-read-only")).toBeVisible();
+      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-read-only")).toBeVisible();
     },
   },
   {

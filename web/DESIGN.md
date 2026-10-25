@@ -1685,6 +1685,11 @@ Shared pieces built on them:
     session and `X-Evo-Plugin: <plugin>`, which the hub checks against the plugin's grant too, and refuses the rest with
     `not_granted` before the hub is asked; a read that finds the plugin off takes its page away. It posts the viewer's
     theme, so a page can follow light and dark. A plugin's page draws itself: this file binds the frame around it, not what it holds.
+  - A **slot panel** (`slot-panels.tsx`) is a plugin's page whose manifest names a `slot` instead of a place in the
+    menu. The Decisions page puts each enabled plugin's page of slot `decide` in its `extra`, in that plugin's frame
+    in panel mode: no edge, no card, no floor of 240 px, and no room at all (hidden from the tab order and from a
+    screen reader) while the page's height is 0 or not reported yet. A project whose plugins have no such page gets
+    nothing there.
 - `components/srs`, the native pages of the core plugin srs (plan srs-tasks-plugins; docs/plugins.md, Core plugins), under
   `app/(app)/p/[project]/x/srs/` with a layout that calls `requirePlugin("srs", project, "documents")`, so a project
   that has not enabled it has neither the SRS menu item (its manifest's page `documents`) nor the pages, as the API
@@ -1841,32 +1846,40 @@ Shared pieces built on them:
   chip of its code (`components/data/problem-chips.tsx`) that opens it, named by its statement for a screen reader and in
   its tooltip: in a column of the plans list (codes in the meta line on a phone), beside a plan's revision, beside a
   goal's code and in its details, and in a claim's links. A chain's rail starts from the problem its goal answers.
-- `components/crm`, the core plugin crm's Contacts (`/p/{project}/x/crm/contacts`, its page `contacts` in the sidebar's
-  plugin group; `/x/crm` leads there), only where the project enabled crm. Its words are the `crm` namespace. The
-  pipeline is a row of five toggle buttons (All, then lead, invited, activated, retained, each with its count,
-  `aria-pressed` on the one shown) that filters the list on the client; the list is a `Table`: the login in mono
-  opening the contact, the stage as a badge (lead outline, invited info, activated and retained success), where the
-  person came from, first seen and in this stage since. A contact (`/contacts/{login}`, a GitHub login or 404) heads
-  with a back link, the login, its stage and a link to the GitHub profile; then its touchpoints, newest first (kind,
-  ref, link, a note's text and who wrote it) beside the stages it reached. A writer adds a note (1,000 characters at
-  most); an admin's Delete contact opens a `ConfirmAction` that says everything goes for good, as the person asked.
-  Readers see a note that they only read, and no control that writes.
-- `components/marketing`, the core plugin marketing's pages (`/p/{project}/x/marketing/overview|posts|weekly`, one
-  `TabNav`; `/x/marketing` leads to the overview), only where the project enabled marketing. Its words are the
-  `marketing` namespace. The overview heads with Stop all posting (a writer's, a `ConfirmAction`; an admin's Resume
-  posting once stopped, with the danger banner of the reason), then the month: the channel accounts, the breakers open
-  (red once one is) and the cost against the cap as a `Meter` (`warning` from 80 %, `danger` once spent, the split
-  between spent and held by posts in flight below it), and the channel accounts as a `Table`: channel and account (and
-  whose, for a personal one), mode, the breaker (Closed, or Open with its reason and an admin's Close breaker) and the
-  login session of a browser channel (Expired in amber). Posts are grouped by what the gate did: drafts to share by hand
-  (a member's personal account, a Facebook group; each with Copy text, `useClipboard`), waiting for the gate, passed,
-  went out (with its link and cost) and stopped (with the reason); their text is a writer's, so a reader is told so.
-  The Growth weekly, the link of the Monday notice, is the bulletin's Growth section: each Goal's signal against its
-  target (Met, Not yet), the posts that went out, the breakers open, the week's cost and the month's `Meter`, and the
-  drafts kept for the blog project the config `proposals_project` names. On the Decisions page
-  (`components/marketing/growth-decisions.tsx`, the `extra` slot of `DecidePage`) a Growth card lists what waits for a
-  person, from the same reads, and nothing where marketing is off: each open breaker, each browser channel whose login
-  session expired and the month's spent budget, each with who acts and Open to the overview.
+- The core plugins crm, pm and marketing have no page of this web: each ships its pages as files of the UI kit under
+  `evo_agents/core_plugins/<plugin>/ui/pages/` (plain ES2017 on `plugin-kit/1`, the kit's classes only, a shared
+  `common.js` and `common.css`, the words in `i18n/en.js` and `vi.js` through `evo.messages`), framed by
+  `/p/{project}/x/{plugin}/{page}` as an isolated plugin's are, and `/x/<plugin>` leads to its first page. A page reads
+  the viewer's role from its context and shows only the controls that role has; its headings start at h2 under the
+  frame's h1; a confirmation is a `<dialog role="alertdialog">` inside the frame; tabs are links that navigate the hub's
+  page through `evo.navigate`, so the URL is the hub's. Dates show in the browser's time zone, short date and time with
+  the long form as the title; money is US dollars with two decimals.
+  - crm `contacts`: the pipeline is a row of five toggle buttons (All, then lead, invited, activated, retained, each
+    with its count, `aria-pressed` on the one shown) that filters the list in the page; the list is a table: the login
+    in mono opening the contact, the stage as a badge (lead outline, invited info, activated and retained success),
+    where the person came from, first seen and in this stage since. A contact is the page's sub path
+    (`/contacts/{login}`), with a back link, the login, its stage and a link to the GitHub profile; then its
+    touchpoints, newest first (kind, ref, link, a note's text and who wrote it) beside the stages it reached. A writer
+    adds a note (1,000 characters at most); an admin's Delete contact asks first, saying everything goes for good, as
+    the person asked. Readers see a note that they only read, and no control that writes.
+  - pm `daily`: one day's report, today unless `?date=` picks another (Today goes back), in eight sections (done,
+    sprint, blocked, escalate, late, review, stale, load), each task linking to its page on the tasks board and each
+    blocker naming who it waits on and its age; a project without tasks, or before the first report, says so.
+  - marketing `overview`, `posts` and `weekly`, one row of tabs. The overview heads with Stop all posting (a writer's,
+    asked first; an admin's Resume posting once stopped, with the danger banner of the reason), then the month: the
+    channel accounts, the breakers open (red once one is) and the cost against the cap as a meter (`warning` from 80 %,
+    `danger` once spent, the split between spent and held by posts in flight below it), and the channel accounts as a
+    table: channel and account (and whose, for a personal one), mode, the breaker (Closed, or Open with its reason and
+    an admin's Close breaker), the login session of a browser channel (Expired in amber) and its health. Posts are
+    grouped by what the gate did: drafts to share by hand (a member's personal account, a Facebook group; each with
+    Copy text, which tries the clipboard and the browser's copy, and otherwise selects the text and says so), waiting
+    for the gate, passed, went out (with its link and cost) and stopped (with the reason); their text is a writer's, so
+    a reader is told so. The Growth weekly, the link of the Monday notice, is the bulletin's Growth section: each
+    Goal's signal against its target (Met, Not yet), the posts that went out, the breakers open, the week's cost and
+    the month's meter, and the drafts kept for the blog project the config `proposals_project` names. Its page
+    `decide` (slot `decide`, out of the menu) is its panel on the Decisions page: a Growth card of what waits for a
+    person, each open breaker, each browser channel whose login session expired and the month's spent budget, each
+    with who acts and Open to the overview; while nothing waits it sizes itself to 0.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are

@@ -85,6 +85,8 @@ export type HubReader = {
 export type Host = {
   context: () => BridgeContext;
   resize: (height: number) => void;
+  /** The least height a page that shows something gets; FRAME_HEIGHT.min unless the frame is a panel of a slot. */
+  minHeight?: number;
   /** What the project grants the plugin now, read again from the hub; nothing once it is not on there. */
   granted: () => Promise<readonly string[]>;
   hub: HubReader;
@@ -258,7 +260,9 @@ export async function answer(request: BridgeRequest, host: Host): Promise<unknow
       if (typeof height !== "number" || !Number.isFinite(height)) {
         throw new BridgeError("invalid_params", "height is the page's height in CSS pixels");
       }
-      const clamped = Math.round(Math.min(FRAME_HEIGHT.max, Math.max(FRAME_HEIGHT.min, height)));
+      // 0 (or less) says the page shows nothing: a panel of a slot then takes no room, a page's frame its least.
+      const least = host.minHeight ?? FRAME_HEIGHT.min;
+      const clamped = height <= 0 ? 0 : Math.round(Math.min(FRAME_HEIGHT.max, Math.max(least, height)));
       host.resize(clamped);
       return { height: clamped };
     }

@@ -171,6 +171,13 @@ describe("bridge evo-plugin/1", () => {
     expect((await refusal(ask(page, request("resize", { height: "tall" }), []))).code).toBe("invalid_params");
   });
 
+  it("passes a height of 0 or less on as 0, a page that shows nothing", async () => {
+    const page = host();
+    expect(await ask(page, request("resize", { height: 0 }), [])).toEqual({ height: 0 });
+    expect(page.resize).toHaveBeenCalledWith(0);
+    expect(await ask(page, request("resize", { height: -5 }), [])).toEqual({ height: 0 });
+  });
+
   it("replies with the result or the error, and never with what a failure held", () => {
     expect(reply(7, { result: undefined })).toEqual({ bridge: BRIDGE, id: 7, result: null });
     const refused = new BridgeError("hub_refused", "no access", 403);

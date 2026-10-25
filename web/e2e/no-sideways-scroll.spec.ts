@@ -62,6 +62,13 @@ function shown(testId: string) {
   };
 }
 
+/** Ready once `testId` shows inside the plugin's page the hub frames in the main column (`frame`, its selector). */
+function framed(testId: string, frame = '[data-testid="plugin-frame"]') {
+  return async (page: Page) => {
+    await expect(page.locator("#main").frameLocator(frame).getByTestId(testId).first()).toBeVisible();
+  };
+}
+
 /** Whether the page is as narrow as a phone's, where the run page shows its overview and opens the trace on a screen. */
 function phone(page: Page): boolean {
   return (page.viewportSize()?.width ?? 1440) < 768;
@@ -81,6 +88,13 @@ async function noSidewaysScroll(page: Page, widths: number[], visits: Visit[]) {
       await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect.soft(overflow, `${visit.path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
+      // A plugin's page draws inside its frame, so the frame's own document must not scroll sideways either.
+      for (const handle of await page.locator('#main [data-testid="plugin-frame"]').elementHandles()) {
+        const inner = await handle.contentFrame();
+        if (!inner) continue;
+        const inside = await inner.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect.soft(inside, `the framed page of ${visit.path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
+      }
     }
   }
 }
@@ -130,7 +144,7 @@ for (const width of WIDTHS) {
     const me = await member([{ role: "admin", maxLevel: "internal" }]);
     const project = me.projects[0];
     await seedPm(me, project, { long: LONG });
-    await noSidewaysScroll(page, [width], [{ path: pmPath(project), ready: shown("pm-report") }]);
+    await noSidewaysScroll(page, [width], [{ path: pmPath(project), ready: framed("pm-report") }]);
   });
 }
 
@@ -140,12 +154,12 @@ for (const width of WIDTHS) {
     const project = me.projects[0];
     await seedGrowth(me, project, { long: true, spent: 50 });
     await noSidewaysScroll(page, [width], [
-      { path: contactsPath(project), ready: shown("crm-contacts") },
-      { path: contactPath(project, CONTACTS.longLead), ready: shown("crm-touchpoint") },
-      { path: marketingPath(project), ready: shown("marketing-channels") },
-      { path: marketingPath(project, "posts"), ready: shown("marketing-group-drafts") },
-      { path: marketingPath(project, "weekly"), ready: shown("weekly-report") },
-      { path: decidePath(project), ready: shown("decide-growth") },
+      { path: contactsPath(project), ready: framed("crm-contacts") },
+      { path: contactPath(project, CONTACTS.longLead), ready: framed("crm-touchpoint") },
+      { path: marketingPath(project), ready: framed("marketing-channels") },
+      { path: marketingPath(project, "posts"), ready: framed("marketing-group-drafts") },
+      { path: marketingPath(project, "weekly"), ready: framed("weekly-report") },
+      { path: decidePath(project), ready: framed("decide-growth", '[data-testid="plugin-frame"][data-panel]') },
     ]);
   });
 }

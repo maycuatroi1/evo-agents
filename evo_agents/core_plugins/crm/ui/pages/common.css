@@ -165,6 +165,8 @@
 }
 .page-columns {
   display: grid;
+  /* one column that may shrink below its content, so a wide table scrolls in its wrap, not the page */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   min-width: 0;
 }
@@ -199,6 +201,8 @@
 }
 .page-report {
   display: grid;
+  /* one column that may shrink below its content, so a wide table scrolls in its wrap, not the page */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   min-width: 0;
 }
@@ -263,6 +267,8 @@
 }
 .page-overview {
   display: grid;
+  /* one column that may shrink below its content, so a wide table scrolls in its wrap, not the page */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   min-width: 0;
 }
@@ -270,4 +276,8 @@
   .page-overview {
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   }
+}
+/* The wrap holds the table's screen-reader-only words (absolutely placed) too, so they scroll with it, not the page. */
+.evo-table-wrap {
+  position: relative;
 }

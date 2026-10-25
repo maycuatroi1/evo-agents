@@ -14,6 +14,7 @@ import { isApiError } from "@/lib/api/errors";
 import { pluginOn } from "@/lib/plugin-pages";
 import { type PluginPage, type ProjectPlugin, projectPluginQuery } from "@/lib/plugin-queries";
 import { whoamiQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import {
   allowedMethods,
@@ -65,17 +66,22 @@ export async function grantOf(client: QueryClient, project: string, name: string
  * the page reads it and the URL's query as `location` of its context, and gets the event `location` when either
  * changes while this frame stays. A `navigate` that the router answers with a new page segment frames the page
  * afresh, and it reads its new location from the context.
+ *
+ * `panel` frames a page of a slot (a panel on another page of the hub, such as the Decisions page): no border, no
+ * least height, and no room at all, out of the flow and unseen, while the page reports a height of 0 or none yet.
  */
 export function PluginFrame({
   project,
   plugin,
   page,
   path = "",
+  panel = false,
 }: {
   project: string;
   plugin: ProjectPlugin;
   page: PluginPage;
   path?: string;
+  panel?: boolean;
 }) {
   const t = useTranslations("plugins.frame");
   const client = useQueryClient();
@@ -86,7 +92,7 @@ export function PluginFrame({
   const { data: me } = useQuery(whoamiQuery(browserApi));
   const frame = useRef<HTMLIFrameElement>(null);
   const url = useRef(page.url ?? "");
-  const [height, setHeight] = useState(FRAME_HEIGHT.initial);
+  const [height, setHeight] = useState(panel ? 0 : FRAME_HEIGHT.initial);
   const theme: Theme = resolvedTheme === "dark" ? "dark" : "light";
   const searchText = search?.toString() ?? "";
   const location = useMemo<PageLocation>(
@@ -123,7 +129,9 @@ export function PluginFrame({
     };
     const host: Host = {
       context,
-      resize: setHeight,
+      // A page's own frame never gets less than its least height; a panel shrinks to nothing.
+      resize: (next) => setHeight(panel ? next : Math.max(next, FRAME_HEIGHT.min)),
+      minHeight: panel ? 0 : FRAME_HEIGHT.min,
       granted: () => grantOf(client, project, plugin.name),
       hub,
       navigate: (to) => latest.current.router.push(to as Route),
@@ -158,7 +166,7 @@ export function PluginFrame({
     // URL would run the plugin's script before the web hydrated, and its first requests would be lost.
     if (!element.getAttribute("src")) element.setAttribute("src", url.current);
     return () => window.removeEventListener("message", onMessage);
-  }, [client, project, plugin.name, page.name]);
+  }, [client, project, plugin.name, page.name, panel]);
 
   useEffect(() => {
     frame.current?.contentWindow?.postMessage({ bridge: BRIDGE, event: "theme", theme }, "*");
@@ -179,9 +187,12 @@ export function PluginFrame({
       sandbox="allow-scripts allow-forms"
       referrerPolicy="no-referrer"
       loading="eager"
-      className="block w-full rounded-md border bg-card"
+      className={panel ? cn("block w-full bg-transparent", height === 0 && "pointer-events-none invisible absolute inset-x-0") : "block w-full rounded-md border bg-card"}
       style={{ height }}
+      aria-hidden={panel && height === 0 ? true : undefined}
+      tabIndex={panel && height === 0 ? -1 : undefined}
       data-testid="plugin-frame"
+      data-panel={panel ? (height === 0 ? "empty" : "shown") : undefined}
     />
   );
 }
