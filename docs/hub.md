@@ -25,7 +25,8 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 
 | Page | What it shows | Route |
 | --- | --- | --- |
-| Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat (one that waits on a decision of its own stands in Needs you through the decision alone, not again there), and a decision of an author run without a plan named "Author run #N" with the run's title, never a link to a plan | `GET /v1/me/overview` |
+| Home, `/` | Today first: one sentence of what waits and what changed, the things that changed since you last looked, each a link, and a caught-up line, the seen mark moved only once the end of the list was on screen (`docs/notifications.md`, Today and its summary push); then what waits on you (Needs you: the questions asked of you), what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat (one that waits on a decision of its own stands in Needs you through the decision alone, not again there), and a decision of an author run without a plan named "Author run #N" with the run's title, never a link to a plan | `GET /v1/me/today`, `POST /v1/me/today/seen`, `GET /v1/me/overview` |
+| Notification settings, `/settings/notifications` (the user menu) | push on this browser, turned on from one button, with the steps to add the web to the Home Screen on an iPhone or iPad first; your push devices, each with a test push and Remove; the tier of each kind of notification; quiet hours and their time zone; the time of the summary push; Hide details on the lock screen (`docs/notifications.md`, Push to devices). The web's service worker, `/sw.js`, which shows the pushes, loads without a session | `GET /v1/push/config`, `GET` and `PUT /v1/me/notification-settings`, `/v1/me/push/devices` |
 | Monitor, `/monitor` | every run in flight over the projects of your grants, and a grid of live tiles that shares out the window (up to nine within it, then four columns that scroll): each tile a run's state, worker, time, plan steps and the tail of its trace, for viewing only; `?runs=project:id,...` names the tiles, ended runs included, and without it the grid follows every run in flight | `GET /v1/me/overview`, `.../runs/{id}`, `.../stream?after=` (200 events before `last_seq`), `.../events?after=` while a stream fails |
 | a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises, and each decision the agent asked as a DecisionCard right after the agent's message that ended the turn which asked it, in the order asked: the owner picks an option with the mouse (the recommended one chosen already), adds words if they like and sends each card, an answered card folds to its answer (which the chat does not repeat as a message), the label of whose turn it is says how many decisions wait, another member reads the cards without a form, and "Asked you" in the Trace opens the card in this tab; for a plan run with a session for each step a Step sessions card, each step's agent session with its id to copy, the largest context it read and its cache reads; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
 | a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | a plan's steps as Board (by status, the default), List (in plan order) or Graph (`?view=graph`): the graph of their dependencies top to bottom, a step under every step it waits for, lines solid when the step waited for is done and dashed while it is not, Ready steps tagged, a dependency implied by another one not drawn; a step selected (`&step=11`) dims what it neither waits for nor unblocks and opens a read-only inspector beside the graph from 1024 px and in a bottom sheet below, with its dependencies, what waits for it, What to do, Verify, Evidence, its acceptance criteria and a link to the step's page; the view is kept in the URL and on the browser for the next plan; New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
@@ -68,8 +69,9 @@ A request carries one of four credentials:
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
 `/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
-webhook (its secret header is the credential), the hub's branding, which the sign-in page shows (`GET /v1/branding`,
-`/v1/branding/logo`, `/v1/branding/favicon`), the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
+webhook (its secret header is the credential), what a browser needs to subscribe to push (`GET /v1/push/config`),
+the hub's branding, which the sign-in page shows (`GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`),
+the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
 in the path is the credential, and the webhooks of core plugins under `/v1/hooks/<plugin>/`, which check a secret of
 their plugin's (`docs/plugins.md`, The core plugin API), answer without one. A route added later needs a credential unless it is added to
 `PUBLIC_PATHS` or `PUBLIC_PREFIXES` in `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
@@ -115,7 +117,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/{id}/pass`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
 | signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
-| notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
+| notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read`, `GET` and `PUT /v1/me/notification-settings` (the notices you turned off, the tier of each kind, quiet hours, time zone, the time of the summary push, Hide details) |
+| push | `GET /v1/push/config`, public: the VAPID key a browser subscribes with and which senders are on; `GET` and `POST /v1/me/push/devices`, `DELETE /v1/me/push/devices/{id}`, `POST /v1/me/push/devices/{id}/test`: your push devices, a browser's Web Push subscription, an APNs or an FCM token (`docs/notifications.md`, Push to devices) |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
@@ -126,7 +129,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
-| overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
+| overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home; `waiting_on_you` counts the decisions asked of you, and each decision names whom it is asked of (`asked_of`) |
+| today | `GET /v1/me/today`: what waits for you and what changed since you last looked, worked out at each call over the projects you hold a grant on, with the checks of the overview; `POST /v1/me/today/seen` moves your seen mark forward (`docs/notifications.md`, Today and its summary push) |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,playbook,judge,verdict,replay}`, `/v1/worker/runs/{id}/history/{next,report}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
@@ -1211,14 +1215,18 @@ tells the owner of them, and of pushes to a default branch, in notifications:
 
 ```sh
 evo-agents hub decision list --state open                     # newest first; --run, --plan, --limit, --offset
-evo-agents hub decision show 7                                # the question, its context, the options, the answer
+evo-agents hub decision show 7                                # the question, its context, the options, the answer;
+                                                              # why the pick, how to undo it, its evidence
 evo-agents hub decision answer 7 --option postgres            # or --text "...", or both; --text - reads stdin
 evo-agents hub notifications --unread                         # yours, open decisions and proposals first, then newest
 evo-agents hub notifications --read all                       # or --read 12,14
 ```
 
 `decision list` and `decision show` read the decisions of the plans you may read (`GET
-/v1/projects/{project}/decisions`, `.../decisions/{id}`), and find the project as `run` does. `decision answer` (`POST
+/v1/projects/{project}/decisions`, `.../decisions/{id}`), and find the project as `run` does. `decision show` prints
+why the agent recommends its option, whether and how the act can be undone and the refs of its evidence, when the agent
+gave them, and both commands with `--json` carry `recommended_reason`, `reversible`, `undo` and `evidence` (`[]` for
+none; `docs/notifications.md`, Why the agent recommends). `decision answer` (`POST
 .../decisions/{id}/answer`) belongs to the member who dispatched the run: another member gets 403, and a decision that
 is no longer open 409. The answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It
 goes to the run's inbox, which the worker hands to the agent; a parked run is resumed on its worker in its session, as a
@@ -2932,8 +2940,14 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
   queued again, or fail on their third attempt; runs past their timeout fail; a plan run that waited 24 hours for an
   answer is parked, and one parked for 7 days cancelled (`docs/workers.md`).
-- `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, and
-  tries a failing one again with a backoff, failing it after 5 tries (`docs/notifications.md`).
+- `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, or
+  to the sender of its push device after the member's quiet hours, and tries a failing one again with a backoff,
+  failing it after 5 tries (`docs/notifications.md`).
+- `hub.today_digest`, every minute: the summary push of Today to each member with a push device who has been away from
+  the hub for 8 hours, at their `digest_at` in their time zone (07:30 until they choose), once a local day, when
+  something changed since they last looked: a notice `today` delivered to their devices alone
+  (`evo_agents.hub.server.today_digest`, through `evo_agents.hub.server.brief`; `docs/notifications.md`, Today and its
+  summary push).
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago,
   once the tool figures of each such run are written from them (a run writes them when it ends; this covers the runs
   that ended before schema 0013).

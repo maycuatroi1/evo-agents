@@ -212,12 +212,48 @@ Start from `deploy/hub/.env.example` and set every value in the platform's envir
    leave 128 to the host).
    Without the token and the URL the hub runs, the store and core plugins work, and no isolated backend starts.
 4. **What the client uses besides**: the GitHub App that gives runs their tokens, the Curator's App, Telegram and
-   Sentry, each as `docs/hub.md` says.
+   Sentry, each as `docs/hub.md` says, and push to browsers and phones (next section).
 
 The `plugins` service runs as root with only the capabilities SETUID, SETGID, CHOWN and KILL, so that each backend
 gets a user of its own (`docs/plugins.md`, section Where a backend runs). A platform that allows neither root nor
 added capabilities still runs the hub, but the host then refuses to start any backend, and isolated plugins stay
 down; `--allow-shared-user`, which lifts that, is for a developer's machine only.
+
+## Push to browsers and phones
+
+A hub pushes the notifications of the interrupt tier, such as a question an agent asks a member, to the member's
+browsers and phones (`docs/notifications.md`, Push to devices). Each of its three senders is optional and turns on with
+its own variables, which the api and the worker both read; without them that sender is off, `GET /v1/push/config`
+says so, and the rest of the notifications, the web and Telegram included, go on. A malformed value stops the hub at
+start with a message that names the variable and never shows the key. Every value here is a secret: keep it in the
+platform's environment and a copy in the operator's secret store, never in a committed file.
+
+| Sender | Variables | What they are |
+| --- | --- | --- |
+| Web Push, to browsers (Chrome, Firefox, Edge, Safari, and a web app on an iPhone's Home Screen) | `EVO_HUB_VAPID_PRIVATE_KEY`, `EVO_HUB_VAPID_SUBJECT` | the hub's VAPID key, the private key of a P-256 key pair in base64url, 43 characters; and where a push service may reach the operator, `mailto:` or `https:`, `EVO_HUB_PUBLIC_URL` when unset |
+| APNs, to the hub's app on an iPhone or iPad | `EVO_HUB_APNS_KEY_ID`, `EVO_HUB_APNS_TEAM_ID`, `EVO_HUB_APNS_PRIVATE_KEY` | an APNs authentication key of the Apple Developer account (Certificates, Identifiers & Profiles, Keys): its Key ID and the account's Team ID, 10 characters of `A-Z` and `0-9` each, and the `.p8` file Apple lets you download once, a P-256 key in PEM where `\n` may stand for each line break. A device brings its app's topic and whether it is sandbox or production, so one key serves both |
+| FCM, to the hub's app on an Android phone | `EVO_HUB_FCM_SERVICE_ACCOUNT` | the JSON key file of a service account of the app's Firebase project that may send messages (Firebase console, Project settings, Service accounts), on one line (`jq -c . key.json`) or in base64 (`base64 < key.json`) |
+
+**Making the VAPID key.** The hub derives the public key, which browsers subscribe with, from the private one, so only
+the private key is set. Make it once for the hub, on any machine with Python and `cryptography` (the hub's image has
+both):
+
+```sh
+python -c 'import base64; from cryptography.hazmat.primitives.asymmetric import ec; k = ec.generate_private_key(ec.SECP256R1()); print(base64.urlsafe_b64encode(k.private_numbers().private_value.to_bytes(32, "big")).decode().rstrip("="))'
+```
+
+`npx web-push generate-vapid-keys` does the same: its private key is the value, and its public key is what
+`GET /v1/push/config` will answer as `vapid_public_key`. Set the value in the environment of the api and the worker,
+restart both, and check that `GET /v1/push/config` answers `"webpush": true`.
+
+**Keep the key.** A browser's subscription is bound to the key it subscribed with: every push service refuses a push
+signed with another one. A new key therefore leaves every member's browsers without push, silently on their side,
+until each member turns push on again in each browser (`/settings/notifications`, which subscribes again with the
+new key). The hub keeps the devices, since a push service's refusal other than 404 or 410 fails a delivery and keeps
+its device, so the old subscriptions linger in the members' lists until they are removed or replaced. Change the key
+only when it leaked, and tell the members when you do. Two hubs never share a key: each makes its own. The APNs key and
+the FCM service account can be replaced without that cost, since a device's token does not depend on them; revoke the
+old one at Apple or Google once the hub runs with the new one.
 
 ## Starting and setting it up
 
