@@ -1,8 +1,11 @@
 import importlib.util
+import logging
 import os
 import tempfile
 
 import pytest
+
+from evo_agents.worker.logs import QUIET
 
 # No test asks GitHub for the pull requests of a repo: a git source whose origin is on github.com reads none
 # (evo_agents.kg.connectors.github). The tests of that reading turn it on and stand in for GitHub.
@@ -31,6 +34,28 @@ def _no_hub_home_of_this_machine(monkeypatch):
     """No EVO_HUB_HOME of the shell running pytest: a test that points HOME at a temporary directory expects the
     hub login under it, and must never read, overwrite or delete the login of the machine somewhere else."""
     monkeypatch.delenv("EVO_HUB_HOME", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _logging_as_found():
+    """Put the root logger back as the test found it. ``configure_logging`` of a hub server command
+    (``cmd_migrate`` in tests/hub/test_plugin_migrations.py) and ``evo_agents.worker.logs.configure`` of the worker's
+    CLI and daemon, called in the test's process, set the root logger's level to INFO and add a handler on the
+    stderr of that moment: the test's capsys stream, closed when the test ends. Left so, every INFO record of a later
+    test in the session, the access lines of a hub served from a thread among them, fails to write to the closed
+    stream, and the "--- Logging error ---" report lands on that later test's stderr; the kg builds of tests/hub,
+    which count INFO records with caplog, would also see records they never asked for."""
+    root = logging.getLogger()
+    level, handlers = root.level, list(root.handlers)
+    quiet = {name: logging.getLogger(name).level for name in QUIET}
+    yield
+    for handler in list(root.handlers):
+        if handler not in handlers and type(handler).__module__.startswith("evo_agents."):
+            root.removeHandler(handler)
+            handler.close()
+    root.setLevel(level)
+    for name, value in quiet.items():
+        logging.getLogger(name).setLevel(value)
 
 
 def pytest_addoption(parser):
