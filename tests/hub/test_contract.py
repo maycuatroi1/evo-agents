@@ -6,6 +6,7 @@ and tell the consumers of hub-cli-v1 (evo-cli, agent-skills).
 """
 
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 
@@ -47,6 +48,22 @@ def golden() -> dict:
     return json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
+# The plugins of evo-agents-core-plugins (deploy/hub/core-plugins.txt), whose cli.json puts commands under
+# `hub <plugin>`. The golden copy is printed with it installed, as the Linux jobs have it; the macOS and Windows jobs
+# install '.[test,graphify]' alone, where the CLI has none of those commands.
+CORE_PLUGINS_PACKAGE = "evo_core_plugins"
+ITS_PLUGINS = {"chats", "crm", "marketing", "pm", "telegram"}
+
+
+def golden_commands() -> dict:
+    """The golden copy's commands, the plugins of evo-agents-core-plugins' left out where that is not installed."""
+    held = golden()["commands"]
+    if importlib.util.find_spec(CORE_PLUGINS_PACKAGE) is not None:
+        return held
+    absent = {f"hub {name}" for name in ITS_PLUGINS}
+    return {path: command for path, command in held.items() if " ".join(path.split()[:2]) not in absent}
+
+
 PHRASES = {"Unprocessable Content": "Unprocessable Entity", "Content Too Large": "Request Entity Too Large"}
 
 
@@ -69,7 +86,7 @@ def run(*args: str):
 
 
 def test_commands_match_the_golden_copy():
-    assert commands() == golden()["commands"], f"the hub command line changed; if on purpose: {REGENERATE}"
+    assert commands() == golden_commands(), f"the hub command line changed; if on purpose: {REGENERATE}"
 
 
 def test_print_writes_version_commands_and_the_openapi_document():

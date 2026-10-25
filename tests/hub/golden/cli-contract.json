@@ -37971,7 +37971,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
+                  "oneOf": [
                     {
                       "$ref": "#/components/schemas/WebPushDeviceIn"
                     },
@@ -37982,7 +37982,15 @@
                       "$ref": "#/components/schemas/FcmDeviceIn"
                     }
                   ],
-                  "title": "Body"
+                  "title": "Body",
+                  "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {
+                      "webpush": "#/components/schemas/WebPushDeviceIn",
+                      "apns": "#/components/schemas/ApnsDeviceIn",
+                      "fcm": "#/components/schemas/FcmDeviceIn"
+                    }
+                  }
                 }
               }
             },
