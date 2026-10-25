@@ -32,6 +32,11 @@ the SHA-256 the client checks the bytes against. The URL makes the blob store an
 so the bucket needs no CORS). The read check comes before the blob store is asked for: without a grant the answer is
 403 whether the store is configured or not. Routes exist twice: under /v1/skills/global/ and under
 /v1/skills/projects/{project}/.
+
+The daemon of a worker pool node syncs the global skills with its worker token, which reads nothing under /v1/skills:
+GET /v1/worker/skills lists the global skills its owner reads (the admins ones too when the owner is a hub admin),
+and GET /v1/worker/skills/global/{name}/bundle hands out a bundle of one as above. These read skills alone, never
+anything of a run, and answer 403 to a worker that is not a live pool node.
 """
 
 from __future__ import annotations
@@ -39,7 +44,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
@@ -81,6 +86,7 @@ AUDIENCE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 AUDIENCE_TEXT = "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
 
 router = APIRouter(prefix="/v1/skills", tags=["skills"], responses={401: {"model": ErrorBody}})
+worker_router = APIRouter(prefix="/v1/worker/skills", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
 
 class PublishRequest(BaseModel):
@@ -602,3 +608,33 @@ async def project_bundle(
 ):
     """A short-lived presigned GET of a project skill's bundle, for its members only (403 for anyone else)."""
     return await _bundle(request, user, project, name, version)
+
+
+async def _pool_node(request: Request, conn: AsyncConnection, user: Principal) -> Principal:
+    """The reader of the global skills for the worker whose token made the request: its owner, a hub admin when the
+    owner is one. 403 for a worker that is not a live node of a pool."""
+    w = tables.workers
+    query = select(w.c.pool_id).where(w.c.token_id == user.token_id, w.c.revoked_at.is_(None))
+    pool_id = (await conn.execute(query)).scalar_one_or_none()
+    if pool_id is None:
+        raise HTTPException(403, "the skills of the hub are synced on the nodes of a worker pool alone")
+    return replace(user, admin=request.app.state.config.is_admin(user.login))
+
+
+@worker_router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}, **PAGED})
+async def worker_skills(request: Request, user: CurrentUser, page: Paging = WHOLE) -> list[Skill]:
+    """The global skills the owner of the pool node whose token made the request reads, each with its latest
+    version: what ``hub skills sync`` writes on a machine without a project."""
+    async with request.app.state.engine.begin() as conn:
+        owner = await _pool_node(request, conn, user)
+        rows = await page.rows(conn, _skills(audiences(request, owner), []))
+    return [Skill(**row._mapping) for row in rows]
+
+
+@worker_router.get("/global/{name}/bundle", response_model=BundleTicket, responses=BUNDLE_REFUSALS)
+async def worker_bundle(request: Request, name: SkillName, user: CurrentUser, version: VersionNumber = None):
+    """A short-lived presigned GET of a global skill's bundle for a pool node, as GET /v1/skills/global/{name}/bundle
+    answers its owner."""
+    async with request.app.state.engine.begin() as conn:
+        owner = await _pool_node(request, conn, user)
+    return await _bundle(request, owner, None, name, version)

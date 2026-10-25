@@ -154,7 +154,7 @@ def test_the_command_is_in_the_contract_with_the_keys_of_an_account():
     command = commands()["hub account oauth-login"]
     assert [entry["name"] for entry in command["positionals"]] == ["name"]
     flags = {option["flags"][0] for option in command["options"]}
-    assert flags == {"--project", "--worker", "--no-browser", "--paste", "--json"}
+    assert flags == {"--project", "--worker", "--pool", "--no-browser", "--paste", "--json"}
     assert "auth" in command["json"]["keys"] and command["json"]["schema"] == "Account"
 
 

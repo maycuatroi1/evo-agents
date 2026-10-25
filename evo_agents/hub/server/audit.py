@@ -53,7 +53,9 @@ KG_REVIEW = "kg.review"
 KG_DECISION = "kg.decision"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
-WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token
+# A machine joined with a code or a pool's join token, as its owner with the new worker token:
+# "worker:<id> name=<n> pairing:<id>", or "worker:<id> name=<n> pool:<id> join_token:<id>"
+WORKER_JOIN = "worker.join"
 WORKER_REGISTER = "worker.register"  # a machine registered itself with its machine token
 WORKER_DRAIN = "worker.drain"
 WORKER_UNDRAIN = "worker.undrain"
@@ -63,6 +65,13 @@ WORKER_DISPATCH_FROM = "worker.dispatch_from"
 # The owner changed the worker's settings; the target names each field that changed, "<field>=<was>-><is>", after
 # "worker:<id> name=<n> owner=<login>": "slots=1->4 labels=[]->[gpu,mac] name=old->new", never a token.
 WORKER_UPDATE = "worker.update"
+# Worker pools (evo_agents.hub.server.worker_pools), "pool:<id> name=<n>" first: a member created one, changed its
+# settings ("<field>=<was>-><is>" as WORKER_UPDATE), created a join token of it ("join_token:<id> hours=<h>
+# max_uses=<n>") or revoked one ("join_token:<id>"); never the token.
+WORKER_POOL_CREATE = "worker_pool.create"
+WORKER_POOL_UPDATE = "worker_pool.update"
+WORKER_POOL_TOKEN = "worker_pool.token"
+WORKER_POOL_TOKEN_REVOKE = "worker_pool.token_revoke"
 # The owner or a hub admin asked the worker's daemon to update itself to nightly now, or cancelled that request:
 # "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.update_now)
 WORKER_UPDATE_NOW = "worker.update_now"

@@ -23,6 +23,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -73,6 +74,14 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--expires"
           ],
           "value": "string",
@@ -106,6 +115,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -156,6 +166,14 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--no-browser"
           ],
           "value": null,
@@ -189,6 +207,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -240,6 +259,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -370,6 +390,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -437,6 +458,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -627,6 +649,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -2753,7 +2776,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -4586,7 +4612,9 @@
           "updated_by",
           "updated_at",
           "worker",
-          "worker_id"
+          "worker_id",
+          "pool",
+          "pool_id"
         ],
         "schema": "CharterRevision"
       }
@@ -4625,6 +4653,7 @@
           "goals",
           "window",
           "worker",
+          "pool",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -4651,6 +4680,7 @@
           "updated_by",
           "updated_at",
           "worker_id",
+          "pool_id",
           "schedule_owner"
         ],
         "schema": "Charter"
@@ -4690,6 +4720,7 @@
           "goals",
           "window",
           "worker",
+          "pool",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -4716,6 +4747,7 @@
           "updated_by",
           "updated_at",
           "worker_id",
+          "pool_id",
           "schedule_owner"
         ],
         "schema": "Charter"
@@ -13526,7 +13558,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -13563,7 +13598,7 @@
             "--worker"
           ],
           "value": "string",
-          "required": true,
+          "required": false,
           "repeatable": false
         },
         {
@@ -13600,6 +13635,30 @@
             2,
             4
           ]
+        },
+        {
+          "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -13701,7 +13760,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -13809,7 +13871,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14044,6 +14109,30 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--model"
           ],
           "value": "string",
@@ -14150,7 +14239,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14258,7 +14350,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14366,7 +14461,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14750,6 +14848,30 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--account"
           ],
           "value": "string",
@@ -14848,7 +14970,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14895,6 +15020,30 @@
           "value": null,
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -14980,7 +15129,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -15146,7 +15298,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -15254,7 +15409,10 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -15295,6 +15453,7 @@
           "environment",
           "projects",
           "workers",
+          "pools",
           "expires_at",
           "created_at",
           "updated_at",
@@ -15373,6 +15532,14 @@
         {
           "flags": [
             "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--pool"
           ],
           "value": "string",
           "required": false,
@@ -25019,6 +25186,213 @@
           }
         }
       },
+      "/v1/worker/skills": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Worker Skills",
+          "description": "The global skills the owner of the pool node whose token made the request reads, each with its latest\nversion: what ``hub skills sync`` writes on a machine without a project.",
+          "operationId": "worker_skills_v1_worker_skills_get",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Skill"
+                    },
+                    "title": "Response Worker Skills V1 Worker Skills Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/skills/global/{name}/bundle": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Worker Bundle",
+          "description": "A short-lived presigned GET of a global skill's bundle for a pool node, as GET /v1/skills/global/{name}/bundle\nanswers its owner.",
+          "operationId": "worker_bundle_v1_worker_skills_global__name__bundle_get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                "description": "the skill's name, its directory in every runtime",
+                "title": "Name"
+              },
+              "description": "the skill's name, its directory in every runtime"
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "default: the latest",
+                "title": "Version"
+              },
+              "description": "default: the latest"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BundleTicket"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/config": {
         "put": {
           "tags": [
@@ -28446,7 +28820,7 @@
             "workers"
           ],
           "summary": "Update Worker",
-          "description": "Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner\nonly, from a web session or with their machine token.",
+          "description": "Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its\nowner only, from a web session or with their machine token.",
           "operationId": "update_worker_v1_workers__worker_id__patch",
           "parameters": [
             {
@@ -29225,13 +29599,550 @@
           }
         }
       },
+      "/v1/worker-pools": {
+        "get": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "List Pools",
+          "description": "The caller's pools, by name, each with its nodes that are not revoked.",
+          "operationId": "list_pools_v1_worker_pools_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/Pool"
+                    },
+                    "type": "array",
+                    "title": "Response List Pools V1 Worker Pools Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Create Pool",
+          "description": "A new pool of the caller's, without nodes until a machine joins with one of its join tokens.",
+          "operationId": "create_pool_v1_worker_pools_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker-pools/{name}": {
+        "get": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Show Pool",
+          "description": "One of the caller's pools with its nodes that are not revoked.",
+          "operationId": "show_pool_v1_worker_pools__name__get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Update Pool",
+          "description": "Change the pool's settings; its nodes take them, and their daemons learn them from their next heartbeat.",
+          "operationId": "update_pool_v1_worker_pools__name__patch",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolUpdate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker-pools/{name}/tokens": {
+        "post": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Create Join Token",
+          "description": "A join token of the pool, which machines join it with (`evo-agents worker join --token`); shown once.",
+          "operationId": "create_join_token_v1_worker_pools__name__tokens_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinTokenRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/IssuedJoinToken"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "List Join Tokens",
+          "description": "The join tokens of the pool, newest first, without the tokens themselves.",
+          "operationId": "list_join_tokens_v1_worker_pools__name__tokens_get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/JoinToken"
+                    },
+                    "title": "Response List Join Tokens V1 Worker Pools  Name  Tokens Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker-pools/{name}/tokens/{token_id}/revoke": {
+        "post": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Revoke Join Token",
+          "description": "Revoke a join token of the pool: no machine joins with it any more; the nodes that joined with it stay.",
+          "operationId": "revoke_join_token_v1_worker_pools__name__tokens__token_id__revoke_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            },
+            {
+              "name": "token_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Token Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/JoinToken"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/join": {
         "post": {
           "tags": [
             "worker protocol"
           ],
           "summary": "Join",
-          "description": "Trade a pairing code for the token of a new worker; the token is shown once.",
+          "description": "Trade a pairing code, or a pool's join token, for the token of a new worker; the token is shown once.",
           "operationId": "join_v1_worker_join_post",
           "requestBody": {
             "content": {
@@ -73978,6 +74889,15 @@
               "title": "Workers",
               "description": "the workers it is bound to; empty for any worker of its owner"
             },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
             "auth": {
               "type": "string",
               "enum": [
@@ -76632,6 +77552,53 @@
         },
         "AuthorRunDispatch": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "request": {
               "type": "string",
               "maxLength": 16384,
@@ -76640,11 +77607,18 @@
               "description": "what the plan should achieve, in the member's words: at most 16384 bytes of UTF-8"
             },
             "worker_id": {
-              "type": "integer",
-              "maximum": 9.223372036854776e+18,
-              "minimum": 1.0,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id",
-              "description": "the worker of yours, or one shared with you in the project, the run goes to; an author run is pinned"
+              "description": "pin the run to this worker of yours, or one shared with you in the project; null: a worker its labels and tolerations fit takes it"
             },
             "plan_id": {
               "anyOf": [
@@ -76727,8 +77701,7 @@
           },
           "type": "object",
           "required": [
-            "request",
-            "worker_id"
+            "request"
           ],
           "title": "AuthorRunDispatch"
         },
@@ -82713,10 +83686,30 @@
               "$ref": "#/components/schemas/Window"
             },
             "worker": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker",
-              "description": "the worker on duty, by name: one of the writer's own"
+              "description": "the worker on duty, by name: one of the writer's own; or name a pool"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker"
             },
             "night_budget_usd": {
               "type": "number",
@@ -82883,21 +83876,39 @@
               "title": "Updated At"
             },
             "worker_id": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id",
-              "description": "the worker on duty"
+              "description": "the worker on duty; null for a pool"
+            },
+            "pool_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id",
+              "description": "the pool on duty; null for a worker"
             },
             "schedule_owner": {
               "type": "string",
               "title": "Schedule Owner",
-              "description": "the member the night shift dispatches its runs as: the worker's owner"
+              "description": "the member the night shift dispatches its runs as: the worker's, or the pool's, owner"
             }
           },
           "additionalProperties": false,
           "type": "object",
           "required": [
             "window",
-            "worker",
             "night_budget_usd",
             "project",
             "revision",
@@ -82924,12 +83935,50 @@
               "title": "Updated At"
             },
             "worker": {
-              "type": "string",
-              "title": "Worker"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "the worker on duty; null for a pool"
             },
             "worker_id": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool on duty; null for a worker"
+            },
+            "pool_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
             }
           },
           "type": "object",
@@ -82957,10 +84006,30 @@
               "$ref": "#/components/schemas/Window"
             },
             "worker": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker",
-              "description": "the worker on duty, by name: one of the writer's own"
+              "description": "the worker on duty, by name: one of the writer's own; or name a pool"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker"
             },
             "night_budget_usd": {
               "type": "number",
@@ -83113,7 +84182,6 @@
           "type": "object",
           "required": [
             "window",
-            "worker",
             "night_budget_usd"
           ],
           "title": "CharterWrite"
@@ -86937,6 +88005,53 @@
         },
         "Dispatch": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "plan_id": {
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
@@ -91652,6 +92767,95 @@
           ],
           "title": "InviteRow"
         },
+        "IssuedJoinToken": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "pool": {
+              "type": "string",
+              "title": "Pool"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "live",
+                "expired",
+                "revoked",
+                "used"
+              ],
+              "title": "Status"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "max_uses": {
+              "type": "integer",
+              "title": "Max Uses"
+            },
+            "uses": {
+              "type": "integer",
+              "title": "Uses",
+              "description": "machines that joined with it"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "token": {
+              "type": "string",
+              "title": "Token",
+              "description": "evj_...; shown once, the hub keeps only its SHA-256"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "pool",
+            "status",
+            "created_by",
+            "created_at",
+            "expires_at",
+            "max_uses",
+            "uses",
+            "last_used_at",
+            "revoked_at",
+            "token"
+          ],
+          "title": "IssuedJoinToken"
+        },
         "Job": {
           "properties": {
             "job_id": {
@@ -91718,11 +92922,32 @@
               "description": "of the evo-agents daemon"
             },
             "code": {
-              "type": "string",
-              "maxLength": 32,
-              "minLength": 1,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Code",
               "description": "the pairing code, XXXX-XXXX"
+            },
+            "token": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token",
+              "description": "instead of a code: the join token of a pool, evj_..."
             }
           },
           "type": "object",
@@ -91730,10 +92955,114 @@
             "hostname",
             "os",
             "arch",
-            "agent_version",
-            "code"
+            "agent_version"
           ],
           "title": "JoinRequest"
+        },
+        "JoinToken": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "pool": {
+              "type": "string",
+              "title": "Pool"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "live",
+                "expired",
+                "revoked",
+                "used"
+              ],
+              "title": "Status"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "max_uses": {
+              "type": "integer",
+              "title": "Max Uses"
+            },
+            "uses": {
+              "type": "integer",
+              "title": "Uses",
+              "description": "machines that joined with it"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "pool",
+            "status",
+            "created_by",
+            "created_at",
+            "expires_at",
+            "max_uses",
+            "uses",
+            "last_used_at",
+            "revoked_at"
+          ],
+          "title": "JoinToken"
+        },
+        "JoinTokenRequest": {
+          "properties": {
+            "hours": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 1.0,
+              "title": "Hours",
+              "description": "how long it works: 1 hour to 30 days",
+              "default": 24
+            },
+            "max_uses": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Max Uses",
+              "description": "machines that may join with it, 1 to 100",
+              "default": 1
+            }
+          },
+          "type": "object",
+          "title": "JoinTokenRequest"
         },
         "Judge": {
           "properties": {
@@ -101097,6 +102426,59 @@
           ],
           "title": "PlanPatch"
         },
+        "PlanProgress": {
+          "properties": {
+            "done": {
+              "type": "integer",
+              "title": "Done",
+              "description": "steps with status done"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "steps of the plan"
+            },
+            "percent": {
+              "type": "integer",
+              "title": "Percent",
+              "description": "done of total, rounded down; 0 for a plan without steps"
+            },
+            "current_step": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Step",
+              "description": "the step in progress, else the first not done: its title, else its key; null once all are done"
+            },
+            "current_status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Status",
+              "description": "that step's status as the plan holds it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "done",
+            "total",
+            "percent",
+            "current_step",
+            "current_status"
+          ],
+          "title": "PlanProgress",
+          "description": "How far a plan run's plan has come, as the plan holds it now."
+        },
         "PlanPut": {
           "properties": {
             "body": {
@@ -101188,6 +102570,53 @@
         },
         "PlanRunDispatch": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "plan_id": {
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
@@ -103594,6 +105023,350 @@
             "changed"
           ],
           "title": "PolicyWritten"
+        },
+        "Pool": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who made it"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "taints": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Taints"
+            },
+            "accepted_findings": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Accepted Findings"
+            },
+            "reap_after_days": {
+              "type": "integer",
+              "title": "Reap After Days"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/PoolNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "its nodes that are not revoked, newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "owner",
+            "projects",
+            "slots",
+            "labels",
+            "taints",
+            "accepted_findings",
+            "reap_after_days",
+            "created_at",
+            "updated_at",
+            "nodes"
+          ],
+          "title": "Pool"
+        },
+        "PoolNode": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "hostname": {
+              "type": "string",
+              "title": "Hostname"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline",
+                "draining",
+                "revoked"
+              ],
+              "title": "Status"
+            },
+            "agent_version": {
+              "type": "string",
+              "title": "Agent Version"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels",
+              "description": "its own labels, its pool's, and pool=<name>"
+            },
+            "ready": {
+              "type": "boolean",
+              "title": "Ready",
+              "description": "whether it takes runs: its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts",
+              "default": true
+            },
+            "ready_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ready Reason",
+              "description": "why it takes no run, while ready is false; null when ready"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_heartbeat_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Heartbeat At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "hostname",
+            "status",
+            "agent_version",
+            "labels",
+            "created_at",
+            "last_heartbeat_at"
+          ],
+          "title": "PoolNode"
+        },
+        "PoolRequest": {
+          "properties": {
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "the projects its nodes take runs of; the writer role on each"
+            },
+            "slots": {
+              "type": "integer",
+              "maximum": 16.0,
+              "minimum": 1.0,
+              "title": "Slots",
+              "description": "runs each node holds at once",
+              "default": 1
+            },
+            "labels": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Labels"
+            },
+            "taints": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Taints"
+            },
+            "accepted_findings": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$"
+              },
+              "type": "array",
+              "maxItems": 32,
+              "title": "Accepted Findings"
+            },
+            "reap_after_days": {
+              "type": "integer",
+              "maximum": 90.0,
+              "minimum": 1.0,
+              "title": "Reap After Days",
+              "default": 7
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+              "title": "Name",
+              "description": "unique among the owner's pools; it starts its nodes' names"
+            }
+          },
+          "type": "object",
+          "required": [
+            "projects",
+            "name"
+          ],
+          "title": "PoolRequest"
+        },
+        "PoolUpdate": {
+          "properties": {
+            "projects": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Projects",
+              "description": "the projects its nodes take runs of; the writer role on each"
+            },
+            "slots": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 16.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slots",
+              "description": "runs each node holds at once"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels every node has, a word or key=value; the hub adds pool=<name> itself"
+            },
+            "taints": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Taints",
+              "description": "taints every node has: a node takes only the runs that tolerate each of them"
+            },
+            "accepted_findings": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,62}$"
+                  },
+                  "type": "array",
+                  "maxItems": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accepted Findings",
+              "description": "codes of high doctor findings a node may have and still be ready (`evo-agents worker doctor`)"
+            },
+            "reap_after_days": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 90.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reap After Days",
+              "description": "days a node stays offline before the hub revokes it"
+            }
+          },
+          "type": "object",
+          "title": "PoolUpdate"
         },
         "PrefSet": {
           "properties": {
@@ -111849,6 +113622,53 @@
         },
         "Rerun": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "account": {
               "anyOf": [
                 {
@@ -111885,7 +113705,7 @@
           "additionalProperties": false,
           "type": "object",
           "title": "Rerun",
-          "description": "What a rerun may change of the run it reruns; no body keeps everything."
+          "description": "What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations\nkeep the run's own selector and tolerations."
         },
         "RerunCandidates": {
           "properties": {
@@ -112630,6 +114450,24 @@
         },
         "Run": {
           "properties": {
+            "selector": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Selector",
+              "description": "the labels the worker that takes it must have, every one (pool=<name> for a pool); [] for any",
+              "default": []
+            },
+            "tolerations": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Tolerations",
+              "description": "the taints of a worker it tolerates",
+              "default": []
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -112976,6 +114814,17 @@
                 }
               ],
               "title": "Usage"
+            },
+            "plan_progress": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanProgress"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a plan run's plan progress, set in a list of runs; null for any other run"
             },
             "budget": {
               "anyOf": [
@@ -116060,12 +117909,50 @@
               "description": "the member its runs are dispatched as"
             },
             "worker_id": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id"
             },
             "worker": {
-              "type": "string",
-              "title": "Worker"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "the worker its runs go to; null for a pool"
+            },
+            "pool_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool whose ready nodes take its runs; null for a worker"
             },
             "paused_at": {
               "anyOf": [
@@ -116699,6 +118586,15 @@
               "title": "Workers",
               "description": "the workers it is bound to; empty for any worker of its owner"
             },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
             "expires_at": {
               "anyOf": [
                 {
@@ -116835,6 +118731,16 @@
               "title": "Workers",
               "description": "names of the caller's own workers that are not revoked; left out or empty for any of them; none for kind forge"
             },
+            "pools": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Pools",
+              "description": "names of the caller's own worker pools: each node of each gets it, the nodes that join later too; never with workers, and none for kind forge"
+            },
             "expires_at": {
               "anyOf": [
                 {
@@ -116955,6 +118861,15 @@
               "type": "array",
               "title": "Workers",
               "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
             },
             "expires_at": {
               "anyOf": [
@@ -127480,7 +129395,56 @@
                 "type": "string"
               },
               "type": "array",
-              "title": "Labels"
+              "title": "Labels",
+              "description": "its own labels, then for a node of a pool the pool's labels and pool=<name>, which the pool sets"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool it joined with a join token; null for one paired or registered"
+            },
+            "auto_labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Auto Labels",
+              "description": "the labels the hub gives it from its heartbeat, which a run's selector may ask too: os=, arch=, runtime=<name> for each runtime it has, feature=browser when it has one",
+              "default": []
+            },
+            "taints": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Taints",
+              "description": "its own taints, then its pool's: it takes only the runs that tolerate each, or those pinned to it",
+              "default": []
+            },
+            "ready": {
+              "type": "boolean",
+              "title": "Ready",
+              "description": "whether it takes runs: a worker of no pool always does; a node of a pool while its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts",
+              "default": true
+            },
+            "ready_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ready Reason",
+              "description": "why it takes no run, while ready is false; null when ready"
             },
             "plugins": {
               "items": {
@@ -128275,6 +130239,23 @@
                 }
               ],
               "title": "Labels"
+            },
+            "taints": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Taints",
+              "description": "its own taints, a word or key=value, the whole list ([] for none): it takes only the runs that tolerate each, or those pinned to it"
             },
             "name": {
               "anyOf": [

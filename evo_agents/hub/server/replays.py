@@ -57,7 +57,7 @@ from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.dispatch import insert_run, unfit
+from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -238,9 +238,7 @@ async def _next_task(conn: AsyncConnection, due, gate, change, wanted: int, runt
     again = next((row for row in done if row.state == "queued" and row.unusable is None), None)
     if again is not None:
         task = (await conn.execute(select(t).where(t.c.id == again.task_id))).one()
-        return (
-            (task, again) if not unfit(gate.worker, due.project, "replay", [task.repo, change.repo], runtime) else None
-        )
+        return (task, again) if not gate.duty.unfit(due.project, "replay", [task.repo, change.repo], runtime) else None
     counted = [row for row in done if row.unusable is None]  # a task found unusable gives its place to the next
     if any(row.state == "running" for row in done) or len(counted) >= wanted:
         return None
@@ -251,7 +249,7 @@ async def _next_task(conn: AsyncConnection, due, gate, change, wanted: int, runt
         .order_by(t.c.id)
     )
     for task in candidates:
-        if not unfit(gate.worker, due.project, "replay", [task.repo, change.repo], runtime):
+        if not gate.duty.unfit(due.project, "replay", [task.repo, change.repo], runtime):
             return task, None
     return None
 
@@ -306,7 +304,7 @@ def _values(due, gate, change, held, task, runtime: str, budget: dict) -> dict:
         "plan_revision": held.revision,
         "dispatched_by": due.owner_id,
         "dispatched_via": "schedule",
-        "pinned_worker_id": gate.worker.id,
+        **gate.duty.columns(),
         "requested_runtime": runtime,
         "runtime": runtime,
         "model": builder.get("model"),

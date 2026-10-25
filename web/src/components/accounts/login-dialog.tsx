@@ -15,7 +15,7 @@ import { projectsQuery, whoamiQuery } from "@/lib/queries";
 
 import { FailureBox } from "./hooks";
 import { useTokenFailure, useWriteToken, type WriteToken } from "./login-hooks";
-import { CheckList, CheckListSkeleton, code, EmptyPick, FieldError, Hint, KeptBindings, LoginCommand, Note, SetupSteps } from "./login-fields";
+import { BindingPick, CheckList, CheckListSkeleton, code, EmptyPick, FieldError, Hint, KeptBindings, LoginCommand, Note, SetupSteps } from "./login-fields";
 import {
   emptyLoginForm,
   LOGIN_FIELDS,
@@ -29,7 +29,7 @@ import {
   renewForm,
   utcDay,
 } from "./login-model";
-import { MAX_SECRET_BYTES, MAX_SECRET_NAME_CHARS, secretNamesQuery, workersQuery } from "./login-queries";
+import { MAX_SECRET_BYTES, MAX_SECRET_NAME_CHARS, poolsQuery, secretNamesQuery, workersQuery } from "./login-queries";
 import { OAuthRenewBody } from "./oauth-renew";
 import { type Account, CLAUDE_TOKEN_VAR } from "./queries";
 
@@ -100,6 +100,7 @@ function LoginFormBody({
   const { data: me } = useQuery({ ...whoamiQuery(browserApi), enabled: !renewing });
   const projects = useQuery({ ...projectsQuery(browserApi), enabled: !renewing });
   const workers = useQuery({ ...workersQuery(browserApi), enabled: !renewing });
+  const pools = useQuery({ ...poolsQuery(browserApi), enabled: !renewing });
   const secrets = useQuery({ ...secretNamesQuery(browserApi), enabled: !renewing });
   const [form, setForm] = useState<LoginForm>(() => (account ? renewForm(account, now) : emptyLoginForm(now)));
   const [errors, setErrors] = useState<LoginProblems>({});
@@ -127,6 +128,10 @@ function LoginFormBody({
         .sort((a, b) => a.localeCompare(b)),
     [workers.data, me?.login],
   );
+  const poolChoices = useMemo(
+    () => (pools.data ?? []).filter((pool) => pool.owner === me?.login).map((pool) => pool.name).sort((a, b) => a.localeCompare(b)),
+    [pools.data, me?.login],
+  );
   const noProjects = !renewing && !projects.isPending && !projects.isError && projectChoices.length === 0;
   const command = loginCommand(form, { renewing, now });
   const [minDay] = useState(() => utcDay(now + 24 * 60 * 60 * 1000));
@@ -135,7 +140,7 @@ function LoginFormBody({
     setForm((current) => ({ ...current, ...patch }));
     if (field) setErrors((current) => ({ ...current, [field]: undefined }));
   };
-  const toggle = (list: "projects" | "workers", name: string, on: boolean) =>
+  const toggle = (list: "projects" | "workers" | "pools", name: string, on: boolean) =>
     set({ [list]: on ? [...form[list], name] : form[list].filter((item) => item !== name) }, list === "projects" ? "projects" : undefined);
   const describedBy = (field: LoginField) => [`${ids}-${field}-hint`, errors[field] ? `${ids}-${field}-error` : ""].filter(Boolean).join(" ");
   const problem = (field: LoginField) => {
@@ -246,7 +251,7 @@ function LoginFormBody({
 
         {renewing ? (
           <div className="flex flex-col gap-1.5">
-            <KeptBindings projects={target.projects} workers={target.workers} />
+            <KeptBindings projects={target.projects} workers={target.workers} pools={target.pools} />
             <Hint id={`${ids}-kept-hint`}>{t("keptHint")}</Hint>
           </div>
         ) : (
@@ -275,23 +280,18 @@ function LoginFormBody({
               <FieldError id={`${ids}-projects-error`} text={problem("projects")} testId="login-projects-error" />
             </fieldset>
 
-            <fieldset className="flex min-w-0 flex-col gap-2" aria-describedby={`${ids}-workers-hint`}>
-              <legend className="mb-1.5 text-sm font-medium">{t("workersOptional")}</legend>
-              {workers.isPending ? (
-                <CheckListSkeleton />
-              ) : workerChoices.length === 0 ? (
-                <EmptyPick testId="login-no-workers">{t("noWorkers")}</EmptyPick>
-              ) : (
-                <CheckList
-                  idPrefix={`${ids}-worker`}
-                  names={workerChoices}
-                  picked={form.workers}
-                  onToggle={(name, on) => toggle("workers", name, on)}
-                  testId="login-workers"
-                />
-              )}
-              <Hint id={`${ids}-workers-hint`}>{t("workersHint")}</Hint>
-            </fieldset>
+            {(["workers", "pools"] as const).map((list) => (
+              <BindingPick
+                key={list}
+                id={`${ids}-${list}`}
+                list={list}
+                loading={(list === "workers" ? workers : pools).isPending}
+                names={list === "workers" ? workerChoices : poolChoices}
+                picked={form[list]}
+                locked={(list === "workers" ? form.pools : form.workers).length > 0}
+                onToggle={(name, on) => toggle(list, name, on)}
+              />
+            ))}
           </>
         )}
 

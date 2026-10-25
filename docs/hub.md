@@ -99,7 +99,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../shape`, `.../nodes`, `.../node`, `.../neighbourhood`, `.../clusters`, `.../cluster`, `.../whole`, `.../review`, `POST .../review/{fingerprint}/dismiss`, `.../decisions` (`GET`, `POST`), `POST .../decisions/{number}/{accept,reject,undo}`; the worker on duty's are under worker protocol |
-| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
+| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}`; worker pools: `GET` and `POST /v1/worker-pools`, `GET` and `PATCH /v1/worker-pools/{name}`, `GET` and `POST .../{name}/tokens`, `POST .../{name}/tokens/{id}/revoke`; for a pool node's token, `GET /v1/worker/skills` and `GET /v1/worker/skills/global/{name}/bundle` (`docs/workers.md`, Pools) |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
@@ -1078,7 +1078,24 @@ what it added, the proposals of kind problem and the work items of kind discover
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
 queue below). A machine joins with a pairing code from the web's Workers page, or registers directly once signed in
-with `evo-agents hub login`.
+with `evo-agents hub login`. A server made for runs joins one of the member's worker pools with a join token instead
+(`docs/workers.md`, Pools):
+
+```sh
+evo-agents worker pool create vps --project demo --slots 2 --taint dedicated  # needs hub login
+evo-agents worker pool token create vps --hours 24 --max-uses 2  # evj_..., printed once
+evo-agents worker join --url https://hub.example.org --token evj_...  # on the new machine; or EVO_JOIN_TOKEN
+evo-agents worker pool user-data vps --max-nodes 1 > user-data.sh  # a token and the bootstrap, as cloud-init user-data
+evo-agents worker pool show vps                               # its nodes, each ready or why not
+```
+
+`worker pool` (`evo_agents/worker/pool_cli.py`) reads and writes `/v1/worker-pools` with the machine token of `hub
+login`: `create NAME --project P [--slots N] [--label L ...] [--taint T ...] [--accept-finding CODE ...]
+[--reap-after-days D]`, `list`, `show NAME`, `set NAME` with the same flags (a list given replaces the whole list;
+`--no-labels`, `--no-taints` and `--no-accepted-findings` empty one), `token create NAME [--hours H] [--max-uses N]`,
+`token list NAME`, `token revoke NAME ID`, and `user-data NAME [--ttl H] [--max-nodes N]`, which prints the user-data
+on stdout and the token's id on stderr. Each but `user-data` prints the hub's answer with `--json`. A node is named
+`<pool>-<host>`, carries the pool's labels and `pool=<name>`, and takes runs once its doctor report is clean.
 
 Runs are driven from any machine signed in to the hub:
 
@@ -1109,7 +1126,8 @@ evo-agents hub run finish 42                                  # end the chat: th
 ```
 
 `run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
-has the project's harness checked out (`--worker`, required), whose agent writes an execution plan from REQUEST
+has the project's harness checked out (pinned with `--worker`, or any that `--pool`, `--label` and `--tolerate`
+let take it), whose agent writes an execution plan from REQUEST
 (at most 16 KiB of UTF-8, `-` reads it from stdin) with the create-exec-plan skill the hub holds, and puts it on the
 hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (1, 2 or 4 hours of agent time, 2 by
 default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
@@ -1154,6 +1172,15 @@ KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (
 a queued attempt whose run before it was lost on a worker that is not steady yet has a `waits for` line naming that
 worker and when it becomes steady (`steady_wait`; `docs/workers.md`, Run states).
 
+`dispatch`, `plan`, `author` and `rerun` take where the run may go besides `--worker`: `--pool NAME` (one of your
+worker pools: only its nodes take the run, as the label `pool=NAME`), `--label LABEL` (a label the claiming worker must
+have, a word or key=value: its own, its pool's, or one the hub gives it, `os=`, `arch=`, `runtime=NAME`,
+`feature=browser`; repeat it, and every one is needed) and `--tolerate TAINT` (a taint of a worker the run accepts;
+repeat it). They go to the body as `pool`, `labels` and `tolerations`, and the run keeps them as `selector` and
+`tolerations`; only what is given is sent, so an older hub takes the rest. A worker with a taint the run does not
+tolerate leaves it to others unless the run is pinned to it, and a node of a pool whose doctor report is not clean
+takes none (`docs/workers.md`, Pools). A `rerun` without any of the three keeps the run's own.
+
 A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
 and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and
 `missing_tool` when the preflight stopped it before its agent started, or `push_conflict`, `verify_failed`, `timeout`,
@@ -1196,7 +1223,9 @@ evo-agents hub secret delete gitlab-kb                        # its leases still
 break dropped, and otherwise it is asked for without echo. Every argument is checked before the value is read, and no
 command prints the value, an error included. `--kind env` needs `--env-var`; `--kind git` needs `--url-prefix`, and
 `--username` defaults to `oauth2`. `--project` names a project whose runs get it, on which you hold writer, and
-`--worker` one of your workers that alone gets it; both repeat. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
+`--worker` one of your workers that alone gets it; both repeat. `--pool NAME` (repeatable, not with `--worker`)
+binds it to one of your worker pools instead, so each node of the pool gets it, those that join later too; `hub
+account login` and `hub account oauth-login` take `--pool` as well. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
 day, as GitLab ends an access token on its expiry date. `secret list` reads `GET /v1/secrets` (`--json` prints it),
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account

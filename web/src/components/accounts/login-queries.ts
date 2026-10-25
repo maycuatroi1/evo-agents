@@ -45,6 +45,13 @@ export const workersQuery = (api: ApiSource) =>
     queryFn: ({ signal }) => call(api().GET("/v1/workers", { signal })),
   });
 
+/** The worker pools the visitor may see; the dialog offers those they own. */
+export const poolsQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: accountKeys.pools,
+    queryFn: ({ signal }) => call(api().GET("/v1/worker-pools", { signal })),
+  });
+
 // The write, with the session's X-Evo-CSRF header.
 
 /**

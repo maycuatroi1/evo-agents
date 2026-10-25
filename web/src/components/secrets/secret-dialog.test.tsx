@@ -77,6 +77,7 @@ const SECRET: Secret = {
   username: "oauth2",
   projects: ["demo"],
   workers: ["mac-mini"],
+  pools: [],
   expires_at: null,
   created_at: "2026-10-01T00:00:00Z",
   updated_at: "2026-10-02T00:00:00Z",
@@ -178,6 +179,7 @@ describe("SecretDialog", () => {
       env_var: "CLAUDE_CODE_OAUTH_TOKEN",
       projects: ["demo"],
       workers: [],
+      pools: [],
       expires_at: null,
       value: VALUE,
     });
@@ -221,11 +223,48 @@ describe("SecretDialog", () => {
       username: "oauth2",
       projects: ["demo"],
       workers: ["mac-mini"],
+      pools: [],
       expires_at: null,
       value: VALUE,
     });
     expect(document.body.innerHTML).not.toContain(VALUE);
     expect(screen.getByTestId("open-state")).toHaveTextContent("open");
+  });
+
+  it("binds a secret to the visitor's pools instead of workers, one list or the other", async () => {
+    const user = userEvent.setup();
+    const saved = vi.fn();
+    const pool = (name: string, owner: string) => ({ id: name.length, name, owner, projects: ["demo"], nodes: [] });
+    api.answer = (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/v1/worker-pools") return json([pool("lab", "octo"), pool("theirs", "someone-else")]);
+      return reads(request) ?? (request.method === "PUT" ? json({ ...SECRET, name: "claude-oauth", created: true }) : json({ error: "not_found", message: "?" }, 404));
+    };
+    renderVi(<Harness onSaved={saved} />);
+
+    const dialog = screen.getByRole("dialog", { name: "Thêm secret" });
+    const pools = await within(dialog).findByTestId("secret-pools");
+    await waitFor(() => expect(within(pools).getAllByRole("checkbox").map((box) => (box as HTMLInputElement).value)).toEqual(["lab"]));
+    const workers = within(dialog).getByTestId("secret-workers");
+    await waitFor(() => expect(within(workers).getAllByRole("checkbox")).toHaveLength(1));
+
+    await user.click(within(pools).getByRole("checkbox", { name: "lab" }));
+    expect(within(workers).getByRole("checkbox", { name: "mac-mini" })).toBeDisabled();
+    await user.click(within(pools).getByRole("checkbox", { name: "lab" }));
+    expect(within(workers).getByRole("checkbox", { name: "mac-mini" })).toBeEnabled();
+    await user.click(within(workers).getByRole("checkbox", { name: "mac-mini" }));
+    expect(within(pools).getByRole("checkbox", { name: "lab" })).toBeDisabled();
+    await user.click(within(workers).getByRole("checkbox", { name: "mac-mini" }));
+    await user.click(within(pools).getByRole("checkbox", { name: "lab" }));
+
+    await user.type(screen.getByLabelText("Tên"), "claude-oauth");
+    await user.type(screen.getByLabelText("Tên biến"), "CLAUDE_CODE_OAUTH_TOKEN");
+    await user.click(within(await within(dialog).findByTestId("secret-projects")).getByRole("checkbox", { name: "demo" }));
+    await user.type(valueField(), VALUE);
+    await user.click(within(dialog).getByRole("button", { name: "Thêm secret" }));
+    await waitFor(() => expect(saved).toHaveBeenCalled());
+    const put = api.seen.find((request) => request.method === "PUT");
+    expect(await put?.clone().json()).toMatchObject({ workers: [], pools: ["lab"] });
   });
 
   it("explains that a member without the writer role cannot add a secret", async () => {

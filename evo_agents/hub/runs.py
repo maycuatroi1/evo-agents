@@ -215,6 +215,11 @@ BROWSER_INSTALL = "browser_install"
 DOCTOR_REPORT = "doctor_report"
 DOCTOR_EVERY_SECONDS = 24 * 3600  # how often the daemon sends a doctor report, besides when it starts
 DOCTOR_FRESH_SECONDS = 48 * 3600  # a worker is narrowed to a unit only with a report this recent
+# a daemon of a worker pool node that writes the hub's global skills into the skills directories of its runtimes when
+# it starts and every 6 hours, with its worker token (GET /v1/worker/skills; evo_agents.worker.skill_sync_loop), as
+# `hub skills sync` would, without `hub login`
+SKILL_SYNC = "skill_sync"
+SKILL_SYNC_EVERY_SECONDS = 6 * 3600  # how often a pool node syncs the skills, besides when it starts
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -234,6 +239,7 @@ WORKER_FEATURES = (
     BROWSER,
     DOCTOR_REPORT,
     BROWSER_INSTALL,
+    SKILL_SYNC,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
