@@ -4239,10 +4239,12 @@
     "facets": {
       "label": "State",
       "all": "All",
+      "running": "Running",
       "active": "Active",
       "review": "Review",
       "done": "Done",
-      "ended": "Failed or cancelled"
+      "ended": "Failed or cancelled",
+      "idle": "Idle"
     },
     "search": {
       "label": "Search runs",
@@ -4262,7 +4264,8 @@
       "runtime": "Runtime",
       "started": "Started",
       "duration": "Duration",
-      "attempt": "Attempt"
+      "attempt": "Attempt",
+      "cost": "Cost"
     },
     "stepLine": "{plan}, step {step}",
     "stepLineProject": "{project}, {plan}, step {step}",
@@ -5573,6 +5576,10 @@
         "needs_login": "needs a login",
         "disabled": "disabled"
       }
+    },
+    "progress": {
+      "at": "{percent}% ({done}/{total}) - {step}: {status}",
+      "complete": "{percent}% ({done}/{total}) - all steps done"
     }
   },
   "insights": {

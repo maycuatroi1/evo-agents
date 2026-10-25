@@ -16,9 +16,10 @@ from sqlalchemy import Boolean, Integer, String, and_, bindparam, func, or_, sel
 from evo_agents.hub import chat_runs, runs, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.runs.models import Run, RunList, StateCounts
+from evo_agents.hub.server.runs.models import PlanProgress, Run, RunList, StateCounts
 from evo_agents.hub.server.runs.service.views import (
     chat_session,
+    current_plan,
     readable_run,
     run_select,
     run_view,
@@ -154,6 +155,40 @@ def _grouped_statements(states: bool, *, text: bool, number: bool, **shape: bool
     return page, counts
 
 
+def plan_progress(plan: dict) -> PlanProgress | None:
+    steps = [step for step in plan.get("steps") or [] if isinstance(step, dict)]
+    if not steps:
+        return None
+    status = [str(step.get("status", "pending")) for step in steps]
+    done = status.count("done")
+    at = next((i for i, s in enumerate(status) if s == "in_progress"), None)
+    if at is None:
+        at = next((i for i, s in enumerate(status) if s != "done"), None)
+    step = None if at is None else steps[at]
+    name = None if step is None else str(step.get("title") or step.get("id") or step.get("order") or at + 1)
+    return PlanProgress(
+        done=done,
+        total=len(steps),
+        percent=done * 100 // len(steps),
+        current_step=name,
+        current_status=None if at is None else status[at],
+    )
+
+
+async def _with_progress(conn, project_id: int, page: list[Run]) -> list[Run]:
+    """``page`` with the progress of the plan of each plan run in it."""
+    progress: dict[str, PlanProgress | None] = {}
+    for run in page:
+        if run.kind == "plan" and run.plan_id and run.plan_id not in progress:
+            found = await current_plan(conn, project_id, run.plan_id)
+            body = found[0] if found else None
+            progress[run.plan_id] = plan_progress(body) if isinstance(body, dict) else None
+    return [
+        run.model_copy(update={"plan_progress": progress.get(run.plan_id)}) if run.kind == "plan" else run
+        for run in page
+    ]
+
+
 async def run_list(
     engine,
     user: Principal,
@@ -207,6 +242,7 @@ async def run_list(
         }
         page = runs_of(await conn.execute(page_query, bound))
         counts = {row.state: row.runs for row in await conn.execute(counts_query, bound)}
+        page = await _with_progress(conn, access.project_id, page)
     wanted = states or runs.SHOWN_STATES
     return RunList(
         runs=page,
