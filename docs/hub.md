@@ -3189,6 +3189,7 @@ environment, never in a committed file.
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
 | `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |
+| `EVO_HUB_GATEWAY_SUBNET` | compose | the subnet of the `gateway` network, default `10.231.128.0/28`, outside Docker's default address pools so the network is created on a host whose pools are all taken; change it when it overlaps a network of the host |
 | `EVO_HUB_EXTRA_CORE_PLUGINS` | build | a hub's own core plugins, beside those `deploy/hub/core-plugins.txt` pins: requirements `name==version --hash=sha256:<64 hex>` separated by spaces or line breaks, every dependency the image lacks among them; a build argument, never a variable of a service (`docs/hub-deployment.md`, section Core plugins in the image) |
 | `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
