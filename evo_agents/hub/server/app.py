@@ -43,7 +43,19 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import GraphCache, Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import admin, auth, blobs, errors, health, invites, projects, tokens, user_emails, web_auth
+from evo_agents.hub.server import (
+    admin,
+    auth,
+    blobs,
+    errors,
+    gateway_sync,
+    health,
+    invites,
+    projects,
+    tokens,
+    user_emails,
+    web_auth,
+)
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
@@ -136,8 +148,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 if opened is not None:
                     await opened.aclose()
             raise
-        app.state.pool = pool
-        app.state.engine = make_engine(pool)  # disposed of before the pool closes
+        app.state.pool, app.state.engine = pool, make_engine(pool)  # the engine is disposed of before the pool closes
         app.state.github = GitHub(config)
         app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
         app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
@@ -151,6 +162,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 extra={"missing": config.blob_store_missing()},
             )
         await _check_plugins(app, config)
+        app.state.gateway_run = await gateway_sync.start(app, config)  # off without EVO_HUB_GATEWAY_SECRET
         log.info(
             "hub ready",
             extra={
@@ -166,6 +178,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "telegram_missing": config.telegram_missing(),
                 "plugin_publishers": [publisher.id for publisher in config.plugin_publishers],
                 "plugin_host_missing": config.plugin_host_missing(),
+                "gateway_missing": config.gateway_missing(),
             },
         )
         try:
@@ -176,7 +189,7 @@ def create_app(config: HubConfig) -> FastAPI:
             await app.state.browser_views.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
-            for opened in (app.state.github_app, app.state.curator_app, app.state.plugin_host):
+            for opened in (app.state.gateway_run, app.state.github_app, app.state.curator_app, app.state.plugin_host):
                 if opened is not None:
                     await opened.aclose()
             if app.state.blobs is not None:

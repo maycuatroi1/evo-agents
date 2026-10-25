@@ -3114,7 +3114,8 @@ pulls that release from GHCR instead. Postgres is not in it: point `EVO_HUB_DSN`
 reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK` (default `dokploy-network`). The volumes `api-cache` and
 `worker-cache` are caches; deleting them loses nothing. `plugins-cache` holds the code and the environments of the
 isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep state:
-deleting it loses that state. A hub for a client, from the same images with its own branding, publishers and plugins,
+deleting it loses that state. The fifth service, `gateway`, runs a pinned image it does not build, and its volume
+`gateway-data` holds what the api reconciles into it, rebuilt when lost (section Model gateway). A hub for a client, from the same images with its own branding, publishers and plugins,
 is in `docs/hub-deployment.md`, and so are the core plugins the image installs: those `deploy/hub/core-plugins.txt`
 pins, from PyPI, and a hub's own, from the two build variables below. Set the variables in the platform's
 environment, never in a committed file.
@@ -3150,9 +3151,12 @@ environment, never in a committed file.
 | `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
 | `EVO_HUB_PLUGIN_HOST_URL` | api, worker | where the api reaches the plugin host, such as `http://evo-agents-hub-plugins:8090`; with the token below, both or the api runs no isolated backend (section Isolated backends) |
 | `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
+| `EVO_HUB_GATEWAY_SECRET` | api, gateway | the root secret of the model gateway, at least 32 random characters: the `gateway` service derives OmniRoute's secrets and dashboard password from it and the api signs in with the same password; unset, the gateway is off and the hub runs without it (section Model gateway). The worker does not get it |
+| `EVO_HUB_GATEWAY_URL` | api | where the api reaches the gateway; empty is `http://evo-agents-hub-gateway:20128`, the service on its own network |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
+| `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |
 | `EVO_HUB_EXTRA_CORE_PLUGINS` | build | a hub's own core plugins, beside those `deploy/hub/core-plugins.txt` pins: requirements `name==version --hash=sha256:<64 hex>` separated by spaces or line breaks, every dependency the image lacks among them; a build argument, never a variable of a service (`docs/hub-deployment.md`, section Core plugins in the image) |
 | `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
@@ -3179,6 +3183,28 @@ refused pairing codes counts per client address, so behind a proxy that is not l
 every join for 10 minutes. List the address or network the proxy reaches the api from, as `docker inspect` shows it on
 the shared network, and nothing wider: a listed address can claim any client address in `X-Forwarded-For`, and `*`
 lets every client do that. The default trusts nobody new.
+
+### Model gateway
+
+The `gateway` service runs OmniRoute, pinned by digest to the version the model catalog was generated from
+(`GATEWAY_VERSION` in `evo_agents/hub/model_catalog.py`, the client in `evo_agents/hub/server/gateway_client.py`).
+Only the api calls it. It publishes no port and has no domain, so neither its dashboard nor its management API is on
+the internet, and it sits on the network `gateway` alone, which the api joins: it has no route to Postgres (the
+platform's network) nor to web. `EVO_HUB_GATEWAY_SECRET` turns it on. The service derives from it OmniRoute's JWT
+secret, API key secret, storage key and dashboard password (each the HMAC-SHA256 of `evo-hub-gateway/<label>` under
+the root secret, in hex) and the api derives the same password, signs in with it and keeps the session in memory, so
+no credential is copied by hand and none is stored by the hub. Without the secret the service exits at once, the hub
+runs as before, and whatever needs the gateway says it is not configured. Every request needs a gateway key, request
+logs are off, and each key the hub makes is noLog: the gateway keeps no prompt or response body.
+
+The hub is the source of truth (`evo_agents/hub/server/gateway_sync.py`). When the api starts, shortly after each write
+of a provider account and every minute, it makes each live provider account a connection of the gateway, named
+`evo-<secret id>-<fingerprint>`: of the catalog's provider at the account's base URL, or of a provider node of its own
+for a custom endpoint. The key is opened in the api's memory only and sent to the gateway alone. A paused or expired
+account's connection is inactive; a deleted account's connection, and every connection or node the hub does not know,
+is deleted. A lost `gateway-data` volume is therefore rebuilt on the next round; changing the root secret needs that
+volume dropped, since the old volume keeps the old password and storage key. `GET /v1/health` reports `gateway`: `ok`,
+`off` without the secret, or `error`, which fails the check, when the gateway does not answer.
 
 ### Deploying main
 
@@ -3259,9 +3285,10 @@ with a release at least as new as the one that wrote the dump. A newer release m
 forward. The caches fill again on their own. The job queue is part of the dump, so builds that were queued run, and
 the recovery job fails and queues again any build that was running when the dump was taken.
 
-**Health.** `GET /v1/health` reports the package version, the schema revision, `db` and `r2`. It answers 503 and
-lists the failed component when Postgres or the bucket does not answer within 3 seconds; a hub without the S3
-variables reports `r2: unconfigured` and stays healthy. `GET /v1/health/live` only says the process serves requests.
+**Health.** `GET /v1/health` reports the package version, the schema revision, `db`, `r2` and `gateway`. It answers
+503 and lists the failed component when Postgres, the bucket or a configured model gateway does not answer within 3
+seconds; a hub without the S3 variables reports `r2: unconfigured`, one without `EVO_HUB_GATEWAY_SECRET` reports
+`gateway: off`, and both stay healthy. `GET /v1/health/live` only says the process serves requests.
 The container healthcheck uses the live route on purpose: an R2 outage must not get the api restarted while it still
 answers from its cache. Point uptime monitoring at `/v1/health`.
 
