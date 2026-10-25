@@ -1,9 +1,13 @@
 "use client";
 
 import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Route } from "next";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { notify } from "@/components/feedback/toast";
 
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
@@ -19,7 +23,9 @@ import {
   BridgeError,
   FRAME_HEIGHT,
   type Host,
+  KIT,
   MAX_IN_FLIGHT,
+  type PageLocation,
   readRequest,
   reply,
   type Theme,
@@ -54,21 +60,44 @@ export async function grantOf(client: QueryClient, project: string, name: string
   }
 }
 
-export function PluginFrame({ project, plugin, page }: { project: string; plugin: ProjectPlugin; page: PluginPage }) {
+/**
+ * `path` is the sub path after the page's name in the hub's URL (/p/{project}/x/{plugin}/{page}/{path}), "" for none;
+ * the page reads it and the URL's query as `location` of its context, and gets the event `location` when either
+ * changes while this frame stays. A `navigate` that the router answers with a new page segment frames the page
+ * afresh, and it reads its new location from the context.
+ */
+export function PluginFrame({
+  project,
+  plugin,
+  page,
+  path = "",
+}: {
+  project: string;
+  plugin: ProjectPlugin;
+  page: PluginPage;
+  path?: string;
+}) {
   const t = useTranslations("plugins.frame");
   const client = useQueryClient();
   const locale = useLocale();
+  const router = useRouter();
+  const search = useSearchParams();
   const { resolvedTheme } = useTheme();
   const { data: me } = useQuery(whoamiQuery(browserApi));
   const frame = useRef<HTMLIFrameElement>(null);
   const url = useRef(page.url ?? "");
   const [height, setHeight] = useState(FRAME_HEIGHT.initial);
   const theme: Theme = resolvedTheme === "dark" ? "dark" : "light";
+  const searchText = search?.toString() ?? "";
+  const location = useMemo<PageLocation>(
+    () => ({ path, query: Object.fromEntries(new URLSearchParams(searchText)) }),
+    [path, searchText],
+  );
 
   // What the handler reads when a message arrives, kept current without adding and removing the listener each render.
-  const latest = useRef({ plugin, me, locale, theme });
+  const latest = useRef({ plugin, me, locale, theme, location, router, t });
   useEffect(() => {
-    latest.current = { plugin, me, locale, theme };
+    latest.current = { plugin, me, locale, theme, location, router, t };
   });
 
   useEffect(() => {
@@ -88,9 +117,19 @@ export function PluginFrame({ project, plugin, page }: { project: string; plugin
         locale: lang,
         theme: shade,
         methods: allowedMethods(current.granted),
+        location: latest.current.location,
+        kit: KIT,
       };
     };
-    const host: Host = { context, resize: setHeight, granted: () => grantOf(client, project, plugin.name), hub };
+    const host: Host = {
+      context,
+      resize: setHeight,
+      granted: () => grantOf(client, project, plugin.name),
+      hub,
+      navigate: (to) => latest.current.router.push(to as Route),
+      toast: (text, tone) =>
+        notify({ tone, text, description: latest.current.t("toastFrom", { plugin: latest.current.plugin.title }) }),
+    };
     const post = (message: unknown) => element.contentWindow?.postMessage(message, "*");
 
     const onMessage = (event: MessageEvent) => {
@@ -124,6 +163,14 @@ export function PluginFrame({ project, plugin, page }: { project: string; plugin
   useEffect(() => {
     frame.current?.contentWindow?.postMessage({ bridge: BRIDGE, event: "theme", theme }, "*");
   }, [theme]);
+
+  // The first location is in the context; only a later one is news to the page.
+  const shownLocation = useRef(location);
+  useEffect(() => {
+    if (shownLocation.current === location) return;
+    shownLocation.current = location;
+    frame.current?.contentWindow?.postMessage({ bridge: BRIDGE, event: "location", location }, "*");
+  }, [location]);
 
   return (
     <iframe
