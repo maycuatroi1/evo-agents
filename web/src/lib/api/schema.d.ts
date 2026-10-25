@@ -8864,6 +8864,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runnable-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runnable Models
+         * @description The models of provider accounts the caller may run in ``project``, through the model gateway.
+         */
+        get: operations["list_runnable_models_v1_projects__project__runnable_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/signals/{project}": {
         parameters: {
             query?: never;
@@ -9786,7 +9806,7 @@ export interface components {
     schemas: {
         /**
          * Account
-         * @description One of the caller's env secrets as an account: everything but its value.
+         * @description One of the caller's env secrets or provider accounts as an account: everything but its value or key.
          */
         Account: {
             /** Name */
@@ -9904,6 +9924,8 @@ export interface components {
              * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
              */
             cost_by_principal: components["schemas"]["PrincipalCost"][];
+            /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
+            gateway?: components["schemas"]["GatewayAccount"] | null;
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -14823,8 +14845,7 @@ export interface components {
              */
             id: number;
             /**
-             * Kind
-             * @description env: a variable of the agent; git: what git's helper answers
+             * @description env: a variable of the agent; git: what git's helper answers (enum property replaced by openapi-typescript)
              * @enum {string}
              */
             kind: "env" | "git";
@@ -14944,7 +14965,7 @@ export interface components {
         /** Credentials */
         Credentials: {
             /** Leases */
-            leases: components["schemas"]["CredentialLease"][];
+            leases: (components["schemas"]["CredentialLease"] | components["schemas"]["GatewayLease"])[];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
             /**
@@ -16286,6 +16307,104 @@ export interface components {
             updated_by: string;
             /** Rank */
             rank: number;
+        };
+        /**
+         * GatewayAccount
+         * @description What a provider account calls, through the model gateway (``evo_agents.hub.gateway_runs``).
+         */
+        GatewayAccount: {
+            /**
+             * Provider
+             * @description the id of its entry in the catalog
+             */
+            provider: string;
+            /**
+             * Prefix
+             * @description what its models are named with, <prefix>/<model>; null when not served
+             */
+            prefix: string | null;
+            /**
+             * Base Url Host
+             * @description the host of the endpoint it calls
+             */
+            base_url_host: string | null;
+            /** Api Format */
+            api_format: string;
+            /**
+             * Models
+             * @description how many models it serves
+             */
+            models: number;
+            /**
+             * Status
+             * @description what the gateway last said of it: ok, cooling after a rate limit, failing, or unknown before any
+             * @enum {string}
+             */
+            status: "ok" | "cooling" | "failing" | "unknown";
+            /**
+             * Reason
+             * @description the gateway's error code or type when cooling or failing; never its text
+             */
+            reason: string | null;
+        };
+        /**
+         * GatewayLease
+         * @description The lease of a run on a provider account's model (``evo_agents.hub.gateway_runs``): the hub's gateway route
+         *     and a token of the run for it; never a provider's key nor the gateway's.
+         */
+        GatewayLease: {
+            /**
+             * Id
+             * @description the lease of the run's key of the gateway; the same id when it is asked for again
+             */
+            id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gateway";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "gateway";
+            /**
+             * Name
+             * @description gateway:<prefix>, the prefix of the run's model
+             */
+            name: string;
+            /** Env Var */
+            env_var?: null;
+            /** Url Prefix */
+            url_prefix?: null;
+            /** Username */
+            username?: null;
+            /**
+             * Value
+             * @description the run's token to the route: for memory only, never a file, a log line or an event
+             */
+            value: string;
+            /**
+             * Expires At
+             * @description when the run's key of the gateway ends
+             */
+            expires_at: string | null;
+            /**
+             * Base Url
+             * @description the hub's gateway route, <hub>/v1, that the runtime sends its model calls to
+             */
+            base_url: string;
+            /**
+             * Model
+             * @description the run's model, <prefix>/<model of the provider>
+             */
+            model: string;
+            /**
+             * Api Format
+             * @description what the runtime speaks
+             * @enum {string}
+             */
+            api_format: "anthropic" | "openai" | "openai-responses";
         };
         /** GitHubLogin */
         GitHubLogin: {
@@ -28775,6 +28894,29 @@ export interface components {
              * @description one blob per kind
              */
             items: components["schemas"]["RunBlobItem"][];
+        };
+        /** RunnableModel */
+        RunnableModel: {
+            /**
+             * Model
+             * @description as a run asks for it: <prefix>/<model>
+             */
+            model: string;
+            /**
+             * Prefix
+             * @description the catalog's alias of its provider, or evo-<id> for an endpoint of a member
+             */
+            prefix: string;
+            /**
+             * Runtimes
+             * @description the runtimes that run it through the model gateway; any picks one
+             */
+            runtimes: string[];
+            /**
+             * Accounts
+             * @description the names of the provider accounts that serve it, by name
+             */
+            accounts: string[];
         };
         /** Runs */
         Runs: {
@@ -67907,6 +68049,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_runnable_models_v1_projects__project__runnable_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnableModel"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -41,6 +41,7 @@ DERIVED = {  # the gateway's variable, and the label its value is derived under
     "INITIAL_PASSWORD": "password",
 }
 TIMEOUT = 10.0  # seconds for one call, connecting included
+RELAY_TIMEOUT = httpx.Timeout(600.0, connect=TIMEOUT)  # a model's answer, streamed or not, may take minutes
 HEALTH_TIMEOUT = 3.0
 SESSION_COOKIE = "auth_token"  # OmniRoute's dashboard session
 OFF = "the model gateway is not configured: set EVO_HUB_GATEWAY_SECRET (docs/hub.md, section Model gateway)"
@@ -72,6 +73,12 @@ class Connection:
     provider: str  # a provider of the gateway's registry, or the id of a Node
     name: str
     active: bool
+    # what the gateway last saw of it: testStatus (active, error, unavailable, expired...), its error's code and type,
+    # and until when it rests after a rate limit (ISO 8601); never lastError, whose text may echo what the provider said
+    test_status: str | None = None
+    error_code: str | None = None
+    error_type: str | None = None
+    limited_until: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,8 +114,21 @@ class KeyUsage:
     cost_usd: float
 
 
+def _text(value) -> str | None:
+    return None if value is None or value == "" else str(value)
+
+
 def _connection(data: dict) -> Connection:
-    return Connection(str(data["id"]), str(data["provider"]), str(data.get("name") or ""), bool(data.get("isActive")))
+    return Connection(
+        str(data["id"]),
+        str(data["provider"]),
+        str(data.get("name") or ""),
+        bool(data.get("isActive")),
+        _text(data.get("testStatus")),
+        _text(data.get("errorCode")),
+        _text(data.get("lastErrorType")),
+        _text(data.get("rateLimitedUntil")),
+    )
 
 
 def _node(data: dict) -> Node:
@@ -275,3 +295,15 @@ class GatewayClient:
             int(summary.get("completionTokens") or 0),
             float(summary.get("totalCost") or 0.0),
         )
+
+    # A run's requests to a model, relayed by the hub's gateway route (``gateway_proxy``)
+
+    async def relay(self, method: str, path: str, key: str, headers: dict[str, str], content: bytes) -> httpx.Response:
+        """Send a run's request to the gateway's client endpoint ``path`` with the gateway's ``key`` and return its
+        answer unread, to stream: the caller closes it. RELAY_TIMEOUT between two chunks."""
+        sent = {**headers, "authorization": f"Bearer {key}"}
+        request = self._http.build_request(method, path, headers=sent, content=content, timeout=RELAY_TIMEOUT)
+        try:
+            return await self._http.send(request, stream=True)
+        except httpx.HTTPError as exc:
+            raise GatewayError(f"relay a request ({type(exc).__name__})") from None

@@ -286,6 +286,9 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         await credentials.revoke_tokens(
             app_state.engine, app_state.sealer, credentials.revoker(app_state), run_id=run_id
         )
+        sync = getattr(app_state, "gateway_sync", None)  # its key of the gateway, if any: taken back now
+        if sync is not None:
+            sync.poke()
     return view
 
 

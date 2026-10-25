@@ -236,7 +236,11 @@ def test_provider_account_takes_its_key_from_an_env_secret_that_stays_and_still_
     names = [s["name"] for s in client.get("/v1/secrets", headers=hub["owner"]).json()]
     assert names == ["zhipu-glm"]  # the provider account is not a secret of these routes
     accounts = client.get("/v1/accounts", headers=hub["owner"])
-    assert accounts.status_code == 200 and [a["name"] for a in accounts.json()] == ["zhipu-glm"]
+    listed = {a["name"]: (a["env_var"], a["gateway"] is not None) for a in accounts.json()}
+    assert accounts.status_code == 200 and listed == {  # the env secret stays an account; the copy is a provider's
+        "zhipu-glm": ("ZHIPU_API_KEY", False),
+        "glm-main": ("gateway:glm", True),
+    }
     # another member's secret, or a missing one, is not found; both or neither key is 422
     assert client.put(path("x"), json=account(from_secret="zhipu-glm"), headers=hub["other"]).status_code == 404
     both = client.put(path("x"), json=account(sample(), from_secret="zhipu-glm"), headers=hub["owner"])

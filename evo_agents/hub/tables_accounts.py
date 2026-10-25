@@ -23,7 +23,8 @@ credential_shares holds each share an owner gave of a secret or an account (``ev
 one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
 moment its owner acknowledged the terms warning, and when it was revoked; never deleted. credential_share_projects
 holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
-made for and the share it came under (0106).
+made for and the share it came under (0106), and the hash of a gateway lease's run token (0149); runs gains the
+provider prefix of a run that goes through the model gateway (0149, ``evo_agents.hub.gateway_runs``).
 """
 
 from __future__ import annotations
@@ -197,4 +198,8 @@ def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, T
     credential_leases.append_constraint(key("credential_leases", "share_id", "credential_shares", ondelete="SET NULL"))
     leases = credential_leases.c
     Index("credential_leases_share_idx", leases.share_id, postgresql_where=leases.share_id.is_not(None))
+    credential_leases.append_column(Column("token_hash", LargeBinary))  # SHA-256 of a gateway lease's run token
+    where = credential_leases.c.token_hash.is_not(None)
+    Index("credential_leases_token_idx", credential_leases.c.token_hash, unique=True, postgresql_where=where)
+    metadata.tables["runs"].append_column(Column("gateway_provider", Text))  # the prefix of its gateway model
     return shares, projects

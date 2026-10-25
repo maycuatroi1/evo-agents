@@ -171,11 +171,17 @@ async def _apply(client: GatewayClient, want: Wanted, found: Connection | None, 
     return None
 
 
-async def reconcile(client: GatewayClient, engine: AsyncEngine, sealer: Sealer, fingerprint_key: str) -> dict:
-    """One round: the gateway's nodes and connections made what the provider accounts say. What changed, counted."""
+async def reconcile(
+    client: GatewayClient, engine: AsyncEngine, sealer: Sealer, fingerprint_key: str, seen: dict | None = None
+) -> dict:
+    """One round: the gateway's nodes and connections made what the provider accounts say. What changed, counted;
+    ``seen`` gets the connection the gateway had of each account, with what it last saw of it."""
     wanting = await wanted(engine, sealer, fingerprint_key)
     nodes = await _nodes(client, wanting)
     kept = await _connections(client, wanting, nodes)  # listed after the nodes: a deleted node took its connections
+    if seen is not None:
+        seen.clear()
+        seen.update(kept)
     changes: dict[str, int] = {}
     for secret_id, want in wanting.items():
         change = await _apply(client, want, kept.get(secret_id), nodes.get(secret_id))
@@ -197,6 +203,7 @@ class GatewaySync:
         self._done = 0
         self._changed = asyncio.Condition()
         self.last_error: str | None = None
+        self.status: dict[int, Connection] = {}  # the connection of each account at the last round, by secret id
 
     def poke(self) -> None:
         self._asked += 1
@@ -225,8 +232,9 @@ class GatewaySync:
             await asyncio.sleep(DEBOUNCE)
 
     async def round(self) -> None:
+        await self._sweep()
         try:
-            changes = await reconcile(self.client, self.engine, self.sealer, self._fingerprint_key)
+            changes = await reconcile(self.client, self.engine, self.sealer, self._fingerprint_key, self.status)
         except GatewayError as exc:
             self.last_error = str(exc)
             log.warning("gateway: reconcile failed", extra={"error": str(exc)})
@@ -237,6 +245,15 @@ class GatewaySync:
             return
         self.last_error = None
         log.debug("gateway: reconciled", extra={"changes": changes})
+
+    async def _sweep(self) -> None:
+        """Take back the keys of the runs that ended (``gateway_leases.sweep``); a failure waits for the next round."""
+        from evo_agents.hub.server import gateway_leases  # it reads the gateway's connections through this module
+
+        try:
+            await gateway_leases.sweep(self.client, self.engine)
+        except Exception as exc:  # the loop must not die
+            log.exception("gateway: the sweep of run keys failed", extra={"error": type(exc).__name__})
 
 
 def poke(app: FastAPI) -> None:
