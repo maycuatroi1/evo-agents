@@ -42,7 +42,7 @@ test("Home, Workers and a project's Runs arrive from the server with their data"
   expect.soft(holds(workers, `data-worker-name="${live.worker.name}"`), "the workers list").toBe(true);
 
   // A project's runs: the summary the sidebar's run count also reads, and the list.
-  const runs = await html(page.request, `/p/${project}/runs?state=active`); // the queued run; the page opens on Running
+  const runs = await html(page.request, `/p/${project}/runs`);
   expect.soft(holds(runs, `data-run-id="${run.id}"`), "the runs list").toBe(true);
   expect.soft(holds(runs, 'data-testid="runs-summary"'), "the runs summary").toBe(true);
 
@@ -54,7 +54,7 @@ test("Home, Workers and a project's Runs arrive from the server with their data"
   page.on("pageerror", (error) => problems.push(`page: ${error.message}`));
   for (const width of [1440, 375]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const path of ["/", "/workers", `/p/${project}/runs?state=active`]) {
+    for (const path of ["/", "/workers", `/p/${project}/runs`]) {
       await page.goto(path);
       await expect(page.getByTestId("palette-trigger-key")).toBeAttached(); // the shell has hydrated
       await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);

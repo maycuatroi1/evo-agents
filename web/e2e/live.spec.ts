@@ -124,20 +124,16 @@ test("the runs list and a local session's page follow the session live, and the 
   await expect(row.getByTestId("run-where")).toHaveText(`laptop-binh, binh@work.example, plan ${RUN_PLAN}, step 2`);
   await expect(row.getByTestId("run-state")).toHaveText("Running");
 
-  // Filter by kind, then by account: both sessions run, the queued run of step 2 is not on Running.
+  // The state changes reach the list without a reload.
+  await localState(me, project, run.id, { state: "idle" });
+  await expect(row.getByTestId("run-state")).toHaveText("Idle", { timeout: 15_000 });
+
+  // Filter by kind, then by account.
   await main.getByTestId("runs-kinds").getByRole("button", { name: /Local sessions/ }).click();
   await expect(main.getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
   await main.getByTestId("runs-account").fill("binh@home.example");
   await expect(main.getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
   await expect(page).toHaveURL(/kind=local&account=binh%40home\.example/);
-
-  // The state changes reach the list without a reload: the session gone idle leaves Running, and Idle lists it.
-  await open(page, `/p/${project}/runs`);
-  await expect(row.getByTestId("run-state")).toHaveText("Running");
-  await localState(me, project, run.id, { state: "idle" });
-  await expect(row).toHaveCount(0, { timeout: 15_000 });
-  await main.getByTestId("runs-facets").getByRole("button", { name: /^Idle/ }).click();
-  await expect(row.getByTestId("run-state")).toHaveText("Idle");
 
   // The run's page follows the session's stream, and the session ending shows as Ended.
   await open(page, runPath(project, other.run.id));
