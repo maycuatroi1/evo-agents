@@ -69,6 +69,21 @@ export function shortLabel(text: string, max = 28): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
+/** File names that say little alone: the label keeps their folder ("kg/page.tsx"). */
+const GENERIC_FILES = new Set(["page.tsx", "layout.tsx", "loading.tsx", "route.ts", "index.ts", "index.tsx", "__init__.py", "README.md"]);
+
+/**
+ * The label the explorer draws for a node: a path's last part (its folder too when the file's name is generic), so a
+ * view of one folder's files does not repeat the folder on every label; the whole name is in the tooltip and the
+ * inspector. Anything else as it is, shortened.
+ */
+export function nodeLabel(name: string): string {
+  const parts = name.split("/").filter(Boolean);
+  if (parts.length < 2) return shortLabel(name);
+  const last = parts[parts.length - 1]!;
+  return shortLabel(GENERIC_FILES.has(last) ? `${parts[parts.length - 2]}/${last}` : last);
+}
+
 const collator = new Intl.Collator("vi", { sensitivity: "base", numeric: true });
 
 /** The node itself first, then by step, kind and name: the order the keyboard walks and the table lists. */
