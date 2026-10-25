@@ -10,6 +10,7 @@ import {
   filterChats,
   handedAgents,
   insertMention,
+  noWorkerProject,
   isMine,
   listTime,
   mentionAt,
@@ -181,5 +182,14 @@ describe("when a row says its last message came", () => {
     const late = new Date("2026-10-19T23:30:00Z"); // 06:30 on the 20th there, 23:30 on the 19th in UTC
     expect(listTime(late, now, zone)).toBe("time");
     expect(listTime(late, now, "UTC")).toBe("weekday");
+  });
+});
+
+describe("noWorkerProject", () => {
+  it("names the project of the no-worker refusal and nothing for another", () => {
+    const refusal = "maycuatroi1 has no worker that takes runs of project fu-teaching, which @fu-teaching works in, and no member shares one there: join one, or add the project to one";
+    expect(noWorkerProject(refusal)).toBe("fu-teaching");
+    expect(noWorkerProject("@x is not in the chat")).toBeNull();
+    expect(noWorkerProject(null)).toBeNull();
   });
 });
