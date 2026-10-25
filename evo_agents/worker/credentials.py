@@ -22,7 +22,8 @@
   an SSH or a plain http origin ``url.<url>.insteadOf`` the origin, so the run reaches it over https. The hub compares
   origins in their https form, so a lease covers an http origin too; the run's git never sends it over plain http.
   Other origins keep the machine's helpers, and the machine's git configuration is not touched. Leases of kind ``env``
-  go into the agent's environment.
+  go into the agent's environment, and a lease of kind gateway the hub's gateway route, the run's token and model
+  (``evo_agents.worker.runtimes.gateway``), beside which Claude Code gets no env lease of ``gateway.CLAUDE_DROPPED``.
 - The run's socket ``runs/<run>/cred.sock`` (mode 0600, in the run's directory, mode 0700) answers processes of the
   daemon's own uid alone (``peer_uid``: SO_PEERCRED on Linux, getpeereid elsewhere), one JSON request a connection.
   ``{"op": "git", "protocol", "host", "path"}`` gets the username and value of the git lease whose url_prefix covers
@@ -95,6 +96,7 @@ from evo_agents.hub.credentials import (
 from evo_agents.hub.log import MASK, MIN_SECRET_LENGTH
 from evo_agents.worker import logs
 from evo_agents.worker.home import HOME_VARIABLE, WorkerHome
+from evo_agents.worker.runtimes import gateway
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -505,6 +507,11 @@ class RunCredentials:
                 self.sources[item["repo"]] = {key: item.get(key) for key in ("origin", "path", "project")}
 
     @property
+    def gateway(self) -> Lease | None:
+        """The run's gateway lease (``gateway.lease_of``): its model runs through the hub's gateway route."""
+        return gateway.lease_of(self.leases)
+
+    @property
     def unleased(self) -> dict[str, str]:
         """The repos the hub leased nothing for, each with its reason. A lease whose url_prefix covers one of them
         does not answer for it: a GitHub token is ``github-app:<owner>`` for the whole owner, but GitHub made it for
@@ -550,15 +557,20 @@ class RunCredentials:
         """What the run's agent and git get: the env leases, and the git configuration of the leased origins, those of
         the repos the hub leased nothing for left out (``unleased``)."""
         env: dict[str, str] = {}
+        route = self.gateway
         for lease in self.leases:
             if lease.kind != "env" or not lease.env_var:
                 continue
             refusal = env_name_refusal(lease.env_var)
+            if refusal is None and gateway.drops(route, lease.env_var):
+                refusal = "the run's model goes through the hub's gateway route, which Claude Code reaches by its token"
             if refusal is not None:
                 self.note(f"The lease {lease.name} is not put into the agent's environment: {refusal}.")
                 continue
             if lease.env_var not in env:
                 env[lease.env_var] = lease.value
+        if route is not None:  # the hub's gateway route, the run's token and model (``gateway``)
+            env.update(gateway.agent_env(route, self.base_env))
         unleased = self.unleased
         urls = [url for repo, found in origins.items() if repo not in unleased for url in found]
         entries = git_config(urls, self.leases, helper_command(self.run_id))
