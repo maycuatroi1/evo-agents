@@ -3157,7 +3157,7 @@ environment, never in a committed file.
 | `EVO_HUB_EXTRA_CORE_PLUGINS` | build | a hub's own core plugins, beside those `deploy/hub/core-plugins.txt` pins: requirements `name==version --hash=sha256:<64 hex>` separated by spaces or line breaks, every dependency the image lacks among them; a build argument, never a variable of a service (`docs/hub-deployment.md`, section Core plugins in the image) |
 | `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
-| `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
+| `EVO_HUB_WEB_TIME_ZONE` | web, api, worker | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh`; also the time zone of a member's quiet hours and summary push until they choose one (`docs/notifications.md`) |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |
 
 The compose file passes api and worker every variable `evo_agents/hub/config.py` reads, an empty value being unset,

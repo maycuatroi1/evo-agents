@@ -8,10 +8,9 @@ A device reaches its member while the token that added it lives: the member's ow
 device token speaks for one member, the last who added it. Adding it again as the same member refreshes its params, its
 token and, when given, its label.
 
-Which notifications go to devices is the tier of the notification (``interrupts``). Until the tiers of plan
-hub-mobile-phase-0 (step 3) are set, a notification is an interrupt when it is a decision asked of the member it
-notifies, the person who answers it (``decisions.asked_person``); every other is not pushed. An interrupt gets one
-delivery on each device of its member that reaches them, besides the web's and the channels'.
+Which notifications go to devices is the tier of the notification for its member (``push_tiers.interrupts``): one of
+the interrupt tier gets one delivery on each device of its member that reaches them (``device_deliveries``), besides
+the web's and the channels'.
 """
 
 from __future__ import annotations
@@ -40,18 +39,6 @@ def device_live(devices=None):
         t.c.revoked_at.is_(None),
         t.c.expires_at > func.now(),
     )
-
-
-async def interrupts(conn: AsyncConnection, *, kind: str, user_id: int, decision_id: int | None) -> bool:
-    """Whether a notification of ``kind`` to member ``user_id`` is pushed to their devices: a decision asked of them
-    (see the module)."""
-    if kind != "decision" or decision_id is None:
-        return False
-    from evo_agents.hub.server.decisions import asked_person  # decisions imports notifications, which imports this
-
-    d, r = tables.decisions, tables.runs
-    asked = select(asked_person()).select_from(d.join(r, r.c.id == d.c.run_id)).where(d.c.id == decision_id)
-    return (await conn.execute(asked)).scalar_one_or_none() == user_id
 
 
 def device_deliveries(notification_id: int, user_id: int):
@@ -135,13 +122,3 @@ async def hides_details(conn: AsyncConnection, user_id: int) -> bool:
     p = tables.notification_preferences
     found = select(p.c.hide_details).where(p.c.user_id == user_id)
     return bool((await conn.execute(found)).scalar_one_or_none())
-
-
-async def set_hide_details(conn: AsyncConnection, user_id: int, hide: bool) -> None:
-    """Set member ``user_id``'s choice to hide details on push notifications."""
-    p = tables.notification_preferences
-    chosen = pg_insert(p).values(user_id=user_id, hide_details=hide)
-    chosen = chosen.on_conflict_do_update(
-        constraint="notification_preferences_pkey", set_={"hide_details": hide, "updated_at": func.now()}
-    )
-    await conn.execute(chosen)

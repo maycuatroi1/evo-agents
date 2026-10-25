@@ -30,6 +30,9 @@ the reaper finds a run lost once its lease ran out, so tests shorten it, and it 
 heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
 for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
 (``runs.DECISION_WAIT_SECONDS``, a day, by default); the end-to-end tests shorten it to see a run parked and resumed.
+EVO_HUB_WEB_TIME_ZONE, the time zone of the dates the web renders (Asia/Ho_Chi_Minh by default), is also the time
+zone of a member's quiet hours and summary push until they choose one (``evo_agents.hub.server.push_tiers``): an IANA
+name such as Asia/Tokyo.
 
 deploy/hub/docker-compose.yml passes the api and the worker every variable read here except those the image sets
 (EVO_HUB_HOST, EVO_HUB_PORT, EVO_HUB_DATA_DIR) and those only tests point elsewhere (the GitHub and Telegram URLs and
@@ -91,6 +94,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from evo_agents.hub.curator import MAX_TIME_ZONE_CHARS, TIME_ZONE
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
 from evo_agents.plugins.host import MIN_HOST_TOKEN, host_token_problem
@@ -123,6 +127,8 @@ MAX_RUN_LEASE_SECONDS = 3600
 # Seconds a plan run waits for its owner's answer before the reaper parks it (evo_agents.hub.server.run_state).
 MIN_DECISION_WAIT_SECONDS = 1
 MAX_DECISION_WAIT_SECONDS = 7 * 86400
+# The time zone of the web's dates and of members' notification settings until they choose one (web/src/i18n).
+DEFAULT_WEB_TIME_ZONE = "Asia/Ho_Chi_Minh"
 
 DEFAULT_DATA_DIR = "~/.evo/hub-server/cache"
 DEFAULT_HOST = "127.0.0.1"
@@ -195,6 +201,7 @@ class HubConfig:
     signal_days: int = DEFAULT_SIGNAL_DAYS  # days a signal is kept after it was measured
     run_lease_seconds: int = LEASE_SECONDS  # how long a claim and each heartbeat lease a run for
     decision_wait_seconds: int = DECISION_WAIT_SECONDS  # how long a plan run waits for an answer before it parks
+    web_time_zone: str = DEFAULT_WEB_TIME_ZONE  # an IANA name: members' notification settings until they choose one
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
     secrets_key: bytes | None = None  # seals the credentials of runs; never logged, returned or stored
     github_app_id: str | None = None  # the GitHub App that makes the runs' tokens: its ID or client ID
@@ -347,6 +354,14 @@ def _decision_wait_seconds(env: Mapping[str, str]) -> int:
     value = _number(env, name, DECISION_WAIT_SECONDS, minimum=MIN_DECISION_WAIT_SECONDS)
     if value > MAX_DECISION_WAIT_SECONDS:
         raise ConfigError(name, f"{name} must be at most {MAX_DECISION_WAIT_SECONDS}, got {value}")
+    return value
+
+
+def _web_time_zone(env: Mapping[str, str]) -> str:
+    name = "EVO_HUB_WEB_TIME_ZONE"
+    value = _text(env, name) or DEFAULT_WEB_TIME_ZONE
+    if len(value) > MAX_TIME_ZONE_CHARS or not re.fullmatch(TIME_ZONE, value):
+        raise ConfigError(name, f"{name} must be an IANA time zone such as Asia/Tokyo, got {value!r}")
     return value
 
 
@@ -627,6 +642,7 @@ def load_config(
         signal_days=_signal_days(env),
         run_lease_seconds=_run_lease_seconds(env),
         decision_wait_seconds=_decision_wait_seconds(env),
+        web_time_zone=_web_time_zone(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),
         **_blob_store(env),
         secrets_key=_secrets_key(env),

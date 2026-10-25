@@ -166,17 +166,23 @@ def test_a_worker_runs_files_in_its_outputs_directory_notify_its_owner(client, h
     ]
 
 
+def before_tiers(settings: dict) -> dict:
+    """The keys of the notification settings before the tiers and quiet hours came (tests/hub/test_push_tiers.py):
+    the same, with the same values."""
+    return {key: settings[key] for key in ("notices", "hide_details")}
+
+
 def test_a_member_turns_the_notice_off_and_still_gets_questions(client, hub, hub_db):
     path = "/v1/me/notification-settings"
     shown = {"notices": [{"kind": "run_outputs", "on": True}], "hide_details": False}
-    assert client.get(path, headers=hub["owner"]).json() == shown
+    assert before_tiers(client.get(path, headers=hub["owner"]).json()) == shown
     for bad in ({"notices": [{"kind": "plan_finished", "on": False}]}, {"notices": []}):
         assert client.put(path, json=bad, headers=hub["owner"]).status_code == 422, bad
     twice = {"notices": [{"kind": "run_outputs", "on": False}, {"kind": "run_outputs", "on": True}]}
     assert client.put(path, json=twice, headers=hub["owner"]).status_code == 422
     off = client.put(path, json={"notices": [{"kind": "run_outputs", "on": False}]}, headers=hub["owner"])
     assert off.status_code == 200, off.text
-    assert off.json() == {"notices": [{"kind": "run_outputs", "on": False}], "hide_details": False}
+    assert before_tiers(off.json()) == {"notices": [{"kind": "run_outputs", "on": False}], "hide_details": False}
     again = client.put(path, json={"notices": [{"kind": "run_outputs", "on": False}]}, headers=hub["owner"])
     assert again.status_code == 200, "turning it off twice is no error"
     assert client.get(path, headers=hub["other"]).json()["notices"][0]["on"] is True, "another member's stays on"
@@ -194,7 +200,7 @@ def test_a_member_turns_the_notice_off_and_still_gets_questions(client, hub, hub
     assert asked["decision_id"] == decision["id"] and [o["id"] for o in asked["outputs"]] == [shot["id"]]
 
     on = client.put(path, json={"notices": [{"kind": "run_outputs", "on": True}]}, headers=hub["owner"])
-    assert on.json() == shown
+    assert before_tiers(on.json()) == shown
     sent(client, prefix, hub["owner"], [(REPORT, item(REPORT, "report.md", "text/markdown"))])
     assert [title for _, title, _, _ in output_notices_of(hub_db)] == [f"Local run #{run_id} sent report.md"]
 

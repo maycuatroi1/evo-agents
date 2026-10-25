@@ -12,7 +12,10 @@ of a notification to a device is a row of notification_deliveries with its ``dev
 
 notification_preferences holds what a member chose for their notifications beyond the notices they turned off
 (notification_mutes): ``hide_details``, push notifications that carry only the kind of thing, the project and the
-link, as one of a restricted project does. A member without a row has the defaults.
+link, as one of a restricted project does; and (0149) ``tiers``, the tier they chose for kinds of notification (a JSON
+object of kind to TIERS, ``evo_agents.hub.server.push_tiers``), their quiet hours (``quiet_start`` to ``quiet_end``,
+HH:MM, both or neither), their ``time_zone`` (an IANA name; none: the hub's web time zone) and ``digest_at``, the
+local time of their summary push (HH:MM; none: DEFAULT_DIGEST_AT). A member without a row has the defaults.
 """
 
 from __future__ import annotations
@@ -40,10 +43,12 @@ KINDS = (WEBPUSH, APNS, FCM)  # push_devices.kind (0148)
 APNS_ENVIRONMENTS = ("sandbox", "production")  # the APNs servers a token belongs to
 MAX_ADDRESS_CHARS = 2048  # push_devices.address: an endpoint or a device token
 MAX_LABEL_CHARS = 100  # push_devices.label
+TIERS = INTERRUPT, BRIEF, OFF = ("interrupt", "brief", "off")  # the values of notification_preferences.tiers (0149)
+DEFAULT_DIGEST_AT = "07:30"  # the local time of a member's summary push until they choose one
 
 
 def push_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """push_devices and notification_preferences (0148), added to ``metadata``."""
+    """push_devices and notification_preferences (0148, 0149), added to ``metadata``."""
     devices = Table(
         "push_devices",
         metadata,
@@ -69,6 +74,11 @@ def push_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("user_id", BigInteger, nullable=False),
         Column("hide_details", Boolean, nullable=False, server_default=false()),
         Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("tiers", JSONB, nullable=False, server_default="{}"),  # 0149
+        Column("quiet_start", Text),
+        Column("quiet_end", Text),
+        Column("time_zone", Text),
+        Column("digest_at", Text),
         ForeignKeyConstraint(
             ["user_id"], ["users.id"], ondelete="CASCADE", name="notification_preferences_user_id_fkey"
         ),

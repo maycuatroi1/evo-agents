@@ -3688,3 +3688,49 @@ def test_0148_keeps_push_devices_their_deliveries_and_preferences_and_going_back
     assert not added & tables(hub_db) and "device_id" not in columns(hub_db, "notification_deliveries")
     assert query(hub_db, count) == [(2,)]  # the web's and the channel's stay
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]
+
+
+def test_0149_keeps_the_tiers_quiet_hours_time_zone_and_summary_time_of_a_member_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0148")
+    t = hub_tables
+    p = t.notification_preferences
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        conn.execute(insert(p).values(user_id=ids["user"], hide_details=True))
+    move_to(hub_db, "0149")
+    added = {"tiers", "quiet_start", "quiet_end", "time_zone", "digest_at"}
+    assert added <= columns(hub_db, "notification_preferences")
+    shown = select(p.c.hide_details, p.c.tiers, p.c.quiet_start, p.c.quiet_end, p.c.time_zone, p.c.digest_at)
+    assert query(hub_db, shown) == [(True, {}, None, None, None, None)], "a member's row of 0148 gets the defaults"
+    chosen = {
+        "tiers": {"decision": "off", "plan_finished": "interrupt", "run_failed": "brief"},
+        "quiet_start": "22:00",
+        "quiet_end": "07:00",
+        "time_zone": "Asia/Tokyo",
+        "digest_at": "08:15",
+    }
+    with live.connect(hub_db) as conn:
+        conn.execute(update(p).values(**chosen).where(p.c.user_id == ids["user"]))
+        for bad in (
+            {"tiers": {"decision": "loud"}},
+            {"tiers": {"decision": 1}},
+            {"tiers": {"": "off"}},
+            {"tiers": {"Decision": "off"}},
+            {"tiers": {"x" * 65: "off"}},
+            {"tiers": ["decision"]},
+            {"quiet_start": None},  # quiet hours are both ends or neither
+            {"quiet_end": "22:00"},  # and end at another time than they start
+            {"quiet_start": "24:00"},
+            {"quiet_end": "7:00"},
+            {"time_zone": ""},
+            {"time_zone": "x" * 65},
+            {"digest_at": "8:15"},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(p).values(**bad).where(p.c.user_id == ids["user"]))
+        conn.execute(update(p).values(quiet_start=None, quiet_end=None, time_zone=None, digest_at=None))
+    assert query(hub_db, select(p.c.tiers, p.c.quiet_start)) == [(chosen["tiers"], None)]
+    move_to(hub_db, "0148", down=True)
+    assert not added & columns(hub_db, "notification_preferences")
+    assert query(hub_db, select(p.c.hide_details)) == [(True,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0149") :]

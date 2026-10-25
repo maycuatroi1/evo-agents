@@ -35199,7 +35199,7 @@
             "notifications"
           ],
           "summary": "Show Notification Settings",
-          "description": "The kinds of notice the caller may turn off, and whether each is on.",
+          "description": "The kinds of notice the caller may turn off and whether each is on, the tier of each kind of notification, their\nquiet hours, time zone and time of the summary push, and whether push hides details.",
           "operationId": "show_notification_settings_v1_me_notification_settings_get",
           "responses": {
             "200": {
@@ -35229,7 +35229,7 @@
             "notifications"
           ],
           "summary": "Set Notification Settings",
-          "description": "Turn kinds of notice on or off for the caller, and choose whether push hides details; decisions and the other\nnotices always come.",
+          "description": "Turn kinds of notice on or off for the caller, choose the tier of kinds of notification, their quiet hours,\ntime zone and time of the summary push, and whether push hides details; the Inbox gets every notification still.",
           "operationId": "set_notification_settings_v1_me_notification_settings_put",
           "requestBody": {
             "content": {
@@ -98839,11 +98839,50 @@
               "title": "Hide Details",
               "description": "push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read",
               "default": false
+            },
+            "tiers": {
+              "items": {
+                "$ref": "#/components/schemas/TierSetting"
+              },
+              "type": "array",
+              "title": "Tiers",
+              "description": "each kind of notification and its tier"
+            },
+            "quiet_hours": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuietHours"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "when an interrupt waits to be pushed until they end, but a decision whose run parks within two hours; null: none"
+            },
+            "time_zone": {
+              "type": "string",
+              "title": "Time Zone",
+              "description": "the IANA time zone of the quiet hours and digest_at"
+            },
+            "time_zone_chosen": {
+              "type": "boolean",
+              "title": "Time Zone Chosen",
+              "description": "false: the hub's time zone, EVO_HUB_WEB_TIME_ZONE"
+            },
+            "digest_at": {
+              "type": "string",
+              "title": "Digest At",
+              "description": "the local time of the summary push, HH:MM"
             }
           },
           "type": "object",
           "required": [
-            "notices"
+            "notices",
+            "tiers",
+            "quiet_hours",
+            "time_zone",
+            "time_zone_chosen",
+            "digest_at"
           ],
           "title": "NotificationSettings"
         },
@@ -98869,6 +98908,53 @@
               ],
               "title": "Hide Details",
               "description": "push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read; unchanged when left out"
+            },
+            "tiers": {
+              "items": {
+                "$ref": "#/components/schemas/TierChoice"
+              },
+              "type": "array",
+              "maxItems": 28,
+              "title": "Tiers",
+              "description": "the kinds to set; the others stay"
+            },
+            "quiet_hours": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuietHours"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: none; unchanged when left out"
+            },
+            "time_zone": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Time Zone",
+              "description": "an IANA name such as Asia/Tokyo; null: the hub's; unchanged when left out"
+            },
+            "digest_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Digest At",
+              "description": "HH:MM; null: the hub's default; unchanged when left out"
             }
           },
           "type": "object",
@@ -110248,6 +110334,28 @@
           ],
           "title": "QueuedMergeRequest",
           "description": "A merge request of the queue: where it comes from, where it stands and why, and its ledger."
+        },
+        "QuietHours": {
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Start",
+              "description": "HH:MM, 24 hours, in the member's time zone"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "End",
+              "description": "HH:MM, 24 hours; the quiet hours run past midnight when it is not after start"
+            }
+          },
+          "type": "object",
+          "required": [
+            "start",
+            "end"
+          ],
+          "title": "QuietHours"
         },
         "RateLimitAnswer": {
           "properties": {
@@ -125804,6 +125912,129 @@
             "last_error_message"
           ],
           "title": "TelegramWebhook"
+        },
+        "TierChoice": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "decision",
+                "proposal",
+                "push_default_branch",
+                "merge_default_branch",
+                "plan_finished",
+                "run_failed",
+                "curator_brief",
+                "curator_paused",
+                "author_waiting",
+                "chat_mention",
+                "chat_added",
+                "plugin_disabled",
+                "builder_proposal",
+                "canvas_baseline",
+                "merge_paused",
+                "release",
+                "pm_daily",
+                "pm_escalation",
+                "run_outputs",
+                "loop_paused",
+                "goal_review",
+                "loop_brief",
+                "plugin_notice",
+                "autonomy",
+                "worker_doctor",
+                "browser_needs_login",
+                "curator_probe_report",
+                "opportunity_window"
+              ],
+              "title": "Kind",
+              "description": "a kind of notification: decision, proposal or a notice's"
+            },
+            "tier": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "interrupt",
+                    "brief",
+                    "off"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tier",
+              "description": "interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "tier"
+          ],
+          "title": "TierChoice"
+        },
+        "TierSetting": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "decision",
+                "proposal",
+                "push_default_branch",
+                "merge_default_branch",
+                "plan_finished",
+                "run_failed",
+                "curator_brief",
+                "curator_paused",
+                "author_waiting",
+                "chat_mention",
+                "chat_added",
+                "plugin_disabled",
+                "builder_proposal",
+                "canvas_baseline",
+                "merge_paused",
+                "release",
+                "pm_daily",
+                "pm_escalation",
+                "run_outputs",
+                "loop_paused",
+                "goal_review",
+                "loop_brief",
+                "plugin_notice",
+                "autonomy",
+                "worker_doctor",
+                "browser_needs_login",
+                "curator_probe_report",
+                "opportunity_window"
+              ],
+              "title": "Kind",
+              "description": "a kind of notification: decision, proposal or a notice's"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "interrupt",
+                "brief",
+                "off"
+              ],
+              "title": "Tier",
+              "description": "interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier"
+            },
+            "chosen": {
+              "type": "boolean",
+              "title": "Chosen",
+              "description": "false: the hub's default, interrupt for a decision asked of the member, a run_failed of a run they dispatched (not one the Curator's night shift queued), a release that went wrong and merge_paused, and brief for every other; a tier the member chose holds for every notification of the kind"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "tier",
+            "chosen"
+          ],
+          "title": "TierSetting"
         },
         "TokenCounts": {
           "properties": {
