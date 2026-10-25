@@ -142,8 +142,10 @@ class FakeGateway:
             return httpx.Response(201, json={"connection": {**found, "apiKey": "sk-****"}})
         if rest[0] not in self.connections:
             return httpx.Response(404, json={"error": "Connection not found"})
-        if method == "PUT":
-            self.connections[rest[0]].update(body)
+        if method == "PUT":  # providerSpecificData merges, as OmniRoute's does: a baseUrl set stays set
+            found = self.connections[rest[0]]
+            specific = {**found.get("providerSpecificData", {}), **body.get("providerSpecificData", {})}
+            found.update({**body, "providerSpecificData": specific})
             return httpx.Response(200, json={"connection": {**self.connections[rest[0]], "apiKey": "sk-****"}})
         del self.connections[rest[0]]
         return httpx.Response(200, json={"message": "Connection deleted successfully"})
@@ -243,8 +245,8 @@ def test_gateway_reconcile_makes_a_connection_of_each_usable_account_and_follows
     by_key = {c["apiKey"]: c for c in gateway.connections.values()}
     assert set(by_key) == {key, custom_key, agent_key} and all(c["isActive"] for c in by_key.values())
     entry = model_catalog.find("openrouter")
-    assert (
-        by_key[key]["provider"] == "openrouter" and by_key[key]["providerSpecificData"]["baseUrl"] == made["base_url"]
+    assert by_key[key]["provider"] == "openrouter" and "baseUrl" not in by_key[key]["providerSpecificData"], (
+        "the catalog's base URL leaves the connection on the registry's URL"
     )
     assert made["base_url"] == entry["base_url"]
     (node,) = gateway.nodes.values()
@@ -270,6 +272,22 @@ def test_gateway_reconcile_makes_a_connection_of_each_usable_account_and_follows
         assert client.delete(gone, headers=hub["owner"]).status_code == 204
     settled(client)
     assert gateway.connections == {} and gateway.nodes == {}
+
+
+def test_gateway_reconcile_tells_a_connection_its_base_url_only_when_not_the_catalogs(client, hub, gateway):
+    key, url = sample(), "https://llm.example.com/v1"
+    made = written(client, hub["owner"], "or", account(key, base_url=url))
+    settled(client)
+    (first,) = gateway.connections.values()
+    assert made["base_url"] == url and first["providerSpecificData"] == {"baseUrl": url} and first["isActive"]
+    catalogs = model_catalog.find("openrouter")["base_url"]
+    assert client.patch(path("or"), json={"base_url": catalogs}, headers=hub["owner"]).status_code == 200
+    settled(client)
+    (again,) = gateway.connections.values()
+    assert again["id"] != first["id"] and again["providerSpecificData"] == {} and again["isActive"], (
+        "the gateway cannot unset a baseUrl, so the connection is made again"
+    )
+    assert again["apiKey"] == key and again["name"] != first["name"]
 
 
 def test_gateway_reconcile_turns_off_an_expired_account_and_deletes_what_the_hub_does_not_know(

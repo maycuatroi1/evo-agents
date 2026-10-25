@@ -3,10 +3,15 @@ accounts in Postgres say, and ``GatewaySync`` runs it when the api starts, short
 (``poke``) and every ``INTERVAL`` seconds, so a gateway that lost its volume is rebuilt on the next round.
 
 Each live provider account whose catalog entry goes through the gateway is one connection named
-``evo-<secret id>-<fingerprint>``: of the catalog's provider at the account's base URL, or, for a custom endpoint
-(custom-openai, custom-anthropic), of a provider node named and prefixed ``evo-<secret id>``. The fingerprint, an HMAC
-under a key derived from EVO_HUB_GATEWAY_SECRET, covers the provider, base URL, API format and key, so a change is seen
-although the gateway never shows a key back; the connection is then updated in place and keeps its id. A paused or
+``evo-<secret id>-<fingerprint>``: of the catalog's provider, or, for a custom endpoint (custom-openai,
+custom-anthropic), of a provider node named and prefixed ``evo-<secret id>``. A catalog provider's connection takes the
+URL of OmniRoute's registry when the account keeps the catalog's base URL, and the account's base URL as
+providerSpecificData.baseUrl only when it names another: the catalog's base URL is the registry's endpoint without its
+tail (/messages, /chat/completions), and some of OmniRoute's executors (zai, anthropic and others) call that override
+as it is, so the catalog's own URL there answers 404. The fingerprint, an HMAC under a key derived from
+EVO_HUB_GATEWAY_SECRET, covers the provider, that override, the API format and the key, so a change is seen although
+the gateway never shows a key back; the connection is then updated in place and keeps its id, except one whose
+override goes, which the gateway cannot unset: it is made again. A paused or
 expired account's connection is inactive. A connection or node of a deleted account, or one the hub does not know, is
 deleted. The key is opened only here, in the api's memory, and goes to the gateway alone: a log line names the account
 by its secret id, and an error of the gateway by the call and the status (``gateway_client.GatewayError``).
@@ -50,6 +55,7 @@ class Wanted:
     key: str
     active: bool
     fingerprint: str
+    override: str | None = None  # the base URL the connection is told, when not the registry's (module docstring)
 
     @property
     def name(self) -> str:
@@ -105,9 +111,15 @@ async def wanted(engine: AsyncEngine, sealer: Sealer, fingerprint_key: str) -> d
             continue
         register_secret(key)
         active = row.paused_at is None and (row.expires_at is None or row.expires_at > row.now)
-        mark = fingerprint(fingerprint_key, row.provider, row.base_url, row.api_format, key)
-        found[row.id] = Wanted(row.id, row.provider, row.base_url, row.api_format, key, active, mark)
+        override = None if _catalogs(entry, row.base_url) else row.base_url
+        mark = fingerprint(fingerprint_key, row.provider, override or "", row.api_format, key)
+        found[row.id] = Wanted(row.id, row.provider, row.base_url, row.api_format, key, active, mark, override)
     return found
+
+
+def _catalogs(entry: dict, base_url: str) -> bool:
+    """Whether ``base_url`` is the catalog's own for ``entry``, whose connection then takes the registry's URL."""
+    return bool(entry.get("base_url")) and base_url.rstrip("/") == entry["base_url"].rstrip("/")
 
 
 async def _nodes(client: GatewayClient, wanting: dict[int, Wanted]) -> dict[int, str]:
@@ -156,7 +168,10 @@ async def _connections(
 
 async def _apply(client: GatewayClient, want: Wanted, found: Connection | None, node_id: str | None) -> str | None:
     """Make the account's connection what it says; the change made, or None."""
-    base_url = None if node_id else want.base_url
+    base_url = None if node_id else want.override
+    if found is not None and found.name != want.name and found.base_url and not base_url and not node_id:
+        await client.delete_connection(found.id)  # PUT cannot unset providerSpecificData.baseUrl
+        found = None
     if found is None:
         found = await client.create_connection(node_id or want.provider, want.name, want.key, base_url)
         if want.active:
