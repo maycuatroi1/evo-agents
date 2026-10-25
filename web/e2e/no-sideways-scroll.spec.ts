@@ -225,7 +225,7 @@ test("the shares of an account and a worker's Sharing card never scroll sideways
   await narrowByApi(me, live, unit);
   await doctorReport(live, HIGH_REPORT);
   await noSidewaysScroll(page, WIDTHS, [
-    { path: "/accounts", ready: shown("share-row") },
+    { path: "/accounts?tab=sharing", ready: shown("share-row") }, // the shares have a tab of their own
     { path: `/workers/${live.worker.id}`, ready: shown("worker-doctor-high") },
   ]);
 });

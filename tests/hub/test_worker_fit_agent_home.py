@@ -28,7 +28,23 @@ def profile(*, default: bool = False, runtimes: list[str] | None = None) -> Simp
 
 
 def worker(features=OLD, runtimes=("claude-code", "codex")) -> SimpleNamespace:
+    reports = {name: UP for name in runtimes}
+    # The place_* columns of worker_placement.columns, as a worker of no pool, no label and no taint has them.
+    placement = {
+        "place_pool": None,
+        "place_labels": [],
+        "place_taints": [],
+        "place_accepted": None,
+        "place_os": None,
+        "place_arch": None,
+        "place_runtimes": reports,
+        "place_features": list(features),
+        "place_doctor_at": None,
+        "place_doctor_fresh": None,
+        "place_findings": None,
+    }
     return SimpleNamespace(
+        _mapping=placement,
         id=3,
         name="studio",
         labels=(),
@@ -43,7 +59,7 @@ def worker(features=OLD, runtimes=("claude-code", "codex")) -> SimpleNamespace:
         checkouts={"aud/app": {"path": "/src/app"}},
         features=tuple(features),
         plugins=None,
-        runtimes={name: UP for name in runtimes},
+        runtimes=reports,
     )
 
 
