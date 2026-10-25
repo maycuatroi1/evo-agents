@@ -38,19 +38,19 @@ from evo_agents.hub.server.browser_identities import (
     BrowserIdentityCreate,
     Domain,
     IdentityName,
+    _may_create,
     agent_profile_id,
     check_create,
     insert_identity,
-    may_create,
 )
 from evo_agents.hub.server.browser_leases import (
     REFUSALS,
     BrowserProfileLease,
     BrowserProfileSaved,
     ProfileRoute,
-    browser_sealer,
+    _sealer,
 )
-from evo_agents.hub.server.browser_logins import open_login_session
+from evo_agents.hub.server.browser_logins import _open_session
 from evo_agents.hub.server.browser_profiles import (
     MAX_ARCHIVE_BYTES,
     ProfileConflict,
@@ -146,14 +146,14 @@ async def open_local_login(request: Request, body: LocalLoginAsk, user: CurrentU
                 login_url=body.login_url,
             )
             check_create(create)
-            may_create(access, body.owner)
+            _may_create(access, body.owner)
             identity_id = await insert_identity(conn, user, access, create, worker.id)
             created = True
             b = tables.browser_identities
             row = (await conn.execute(select(b).where(b.c.id == identity_id))).one()
         else:
             _need(access, body.owner)
-            _refuse(row, worker.id, await open_login_session(conn, row.id))
+            _refuse(row, worker.id, await _open_session(conn, row.id))
         await audit.record(
             conn,
             actor_id=user.user_id,
@@ -162,7 +162,7 @@ async def open_local_login(request: Request, body: LocalLoginAsk, user: CurrentU
             target=f"{body.project} browser-identity:{row.id} version={row.version} local",
             project_id=access.project_id,
         )
-    keys = None if row.sha256 is None else (blob_store(request), browser_sealer(request))
+    keys = None if row.sha256 is None else (blob_store(request), _sealer(request))
     status, version, profile = row.status, row.version, None
     if keys is not None:
         try:
@@ -240,7 +240,7 @@ async def save_local_profile(
         if not mine:
             raise HTTPException(404, f"this worker holds no browser identity {identity_id}")
         _need(access, row.owner_kind)
-        store, sealer = blob_store(request), browser_sealer(request)
+        store, sealer = blob_store(request), _sealer(request)
     try:
         await asyncio.to_thread(browser_archive.check, archive)
     except browser_archive.ProfileArchiveError as exc:

@@ -28,7 +28,7 @@ from evo_agents.hub import review as review_model
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.facet_job import analyze_facets, fingerprint
 from evo_agents.hub.server.collect import compute_figures
-from evo_agents.hub.server.curator import owner_access
+from evo_agents.hub.server.curator import _owner_access
 from evo_agents.hub.worker import queue
 from tests.hub.live import sql
 from tests.hub.test_curator import (
@@ -336,7 +336,7 @@ def figures_of(review, owner_id: int | None, since: datetime, until: datetime) -
 
     async def count() -> dict:
         async with engine.connect() as conn:
-            access = await owner_access(conn, user_of(review.db, OWNER), OWNER, NIGHT_PROJECT)
+            access = await _owner_access(conn, user_of(review.db, OWNER), OWNER, NIGHT_PROJECT)
             return await compute_figures(conn, access, since, until, owner_id)
 
     return review.client.portal.call(count)

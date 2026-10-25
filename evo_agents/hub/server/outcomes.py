@@ -113,7 +113,7 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
     """Count the figures of merged change ``change_id`` again and record its outcome, in the caller's transaction; a
     word for the job's summary."""
     from evo_agents.hub.server.collect import compute_figures  # it queues runs through modules that import this one
-    from evo_agents.hub.server.curator import owner_access
+    from evo_agents.hub.server.curator import _owner_access
 
     c, lg, p = tables.curator_changes, tables.curator_ledger, tables.proposals
     change = (await conn.execute(select(c).where(c.c.id == change_id).with_for_update(skip_locked=True))).one_or_none()
@@ -131,7 +131,7 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
     project = (
         await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
     ).scalar_one()
-    access = None if owner is None else await owner_access(conn, owner.owner_id, owner.login, project)
+    access = None if owner is None else await _owner_access(conn, owner.owner_id, owner.login, project)
     if access is None:
         log.info("outcome waits for an owner who reads the project", extra={"change_id": change_id})
         return "owner"

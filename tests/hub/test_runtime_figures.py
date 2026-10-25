@@ -27,7 +27,7 @@ from sqlalchemy import func, insert, literal, select
 from evo_agents.hub import facets, tables
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server.collect import compute_figures
-from evo_agents.hub.server.curator import owner_access
+from evo_agents.hub.server.curator import _owner_access
 from tests.hub.live import sql
 from tests.hub.test_curator import OWNER, PROJECT, user_id
 from tests.hub.test_curator import night as night  # noqa: F401 (a fixture)
@@ -249,7 +249,7 @@ def test_the_nights_figures_hold_the_runtime_and_the_harness_of_the_sessions_and
 
     async def counted():
         async with busy.client.app.state.engine.connect() as conn:
-            access = await owner_access(conn, owner, OWNER, PROJECT)
+            access = await _owner_access(conn, owner, OWNER, PROJECT)
             return await compute_figures(conn, access, until - timedelta(days=7), until, owner)
 
     first, second = busy.client.portal.call(counted), busy.client.portal.call(counted)

@@ -69,7 +69,7 @@ def cmd_projects(args) -> int:
 
 
 def register_projects(wsub) -> None:
-    from evo_agents.worker.command import worker_command
+    from evo_agents.worker.cli import worker_command  # the cli imports this module
 
     projects = wsub.add_parser(
         "projects",
