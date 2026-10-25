@@ -1,6 +1,6 @@
 """``evo-agents hub task list|show|create|edit|block|unblock|import``: the tasks of a project that enabled the core plugin tasks,
 through its routes under /v1/x/tasks/<project>/ (``docs/plugins.md``, Core plugins). The plugin's code is
-``evo_agents.core_plugins.tasks``, which this client never imports: it speaks HTTP only.
+``evo_agents.hub.server.tasks``, which this client never imports: it speaks HTTP only.
 
 ``list`` prints the tasks the filters keep (``--mine``, ``--sprint``, ``--backlog``, ``--status``, ``--assignee``).
 ``show REF`` prints a task whole: its slots, its links as they are now (a plan step with its status in the plan), its

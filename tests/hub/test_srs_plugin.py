@@ -1,4 +1,4 @@
-"""The core plugin srs on the hub (``evo_agents.core_plugins.srs``), as criterion a2 of plan srs-tasks-plugins names
+"""The core plugin srs on the hub (``evo_agents.hub.server.srs``), as criterion a2 of plan srs-tasks-plugins names
 it: a project that enabled it keeps BA documents. A writer imports the sample SRS (tests/hub/fixtures/srs, no client's
 content) after a preview; every save is a version in one straight line; codes are unique in the project, aliases
 included, stay when an item is renamed, and are never given again; a version goes from draft to review to approved,
@@ -31,13 +31,13 @@ import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
-from evo_agents.core_plugins.srs import markdown, reviews
-from evo_agents.core_plugins.srs.doc import SrsError
-from evo_agents.core_plugins.srs.store import Settings
-from evo_agents.core_plugins.srs.template import template_of
 from evo_agents.hub import plugin_calls, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import Principal, RunScope
+from evo_agents.hub.server.srs import markdown, reviews
+from evo_agents.hub.server.srs.doc import SrsError
+from evo_agents.hub.server.srs.store import Settings
+from evo_agents.hub.server.srs.template import template_of
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
@@ -46,7 +46,7 @@ from tests.hub.test_chats import OPEN_SINKS
 from tests.hub.test_plans import registration
 from tests.hub.test_runs import PROJECT
 
-SRS = EntryPoint("srs", "evo_agents.core_plugins.srs:MANIFEST", ENTRY_POINT_GROUP)
+SRS = EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP)
 SAMPLE = Path(__file__).parent / "fixtures" / "srs" / "demo-shop-srs.md"
 BASE = f"/v1/x/srs/{PROJECT}"
 DOC = f"{BASE}/documents/demo-shop"

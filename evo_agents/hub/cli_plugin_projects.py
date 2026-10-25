@@ -37,6 +37,7 @@ PROJECT_PLUGIN_KEYS = (
     "state",
     "disabled_reason",
     "enabled",
+    "builtin",
     "permissions",
     "granted",
     "pending",

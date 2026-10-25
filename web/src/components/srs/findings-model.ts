@@ -3,7 +3,7 @@ import type { SrsFinding, SrsReviewRun } from "./api";
 /**
  * The pure model of a document's findings on a version's review page (criterion a14 of plan srs-conflicts-and-tasks):
  * the order and counts the Findings card lists them in, who settled one, whether @ba's review of the round still holds
- * approval, and why Approve is locked, as the hub's gate decides it (evo_agents.core_plugins.srs.findings,
+ * approval, and why Approve is locked, as the hub's gate decides it (evo_agents.hub.server.srs.findings,
  * approval_hold). The hub stays the gate: an approval this model lets through may still meet a 409, after which the
  * page reads the findings again. Nothing here reads the API.
  */

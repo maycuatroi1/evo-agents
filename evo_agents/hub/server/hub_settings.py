@@ -10,14 +10,15 @@ changed. Version 0 is a layer never written. Writes of one layer wait for each o
 lock). Each new version adds an audit row, settings.branding or settings.features, naming the layer, the version and
 the fields, or the version it rolled back to, never a value.
 
-Two kinds: branding, the hub's alone, and features, the hub's own layer and a project's. A feature is on unless a
-layer turns it off, a project's layer over the hub's (``features.enabled``).
+Two kinds: branding, the hub's alone, and features, the hub's own layer and a project's. A feature is as a project's
+layer sets it, else as the hub's sets it, else as its default (on, or off for canvas, srs and tasks:
+``features.enabled``).
 
 ``FeatureGate`` answers 404 to a request for the API of a feature that is off where the request asks (for the project
 its path names, or for the whole hub). It runs after Authenticate, so a request without a credential still gets its
 401 and a route outside every feature costs nothing. When a feature is off for a project the caller cannot see, the
 404 is the one ``project_access`` gives, which tells nothing of the project. ``require_tool`` does the same for the
-tools of the hub's /mcp, and ``feature_on`` is the same rule as a SQL expression, for the jobs that leave out the
+tools of the hub's /mcp, and ``feature_on`` (``evo_agents.hub.feature_rule``) is the same rule as a SQL expression, for the jobs that leave out the
 projects a feature is off for (the Curator's night shift, its night figures and its morning brief).
 """
 
@@ -32,13 +33,14 @@ from typing import Any, Literal
 import psycopg
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, exists, func, insert, null, or_, select, true
+from sqlalchemy import and_, exists, func, insert, or_, select
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from starlette.requests import Request
 
 from evo_agents.hub import features, tables
+from evo_agents.hub.feature_rule import feature_on  # noqa: F401 (where the jobs read it, as before)
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.projects import project_access
@@ -307,6 +309,11 @@ def project_layers_query(user: Principal):
 
 
 def off_message(feature: features.Feature, project: str | None) -> str:
+    if project is not None and not feature.default:  # canvas, srs, tasks: a project enables it, as when it was a plugin
+        return (
+            f"{feature.id} is not enabled in project {project}: an admin of the project enables it on the project's "
+            f"Plugins page (POST .../plugins/{feature.id}/enable), or a hub admin in the administration, Features"
+        )
     where = f" for project {project}" if project is not None else ""
     return f"{feature.id} is turned off{where} on this hub; a hub admin turns it on in the administration, Features"
 
@@ -336,21 +343,6 @@ async def require_tool(engine: AsyncEngine, user: Principal, tool: str, project:
         message = await refusal(conn, user, feature, project)
     if message is not None:
         raise HTTPException(404, message)
-
-
-def feature_on(feature_id: str, project_id):
-    """Whether feature ``feature_id`` is on in the project whose id is ``project_id`` (a column or a value), as a
-    boolean SQL expression: the current version of the project's layer when it sets the feature, else the hub's
-    own, else on."""
-    feature = features.BY_ID[feature_id]
-    s = tables.hub_settings.c
-
-    def layer(where):
-        newest = select(s["values"][feature_id].as_boolean()).where(s.kind == FEATURES, where)
-        return newest.order_by(s.version.desc()).limit(1).scalar_subquery()
-
-    own = layer(s.project_id == project_id) if feature.per_project() else null()
-    return func.coalesce(own, layer(s.project_id.is_(None)), true())
 
 
 class FeatureGate:

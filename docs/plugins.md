@@ -359,9 +359,21 @@ in the hub's one chain of migrations, applied under the hub's lock with the rest
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
 
-evo-ak ships its core plugins builder, srs, tasks, canvas and pm in `evo_agents.core_plugins`, declared in its own entry
-points, so every install has them, the hub's image among them. No package of evo_agents imports them (import-linter
-contract core-plugins-by-entry-point): the hub reaches them through their manifests.
+evo-ak ships its core plugins builder, pm, crm, marketing and browser in `evo_agents.core_plugins`, declared in its own
+entry points, so every install has them, the hub's image among them. No package of evo_agents imports them
+(import-linter contract core-plugins-by-entry-point): the hub reaches them through their manifests.
+
+canvas, srs and tasks are features of the hub, not plugins (plan plugin-market, migration 0147). Their code lives in
+the hub (`evo_agents/hub/server/{canvas,srs,tasks}`) and keeps its manifest, which the hub registers itself
+(`evo_agents.hub.plugin_calls.BUILTIN`), with no entry point in the group `evo_agents.plugins`. They run on the same
+extension points as before: the same routes under `/v1/x/<name>/`, MCP tools, jobs, events, notices, sources of the
+knowledge graph, agent types and packs, and the same layers of config (`plugin_configs`, `hub plugin config`). The
+store marks them `plugins.builtin`: `hub plugin list`, GET /v1/plugins and /admin/plugins leave them out, and the
+store installs, upgrades and removes none of them. A project has one on through its features (`docs/hub.md`,
+Features): off by default, on for each project that enabled the plugin before 0147, and turned on or off by a hub
+admin in Features or by an admin of the project on its Plugins page, where each is listed with `builtin` true. While
+on, it may do what its manifest asks for, with no grant of its own to keep. Going back below 0147 puts back the rows of
+`project_plugins` that 0147 kept in `retired_project_plugins`.
 
 telegram and chats are core plugins of another repository,
 [maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as
@@ -444,9 +456,10 @@ admin's machine token is readable by the agent.
 
 ### SRS and tasks
 
-Two more core plugins keep a project's requirements and work in the hub's database, and projects enable them:
+Two features of the hub keep a project's requirements and work in the hub's database, and projects turn them on (the
+project's features, or its Plugins page):
 
-- **srs** (`evo_agents/core_plugins/srs`, `docs/srs-plugin.md`): BA documents to a template, with versions members
+- **srs** (`evo_agents/hub/server/srs`, `docs/srs-plugin.md`): BA documents to a template, with versions members
   approve and a code on each use case, business rule, screen and requirement. It contributes routes under
   `/v1/x/srs/`, nine tables `srs_*` (migration 0046), native pages, the MCP tools `srs__read`, `srs__search`,
   `srs__diff`, `srs__propose` and `srs__comment`, a source of the knowledge graph (`kg_sources`, the approved versions),
@@ -455,14 +468,14 @@ Two more core plugins keep a project's requirements and work in the hub's databa
   review as a task run of its own, with no `runs:dispatch` grant. It asks for no permission. An approved version emits
   `srs.version.approved`, which the plugin takes itself through its events contribution `approvals`: in a project that
   enables tasks, that handler makes the version's frame tasks, comments and cancellations and hands @ba the split run.
-- **tasks** (`evo_agents/core_plugins/tasks`, `docs/tasks-plugin.md`): a backlog with sprints, people and links to
+- **tasks** (`evo_agents/hub/server/tasks`, `docs/tasks-plugin.md`): a backlog with sprints, people and links to
   coded items of srs, plan steps, runs and pull requests. It contributes routes under `/v1/x/tasks/`, six tables
   `tasks_*` (migration 0047), native pages, the MCP tool `tasks__create`, the event `plan.step` (it asks for
   `plans:read`) and a source of the knowledge graph (Ticket nodes). Every status a task takes, from tasks or from srs,
   emits `tasks.status` (`evo_agents.hub.task_status`).
 
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
-imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
+imports the other, nor canvas,, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
 
 ### PM
 
@@ -539,8 +552,8 @@ The `remind` job computes tomorrow's date, `2026-10-23` for a run on the 22nd, a
 
 ### Lean Canvas
 
-**canvas** (`evo_agents/core_plugins/canvas`, `docs/canvas-plugin.md`) keeps a living Lean Canvas for each product of
-a project, and projects enable it. Each of the nine cells holds claims with a status, a test card, evidence and every
+**canvas** (`evo_agents/hub/server/canvas`, `docs/canvas-plugin.md`) keeps a living Lean Canvas for each product of
+a project, a feature of the hub that projects turn on. Each of the nine cells holds claims with a status, a test card, evidence and every
 rev; an edit names the rev it read and applies at once, an undo is a new rev, and a claim goes to `validated` only with
 real evidence. It contributes routes under `/v1/x/canvas/`, eight tables `canvas_*` (migrations 0073 and 0075 to 0078),
 the native page Lean Canvas, the MCP tools `canvas__read`, `canvas__signals`, `canvas__edit`, `canvas__undo`,
@@ -556,7 +569,7 @@ It emits `canvas.claim` on every rev of a claim and `canvas.baseline` when a bas
 project granted `canvas:read`, and the hub emits `signal.posted` on each batch of signals for those granted
 `signals:read` (section Extension points); the hub also writes all three into `hub_events`, which the Loop reads by
 cursor. A weekly baseline that waits for review sends the notice `canvas_baseline`. Import-linter keeps it in its own
-package (contract canvas-plugin-own-package): it imports no other core plugin, and reads the items of srs through the
+package (contract canvas-plugin-own-package): it imports neither srs, tasks nor a core plugin, and reads the items of srs through the
 hub's tables, as tasks does.
 
 ### Chat history

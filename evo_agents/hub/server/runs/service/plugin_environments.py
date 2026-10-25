@@ -91,12 +91,12 @@ async def offered(
     plugins = list(plugins or ())
     if runs.ENVIRONMENTS not in (features or ()) or not plugins:
         return []
-    wp, pp = tables.worker_projects, tables.project_plugins
+    wp, projects = tables.worker_projects, tables.projects
     served = select(wp.c.project_id).where(wp.c.worker_id == worker_id)
     query = (
         enabled_query()
-        .where(tables.plugins.c.name.in_(plugins), pp.c.project_id.in_(served))
-        .order_by(tables.plugins.c.name, pp.c.project_id)
+        .where(tables.plugins.c.name.in_(plugins), projects.c.id.in_(served))
+        .order_by(tables.plugins.c.name, projects.c.id)
     )
     return sorted(_declared_by(await conn.execute(query)))
 

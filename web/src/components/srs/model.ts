@@ -3,7 +3,7 @@ import type { ItemKind, ReviewRole, SrsComment, SrsDocument, SrsItem, SrsReview,
 /**
  * The pure model of the SRS pages: how a version's items form the document's outline, how an item is found by its
  * code, key or alias (as the hub compares codes, evo_agents.hub.tables_srs.code_key), which version a page shows, who
- * may review a version (evo_agents.core_plugins.srs.reviews) and what a use case holds. Nothing here reads the API.
+ * may review a version (evo_agents.hub.server.srs.reviews) and what a use case holds. Nothing here reads the API.
  */
 
 export const ROLES: readonly ReviewRole[] = ["ba", "qa", "dev"];

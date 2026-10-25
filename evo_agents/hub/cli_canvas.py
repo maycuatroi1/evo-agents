@@ -1,6 +1,6 @@
 """``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|baseline|brainstorm|export|import``: the Lean Canvases
 of a project that enabled the core plugin canvas, through its routes under /v1/x/canvas/<project>/
-(``docs/plugins.md``, Core plugins). The plugin's code is ``evo_agents.core_plugins.canvas``, which this client never
+(``docs/plugins.md``, Core plugins). The plugin's code is ``evo_agents.hub.server.canvas``, which this client never
 imports: it speaks HTTP only.
 
 ``list`` prints the canvases, ``show SLUG`` a canvas by cell with each claim's code, status, confidence and rev, and
