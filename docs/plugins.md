@@ -504,7 +504,9 @@ message. Nothing changes until a member who may decide it (the table's last colu
 - in the thread, with `approve 12`, `reject 12` or `roll back 12`, which the hub reads through the event `chat.message`
   (a delivery made again does nothing new);
 - with `GET /v1/x/builder/{project}/proposals[/{id}]`, `POST .../{id}/answer` `{"answer": "approve" | "reject"}`
-  and `POST .../{id}/rollback`. These refuse a token scoped to a run.
+  and `POST .../{id}/rollback`. These refuse a token scoped to a run. `GET .../proposals/waiting` (`?kind=`) lists the
+  pending ones the caller may decide, none for a reader; the Problems and Opportunities pages and `evo-agents hub
+  intake proposal` read it for the proposals an intake makes, which have no thread (`docs/intake.md`).
 
 An approved proposal is applied only while the setting is still at the version it was proposed at. Otherwise it
 fails with the reason, and the agent proposes the change again. Applied, the setting has a new version, and a rollback
