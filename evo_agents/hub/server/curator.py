@@ -441,7 +441,7 @@ def _charters():
     )
 
 
-async def _charter_row(conn: AsyncConnection, project_id: int, revision: int | None = None):
+async def charter_row(conn: AsyncConnection, project_id: int, revision: int | None = None):
     c = tables.charters
     query = _charters().where(c.c.project_id == project_id)
     if revision is not None:
@@ -485,7 +485,7 @@ async def show_charter(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        row = await _charter_row(conn, access.project_id, revision)
+        row = await charter_row(conn, access.project_id, revision)
     if row is None:
         if revision is not None:
             raise HTTPException(404, f"project {project} has no charter revision {revision}")
@@ -596,7 +596,7 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _admin(access, "changing the charter")
-        current = await _charter_row(conn, access.project_id)
+        current = await charter_row(conn, access.project_id)
         await _time_zone_known(conn, body.window.timezone)
         worker = await _duty_worker(conn, user, access, body.worker, current)
         stored = _stored(body, worker, current)
@@ -628,7 +628,7 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
             target=f"{access.name} revision={revision} worker={worker.name}",
             project_id=access.project_id,
         )
-        row = await _charter_row(conn, access.project_id, revision)
+        row = await charter_row(conn, access.project_id, revision)
     log.info("charter written", extra={"project": project, "revision": revision, "login": user.login})
     return _charter_view(access.name, row, admin=True)
 
@@ -745,7 +745,7 @@ async def curator_overview(conn: AsyncConnection, accesses: list[ProjectAccess])
 
 
 async def _status(conn: AsyncConnection, access: ProjectAccess) -> CuratorStatus:
-    row = await _charter_row(conn, access.project_id)
+    row = await charter_row(conn, access.project_id)
     found = (await conn.execute(_schedules(access.project_id))).all()
     schedules = [Schedule(**{name: item._mapping[name] for name in Schedule.model_fields}) for item in found]
     night = None
@@ -925,7 +925,7 @@ async def nights(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        charter = await _charter_row(conn, access.project_id)
+        charter = await charter_row(conn, access.project_id)
         which = list((await conn.execute(_nights_of(access.project_id, limit))).scalars())
         counts, costs, reviews, counted = {}, {}, {}, set()
         if which:
@@ -1077,7 +1077,7 @@ def _due(now: datetime | None):
     )
 
 
-async def _owner_access(conn: AsyncConnection, owner_id: int, login: str, project: str) -> ProjectAccess | None:
+async def owner_access(conn: AsyncConnection, owner_id: int, login: str, project: str) -> ProjectAccess | None:
     """The access of the schedule's owner to the project, as a request of theirs would get it; None without one."""
     member = Principal(user_id=owner_id, login=login, admin=False, token_id=0, kind=MACHINE, token_hash="")
     try:
@@ -1205,7 +1205,7 @@ async def _queue(conn: AsyncConnection, due, night: date, worker: Pinned, plan, 
 
 
 async def _writer_access(conn: AsyncConnection, due) -> ProjectAccess | None:
-    access = await _owner_access(conn, due.owner_id, due.owner, due.project)
+    access = await owner_access(conn, due.owner_id, due.owner, due.project)
     if access is None or not has_role(access.role, "writer"):
         log.warning("night shift skipped: its owner holds no writer grant", extra={"project": due.project})
         return None

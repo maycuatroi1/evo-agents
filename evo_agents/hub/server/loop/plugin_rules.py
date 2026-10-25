@@ -70,7 +70,7 @@ from evo_agents.hub.server.loop.model import (
     View,
     WorkSpec,
 )
-from evo_agents.hub.server.loop.rules import _asks, _cancel, _run_end, _triaged, run_of
+from evo_agents.hub.server.loop.rules import asks_move, cancel_item, ended_run_move, run_of, triaged_move
 
 log = logging.getLogger(__name__)
 
@@ -299,18 +299,18 @@ class RuleSet:
             return None
         plugin = item.detail.get("plugin")
         if not self.declares(plugin, item.kind):
-            return _cancel(item, PLUGIN_OFF, plugin=plugin)
+            return cancel_item(item, PLUGIN_OFF, plugin=plugin)
         if item.state == RUNNING or item.state == WAITING_HUMAN:
             run = run_of(item, view)
             if run is not None and run.ended and run.state == "done":
                 return Transition(item.id, DONE, DONE_EVENT, detail={"run_id": run.id})
-            ended = _run_end(item, view)
+            ended = ended_run_move(item, view)
             if ended is not None:
                 return ended
-            if run is not None and (moved := _asks(item, run, "run_decision")) is not None:
+            if run is not None and (moved := asks_move(item, run, "run_decision")) is not None:
                 return moved
         if item.state == WATCHING and item.reason == "triage":
-            return _triaged(item, view)
+            return triaged_move(item, view)
         return None  # a waiting_human work item of loop_decision waits for the person's answer (``stall.answer``)
 
 

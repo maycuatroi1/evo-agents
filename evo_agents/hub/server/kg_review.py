@@ -28,7 +28,7 @@ from evo_agents.hub.kg_web import WebSession
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg_web import GraphRef, _no_graph, _read, _reader
+from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph, require_reader
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg.review import RULES
@@ -133,10 +133,10 @@ async def review_queue(
     state: Annotated[Literal["open", "dismissed", "all"], Query(description="which items to list")] = "open",
 ) -> ReviewQueue:
     """The items of the review queue you can see, grouped by rule, most connected first, with counts per rule."""
-    data, ref = await _read(request, user, project, WebSession.review)
+    data, ref = await read_graph(request, user, project, WebSession.review)
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        require_reader(access)
         dismissed = await _dismissals(conn, access.project_id) if ref is not None else {}
     can_dismiss = has_role(access.role, "writer")
     if ref is None:
@@ -175,12 +175,12 @@ async def dismiss_item(
     """Dismiss an item of the review queue you can see, with a reason; it stays dismissed in later builds."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        require_reader(access)
         if not has_role(access.role, "writer"):
             raise HTTPException(403, f"dismissing a review item of project {access.name} needs the writer role on it")
-    data, ref = await _read(request, user, project, WebSession.review)
+    data, ref = await read_graph(request, user, project, WebSession.review)
     if ref is None:
-        raise _no_graph(project)
+        raise no_graph(project)
     item = next((i for i in data["items"] if i["fingerprint"] == fingerprint), None)
     if item is None:
         raise HTTPException(404, f"no review item with that fingerprint is visible to you in project {project}")

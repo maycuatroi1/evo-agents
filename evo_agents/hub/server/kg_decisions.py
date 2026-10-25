@@ -34,7 +34,7 @@ from evo_agents.hub.kg_decisions import ABSENT, HIDDEN, MAX_REASON_CHARS, MAX_RE
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg_web import GraphRef, _no_graph, _read, _reader
+from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph, require_reader
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg.schema import known_relations
@@ -121,7 +121,7 @@ def _stale(project: str, rev: int) -> HTTPException:
 async def _writer(request: Request, user, project: str) -> ProjectAccess:
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-    _reader(access)
+    require_reader(access)
     if not has_role(access.role, "writer"):
         raise HTTPException(
             403, f"deciding on the knowledge graph of project {access.name} needs the writer role on it"
@@ -161,7 +161,7 @@ def _asked(rows) -> tuple[list[str], list[tuple]]:
 
 async def _found(request: Request, user, project: str, rows) -> tuple[dict, GraphRef | None]:
     nodes, edges = _asked(rows)
-    found, ref = await _read(request, user, project, lambda session: session.decision_subjects(nodes, edges))
+    found, ref = await read_graph(request, user, project, lambda session: session.decision_subjects(nodes, edges))
     return found or {}, ref
 
 
@@ -169,7 +169,7 @@ async def listing(request: Request, user, project: str, state: str | None = None
     """The decisions ``user`` can see, newest first, of ``state`` when given."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        require_reader(access)
         rows, history, rev = await _rows(conn, access.project_id)
     found, ref = await _found(request, user, project, rows)
     shown = []
@@ -240,7 +240,7 @@ async def create(request: Request, user, project: str, body: NewKgDecision, *, p
     access = await _writer(request, user, project)
     found, ref = await _found(request, user, project, [body])
     if ref is None:
-        raise _no_graph(project)
+        raise no_graph(project)
     nodes, edge = kg_decisions.subject(body.kind, body.src, body.rel, body.dst)
     missing = [key for key in [*nodes, *([edge] if edge else [])] if found.get(key, ABSENT) in (ABSENT, HIDDEN)]
     if missing:

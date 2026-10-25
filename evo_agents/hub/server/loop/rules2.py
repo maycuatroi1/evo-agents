@@ -69,8 +69,8 @@ from evo_agents.hub.server.loop.model import (
 from evo_agents.hub.server.loop.rules import (
     NOTED_RESULTS,
     Rules,
-    _failure,
     approved,
+    failure_move,
     move_build,
     noted,
     run_of,
@@ -208,13 +208,13 @@ def _acted(item: ItemView, view: View) -> Transition | None:
         return None
     task = view.tasks.get(item.task_id)
     if task is None:
-        return _failure(item, why="the task of the act is gone")
+        return failure_move(item, why="the task of the act is gone")
     if task.group == DONE_GROUP:
         return Transition(item.id, DONE, DONE_EVENT, detail={"task": task.number})
     if task.group == CANCELLED_GROUP:
-        return _failure(item, task=task.number, why="the task of the act was cancelled")
+        return failure_move(item, task=task.number, why="the task of the act was cancelled")
     if task.due_on is not None and view.now.date() > task.due_on:
-        return _failure(
+        return failure_move(
             item, task=task.number, why=f"the task of the act is past its due day {task.due_on.isoformat()}"
         )
     return None

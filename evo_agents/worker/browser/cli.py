@@ -15,7 +15,7 @@ from evo_agents.worker.home import WorkerHome, WorkerStateError
 
 
 def register_browser(wsub) -> None:
-    from evo_agents.worker.cli import worker_command  # the cli imports this module
+    from evo_agents.worker.command import worker_command
 
     browser = wsub.add_parser(
         "browser", help="the Chromium of the runs dispatched with --browser, which the daemon starts for them"
@@ -88,7 +88,7 @@ def cmd_install(args) -> int:
 
 
 def _browser_run(command: str):
-    from evo_agents.worker.cli import agent_run  # the cli imports this module
+    from evo_agents.worker.agent_cli import agent_run
 
     return agent_run(command, tuple(kind for kind in RUN_KINDS if kind != browser_login.KIND))
 
@@ -120,7 +120,7 @@ def cmd_local_login(args) -> int:
 
 
 def cmd_login(args) -> int:
-    from evo_agents.worker.cli import with_hub
+    from evo_agents.worker.agent_cli import with_hub
 
     if getattr(args, "name", None):
         return cmd_local_login(args)

@@ -397,7 +397,7 @@ def _refused(where: str, why: str) -> HTTPException:
     return HTTPException(422, f"{where}: {why}; nothing was recorded")
 
 
-async def _project_repos(conn: AsyncConnection, project_id: int) -> set[str]:
+async def project_repos(conn: AsyncConnection, project_id: int) -> set[str]:
     pr = tables.project_repos
     return set((await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id))).scalars())
 
@@ -427,7 +427,7 @@ async def resolve(
     """Each piece of ``items`` as the hub found it, with ``resolved`` saying how; 422 for the first it cannot find."""
     r = tables.runs
     plans = await visible_plans(conn, access, None)
-    repos = await _project_repos(conn, run.project_id)
+    repos = await project_repos(conn, run.project_id)
     code = [f"{item.repo}:{item.path}" for item in items if item.kind == "code"]
     graph = await graph_view(request, run.owner, access, sorted(set(code))) if code else None
     found = []
@@ -708,7 +708,7 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
             raise HTTPException(
                 409, f"run {run_id} recorded {review.MAX_PROPOSALS} proposals already, the most a run may"
             )
-        repos = await _project_repos(conn, run.project_id)
+        repos = await project_repos(conn, run.project_id)
         unknown = sorted({item.repo for item in body.paths} - repos)
         if unknown:
             raise _refused("paths", f"project {run.project} has no repo {', '.join(unknown)}")

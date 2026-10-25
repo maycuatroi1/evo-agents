@@ -24,7 +24,7 @@ from evo_agents.hub.kg_map import WHOLE_NODES
 from evo_agents.hub.kg_web import NotVisible, WebSession
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg_web import GraphRef, _no_graph, _read
+from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph
 from evo_agents.hub.server.security import CurrentUser
 
 NO_BUILD = "no build of this project succeeded yet"
@@ -114,7 +114,7 @@ async def cluster_map(
     nodes: Annotated[bool, Query(description="include the members and their edges, for the map")] = True,
 ) -> ClusterMap:
     """The level-1 clusters of the graph you can see, the links between them and, for the map, their members."""
-    data, ref = await _read(request, user, project, lambda session: session.cluster_map(nodes))
+    data, ref = await read_graph(request, user, project, lambda session: session.cluster_map(nodes))
     if ref is None:
         return ClusterMap(graph=None, computed=False, reason=NO_BUILD, clusters=[], links=[], nodes=[], edges=[])
     return ClusterMap(
@@ -140,9 +140,9 @@ async def show_cluster(
         except NotVisible:
             return None
 
-    data, ref = await _read(request, user, project, reader)
+    data, ref = await read_graph(request, user, project, reader)
     if ref is None:
-        raise _no_graph(project)
+        raise no_graph(project)
     if data is None:
         raise HTTPException(404, f"no cluster with that id is visible to you in project {project}")
     return ClusterDetail(
@@ -163,7 +163,7 @@ async def whole_graph(
     limit: Annotated[int, Query(ge=1, le=WHOLE_NODES)] = WHOLE_NODES,
 ) -> WholeGraph:
     """Every node you can see, at most ``limit``, and every edge you can see between two of them, compact."""
-    data, ref = await _read(request, user, project, lambda session: session.whole_graph(limit))
+    data, ref = await read_graph(request, user, project, lambda session: session.whole_graph(limit))
     if ref is None:
         return WholeGraph(graph=None, nodes=[], rels=[], edges=[], truncated=False)
     return WholeGraph(
