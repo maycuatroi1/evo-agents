@@ -848,23 +848,36 @@ async def lock_worker_of_token(
 
 
 async def end_worker(
-    conn: AsyncConnection, actor: Principal, worker_id: int, name: str, owner: str, token_id: int
+    conn: AsyncConnection,
+    actor: Principal | None,
+    worker_id: int,
+    name: str,
+    owner: str,
+    token_id: int,
+    *,
+    why: str = "was revoked",
+    by: str | None = None,
 ) -> int:
     """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds, give back
     every lease it still has and add the worker.revoke audit row, all in the caller's transaction; the caller revokes
-    their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released."""
+    their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released. ``actor``
+    None is the hub itself (the pool node reaper): the audit row has no actor and its target ends ``by=<by>``, and
+    ``why`` is what the released runs' events say happened to the worker."""
     w, tokens = tables.workers, tables.tokens
+    actor_id, actor_token = (None, None) if actor is None else (actor.user_id, actor.token_id)
     await conn.execute(update(w).values(revoked_at=func.now()).where(w.c.id == worker_id))
     await conn.execute(
         update(tokens).values(revoked_at=func.now()).where(tokens.c.id == token_id, tokens.c.revoked_at.is_(None))
     )
-    released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
+    released = await release_runs(conn, worker_id, f"its worker {name} {why}")
     # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
     await credentials.end_leases(
-        conn, worker_id=worker_id, actor_id=actor.user_id, token_id=actor.token_id, by="worker-revoked"
+        conn, worker_id=worker_id, actor_id=actor_id, token_id=actor_token, by="worker-revoked"
     )
     target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
-    await audit.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
+    if by is not None:
+        target = f"{target} by={by}"
+    await audit.record(conn, actor_id=actor_id, token_id=actor_token, action=action, target=target)
     return released
 
 

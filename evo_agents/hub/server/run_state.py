@@ -858,6 +858,14 @@ async def expire_seats(engine: AsyncEngine, sealer, github_app) -> dict:
     return {**await org_expiry.expire_seats(engine, sealer, github_app), "escalated": await principals.escalate(engine)}
 
 
+async def reap_pool_nodes(engine: AsyncEngine, sealer, github_app) -> dict:
+    """The job hub.reap_pool_nodes (``worker_reaper.reap_pool_nodes``): each pool node offline longer than its pool's
+    ``reap_after_days`` revoked, as its owner's revoke would. The hub's worker reaches it through this module."""
+    from evo_agents.hub.server import worker_reaper
+
+    return await worker_reaper.reap_pool_nodes(engine, sealer, github_app)
+
+
 async def recover_runs(
     engine: AsyncEngine,
     batch: int = RECOVER_BATCH,
