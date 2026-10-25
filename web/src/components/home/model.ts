@@ -50,9 +50,9 @@ export function homeRefreshInterval(query: { state: { data?: Overview } }): numb
 }
 
 /**
- * The decisions Needs you lists: the open ones only the visitor may answer, the runs they dispatched. The API sends the
- * visitor's own first and the oldest first, so the order is kept. Anyone else's open decision shows in In flight, on
- * its waiting run.
+ * The decisions Needs you lists: the open ones asked of the visitor (`yours`: the person the agent asked, else the
+ * principal of an autonomy gate's run, else the run's owner). The API sends those first and the oldest first, so the
+ * order is kept. A question asked of anyone else shows in In flight, on its waiting run, with whose answer it waits for.
  */
 export function decisionsForYou(overview: Pick<Overview, "open_decisions">): OverviewDecision[] {
   return overview.open_decisions.filter((decision) => decision.yours);

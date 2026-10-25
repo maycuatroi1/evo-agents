@@ -1,7 +1,9 @@
 import type { Page } from "@playwright/test";
 
+import { call } from "../src/lib/api/client";
+
 import { expect, isDeployed, test } from "./support/fixtures";
-import { newAccount, uniqueName } from "./support/hub";
+import { bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
 import {
   askDecision,
@@ -102,6 +104,64 @@ test("an admin with an open decision and runs in flight sees them counted and li
   await expect(strip.getByTestId("summary-waiting-value")).toHaveText("2");
 });
 
+test("Home opens with Today: what changed as links, and the seen mark moves only once the list has shown", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const api = bearerClient(await machineToken(me));
+  // Signing in lands on Home, whose Today (nothing yet) has shown its end: the mark is the moment of that look.
+  await expect.poll(async () => (await call(api.GET("/v1/me/today"))).seen_at).not.toBeNull();
+  const looked = (await call(api.GET("/v1/me/today"))).seen_at;
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, uniqueName("home-today"));
+  // Three runs of the member's that failed since: steps 2 and 4, then step 2 again.
+  const runs: Awaited<ReturnType<typeof dispatch>> = [];
+  for (const step of ["2", "4", "2"]) {
+    const [run] = await dispatch(me, project, [step]);
+    const claimed = await claimRun(live);
+    expect(claimed?.id).toBe(run.id);
+    await startRun(live, run.id);
+    await reportState(live, run.id, { state: "failed", error: "verify failed: pnpm test exited 1" });
+    runs.push(run);
+  }
+
+  // A short window: the end of Today stays below the fold until the member scrolls to it.
+  await page.setViewportSize({ width: 1280, height: 420 });
+  const posted: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/v1/me/today/seen") posted.push(request.postData() ?? "");
+  });
+  await open(page, "/");
+  const today = main(page).getByRole("region", { name: "Today" });
+  const cards = main(page).locator("section[aria-labelledby]");
+  await expect(cards.first()).toHaveAttribute("data-testid", "today");
+  await expect(today.getByTestId("today-window")).toHaveText("Since you last looked");
+  await expect(today.getByTestId("today-summary")).toHaveText("Nothing waits for your answer. Since you last looked: 3 failed runs.");
+  const links = today.getByTestId("today-item-link");
+  await expect(links).toHaveCount(3);
+  expect((await links.evaluateAll((items) => items.map((item) => item.getAttribute("href")))).sort()).toEqual(runs.map((run) => `/p/${project}/runs/${run.id}`).sort());
+  await expect(today.getByTestId("today-item").first()).toContainText("verify failed: pnpm test exited 1");
+  await expect(today.getByTestId("today-settings")).toHaveAttribute("href", "/settings/notifications");
+  // Hydrated (the times read relative), and the end of the list not seen yet: the mark has not moved.
+  await expect(today.getByTestId("today-item").first().locator("time")).toHaveText(/ago|now/);
+  const end = today.getByTestId("today-caught-up");
+  await expect(end).not.toBeInViewport();
+  expect(posted).toEqual([]);
+  expect((await call(api.GET("/v1/me/today"))).seen_at).toBe(looked);
+
+  await end.scrollIntoViewIfNeeded();
+  await expect.poll(() => posted.length).toBe(1);
+  expect(JSON.parse(posted[0])).toEqual({ seen_at: expect.any(String) });
+  await expect.poll(async () => (await call(api.GET("/v1/me/today"))).seen_at).not.toBe(looked);
+  expect((await call(api.GET("/v1/me/today"))).items).toEqual([]);
+  // What it listed stays while the member reads; the next visit starts after it.
+  await expect(links).toHaveCount(3);
+  await page.reload();
+  await expect(today.getByTestId("today-window")).toHaveText("Since you last looked");
+  await expect(today.getByTestId("today-summary")).toHaveText("Nothing waits for your answer, and nothing changed since you last looked.");
+  await expect(today.getByTestId("today-item")).toHaveCount(0);
+  await expect(today.getByTestId("today-caught-up")).toHaveText("You're caught up.");
+});
+
 test("answers a decision in two clicks, and it leaves Needs you", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
@@ -193,12 +253,12 @@ test("a member reads nothing of a project they hold no grant on", async ({ page,
   await expect(menu).not.toContainText(hidden);
 });
 
-test("on a phone Home is one column, Needs you first", async ({ page, member }) => {
+test("on a phone Home is one column, Today and Needs you first", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   await seedWork(me, me.projects[0]);
   await page.setViewportSize({ width: 375, height: 812 });
   await open(page, "/");
-  const order = ["needs-you", "in-flight", "recent", "fleet", "home-projects"];
+  const order = ["today", "needs-you", "in-flight", "recent", "fleet", "home-projects"];
   for (const id of order) await expect(main(page).getByTestId(id)).toBeVisible();
   const boxes = await Promise.all(order.map((id) => main(page).getByTestId(id).boundingBox()));
   for (const [index, box] of boxes.entries()) {

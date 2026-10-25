@@ -2900,14 +2900,100 @@ export interface paths {
         };
         /**
          * Show Notification Settings
-         * @description The kinds of notice the caller may turn off, and whether each is on.
+         * @description The kinds of notice the caller may turn off and whether each is on, the tier of each kind of notification, their
+         *     quiet hours, time zone and time of the summary push, and whether push hides details.
          */
         get: operations["show_notification_settings_v1_me_notification_settings_get"];
         /**
          * Set Notification Settings
-         * @description Turn kinds of notice on or off for the caller; decisions and the other notices always come.
+         * @description Turn kinds of notice on or off for the caller, choose the tier of kinds of notification, their quiet hours,
+         *     time zone and time of the summary push, and whether push hides details; the Inbox gets every notification still.
          */
         put: operations["set_notification_settings_v1_me_notification_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/push/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Devices
+         * @description The caller's push devices that push reaches, newest first.
+         */
+        get: operations["list_devices_v1_me_push_devices_get"];
+        put?: never;
+        /**
+         * Add Device
+         * @description Add a push device of the caller's, or refresh it.
+         */
+        post: operations["add_device_v1_me_push_devices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/push/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Device
+         * @description Remove a push device of the caller's; the pushes waiting for it go with it.
+         */
+        delete: operations["remove_device_v1_me_push_devices__device_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/push/devices/{device_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Try Device
+         * @description Push a test notification to one of the caller's devices now.
+         */
+        post: operations["try_device_v1_me_push_devices__device_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/push/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Push Config
+         * @description The public VAPID key and the senders that are on; no sign-in needed.
+         */
+        get: operations["push_config_v1_push_config_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2929,6 +3015,46 @@ export interface paths {
         get: operations["overview_v1_me_overview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Today
+         * @description What waits for you, and what changed since you last looked, over the projects you hold a grant on.
+         */
+        get: operations["today_v1_me_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/today/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Today Seen
+         * @description Move your seen mark forward to what you saw: Today counts what changes after it.
+         */
+        post: operations["today_seen_v1_me_today_seen_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10641,6 +10767,35 @@ export interface components {
              */
             text?: string | null;
         };
+        /** ApnsDeviceIn */
+        ApnsDeviceIn: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "apns";
+            /**
+             * Label
+             * @description the member's name for it
+             */
+            label?: string | null;
+            /**
+             * Token
+             * @description the device token, in hex
+             */
+            token: string;
+            /**
+             * Topic
+             * @description the app's bundle id
+             */
+            topic: string;
+            /**
+             * Environment
+             * @description the APNs servers the token belongs to
+             * @enum {string}
+             */
+            environment: "sandbox" | "production";
+        };
         /**
          * ArmResult
          * @description What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took.
@@ -15001,6 +15156,26 @@ export interface components {
              */
             recommended: string | null;
             /**
+             * Recommended Reason
+             * @description why the agent recommends that option
+             */
+            recommended_reason?: string | null;
+            /**
+             * Reversible
+             * @description for an act: whether it can be undone; null when the question asks about no act, or nobody said
+             */
+            reversible?: boolean | null;
+            /**
+             * Undo
+             * @description how to undo the act, when it can be
+             */
+            undo?: string | null;
+            /**
+             * Evidence
+             * @description what the question rests on, as refs: run:ID, run:ID:SEQ, output:ID, P-<n>/E-<n>, an https URL, session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, code:REPO:PATH[:LINE] or memory:ID:REV
+             */
+            evidence?: string[];
+            /**
              * State
              * @enum {string}
              */
@@ -15078,6 +15253,26 @@ export interface components {
              * @description the key of the option the agent recommends
              */
             recommended?: string | null;
+            /**
+             * Recommended Reason
+             * @description why the agent recommends that option, at most 500 characters; only with recommended
+             */
+            recommended_reason?: string | null;
+            /**
+             * Reversible
+             * @description for an act: whether it can be undone; null when the question asks about no act, or nobody said
+             */
+            reversible?: boolean | null;
+            /**
+             * Undo
+             * @description how to undo the act, at most 500 characters; only with reversible true
+             */
+            undo?: string | null;
+            /**
+             * Evidence
+             * @description what the question rests on, at most 20 refs, each one of run:ID, run:ID:SEQ, output:ID, P-<n>/E-<n>, an https URL, session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, code:REPO:PATH[:LINE] or memory:ID:REV
+             */
+            evidence?: string[];
             /**
              * Step Key
              * @description the step of the plan it is about
@@ -15796,6 +15991,24 @@ export interface components {
              * @description the projects with such a build, latest failure first
              */
             projects: components["schemas"]["ProjectFailedBuilds"][];
+        };
+        /** FcmDeviceIn */
+        FcmDeviceIn: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "fcm";
+            /**
+             * Label
+             * @description the member's name for it
+             */
+            label?: string | null;
+            /**
+             * Token
+             * @description the registration token
+             */
+            token: string;
         };
         /** FeatureState */
         FeatureState: {
@@ -18109,6 +18322,26 @@ export interface components {
              */
             recommended?: string | null;
             /**
+             * Recommended Reason
+             * @description why the agent recommends that option, at most 500 characters; only with recommended
+             */
+            recommended_reason?: string | null;
+            /**
+             * Reversible
+             * @description for an act: whether it can be undone; null when the question asks about no act, or nobody said
+             */
+            reversible?: boolean | null;
+            /**
+             * Undo
+             * @description how to undo the act, at most 500 characters; only with reversible true
+             */
+            undo?: string | null;
+            /**
+             * Evidence
+             * @description what the question rests on, at most 20 refs, each one of run:ID, run:ID:SEQ, output:ID, P-<n>/E-<n>, an https URL, session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, code:REPO:PATH[:LINE] or memory:ID:REV
+             */
+            evidence?: string[];
+            /**
              * Step Key
              * @description the step of the plan it is about
              */
@@ -20060,7 +20293,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "today") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -20154,6 +20387,34 @@ export interface components {
              * @description each kind of notice a member may turn off, and whether it is on
              */
             notices: components["schemas"]["NoticeSetting"][];
+            /**
+             * Hide Details
+             * @description push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read
+             * @default false
+             */
+            hide_details: boolean;
+            /**
+             * Tiers
+             * @description each kind of notification and its tier
+             */
+            tiers: components["schemas"]["TierSetting"][];
+            /** @description when an interrupt waits to be pushed until they end, but a decision whose run parks within two hours; null: none */
+            quiet_hours: components["schemas"]["QuietHours"] | null;
+            /**
+             * Time Zone
+             * @description the IANA time zone of the quiet hours and digest_at
+             */
+            time_zone: string;
+            /**
+             * Time Zone Chosen
+             * @description false: the hub's time zone, EVO_HUB_WEB_TIME_ZONE
+             */
+            time_zone_chosen: boolean;
+            /**
+             * Digest At
+             * @description the local time of the summary push, HH:MM
+             */
+            digest_at: string;
         };
         /** NotificationSettingsIn */
         NotificationSettingsIn: {
@@ -20161,7 +20422,29 @@ export interface components {
              * Notices
              * @description the kinds to set; the others stay
              */
-            notices: components["schemas"]["NoticeSetting"][];
+            notices?: components["schemas"]["NoticeSetting"][];
+            /**
+             * Hide Details
+             * @description push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read; unchanged when left out
+             */
+            hide_details?: boolean | null;
+            /**
+             * Tiers
+             * @description the kinds to set; the others stay
+             */
+            tiers?: components["schemas"]["TierChoice"][];
+            /** @description null: none; unchanged when left out */
+            quiet_hours?: components["schemas"]["QuietHours"] | null;
+            /**
+             * Time Zone
+             * @description an IANA name such as Asia/Tokyo; null: the hub's; unchanged when left out
+             */
+            time_zone?: string | null;
+            /**
+             * Digest At
+             * @description HH:MM; null: the hub's default; unchanged when left out
+             */
+            digest_at?: string | null;
         };
         /**
          * OAuthTokens
@@ -20686,7 +20969,7 @@ export interface components {
             recent_runs: components["schemas"]["OverviewRun"][];
             /**
              * Open Decisions
-             * @description at most 20: yours first, then the oldest first
+             * @description at most 20: those asked of you first, then the oldest first
              */
             open_decisions: components["schemas"]["OverviewDecision"][];
             /**
@@ -20752,7 +21035,7 @@ export interface components {
         OverviewCounts: {
             /**
              * Waiting On You
-             * @description open decisions of the runs you dispatched, which only you may answer
+             * @description open decisions asked of you, which you answer
              */
             waiting_on_you: number;
             /**
@@ -20818,12 +21101,17 @@ export interface components {
             question: string;
             /**
              * Owner
-             * @description the login of the run's owner, the one member who may answer
+             * @description the login of the run's owner, who dispatched it
              */
             owner: string;
             /**
+             * Asked Of
+             * @description the login of the member it is asked of, who answers it: the person the agent asked, else the run's owner (the principal of an autonomy gate's run)
+             */
+            asked_of: string;
+            /**
              * Yours
-             * @description whether you are that owner
+             * @description whether it is asked of you
              */
             yours: boolean;
             /**
@@ -25127,6 +25415,87 @@ export interface components {
              */
             audience: "everyone" | "admins";
         };
+        /** PushConfig */
+        PushConfig: {
+            /**
+             * Vapid Public Key
+             * @description the applicationServerKey a browser subscribes with, base64url; null while Web Push is off
+             */
+            vapid_public_key: string | null;
+            /** @description which kinds of push device the hub sends to now */
+            senders: components["schemas"]["PushSenders"];
+        };
+        /** PushDevice */
+        PushDevice: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "webpush" | "apns" | "fcm";
+            /** Label */
+            label: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Last Sent At
+             * @description when a push last reached it; null before the first
+             */
+            last_sent_at: string | null;
+            /**
+             * This Session
+             * @description the sign-in this request was made with added it
+             */
+            this_session: boolean;
+        };
+        /** PushDeviceList */
+        PushDeviceList: {
+            /**
+             * Devices
+             * @description the caller's devices that push reaches, newest first
+             */
+            devices: components["schemas"]["PushDevice"][];
+        };
+        /** PushSenders */
+        PushSenders: {
+            /**
+             * Webpush
+             * @description Web Push to browsers: the hub has its VAPID key
+             */
+            webpush: boolean;
+            /**
+             * Apns
+             * @description APNs to iPhones and iPads
+             */
+            apns: boolean;
+            /**
+             * Fcm
+             * @description Firebase Cloud Messaging to Android phones
+             */
+            fcm: boolean;
+        };
+        /** PushTestResult */
+        PushTestResult: {
+            /**
+             * Sent
+             * @description the push service took the test push
+             */
+            sent: boolean;
+            /**
+             * Removed
+             * @description the push service no longer knows the device, so it was removed
+             */
+            removed: boolean;
+            /**
+             * Error
+             * @description why the test push did not go
+             */
+            error: string | null;
+        };
         /** Queued */
         Queued: {
             build: components["schemas"]["Build"] | null;
@@ -25249,6 +25618,19 @@ export interface components {
              * @description its own PROD check: one of passed, failed, none
              */
             prod_result?: string | null;
+        };
+        /** QuietHours */
+        QuietHours: {
+            /**
+             * Start
+             * @description HH:MM, 24 hours, in the member's time zone
+             */
+            start: string;
+            /**
+             * End
+             * @description HH:MM, 24 hours; the quiet hours run past midnight when it is not after start
+             */
+            end: string;
         };
         /** RateLimitAnswer */
         RateLimitAnswer: {
@@ -31891,6 +32273,174 @@ export interface components {
             /** Last Error Message */
             last_error_message: string | null;
         };
+        /** TierChoice */
+        TierChoice: {
+            /**
+             * Kind
+             * @description a kind of notification: decision, proposal or a notice's
+             * @enum {string}
+             */
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "today";
+            /**
+             * Tier
+             * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
+             */
+            tier: ("interrupt" | "brief" | "off") | null;
+        };
+        /** TierSetting */
+        TierSetting: {
+            /**
+             * Kind
+             * @description a kind of notification: decision, proposal or a notice's
+             * @enum {string}
+             */
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "today";
+            /**
+             * Tier
+             * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
+             * @enum {string}
+             */
+            tier: "interrupt" | "brief" | "off";
+            /**
+             * Chosen
+             * @description false: the hub's default, interrupt for a decision asked of the member, a run_failed of a run they dispatched (not one the Curator's night shift queued), a release that went wrong and merge_paused, and brief for every other; a tier the member chose holds for every notification of the kind
+             */
+            chosen: boolean;
+        };
+        /** Today */
+        Today: {
+            /**
+             * Summary
+             * @description one sentence of what waits and what changed, from a template
+             */
+            summary: string;
+            /**
+             * Since
+             * Format: date-time
+             * @description the start of the window the items are counted from
+             */
+            since: string;
+            /**
+             * Seen At
+             * @description your seen mark; null before your first POST /v1/me/today/seen
+             */
+            seen_at: string | null;
+            /**
+             * Seen Until
+             * Format: date-time
+             * @description the seen mark to post once every item listed was shown: the moment of this answer when it is caught up, else the moment of the last item
+             */
+            seen_until: string;
+            /**
+             * Needs You
+             * @description at most 20 open decisions asked of you, the oldest first
+             */
+            needs_you: components["schemas"]["TodayDecision"][];
+            /**
+             * Needs You Count
+             * @description all the open decisions asked of you
+             */
+            needs_you_count: number;
+            /**
+             * Items
+             * @description at most 8 things that changed since the window's start, the first in the order they happened
+             */
+            items: components["schemas"]["TodayItem"][];
+            /**
+             * Caught Up
+             * @description whether the items are everything that changed in the window
+             */
+            caught_up: boolean;
+        };
+        /** TodayDecision */
+        TodayDecision: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the run the decision belongs to
+             */
+            run_id: number;
+            /**
+             * Plan Id
+             * @description the run's plan when its agent asked; null for a run on none
+             */
+            plan_id: string | null;
+            /** Plan Title */
+            plan_title: string | null;
+            /**
+             * Step Key
+             * @description the step it is about, when the agent named one
+             */
+            step_key: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy" | "login" | "wait";
+            /** Question */
+            question: string;
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /**
+             * Parks At
+             * @description when the run parks for want of an answer: EVO_HUB_DECISION_WAIT_SECONDS after it started waiting, or when it parked; null while its agent still works, and for a local run
+             */
+            parks_at: string | null;
+            /**
+             * Link
+             * @description the web page that shows it and its answer form
+             */
+            link: string;
+        };
+        /** TodayItem */
+        TodayItem: {
+            /**
+             * Kind
+             * @description release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer
+             * @enum {string}
+             */
+            kind: "release" | "step_done" | "run_failed" | "run_parked" | "problem" | "cost" | "proposal";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string | null;
+            /**
+             * At
+             * Format: date-time
+             * @description when it happened
+             */
+            at: string;
+            /** Project */
+            project: string;
+            /**
+             * Link
+             * @description the web page it is on
+             */
+            link: string;
+        };
+        /** TodaySeen */
+        TodaySeen: {
+            /**
+             * Seen At
+             * Format: date-time
+             * @description your seen mark now, which only moves forward
+             */
+            seen_at: string;
+        };
+        /** TodaySeenIn */
+        TodaySeenIn: {
+            /**
+             * Seen At
+             * @description what you saw up to, as seen_until gave it; now when left out; a moment past now is now
+             */
+            seen_at?: string | null;
+        };
         /** TokenCounts */
         TokenCounts: {
             /**
@@ -32853,6 +33403,45 @@ export interface components {
             contains: {
                 [key: string]: unknown;
             };
+        };
+        /** WebPushDeviceIn */
+        WebPushDeviceIn: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "webpush";
+            /**
+             * Label
+             * @description the member's name for it
+             */
+            label?: string | null;
+            subscription: components["schemas"]["WebPushSubscription"];
+        };
+        /** WebPushKeys */
+        WebPushKeys: {
+            /**
+             * P256Dh
+             * @description the browser's P-256 public key, base64url
+             */
+            p256dh: string;
+            /**
+             * Auth
+             * @description the subscription's 16-byte secret, base64url
+             */
+            auth: string;
+        };
+        /**
+         * WebPushSubscription
+         * @description A browser's subscription, as ``PushSubscription.toJSON()`` gives it; expirationTime is not kept.
+         */
+        WebPushSubscription: {
+            /**
+             * Endpoint
+             * @description a push service's URL
+             */
+            endpoint: string;
+            keys: components["schemas"]["WebPushKeys"];
         };
         /** WebhookAnswer */
         WebhookAnswer: {
@@ -43992,6 +44581,211 @@ export interface operations {
             };
         };
     };
+    list_devices_v1_me_push_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushDeviceList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_device_v1_me_push_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebPushDeviceIn"] | components["schemas"]["ApnsDeviceIn"] | components["schemas"]["FcmDeviceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushDevice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_device_v1_me_push_devices__device_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    try_device_v1_me_push_devices__device_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushTestResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    push_config_v1_push_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushConfig"];
+                };
+            };
+        };
+    };
     overview_v1_me_overview_get: {
         parameters: {
             query?: never;
@@ -44012,6 +44806,77 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    today_v1_me_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Today"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    today_seen_v1_me_today_seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TodaySeenIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodaySeen"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

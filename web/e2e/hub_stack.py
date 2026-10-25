@@ -93,6 +93,10 @@ chain of migrations and its native page, which the web's end-to-end build carrie
 demo's repos and harness and pushes and builds their graph, POST /demo/retime sets the times the hub stamped to the
 demo's fixed clock, and POST /demo/keepalive keeps its workers online and its runs leased.
 
+Web Push is on, with a VAPID key made for each start, so GET /v1/push/config says so and the notification settings
+page offers push. The specs fake the browser's push manager: the devices the hub holds point at no real subscription,
+and a spec answers a test push in the browser before it reaches the hub, so nothing is pushed to a real service.
+
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
 """
@@ -101,6 +105,7 @@ from __future__ import annotations
 
 import base64
 import fcntl
+import importlib
 import json
 import os
 import secrets
@@ -176,6 +181,36 @@ def _cookie_account(header: str) -> Account | None:
             if login and github_id.isdigit():
                 return Account(login, int(github_id))
     return None
+
+
+def vapid_key() -> str:
+    """A VAPID private key for one start of the stack: a P-256 scalar in base64url, as EVO_HUB_VAPID_PRIVATE_KEY takes."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    scalar = ec.generate_private_key(ec.SECP256R1()).private_numbers().private_value
+    return base64.urlsafe_b64encode(scalar.to_bytes(32, "big")).rstrip(b"=").decode()
+
+
+# The hub's modules the control routes import on first use. Two requests that arrive together on a fresh stack would
+# import them in two threads at once, which Python's import system does not survive (a KeyError of a module half
+# imported, a _DeadlockError on a module lock): the stack imports them once before it serves.
+WARM_MODULES = (
+    "evo_agents.hub.server.app",
+    "evo_agents.hub.server.collect",
+    "evo_agents.hub.server.curator",
+    "evo_agents.hub.server.brief",
+    "evo_agents.hub.server.release_cycles",
+    "evo_agents.hub.server.canvas.value_check",
+    "evo_agents.hub.server.probe_runs",
+    "evo_agents.hub.plugin_events",
+    "evo_agents.hub.kg_build",
+    "evo_agents.hub.worker",
+)
+
+
+def warm_imports() -> None:
+    for name in WARM_MODULES:
+        importlib.import_module(name)
 
 
 def create_database(admin_dsn: str):
@@ -935,6 +970,10 @@ def main() -> int:
             EVO_HUB_TELEGRAM_WEBHOOK_SECRET=TELEGRAM_SECRET,
             EVO_HUB_TELEGRAM_API_URL=f"http://127.0.0.1:{telegram_server.server_address[1]}",
             EVO_HUB_PLUGIN_PUBLISHERS=ed25519_publishers(),  # acme, with the key of the Python tests
+            # Web Push on, with a VAPID key of its own: the settings page subscribes a browser whose push manager the
+            # specs fake, so the hub only ever holds devices on fake endpoints, and no spec pushes to a real service.
+            EVO_HUB_VAPID_PRIVATE_KEY=vapid_key(),
+            EVO_HUB_VAPID_SUBJECT="mailto:e2e@example.test",
             **s3.env(),
         )
         launcher = str(Path(__file__).resolve().parent / "hub_serve.py")  # the hub, with the core plugin notes
@@ -945,6 +984,7 @@ def main() -> int:
         wait_for(f"{api_url}/v1/health/live", proc, log_path)
         info = {"api": api_url, "github": github.url, "s3": s3.endpoint, "admin": admin_login, "database": db.name}
         seeder = KgSeeder(api_url, github, db.dsn, s3.config(), STATE_DIR / "kg")
+        warm_imports()
         control = control_server(stack_port, github, info, seeder, db.dsn, api_url, telegram)
         threading.Thread(target=control.serve_forever, daemon=True).start()
         print(

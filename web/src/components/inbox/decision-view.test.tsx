@@ -103,6 +103,51 @@ beforeEach(() => {
 });
 
 describe("DecisionCard", () => {
+  it("shows why the agent picks its option, how to undo the act and the evidence, each with a link to its page", () => {
+    setup({
+      ...DECISION,
+      recommended_reason: "Staging is idle and the build passed every check.",
+      reversible: true,
+      undo: "Redeploy the previous tag from the Releases page.",
+      evidence: ["run:11", "P-3/E-2", "https://ci.example.test/builds/88", "session:3f2a9c1e-0000"],
+    });
+    const grounds = screen.getByRole("region", { name: "Lý do, cách hoàn tác và bằng chứng" });
+    expect(within(grounds).getByTestId("decision-reason")).toHaveTextContent("Vì sao chọn “Deploy to staging now”: Staging is idle and the build passed every check.");
+    expect(within(grounds).getByTestId("decision-undo")).toHaveTextContent("Hoàn tác được: Redeploy the previous tag from the Releases page.");
+    expect(within(grounds).getByText("Bằng chứng (4)")).toBeInTheDocument();
+    const links = within(grounds).getAllByTestId("decision-evidence-link");
+    expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["Run #11", "/p/demo/runs/11"],
+      ["P-3, bằng chứng E-2", "/p/demo/problems/P-3"],
+      ["ci.example.test/builds/88(mở trong tab mới)", "https://ci.example.test/builds/88"],
+    ]);
+    expect(links[2]).toHaveAttribute("target", "_blank");
+    expect(links[2]).toHaveAttribute("rel", "noopener noreferrer");
+    const items = within(grounds).getAllByTestId("decision-evidence-item");
+    expect(items[3]).toHaveTextContent("Phiên 3f2a9c1e");
+    expect(within(items[3]).queryByRole("link")).toBeNull();
+  });
+
+  it("says an act cannot be undone, and shows nothing of it for a question that says none, or once answered", () => {
+    const first = setup({ ...DECISION, reversible: false });
+    expect(screen.getByTestId("decision-irreversible")).toHaveTextContent("Không hoàn tác được.");
+    expect(screen.queryByTestId("decision-reason")).toBeNull();
+    expect(screen.queryByTestId("decision-evidence")).toBeNull();
+    first.view.unmount();
+
+    const second = setup({ ...DECISION, reversible: true, undo: null, recommended_reason: "Cheapest.", recommended: null, evidence: [] });
+    expect(screen.getByTestId("decision-undo")).toHaveTextContent("Hoàn tác được: agent chưa nói cách làm.");
+    expect(screen.getByTestId("decision-reason")).toHaveTextContent("Vì sao agent chọn: Cheapest.");
+    second.view.unmount();
+
+    const third = setup(DECISION);
+    expect(screen.queryByTestId("decision-grounds")).toBeNull();
+    third.view.unmount();
+
+    setup({ ...ANSWERED, recommended_reason: "Cheapest.", reversible: false, evidence: ["run:11"] });
+    expect(screen.queryByTestId("decision-grounds")).toBeNull();
+  });
+
   it("heads the card with Waiting for you and where the decision comes from, then the question and its context as safe Markdown", () => {
     setup();
     const head = screen.getByTestId("decision-head");

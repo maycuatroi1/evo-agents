@@ -79,6 +79,7 @@ function decision(id: number, yours: boolean): OverviewDecision {
     category: "deploy",
     question: yours ? "Deploy to staging now?" : "Drop the old bucket?",
     owner: yours ? "octo" : "hubot",
+    asked_of: yours ? "octo" : "hubot",
     yours,
     asked_at: "2026-10-07T01:00:00Z",
     parks_at: "2026-10-08T01:00:00Z",
@@ -166,6 +167,35 @@ describe("HomePage", () => {
     // The waiting plan run names whose answer it waits for; the run of the open decision is the visitor's.
     expect(within(rows[1]).getByTestId("run-state")).toHaveTextContent("Đang chờ bạn");
     expect(within(rows[2]).getByText("chưa có worker")).toBeInTheDocument();
+  });
+
+  it("lists in Needs you the questions asked of the visitor, whoever owns the run, and names who else is asked", () => {
+    setup(
+      overview({
+        counts: { waiting_on_you: 1, running: 0, queued: 0, done_7d: 0, failed_7d: 0, lost_7d: 0 },
+        active_runs: [run(12, "waiting", { dispatched_by: "octo" }), run(15, "waiting", { dispatched_by: "hubot" })],
+        // The visitor's own run asks their mentor; hubot's run asks the visitor.
+        open_decisions: [
+          { ...decision(8, false), run_id: 15, owner: "hubot", asked_of: "octo", yours: true },
+          { ...decision(7, false), run_id: 12, owner: "octo", asked_of: "mai", yours: false },
+        ],
+      }),
+    );
+    const needs = screen.getByRole("region", { name: "Cần bạn" });
+    const items = within(needs).getAllByTestId("needs-you-item");
+    expect(items.map((item) => item.getAttribute("data-decision-id"))).toEqual(["8"]);
+    const rows = within(screen.getByRole("region", { name: "Đang diễn ra" })).getAllByTestId("in-flight-item");
+    expect(within(rows[0]).getByTestId("run-state")).toHaveTextContent("Đang chờ mai");
+    expect(within(rows[1]).getByTestId("run-state")).toHaveTextContent("Đang chờ bạn");
+  });
+
+  it("opens with Today, and a Today the hub could not read stays inside its card", async () => {
+    setup(overview());
+    const today = await screen.findByTestId("today-error");
+    expect(today).toHaveTextContent("Không đọc được Today từ hub.");
+    const cards = screen.getAllByRole("region");
+    expect(cards[0]).toHaveAccessibleName("Today");
+    expect(screen.getByTestId("home-metrics")).toBeInTheDocument();
   });
 
   it("names in Needs you an author run's decision, which has no plan, by the run's title, and links to no plan", () => {

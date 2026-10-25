@@ -292,6 +292,10 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | An output's kind: image, video, audio, PDF and text, code and JSON, CSV, HTML page, other; an image that did not load | `ImageIcon`, `Film`, `AudioLines`, `FileText`, `FileCode`, `FileSpreadsheet`, `AppWindow`, `File`; `ImageOff` |
 | The viewer: previous, next; zoom out, in, fit; download; show in trace; delete; an HTML page's sandbox | `ChevronLeft`, `ChevronRight`; `ZoomOut`, `ZoomIn`, `Maximize2`; `Download`; `ListTree`; `Trash2`; `ShieldCheck` |
 | Notices, the kinds of notice a member turns off | `BellRing` |
+| Notifications in the user menu; push on this browser: on, off, blocked or off on the hub, not on this browser, an iPhone outside its Home Screen | `BellRing`; `BellRing`, `Bell`, `BellOff`, `MonitorX`, `SquarePlus` |
+| A push device: a browser, a phone's app; a test push | `Globe`, `Smartphone`; `Send` |
+| Today's items: release, plan step done, run failed, run parked, metric moved, cost, proposal; the notice of Today | `Tags`, `CircleCheck`, `CircleX`, `CirclePause`, `ChartLine`, `Coins`, `Lightbulb`; `CalendarDays` |
+| A decision's grounds: why the agent picks its option, how to undo the act, an act that cannot be undone, a ref of evidence | `Lightbulb`, `Undo2`, `OctagonAlert`, `Paperclip` |
 | Sidebar toggle | `PanelLeft` |
 | The sidebar's folds: Delivery, Improvement, Knowledge, Apps, Settings; a fold's chevron | `Ship`, `TrendingUp`, `BookMarked`, `LayoutGrid`, `Settings`; `ChevronRight` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
@@ -623,7 +627,18 @@ Shared pieces built on them:
   label is the link, described by the figure and its line, with a cover over the cell, a chevron after the label and
   the cell on `accent` under the pointer; `display` sets the figure as it reads ("1.2 GB", "1,234") where the bare value
   would not.
-- `components/home`, Home (`/`), the kit's MissionControl: one read of `GET /v1/me/overview` (prefetched on the
+- `components/home/today-card.tsx`, Today, Home's first card (docs/notifications.md, Today): one read of
+  `GET /v1/me/today` a visit, prefetched on the server with the overview and kept while the page is open (no polling,
+  no refetch on focus), so what it lists stays under the visitor's eyes. A 48 px head (the h2, the window in
+  `fg-subtle`: "Since you last looked", "Last 24 hours" or "Last 7 days", and Notifications on the right, to
+  `/settings/notifications`), the summary in 15/22 px (the hub's English sentence; in another language the same
+  counts in the page's own words, `home/today-model.ts`), at most eight rows (the kind's icon in its tone, the title as
+  a link with the kind said to screen readers, the body clamped to two lines, the project in mono and the time), then
+  one line: "You're caught up." with a `success` check, or that more changed than it lists. Once that line has been on
+  screen with the page visible (an IntersectionObserver), the card posts `seen_until` to `POST /v1/me/today/seen`, once
+  a reading, so the mark never passes an item the page did not show; a failed write is tried when the line shows
+  again. A failed read stays in the card with Try again.
+- `components/home`, Home (`/`), the kit's MissionControl: Today first, then one read of `GET /v1/me/overview` (prefetched on the
   server with the workers list, then asked every 5 seconds while a run is in flight or a decision is open and every 30
   otherwise; the page's LiveIndicator query) and the workers list for the Fleet card. The page head is "Home"; under
   it the MetricStrip of five cells: Waiting on you (`attention`, the oldest of the visitor's open decisions named),
@@ -634,12 +649,12 @@ Shared pieces built on them:
   order Needs you, In flight, Recent, Fleet, Projects; between md and lg Fleet and Projects sit side by side. Each card
   has a 48 px head (the h2, a count pill said in words, a link on the right) over rows of a 20 px mark centred on the
   text, the title over one `caption` line in `fg-subtle`, and what ends the row; in a card narrower than 576 px (a
-  container query) the end moves under the line. Needs you lists only the open decisions the visitor answers (`yours`) and disappears when there
-  is none: the question links to `/inbox?decision=ID`, a plain click and the primary Answer (named "Answer decision
+  container query) the end moves under the line. Needs you lists only the open decisions asked of the visitor (`yours`: the person the agent asked,
+  whoever owns the run) and disappears when there is none: the question links to `/inbox?decision=ID`, a plain click and the primary Answer (named "Answer decision
   #7") open the DecisionSheet over Home, loaded on demand (`next/dynamic`, asked for when the pointer or focus reaches
   Answer), so Answer then Send answer answers with the agent's pick. In flight lists the active runs (the agent at work
   first with the live dot, waiting and parked, queued): a plan run carries its tag and its steps done of the total as a
-  bar; a waiting run says whose answer it waits for; its head links to the Monitor ("Watch on Monitor"). Recent lists the runs that ended last, a failure's reason in
+  bar; a waiting run says whose answer it waits for (the person asked, `asked_of`); its head links to the Monitor ("Watch on Monitor"). Recent lists the runs that ended last, a failure's reason in
   `danger`, and Rerun (ghost, `RotateCcw`) on the visitor's own failed or lost run of one step where they write. Fleet
   lists the visitor's own workers with `HeartbeatBars`; Projects each project of the grants with the role, active plans,
   repos and open decisions. A member without a grant sees the EmptyState that says a hub administrator grants roles,
@@ -1170,6 +1185,27 @@ Shared pieces built on them:
   screen readers and a heavier title. A notice of a push or merge into a default branch names its repo, branch and
   commits (seven digits, the full name for screen readers, five shown and the rest a click away); its body folds to
   three lines; its kind is a tag (an icon and a word, square corners), not a pill.
+- `components/notifications`, Notifications (`/settings/notifications`, in the user menu above Autonomy; the top bar
+  says Settings / Notifications): the member's settings, the hub's push configuration and their devices, read on the
+  server. Cards, two columns from lg (fluid, then 360 px, 400 px from xl), one below in the order a member sets push up
+  in (this browser, devices, quiet hours and summary, lock screen, the tiers, notices; each column is `contents` under
+  lg so `order` places its cards). Push on this browser (`this-browser.tsx`, `push-browser.ts`) says one state: the hub
+  sends no Web Push (no VAPID key), the browser cannot push, an iPhone or iPad outside a Home Screen app (the three
+  steps to add it: Share, Add to Home Screen, open it from there), notifications blocked for the site, off with Turn on
+  push for this browser, or on with Send a test and Turn off. Turn on is the only place the page asks for permission,
+  first thing in the click as Safari requires; it registers `/sw.js` (`public/sw.js`: shows a push with its tag, a tap
+  focuses the hub's tab on the page or opens it, a replaced subscription goes back to the hub), subscribes with the
+  hub's key and adds the device named "Chrome on macOS"; this browser's device id is kept in localStorage, and a
+  subscription the browser replaced is sent again when the page reads it. Your devices: newest first, This browser on
+  its row, when added and last reached, Send test (a toast: sent, gone so removed, or the push service's words) and
+  Remove in `quiet-danger`, confirmed in `ConfirmAction`. What pushes (`tiers-card.tsx`): each kind as a `NativeSelect`
+  of Default (the hub's, named), Push now, Today and Inbox, Inbox only, applied at once with a toast; the kinds the hub
+  pushes by default and Proposals and Today first with a hint each, the rest folded under "N more kinds", open when one
+  of them was chosen. Quiet hours and summary (`schedule-card.tsx`): a switch with From and Until (`type=time`), the
+  time zone as an input with the browser's zones as suggestions (a zone never chosen starts as this browser's, and an
+  alias of the hub's, Asia/Saigon for Asia/Ho_Chi_Minh, counts as the hub's), the time of the summary push, saved
+  together with Discard and Save; a wrong field is refused beside it and takes focus, the hub's refusal shows above the
+  buttons. Lock screen: Hide details, a switch applied at once. Notices: the switches of the Inbox's dialog.
 - `components/inbox/telegram-dialog.tsx`: Telegram in the Inbox's header, a `secondary` button that opens a dialog
   (docs/notifications.md, Telegram). It says where the member's link stands and offers what fits: on a hub without a
   bot an info box and nothing else; with no chat linked, Make a link; then the one-time link in `code-small` with Copy,
@@ -1212,7 +1248,13 @@ Shared pieces built on them:
   "parked 3 hours ago" once the run has parked. When a run parks is the hub's to say (its decision wait is a setting),
   so the card reads it from `GET /v1/me/overview` while the run waits, or takes it from Home. The question in 15/22 px
   500; the agent's context as Markdown through the memories' `SafeMarkdown` (no raw HTML, no images loaded), clamped
-  to four lines with Show more, and unfolded when focus moves into it. For the run's owner the answer form: the options
+  to four lines with Show more, and unfolded when focus moves into it. Under it, while the decision is open, its
+  grounds (`inbox/decision-grounds.tsx`) on `surface-sunken` when the agent gave any: why it picks its option ("Why
+  “Deploy now”:" and its reason), "Can be undone:" and how, or "Cannot be undone." (`OctagonAlert` in `danger`), and
+  its evidence, each ref a link (`inbox/evidence-links.ts`): a run and an event of it, the files of the decision's run
+  (`?view=outputs`), a problem's evidence, a memory, a repo's file through the knowledge graph's search, an https page
+  in a new tab (`noopener noreferrer`, said to screen readers); a session or a transcript line is named, not linked.
+  On the phone's screen the grounds read at 15 px and each ref is 44 px tall. For the run's owner the answer form: the options
   as the kit's radio cards (`border-strong`, `surface-selected` inside a `brand` edge when checked, 44 px under 768 px),
   the label and what the option does next, the agent's pick tagged "Agent's pick" (`brand` on `brand-soft`) and
   checked, so one click on Send answer answers with it; Clear the choice leaves the owner's words alone as the answer.
@@ -1463,7 +1505,7 @@ Shared pieces built on them:
   the files of its run under its bubble, on its side, and a `message_changed` event of the chat replaces the message
   held, so files that came after it show. The Inbox's header has Notices (`notice-settings.tsx`, the dialog loaded when
   first opened): a switch per kind of notice a member may turn off (today Files from your runs), applied when flipped
-  with a toast. The project's overview has a Run outputs card (`pages/output-settings.tsx`): the switch of the images of
+  with a toast, and All notification settings at its foot, to `/settings/notifications`. The project's overview has a Run outputs card (`pages/output-settings.tsx`): the switch of the images of
   tools' results, which an admin of the project flips and anyone else reads disabled, and the hub's limits.
 - `components/monitor`, the Monitor (`/monitor`, in the sidebar's first group after Inbox): every run in flight of the
   projects of the visitor's grants in a list, and the runs the visitor watches as live tiles in a grid. One read of
