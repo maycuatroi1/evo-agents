@@ -11753,6 +11753,7 @@
           "state",
           "disabled_reason",
           "enabled",
+          "builtin",
           "permissions",
           "granted",
           "pending",
@@ -11814,6 +11815,7 @@
           "state",
           "disabled_reason",
           "enabled",
+          "builtin",
           "permissions",
           "granted",
           "pending",
@@ -11928,6 +11930,7 @@
               "state",
               "disabled_reason",
               "enabled",
+              "builtin",
               "permissions",
               "granted",
               "pending",
@@ -107890,6 +107893,12 @@
             "enabled": {
               "type": "boolean",
               "title": "Enabled"
+            },
+            "builtin": {
+              "type": "boolean",
+              "title": "Builtin",
+              "description": "a feature of the hub (canvas, srs, tasks), not a plugin of the store: the project's features turn it on and off, and it may do what it asks for while on",
+              "default": false
             },
             "permissions": {
               "items": {

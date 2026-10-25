@@ -1,4 +1,4 @@
-"""@strategist, the agent type strategist of the core plugin canvas, on the hub (``evo_agents.core_plugins.canvas``:
+"""@strategist, the agent type strategist of the core plugin canvas, on the hub (``evo_agents.hub.server.canvas``:
 ``agent``, ``acting``, ``commands``, ``proposals``, ``brainstorm``), as criterion a5 of plan living-lean-canvas names it.
 
 An admin of a project that enabled canvas enables the type under a member (``run_as``): the profile @strategist with
@@ -28,10 +28,10 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from evo_agents.core_plugins.canvas import content, proposals, tools, writes
-from evo_agents.core_plugins.canvas.tools import STRATEGIST_INSTRUCTIONS
 from evo_agents.hub import plugin_calls, tables, tables_canvas, tables_srs
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.canvas import content, proposals, tools, writes
+from evo_agents.hub.server.canvas.tools import STRATEGIST_INSTRUCTIONS
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import test_credentials_api as credentials_api

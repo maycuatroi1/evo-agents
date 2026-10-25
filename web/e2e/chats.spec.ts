@@ -225,7 +225,8 @@ test("a member makes a chat, mentions its agent through the suggestions and foll
   await expect(reply.getByTestId("message-pull-link")).toContainText("PR #7 in example-org/api");
   await expect(page).toHaveURL(new RegExp(`/chats/${chatId}\\?thread=`));
 
-  // The run's page names its kind and leads back to the message it answers.
+  // The run's page names its kind and leads back to the message it answers; its link shows while the pointer is on the reply.
+  await reply.hover();
   await reply.getByTestId("message-run-link").click();
   await page.waitForURL(`**/p/${project}/runs/${runId}`);
   await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-kind", "chat");

@@ -1214,13 +1214,19 @@
         "chats": "Chats",
         "curator": "Curator",
         "kg": "Knowledge graph",
-        "monitor": "Monitor"
+        "monitor": "Monitor",
+        "canvas": "Canvas",
+        "srs": "Requirements (SRS)",
+        "tasks": "Tasks"
       },
       "descriptions": {
         "chats": "Group chats with people and agents.",
         "curator": "The Curator's night shift, its proposals and its morning brief.",
         "kg": "A project's knowledge graph: its pages, its API and the kg tools of the hub's MCP.",
-        "monitor": "The runs at work in every project, watched live."
+        "monitor": "The runs at work in every project, watched live.",
+        "canvas": "A project's canvas: its claims, their evidence and judging, and @strategist.",
+        "srs": "A project's requirement documents, their reviews and approvals, and @ba.",
+        "tasks": "A project's tasks and their board, made from approved requirements."
       },
       "scopeHub": "Whole hub",
       "scopeProject": "Hub or project",
@@ -3597,6 +3603,13 @@
       "latest": "Jump to the latest",
       "directEmptyBody": "Say what you need: every message goes to {name}, and its answer shows right under yours."
     },
+    "bind": {
+      "lead": "Take runs of {project} on:",
+      "button": "Worker {name}",
+      "none": "You have no worker yet: pair one on the Workers page, then send the message again.",
+      "done": "Worker {name} now takes runs of {project}. Send your message again.",
+      "failed": "Could not add {project} to worker {name}"
+    },
     "message": {
       "hub": "Hub",
       "hubTag": "Automatic",
@@ -3605,9 +3618,7 @@
       "reply": "Reply in thread",
       "replies": "{count, plural, one {# reply} other {# replies}}",
       "lastReply": "last at {time}",
-      "run": "Run #{id}",
       "ownRunLabel": "Run #{id} of @{handle}",
-      "handed": "@{handle}: run #{id}",
       "handedLabel": "@{handle}: run #{id}, where it took the work",
       "refused": "@{handle} took no work:",
       "pull": "PR #{number} in {repo}",
@@ -4233,10 +4244,12 @@
     "facets": {
       "label": "State",
       "all": "All",
+      "running": "Running",
       "active": "Active",
       "review": "Review",
       "done": "Done",
-      "ended": "Failed or cancelled"
+      "ended": "Failed or cancelled",
+      "idle": "Idle"
     },
     "search": {
       "label": "Search runs",
@@ -4256,7 +4269,8 @@
       "runtime": "Runtime",
       "started": "Started",
       "duration": "Duration",
-      "attempt": "Attempt"
+      "attempt": "Attempt",
+      "cost": "Cost"
     },
     "stepLine": "{plan}, step {step}",
     "stepLineProject": "{project}, {plan}, step {step}",
@@ -5567,6 +5581,12 @@
         "needs_login": "needs a login",
         "disabled": "disabled"
       }
+    },
+    "progress": {
+      "label": "Plan progress",
+      "count": "{done}/{total}",
+      "at": "{step}: {status}",
+      "complete": "All steps done"
     }
   },
   "insights": {

@@ -461,13 +461,16 @@ def test_plugin_install_cli_publishes_lists_shows_installs_upgrades_and_removes_
 
         listed = json.loads(ok(plugin_cli(["list", "--json"], home)).stdout)
         assert_json_keys("hub plugin list", listed)
-        # beside sandbox, the core plugins installed beside evo-agents, which the hub records as it starts: builder, srs
-        # and tasks of evo-ak, and those of deploy/hub/core-plugins.txt once it is installed (telegram and chats)
+        # beside sandbox, the core plugins installed beside evo-agents, which the hub records as it starts: builder of
+        # evo-ak, and those of deploy/hub/core-plugins.txt once it is installed (telegram and chats); canvas, srs and
+        # tasks are features of the hub, which the store does not list
         image = [(plugin.manifest.id, "installed", plugin.manifest.version) for plugin in core_plugins()]
-        evo_ak = {(name, "installed", "1.0.0") for name in ("builder", "srs", "tasks")}
-        assert evo_ak <= set(image)
+        assert ("builder", "installed", "1.0.0") in set(image)
         found = [(p["name"], p["state"], p["latest_version"]) for p in listed]
         assert found == sorted([*image, ("sandbox", "available", "1.1.0")])
+        assert not {"canvas", "srs", "tasks"} & {p["name"] for p in listed}
+        feature = plugin_cli(["show", "srs"], home)
+        assert feature.returncode == 1 and "no plugin srs on this hub" in feature.stderr
         assert "installed 1.0.0 by the hub's image at" in ok(plugin_cli(["show", "builder"], home)).stdout
         installed = json.loads(ok(plugin_cli(["install", "sandbox", "--version", "1.0.0", "--json"], home)).stdout)
         assert_json_keys("hub plugin install", installed)

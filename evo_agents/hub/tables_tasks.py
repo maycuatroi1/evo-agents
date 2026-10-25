@@ -1,5 +1,5 @@
 """The tables of the core plugin tasks (0047), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.tasks``:
-queries name them there (``tables.tasks.items``). The plugin's code is ``evo_agents.core_plugins.tasks``; the hub owns
+queries name them there (``tables.tasks.items``). The plugin's code is ``evo_agents.hub.server.tasks``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
 - tasks_sprints: a sprint of a project: its name (unique in the project), goal, dates and state (planned, active,

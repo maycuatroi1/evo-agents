@@ -445,7 +445,9 @@ def test_a_chat_run_that_failed_without_a_declined_push_starts_a_new_session(cli
         moved(client, worker, claim(client, worker)["id"], "running", "failed", error="stop here")
 
 
-def test_a_chat_reply_without_a_mention_wakes_the_session_in_a_chat_of_one_person_only(client, hub, hub_db):
+def test_a_chat_reply_without_a_mention_wakes_the_session_while_no_other_person_wrote_in_the_thread(
+    client, hub, hub_db
+):
     worker = chat_worker(client, hub["owner"], "studio", slots=2)
     alone = created(client, hub["owner"], title="Just me")
     mention, spec = started(client, hub, worker, alone)
@@ -453,11 +455,32 @@ def test_a_chat_reply_without_a_mention_wakes_the_session_in_a_chat_of_one_perso
     woke = sent(client, hub["owner"], alone["id"], "and the docs?", mention["id"])
     assert [(m["name"], m["via"]) for m in woke["mentions"]] == [("reviewer", "thread")]
     assert len(chat_runs_of(hub_db)) == 2
-    # with two people in the chat, a reply wakes nobody without an @
+    # with two people in the chat, a reply wakes it while only its person wrote in the thread, and nobody after that
     pair = created(client, hub["owner"], title="The two of us", people=[OTHER])
     other_mention = sent(client, hub["owner"], pair["id"], "@reviewer check the logs")
+    merge = sent(client, hub["owner"], pair["id"], "merge it", other_mention["id"])
+    assert [(m["name"], m["via"]) for m in merge["mentions"]] == [("reviewer", "thread")]
+    sent(client, hub["other"], pair["id"], "I look at it too", other_mention["id"])
     quiet = sent(client, hub["owner"], pair["id"], "thanks", other_mention["id"])
     assert quiet["mentions"] == [] and len(chat_runs_of(hub_db)) == 3
+
+
+def test_a_run_that_goes_on_in_a_session_takes_the_persons_messages_that_woke_no_agent_first(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    mention, spec = started(client, hub, worker, chat)
+    ended(client, worker, spec["id"])
+    sent(client, hub["other"], chat["id"], "looks fine to me", mention["id"])
+    missed = sent(client, hub["owner"], chat["id"], "merge it", mention["id"])
+    assert missed["mentions"] == []
+    woke = sent(client, hub["owner"], chat["id"], "@reviewer", mention["id"])
+    next_id = woke["mentions"][0]["run_id"]
+    assert claim(client, worker)["id"] == next_id
+    held = client.post(f"/v1/worker/runs/{next_id}/inbox", json={}, headers=worker["headers"]).json()["messages"]
+    assert [item["text"] for item in held] == [
+        f"{OWNER} wrote in the thread (message #{missed['id']}):\nmerge it",
+        f"{OWNER} wrote in the thread (message #{woke['id']}):\n@reviewer",
+    ]
 
 
 def test_another_person_mentioning_the_agent_in_the_thread_starts_a_chat_session_of_their_own(client, hub, hub_db):
