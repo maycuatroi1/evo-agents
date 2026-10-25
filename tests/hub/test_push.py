@@ -420,11 +420,17 @@ def test_a_decision_asked_of_a_member_goes_to_each_of_their_devices_encrypted_an
     added(client, hub["other"], stranger.body())
     _, decision = asked_decision(client, hub)
     assert deliver(client) == {"delivered": 3, "retried": 0, "failed": 1}
-    # the web's, then one a device of the person asked: the APNs sender comes with step 4 of the plan
+    # the web's, then one on each device of the person asked: APNs is off on this hub (tests/hub/test_push_native.py)
     assert device_deliveries(hub_db) == [
         ("webpush", "delivered", 1, None),
         ("webpush", "delivered", 1, None),
-        ("apns", "failed", 1, "the hub has no class for channels of kind apns"),
+        (
+            "apns",
+            "failed",
+            1,
+            "Undeliverable: APNs is off on this hub: set EVO_HUB_APNS_KEY_ID, EVO_HUB_APNS_TEAM_ID, "
+            "EVO_HUB_APNS_PRIVATE_KEY",
+        ),
     ]
     assert service.to(stranger) == []
     for found in (laptop, desktop):
