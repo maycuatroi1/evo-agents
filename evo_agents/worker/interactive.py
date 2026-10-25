@@ -64,7 +64,7 @@ from evo_agents.hub import terminal as frames
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.worker.adapter import AgentEvent, RunContext
 from evo_agents.worker.claude_trust import TrustError, trust_folder
-from evo_agents.worker.runtimes import claude_code, codex, common, hub_tools, opencode
+from evo_agents.worker.runtimes import claude_code, codex, common, gateway, hub_tools, opencode
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -688,7 +688,7 @@ class ClaudeCodeTui(Tui):
             self.session_id = str(uuid.uuid4())
         self.state_path = claude_state_path(context.env)
         self.drop_env = claude_code.dropped_env(context)
-        self.remote_control = not claude_code.leased_oauth(context)
+        self.remote_control = not (claude_code.leased_oauth(context) or gateway.active(context))
         self._transcript: tuple[Path, int] | None = None
 
     def transcript(self) -> Path | None:
