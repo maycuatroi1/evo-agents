@@ -11,6 +11,7 @@ import secrets
 import shutil
 import subprocess
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -95,7 +96,9 @@ async def _round_trip(url: str, secret: str) -> dict:
         listed = {c.id: c for c in await client.connections()}
         seen["listed"] = listed[on_node.id].active and listed[on_node.id].provider == node.id and catalog.id in listed
         seen["node_listed"] = [n.id for n in await client.nodes()] == [node.id]
-        issued = await client.create_key("run-1", [on_node.id], "2030-01-01T00:00:00.000Z")
+        issued = await client.create_key(
+            "run-1", [on_node.id], datetime(2030, 1, 1, 7, tzinfo=timezone(timedelta(hours=7)))
+        )
         value = issued.value.get_secret_value()
         keys = {k.id: k for k in await client.keys()}
         seen["key"] = keys[issued.id].no_log and keys[issued.id].allowed_connections == (on_node.id,)

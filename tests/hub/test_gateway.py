@@ -9,8 +9,10 @@ route needs; a new connection is inactive; deleting a provider node deletes its 
 import asyncio
 import json
 import logging
+import re
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -55,6 +57,24 @@ from tests.hub.test_runs import add_worker
 SECRET = secrets.token_urlsafe(32)
 URL = "http://gateway.test:20128"
 AGENT_BASE = f"/v1/projects/{PROJECT}/agents/auditor/provider-accounts"
+
+
+ZONE = timezone(timedelta(hours=7))  # an offset the client turns into Z
+ZOD_DATETIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z")  # zod's datetime(): no offset
+
+
+def _refused_key(body: dict) -> list[dict]:
+    """What OmniRoute 3.8.52's createKeySchema refuses in ``body``, as its 400 lists it."""
+    refused = []
+    ends = body.get("expiresAt")
+    if ends is not None and not ZOD_DATETIME.fullmatch(ends):
+        refused.append({"field": "expiresAt", "message": "Invalid ISO datetime"})
+    for connection in body.get("allowedConnections") or ():
+        try:
+            uuid.UUID(connection)
+        except ValueError:
+            refused.append({"field": "allowedConnections", "message": "Invalid uuid"})
+    return refused
 
 
 class FakeGateway:
@@ -142,6 +162,8 @@ class FakeGateway:
 
     def _keys(self, method: str, rest: list[str], body: dict) -> httpx.Response:
         if method == "POST":
+            if refused := _refused_key(body):
+                return httpx.Response(400, json={"error": {"message": "Invalid request", "details": refused}})
             value = "sk-" + secrets.token_hex(24)
             used = {"totalRequests": 3, "promptTokens": 120, "completionTokens": 45, "totalCost": 0.0125}
             found = {"id": str(uuid.uuid4()), "revokedAt": None, **body, "value": value, "used": used}
@@ -365,7 +387,7 @@ def test_gateway_secrecy_the_client_makes_no_log_keys_and_names_no_body_in_an_er
 
     async def round_trip():
         connection = await gateway_client.create_connection("openrouter", "c", sample(), "https://openrouter.ai/api/v1")
-        issued = await gateway_client.create_key("run-1", [connection.id], "2026-12-31T00:00:00Z")
+        issued = await gateway_client.create_key("run-1", [connection.id], datetime(2027, 1, 1, 7, tzinfo=ZONE))
         listed = await gateway_client.keys()
         usage = await gateway_client.key_usage(issued.id)
         await gateway_client.revoke_key(issued.id)
@@ -373,7 +395,9 @@ def test_gateway_secrecy_the_client_makes_no_log_keys_and_names_no_body_in_an_er
 
     connection, issued, listed, usage, after = client.portal.call(round_trip)
     assert (
-        issued.no_log and issued.allowed_connections == (connection.id,) and issued.expires_at == "2026-12-31T00:00:00Z"
+        issued.no_log
+        and issued.allowed_connections == (connection.id,)
+        and issued.expires_at == "2027-01-01T00:00:00.000Z"
     )
     assert issued.value.get_secret_value().startswith("sk-") and issued.value.get_secret_value() not in repr(issued)
     assert [k.id for k in listed] == [issued.id] and all(k.no_log for k in listed) and after == []
