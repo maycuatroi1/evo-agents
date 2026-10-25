@@ -112,8 +112,6 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
   }
   const [newer, older] = runs;
   await expect(toast(page, `2 runs dispatched: #${older.id} and #${newer.id}`)).toContainText("They wait in the queue for a worker.");
-  // The page opens on Running, the runs a worker holds; queued runs are under Active.
-  await main(page).getByTestId("runs-facets").getByRole("button", { name: /^Active/ }).click();
   await expect(runRow(page, older.id).getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, newer.id).getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, older.id)).toContainText(STEP_TITLES["2"]);
@@ -156,13 +154,8 @@ test("the list filters by state and search, in the URL", async ({ page, member }
     state: "failed",
   });
 
-  // The page opens on Running, which no run is; All lists every run but an idle session.
   await open(page, `/p/${project}/runs`);
   const facets = main(page).getByTestId("runs-facets");
-  await expect(facets.getByRole("button", { name: /^Running/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(main(page).getByTestId("state-empty")).toBeVisible();
-  await facets.getByRole("button", { name: /^All/ }).click();
-  await expect(page).toHaveURL(/\?state=all$/);
   await expect(facets.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
   await expect(main(page).getByTestId("summary-failed").locator("dd").first()).toHaveText("1");
   await expect(runRow(page, failing.id).getByTestId("run-state")).toHaveText("Failed");
@@ -179,10 +172,7 @@ test("the list filters by state and search, in the URL", async ({ page, member }
   const none = main(page).getByTestId("state-empty");
   await expect(none).toContainText("No run matches");
   await expect(none.getByTestId("filters-in-use")).toHaveText("State:Done"); // the filter in force, named
-  await none.getByRole("button", { name: "Clear filters" }).click(); // back to Running, the page's own view
-  await expect(page).not.toHaveURL(/state=/);
-  await expect(facets.getByRole("button", { name: /^Running/ })).toHaveAttribute("aria-pressed", "true");
-  await facets.getByRole("button", { name: /^All/ }).click();
+  await none.getByRole("button", { name: "Clear filters" }).click();
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
 
   // "/" focuses the search from anywhere on the page but a text field.
@@ -190,7 +180,7 @@ test("the list filters by state and search, in the URL", async ({ page, member }
   await expect(main(page).getByTestId("runs-search")).toBeFocused();
   await expect(main(page).getByTestId("runs-search")).toHaveValue("");
   await main(page).getByTestId("runs-search").fill(STEP_TITLES["4"]);
-  await expect(page).toHaveURL(new RegExp(`\\?state=all&q=${encodeURIComponent(STEP_TITLES["4"]).replace(/%20/g, "\\+")}$`));
+  await expect(page).toHaveURL(new RegExp(`\\?q=${encodeURIComponent(STEP_TITLES["4"]).replace(/%20/g, "\\+")}$`));
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
   await expect(runRow(page, waiting.id)).toBeVisible();
   await main(page).getByTestId("runs-search").fill(`#${failing.id}`);
@@ -292,7 +282,7 @@ test("a chat session is one row, as its latest turn, and opens into its turns, e
   await expect(table.locator("tbody tr").filter({ has: page.getByTestId("runs-session-toggle") })).toHaveCount(1);
   await facets.getByRole("button", { name: /^All/ }).click();
   await main(page).getByTestId("runs-search").fill("one more thing");
-  await expect(page).toHaveURL(/\?state=all&q=one\+more\+thing$/);
+  await expect(page).toHaveURL(/\?q=one\+more\+thing$/);
   await expect(main(page).getByTestId("runs-list-summary")).toHaveText("1 run matches");
   await expect(runRow(page, third)).toBeVisible();
 

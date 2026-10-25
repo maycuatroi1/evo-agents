@@ -78,7 +78,6 @@ test("a secret added on the page is listed without its value, which never comes 
     env_var: "CLAUDE_CODE_OAUTH_TOKEN",
     projects: [project],
     workers: [],
-    pools: [],
     expires_at: null,
     value: first,
   });
