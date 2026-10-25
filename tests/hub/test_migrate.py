@@ -145,6 +145,7 @@ TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
 TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
 TABLES |= pg.PUSH_TABLES  # migration 0149
+TABLES |= pg.TODAY_TABLES  # migration 0151
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -3804,3 +3805,33 @@ def test_0150_keeps_the_tiers_quiet_hours_time_zone_and_summary_time_of_a_member
     assert not added & columns(hub_db, "notification_preferences")
     assert query(hub_db, select(p.c.hide_details)) == [(True,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0150") :]
+
+
+def test_0151_keeps_the_seen_mark_and_summary_day_of_a_member_takes_the_notice_today_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0150")
+    t = hub_tables
+    n = t.notifications
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    notice = {"user_id": ids["user"], "kind": "notice", "title": "Today on the hub"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(n).values({**notice, "notice_kind": "today"}))
+    move_to(hub_db, "0151")
+    assert "today_marks" in tables(hub_db)
+    assert columns(hub_db, "today_marks") == {"user_id", "seen_at", "digest_on", "updated_at"}
+    m = t.today_marks
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(m).values(user_id=ids["user"], seen_at=func.now(), digest_on=date(2026, 10, 25)))
+        with pytest.raises(errors.UniqueViolation):  # one row a member
+            conn.execute(insert(m).values(user_id=ids["user"]))
+        for kind in ("today", "opportunity_window", "release"):
+            conn.execute(insert(n).values({**notice, "notice_kind": kind}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(n).values({**notice, "notice_kind": "today_digest"}))
+    assert query(hub_db, select(m.c.digest_on)) == [(date(2026, 10, 25),)]
+    # Going back deletes the summary pushes and the marks, and keeps the other notices.
+    move_to(hub_db, "0150", down=True)
+    assert "today_marks" not in tables(hub_db)
+    kinds = select(n.c.notice_kind).order_by(n.c.id)
+    assert query(hub_db, kinds) == [("opportunity_window",), ("release",)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0151") :]

@@ -53,6 +53,7 @@ NOTICE_WORDS = {  # as the web's Inbox names them
     "plugin_notice": "A notice from a plugin",
     "browser_needs_login": "A browser identity waits for a new login",
     "worker_doctor": "A shared worker's doctor found something high",
+    "today": "Today on the hub",
 }
 
 

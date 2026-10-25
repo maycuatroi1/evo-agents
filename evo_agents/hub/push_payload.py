@@ -6,7 +6,8 @@ A notification of a project the hub sink's clearance keeps from Telegram (``extr
 ``member_channels.prepare`` reads it for the clearance Telegram has), or of a member who chose to hide details
 (``extra.hide_details``), carries the kind of thing alone as its title ("Decision needed", "Run failed"), the
 project's name as its body, and the link: nothing of what it is about. Any other carries its title and, for a
-decision, its question and the label of the option its agent recommends; for anything else, the kind of thing and
+decision, its question and the label of the option its agent recommends; for the summary push of Today
+(SUMMARY_NOTICES), its sentence, which counts things and names none of them; for anything else, the kind of thing and
 the project. No push carries a decision's context, a file or its link, an image, a token or a code: none of them is
 read here. The words are English, as the hub's web is.
 
@@ -24,6 +25,7 @@ MAX_PAYLOAD_BYTES = 3072
 BODY_CHARS = 300  # of a decision's question in a push's body
 KIND_WORDS = {"decision": "Decision needed", "proposal": "Proposal to review"}
 NOTICE = "Notice"
+SUMMARY_NOTICES = ("today",)  # runs.NOTICE_KINDS: Today's summary, whose body its push carries
 FALLBACK_LINK = "/inbox"
 TEST_KIND = "test"
 TEST_TITLE = "Test notification"
@@ -77,7 +79,10 @@ def _recommended(options) -> str | None:
     return None
 
 
-def _details(kind: str, words: str, project: str | None, decision) -> str:
+def _details(notification, words: str, decision) -> str:
+    kind, project = notification.kind, notification.project
+    if notification.notice_kind in SUMMARY_NOTICES and isinstance(getattr(notification, "body", None), str):
+        return _clip(" ".join(notification.body.split()), BODY_CHARS) or words
     if kind == "decision" and isinstance(decision, dict) and isinstance(decision.get("question"), str):
         body = _clip(" ".join(decision["question"].split()), BODY_CHARS)
         label = _recommended(decision.get("options"))
@@ -103,7 +108,7 @@ def payload(notification, public_url: str | None) -> dict:
     }
     if extra.get("restricted") is False and not extra.get("hide_details"):
         shown["title"] = notification.title or words
-        shown["body"] = _details(notification.kind, words, project, extra.get("decision"))
+        shown["body"] = _details(notification, words, extra.get("decision"))
     return fit(shown)
 
 

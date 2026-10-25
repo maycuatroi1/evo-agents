@@ -16,6 +16,10 @@ link, as one of a restricted project does; and (0150) ``tiers``, the tier they c
 object of kind to TIERS, ``evo_agents.hub.server.push_tiers``), their quiet hours (``quiet_start`` to ``quiet_end``,
 HH:MM, both or neither), their ``time_zone`` (an IANA name; none: the hub's web time zone) and ``digest_at``, the
 local time of their summary push (HH:MM; none: DEFAULT_DIGEST_AT). A member without a row has the defaults.
+
+today_marks (0151) holds what Today (``evo_agents.hub.server.today``) keeps of a member: ``seen_at``, the moment up to
+which they saw what changed, which only moves forward; and ``digest_on``, the local day of their last summary push
+(``evo_agents.hub.server.today_digest``), so it goes at most once a day. A member without a row saw nothing yet.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKeyConstraint,
     Identity,
@@ -85,3 +90,17 @@ def push_tables(metadata: MetaData) -> tuple[Table, Table]:
         PrimaryKeyConstraint("user_id", name="notification_preferences_pkey"),
     )
     return devices, preferences
+
+
+def today_table(metadata: MetaData) -> Table:
+    """today_marks (0151), added to ``metadata``."""
+    return Table(
+        "today_marks",
+        metadata,
+        Column("user_id", BigInteger, nullable=False),
+        Column("seen_at", DateTime(timezone=True)),
+        Column("digest_on", Date),
+        Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="today_marks_user_id_fkey"),
+        PrimaryKeyConstraint("user_id", name="today_marks_pkey"),
+    )

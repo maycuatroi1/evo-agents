@@ -222,6 +222,7 @@ KG_DECISION_TABLES = frozenset({"kg_decisions", "kg_decision_events"})  # migrat
 RETIRED_PLUGIN_TABLES = frozenset({"retired_project_plugins"})
 # migration 0149: the push devices of members and their notification preferences (plan hub-mobile-phase-0)
 PUSH_TABLES = frozenset({"push_devices", "notification_preferences"})
+TODAY_TABLES = frozenset({"today_marks"})  # migration 0151: what Today keeps of a member (plan hub-mobile-phase-0)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

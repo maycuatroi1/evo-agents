@@ -122,6 +122,7 @@ HUB_TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 HUB_TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
 HUB_TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
 HUB_TABLES |= pg.PUSH_TABLES  # migration 0149
+HUB_TABLES |= pg.TODAY_TABLES  # migration 0151
 
 
 @pytest.fixture

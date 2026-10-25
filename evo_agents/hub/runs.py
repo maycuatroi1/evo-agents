@@ -383,6 +383,7 @@ NOTICE_KINDS = (
     "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser_logins``)
     PROBE_REPORT_NOTICE,
     "opportunity_window",  # the window of an open opportunity closes or closed (``server.opportunity_deadlines``)
+    "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
