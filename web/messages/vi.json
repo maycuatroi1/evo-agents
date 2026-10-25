@@ -280,7 +280,8 @@
       "apps": "Ứng dụng",
       "settings": "Cài đặt"
     },
-    "opportunities": "Cơ hội"
+    "opportunities": "Cơ hội",
+    "pools": "Pool"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -2508,7 +2509,12 @@
         "terminal": "Terminal trên web",
         "terminalOn": "Cho phép",
         "terminalOff": "Không cho phép",
-        "host": "Máy"
+        "host": "Máy",
+        "pool": "Pool",
+        "autoLabels": "Label tự động",
+        "noAutoLabels": "Chưa báo cáo",
+        "taints": "Taint",
+        "noTaints": "Không có"
       },
       "checkouts": {
         "title": "Checkout",
@@ -2530,7 +2536,9 @@
         "empty": "Worker này chưa nhận run nào.",
         "caption": "Run gần đây của worker {name}",
         "hidden": "{count, plural, =1 {Không hiện run của dự án {projects}: bạn không có quyền trên dự án đó.} other {Không hiện run của các dự án {projects}: bạn không có quyền trên các dự án đó.}}"
-      }
+      },
+      "notReady": "Chưa sẵn sàng: worker không nhận run nào. {reason}",
+      "notReadyNoReason": "Chưa sẵn sàng: worker không nhận run nào cho đến khi doctor báo cáo lại."
     },
     "actions": {
       "drain": "Ngừng nhận việc",
@@ -2609,7 +2617,14 @@
       "savedText": "Worker nhận chúng ở nhịp heartbeat kế tiếp.",
       "failed": "Không lưu được cài đặt của {name}",
       "revoked": "Worker đã bị thu hồi nên không đổi cài đặt được nữa. Trang vừa được tải lại.",
-      "requestId": "Mã request: {id}"
+      "requestId": "Mã request: {id}",
+      "taints": "Taint",
+      "taintsPlaceholder": "gpu, cost=high",
+      "taintsHint": "Không bắt buộc. Worker chỉ nhận các run chấp nhận mọi taint, hoặc các run ghim vào nó.",
+      "taintsHintPool": "Taint riêng của worker. Taint của pool {pool} được thêm sau; hãy sửa chúng ở pool.",
+      "labelsHintPool": "Label riêng của worker. Label của pool {pool} được thêm sau; hãy sửa chúng ở pool.",
+      "taintsInvalid": "Taint không hợp lệ: {taints}. Taint là một từ hoặc key=value gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.",
+      "taintsTooMany": "Tối đa {max} taint."
     },
     "version": {
       "title": "Phiên bản",
@@ -2761,6 +2776,153 @@
       "askFailed": "Không gửi được yêu cầu cài trình duyệt cho {name}",
       "cancelFailed": "Không huỷ được yêu cầu cài trình duyệt của {name}",
       "refused": "Hub từ chối, lý do ở dưới. Trang đã tải lại."
+    },
+    "poolsButton": "Pool",
+    "pools": {
+      "title": "Pool",
+      "description": "Pool cho mọi máy tham gia cùng dự án, slot, label và taint. Join token cho một máy mới tham gia bằng một lệnh.",
+      "count": "{count, plural, other {# pool}}",
+      "createButton": "Pool mới",
+      "caption": "Pool của bạn",
+      "ownerLine": "Chủ: {owner}",
+      "nodesCount": "{count, plural, other {# node}}",
+      "mobileMeta": "{nodes, plural, other {# node}}, mỗi node {slots, plural, other {# slot}}",
+      "notReady": "Chưa sẵn sàng",
+      "notReadyTip": "Chưa sẵn sàng: {reason}",
+      "notReadyCount": "{count} chưa sẵn sàng",
+      "offlineCount": "{count} offline",
+      "columns": {
+        "pool": "Pool",
+        "nodes": "Node",
+        "projects": "Dự án",
+        "slots": "Slot",
+        "taints": "Taint"
+      },
+      "empty": {
+        "title": "Chưa có pool nào",
+        "description": "Tạo một pool, rồi thêm máy vào bằng join token: mỗi máy trở thành một worker với thiết lập của pool."
+      },
+      "form": {
+        "name": "Tên",
+        "nameHint": "Không trùng với pool khác của bạn. Tên các node bắt đầu bằng tên này, và không đổi được về sau.",
+        "namePlaceholder": "build-farm",
+        "projects": "Dự án",
+        "projectsHint": "Các node nhận run của những dự án này. Bạn cần vai trò writer trên từng dự án.",
+        "projectsFailed": "Không tải được dự án của bạn. Hãy tải lại trang để thử lại.",
+        "noProjects": "Bạn không có vai trò writer trên dự án nào, nên pool không phục vụ được dự án nào.",
+        "slots": "Slot mỗi node",
+        "slotsHint": "Số run mỗi node giữ cùng lúc, từ 1 đến {max}.",
+        "reapDays": "Số ngày offline trước khi thu hồi",
+        "reapDaysHint": "Node offline lâu như vậy sẽ bị thu hồi, từ {min} đến {max} ngày.",
+        "labels": "Label",
+        "labelsHint": "Không bắt buộc, tối đa {max}. Một từ hoặc key=value; hub tự thêm pool=<name>.",
+        "labelsPlaceholder": "region=sg, ssd",
+        "taints": "Taint",
+        "taintsHint": "Không bắt buộc. Các node chỉ nhận run chấp nhận mọi taint.",
+        "taintsPlaceholder": "gpu, cost=high",
+        "accepted": "Kết quả doctor được chấp nhận",
+        "acceptedHint": "Không bắt buộc, tối đa {max}. Mã các kết quả mức cao mà node vẫn được coi là sẵn sàng, như evo-agents worker doctor in ra.",
+        "acceptedPlaceholder": "docker-missing",
+        "problems": {
+          "nameRequired": "Hãy nhập tên.",
+          "nameInvalid": "Tên bắt đầu bằng chữ hoặc số và chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới, tổng cộng tối đa 40 ký tự.",
+          "nameTaken": "Bạn đã có pool với tên này.",
+          "projectsRequired": "Hãy chọn ít nhất một dự án.",
+          "number": "Hãy nhập số nguyên từ {min} đến {max}.",
+          "invalid": "Không hợp lệ: {values}.",
+          "reserved": "Hub tự đặt các khóa này (pool, os, arch, runtime, feature): {values}.",
+          "tooMany": "Tối đa {max}."
+        }
+      },
+      "create": {
+        "title": "Pool mới",
+        "description": "Những gì mọi node của pool nhận được. Bạn có thể đổi về sau; các node nhận thay đổi ở heartbeat kế tiếp.",
+        "cancel": "Hủy",
+        "create": "Tạo pool",
+        "creating": "Đang tạo...",
+        "created": "Đã tạo pool {name}",
+        "createdText": "Hãy tạo join token để thêm node đầu tiên."
+      },
+      "detail": {
+        "title": "Pool",
+        "notFoundTitle": "Không tìm thấy pool",
+        "notFoundDescription": "Pool này không tồn tại, hoặc thuộc về thành viên khác.",
+        "facts": "Chủ {owner}, tạo ngày {date}",
+        "addNode": "Thêm node",
+        "notReadyNote": "{count, plural, other {# node}} không nhận run nào: doctor tìm thấy điều pool không chấp nhận. Mở một node để xem lý do.",
+        "offlineNote": "{count, plural, other {# node}} đang offline. Hub thu hồi node offline quá {days, plural, other {# ngày}}.",
+        "never": "Chưa bao giờ",
+        "nodeLine": "{hostname}, phiên bản {version}",
+        "nodes": "Node",
+        "nodesDescription": "Các máy đã tham gia bằng join token và chưa bị thu hồi, mới nhất trước.",
+        "noNodes": "Chưa có máy nào tham gia. Hãy tạo join token và chạy lệnh của nó trên một máy Ubuntu mới.",
+        "scope": "Mọi node nhận được",
+        "scopeDescription": "Mỗi node có những thứ này, cộng thêm thiết lập riêng.",
+        "projects": "Dự án",
+        "slots": "Slot",
+        "labels": "Label",
+        "taints": "Taint",
+        "noTaints": "Không có",
+        "accepted": "Kết quả được chấp nhận",
+        "noAccepted": "Không có",
+        "reap": "Thu hồi sau",
+        "reapDays": "{days, plural, other {# ngày}} offline"
+      },
+      "join": {
+        "title": "Join token cho {pool}",
+        "description": "Máy chạy lệnh với token này sẽ tham gia pool. Token chỉ hiện một lần.",
+        "hours": "Hiệu lực (giờ)",
+        "hoursHint": "Từ {min} đến {max} giờ.",
+        "uses": "Số máy",
+        "usesHint": "Số máy được tham gia bằng token này, từ {min} đến {max}.",
+        "cancel": "Hủy",
+        "create": "Tạo token",
+        "creating": "Đang tạo...",
+        "issuedTitle": "Thêm node vào {pool}",
+        "issuedDescription": "{uses, plural, other {# máy}} được tham gia bằng token này cho đến {expires}.",
+        "once": "Hãy sao chép ngay: token chỉ hiện một lần.",
+        "onceText": "Hub chỉ giữ mã băm của token. Ai có token đều thêm được máy vào pool cho đến khi token dùng hết, hết hạn hoặc bị thu hồi.",
+        "bootstrap": "Lệnh bootstrap",
+        "bootstrapHint": "Chạy với quyền root trên một máy Ubuntu mới: lệnh cài toolchain và worker, tham gia pool và khởi động dịch vụ.",
+        "token": "Join token",
+        "userData": "Cloud-init user-data",
+        "userDataHint": "Cho nhà cung cấp nhận user-data khi tạo máy: lệnh này in bootstrap kèm một token mới riêng.",
+        "done": "Xong"
+      },
+      "tokens": {
+        "title": "Join token",
+        "description": "Mới nhất trước. Hub không bao giờ hiện lại token sau khi tạo.",
+        "failed": "Không tải được join token. Chúng sẽ tải lại sau ít phút.",
+        "empty": "Chưa có join token nào.",
+        "create": "Tạo join token",
+        "name": "Token #{id}",
+        "expiringSoon": "Sắp hết hạn",
+        "status": {
+          "live": "Còn hiệu lực",
+          "expired": "Đã hết hạn",
+          "revoked": "Đã thu hồi",
+          "used": "Đã dùng hết"
+        },
+        "line": "Đã dùng {uses}/{max}, bởi {by}, đến {expires}",
+        "lastUsed": "dùng lần cuối",
+        "revoke": "Thu hồi",
+        "revoking": "Đang thu hồi...",
+        "cancel": "Hủy",
+        "revokeTitle": "Thu hồi token #{id}?",
+        "revokeText": "Không máy nào tham gia bằng token này được nữa. Các node đã tham gia vẫn ở lại pool.",
+        "revokedAlready": "Token này không còn hiệu lực: nó đã bị thu hồi, dùng hết hoặc hết hạn trong lúc đó.",
+        "revoked": "Đã thu hồi token #{id}",
+        "revokedText": "Không máy nào tham gia bằng token này được nữa."
+      },
+      "settings": {
+        "title": "Thiết lập",
+        "description": "Các node nhận thay đổi ở heartbeat kế tiếp.",
+        "save": "Lưu",
+        "saving": "Đang lưu...",
+        "discard": "Bỏ thay đổi",
+        "saved": "Đã lưu pool {name}",
+        "savedText": "Các node nhận thay đổi ở heartbeat kế tiếp."
+      }
     }
   },
   "secrets": {
@@ -2833,6 +2995,11 @@
       "workers": "Worker",
       "workersHint": "Không chọn worker nào thì mọi worker của bạn đều nhận; chọn vài worker để chỉ chúng nhận.",
       "noWorkers": "Bạn chưa có worker nào: secret sẽ đến mọi worker bạn đăng ký sau này.",
+      "pools": "Pool",
+      "poolsHint": "Hoặc chọn pool: khi đó secret chỉ đến các node của những pool ấy.",
+      "noPools": "Bạn chưa có pool nào: tạo pool ở trang Pool để gắn secret cho các node của nó.",
+      "workersLocked": "Secret đang đến các pool đã chọn bên dưới: bỏ chọn chúng để chọn worker.",
+      "poolsLocked": "Secret đang đến các worker đã chọn bên trên: bỏ chọn chúng để chọn pool.",
       "expires": "Hết hạn vào ngày",
       "expiresHint": "Không bắt buộc. Từ 00:00 UTC của ngày đó không run nào nhận nó nữa, giống cách GitLab cho access token hết hạn vào ngày hết hạn.",
       "value": "Value",
@@ -3953,6 +4120,12 @@
       "workersOptional": "Worker (không bắt buộc)",
       "workersHint": "Không chọn worker nào thì mọi worker của bạn đều dùng được; chọn vài worker để chỉ chúng dùng.",
       "noWorkers": "Bạn chưa có worker nào: tài khoản sẽ đến mọi worker bạn đăng ký sau này.",
+      "pools": "Pool",
+      "poolsOptional": "Pool (không bắt buộc)",
+      "poolsHint": "Hoặc chọn pool: khi đó tài khoản chỉ đến các node của những pool ấy.",
+      "noPools": "Bạn chưa có pool nào: tạo pool ở trang Pool để giữ tài khoản cho các node của nó.",
+      "workersLocked": "Tài khoản đang đến các pool đã chọn bên dưới: bỏ chọn chúng để chọn worker.",
+      "poolsLocked": "Tài khoản đang đến các worker đã chọn bên trên: bỏ chọn chúng để chọn pool.",
       "anyWorker": "Mọi worker của bạn",
       "keptHint": "Gia hạn giữ nguyên nơi tài khoản được dùng. Muốn đổi thì thay secret ở trang Secret.",
       "expires": "Token hết hạn vào ngày",
@@ -7068,7 +7241,7 @@
         "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
         "timezone": "Tên IANA, ví dụ Asia/Ho_Chi_Minh.",
         "briefAt": "Bản tóm tắt buổi sáng cho chủ dự án, theo múi giờ của cửa sổ.",
-        "worker": "Một worker của chính bạn phục vụ dự án này và nhận run từ hub; ca đêm chạy với tư cách chủ worker.",
+        "worker": "Một worker của chính bạn phục vụ dự án này và nhận run từ hub, hoặc một pool của bạn phục vụ dự án; ca đêm chạy với tư cách chủ của nó.",
         "noWorker": "Không worker nào của bạn nhận được run của ca đêm. <link>Đăng ký một worker</link> cho dự án này.",
         "usd": "Lớn hơn 0, tối đa {max}.",
         "runBudget": "Để trống: run được dùng phần còn lại của đêm.",
@@ -7126,7 +7299,9 @@
       "historyBudgetOff": "Không có: không chạy run lịch sử",
       "historyModelDefault": "model rẻ nhất worker báo",
       "probeBudgetNone": "Không có: không chạy probe",
-      "probeModelsBuilder": "Runtime và model của Builder"
+      "probeModelsBuilder": "Runtime và model của Builder",
+      "poolsGroup": "Pool của bạn",
+      "poolOption": "Pool {pool}, node sẵn sàng bất kỳ"
     },
     "metaHistory": "Lịch sử của {project}",
     "metaGraph": "Sức khoẻ graph của {project}",

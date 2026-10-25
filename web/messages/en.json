@@ -280,7 +280,8 @@
       "apps": "Apps",
       "settings": "Settings"
     },
-    "opportunities": "Opportunities"
+    "opportunities": "Opportunities",
+    "pools": "Pools"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -2508,7 +2509,12 @@
         "terminal": "Web terminal",
         "terminalOn": "Allowed",
         "terminalOff": "Not allowed",
-        "host": "Host"
+        "host": "Host",
+        "pool": "Pool",
+        "autoLabels": "Auto labels",
+        "noAutoLabels": "None reported yet",
+        "taints": "Taints",
+        "noTaints": "None"
       },
       "checkouts": {
         "title": "Checkouts",
@@ -2530,7 +2536,9 @@
         "empty": "This worker has taken no run yet.",
         "caption": "Recent runs of worker {name}",
         "hidden": "{count, plural, one {Runs of project {projects} are not shown: you hold no grant on it.} other {Runs of projects {projects} are not shown: you hold no grant on them.}}"
-      }
+      },
+      "notReady": "Not ready: it takes no run. {reason}",
+      "notReadyNoReason": "Not ready: it takes no run until its doctor reports again."
     },
     "actions": {
       "drain": "Drain",
@@ -2609,7 +2617,14 @@
       "savedText": "The worker takes them at its next heartbeat.",
       "failed": "Couldn't save the settings of {name}",
       "revoked": "The worker was revoked, so its settings no longer change. The page was reloaded.",
-      "requestId": "Request id: {id}"
+      "requestId": "Request id: {id}",
+      "taints": "Taints",
+      "taintsPlaceholder": "gpu, cost=high",
+      "taintsHint": "Optional. It takes only the runs that tolerate each taint, or those pinned to it.",
+      "taintsHintPool": "Its own taints. Those of pool {pool} are added after them; change them on the pool.",
+      "labelsHintPool": "Its own labels. Those of pool {pool} are added after them; change them on the pool.",
+      "taintsInvalid": "Not a valid taint: {taints}. A taint is a word or key=value of letters, digits, dots, dashes or underscores.",
+      "taintsTooMany": "At most {max} taints."
     },
     "version": {
       "title": "Version",
@@ -2761,6 +2776,153 @@
       "askFailed": "Couldn't ask {name} to install a browser",
       "cancelFailed": "Couldn't cancel the Install browser of {name}",
       "refused": "The hub refused it; its reason follows. The page was reloaded."
+    },
+    "poolsButton": "Pools",
+    "pools": {
+      "title": "Pools",
+      "description": "A pool gives every machine that joins it the same projects, slots, labels and taints. A join token lets a fresh machine join with one command.",
+      "count": "{count, plural, one {# pool} other {# pools}}",
+      "createButton": "New pool",
+      "caption": "Your pools",
+      "ownerLine": "Owner: {owner}",
+      "nodesCount": "{count, plural, one {# node} other {# nodes}}",
+      "mobileMeta": "{nodes, plural, one {# node} other {# nodes}}, {slots, plural, one {# slot} other {# slots}} each",
+      "notReady": "Not ready",
+      "notReadyTip": "Not ready: {reason}",
+      "notReadyCount": "{count} not ready",
+      "offlineCount": "{count} offline",
+      "columns": {
+        "pool": "Pool",
+        "nodes": "Nodes",
+        "projects": "Projects",
+        "slots": "Slots",
+        "taints": "Taints"
+      },
+      "empty": {
+        "title": "No pool yet",
+        "description": "Make a pool, then add machines to it with a join token: each one becomes a worker with the pool's settings."
+      },
+      "form": {
+        "name": "Name",
+        "nameHint": "Unique among your pools. Its nodes' names start with it, and it cannot change later.",
+        "namePlaceholder": "build-farm",
+        "projects": "Projects",
+        "projectsHint": "Its nodes take runs of these projects. You need the writer role on each.",
+        "projectsFailed": "Couldn't load your projects. Reload the page to try again.",
+        "noProjects": "You hold the writer role on no project, so no pool can serve one.",
+        "slots": "Slots per node",
+        "slotsHint": "Runs each node holds at once, 1 to {max}.",
+        "reapDays": "Offline days before revoke",
+        "reapDaysHint": "A node offline this long is revoked, {min} to {max} days.",
+        "labels": "Labels",
+        "labelsHint": "Optional, at most {max}. A word or key=value; the hub adds pool=<name> itself.",
+        "labelsPlaceholder": "region=sg, ssd",
+        "taints": "Taints",
+        "taintsHint": "Optional. Its nodes take only the runs that tolerate each taint.",
+        "taintsPlaceholder": "gpu, cost=high",
+        "accepted": "Accepted doctor findings",
+        "acceptedHint": "Optional, at most {max}. Codes of high findings a node may have and still be ready, as evo-agents worker doctor prints them.",
+        "acceptedPlaceholder": "docker-missing",
+        "problems": {
+          "nameRequired": "Enter a name.",
+          "nameInvalid": "A name starts with a letter or digit and holds letters, digits, dots, dashes or underscores, at most 40 in all.",
+          "nameTaken": "You have a pool with this name already.",
+          "projectsRequired": "Choose at least one project.",
+          "number": "Enter a whole number from {min} to {max}.",
+          "invalid": "Not valid: {values}.",
+          "reserved": "The hub sets these keys itself (pool, os, arch, runtime, feature): {values}.",
+          "tooMany": "At most {max}."
+        }
+      },
+      "create": {
+        "title": "New pool",
+        "description": "What every node of the pool gets. You can change it later; nodes take the change at their next heartbeat.",
+        "cancel": "Cancel",
+        "create": "Create pool",
+        "creating": "Creating...",
+        "created": "Pool {name} created",
+        "createdText": "Make a join token to add its first node."
+      },
+      "detail": {
+        "title": "Pool",
+        "notFoundTitle": "Pool not found",
+        "notFoundDescription": "This pool does not exist, or it belongs to another member.",
+        "facts": "Owner {owner}, created {date}",
+        "addNode": "Add node",
+        "notReadyNote": "{count, plural, one {# node takes} other {# nodes take}} no run: {count, plural, one {its doctor found} other {their doctor found}} something the pool does not accept. Open a node to see why.",
+        "offlineNote": "{count, plural, one {# node is} other {# nodes are}} offline. The hub revokes a node offline for {days, plural, one {# day} other {# days}}.",
+        "never": "Never",
+        "nodeLine": "{hostname}, version {version}",
+        "nodes": "Nodes",
+        "nodesDescription": "The machines that joined with a join token and are not revoked, newest first.",
+        "noNodes": "No machine has joined yet. Make a join token and run its command on a fresh Ubuntu machine.",
+        "scope": "What every node gets",
+        "scopeDescription": "Each node has these on top of its own.",
+        "projects": "Projects",
+        "slots": "Slots",
+        "labels": "Labels",
+        "taints": "Taints",
+        "noTaints": "None",
+        "accepted": "Accepted findings",
+        "noAccepted": "None",
+        "reap": "Revoked after",
+        "reapDays": "{days, plural, one {# day} other {# days}} offline"
+      },
+      "join": {
+        "title": "Join token for {pool}",
+        "description": "A machine that runs the command with this token joins the pool. The token is shown once.",
+        "hours": "Valid for (hours)",
+        "hoursHint": "{min} to {max} hours.",
+        "uses": "Machines",
+        "usesHint": "How many machines may join with it, {min} to {max}.",
+        "cancel": "Cancel",
+        "create": "Create token",
+        "creating": "Creating...",
+        "issuedTitle": "Add a node to {pool}",
+        "issuedDescription": "{uses, plural, one {One machine} other {# machines}} may join with this token until {expires}.",
+        "once": "Copy it now: it is shown once.",
+        "onceText": "The hub keeps only its hash. Anyone with the token can join a machine to the pool until it is used up, expires or is revoked.",
+        "bootstrap": "Bootstrap command",
+        "bootstrapHint": "Run it as root on a fresh Ubuntu machine: it installs the toolchain and the worker, joins the pool and starts the service.",
+        "token": "Join token",
+        "userData": "Cloud-init user-data",
+        "userDataHint": "For a provider that takes user-data when it makes a machine: this prints the bootstrap with a new token of its own.",
+        "done": "Done"
+      },
+      "tokens": {
+        "title": "Join tokens",
+        "description": "Newest first. The hub never shows a token again after it is made.",
+        "failed": "Couldn't load the join tokens. They load again in a moment.",
+        "empty": "No join token yet.",
+        "create": "Create join token",
+        "name": "Token #{id}",
+        "expiringSoon": "Expires soon",
+        "status": {
+          "live": "Live",
+          "expired": "Expired",
+          "revoked": "Revoked",
+          "used": "Used up"
+        },
+        "line": "{uses} of {max} used, by {by}, until {expires}",
+        "lastUsed": "last used",
+        "revoke": "Revoke",
+        "revoking": "Revoking...",
+        "cancel": "Cancel",
+        "revokeTitle": "Revoke token #{id}?",
+        "revokeText": "No more machines can join with it. The nodes that joined with it stay in the pool.",
+        "revokedAlready": "This token no longer works: it was revoked, used up or expired meanwhile.",
+        "revoked": "Token #{id} revoked",
+        "revokedText": "No more machines can join with it."
+      },
+      "settings": {
+        "title": "Settings",
+        "description": "Its nodes take a change at their next heartbeat.",
+        "save": "Save",
+        "saving": "Saving...",
+        "discard": "Discard",
+        "saved": "Pool {name} saved",
+        "savedText": "Its nodes take the change at their next heartbeat."
+      }
     }
   },
   "secrets": {
@@ -2833,6 +2995,11 @@
       "workers": "Workers",
       "workersHint": "Check none for any of your workers, or some to keep it to them.",
       "noWorkers": "You have no worker yet: the secret goes to any worker you register.",
+      "pools": "Pools",
+      "poolsHint": "Or check pools: the secret then goes only to the nodes of those pools.",
+      "noPools": "You have no pool: create one on the Pools page to bind secrets to its nodes.",
+      "workersLocked": "The secret goes to the pools checked below: uncheck them to pick workers instead.",
+      "poolsLocked": "The secret goes to the workers checked above: uncheck them to pick pools instead.",
       "expires": "Ends on",
       "expiresHint": "Optional. No run gets it from 00:00 UTC of that day, the way GitLab ends an access token on its expiry date.",
       "value": "Value",
@@ -3953,6 +4120,12 @@
       "workersOptional": "Workers (optional)",
       "workersHint": "None picked: any of your workers. Pick some to keep the account to them.",
       "noWorkers": "You have no worker yet: the account goes to any worker you register later.",
+      "pools": "Pools",
+      "poolsOptional": "Pools (optional)",
+      "poolsHint": "Or pick pools: the account then goes only to the nodes of those pools.",
+      "noPools": "You have no pool: create one on the Pools page to keep the account to its nodes.",
+      "workersLocked": "The account goes to the pools picked below: unpick them to pick workers instead.",
+      "poolsLocked": "The account goes to the workers picked above: unpick them to pick pools instead.",
       "anyWorker": "Any of yours",
       "keptHint": "A renewal keeps where the account goes. To change it, replace the secret on the Secrets page.",
       "expires": "Token ends on",
@@ -7068,7 +7241,7 @@
         "windowEnd": "Before the start, the window runs past midnight.",
         "timezone": "An IANA name, such as Asia/Ho_Chi_Minh.",
         "briefAt": "The owner's morning summary, in the window's time zone.",
-        "worker": "One of your own workers that serves this project and takes runs from the hub; the night shift runs as its owner.",
+        "worker": "One of your own workers that serves this project and takes runs from the hub, or one of your pools that serves it; the night shift runs as its owner.",
         "noWorker": "None of your workers can take the night shift's runs. <link>Register one</link> for this project.",
         "usd": "More than 0, at most {max}.",
         "runBudget": "Empty: a run may use what the night has left.",
@@ -7126,7 +7299,9 @@
       "historyBudgetOff": "None: no history run",
       "historyModelDefault": "the cheapest model the worker reports",
       "probeBudgetNone": "None: no probe runs",
-      "probeModelsBuilder": "The Builder's runtime and model"
+      "probeModelsBuilder": "The Builder's runtime and model",
+      "poolsGroup": "Your pools",
+      "poolOption": "Pool {pool}, any ready node"
     },
     "metaHistory": "History of {project}",
     "metaGraph": "Graph health of {project}",

@@ -19,7 +19,7 @@ import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Ago } from "@/components/workers/ago";
-import { workerHref } from "@/components/workers/queries";
+import { poolHref, workerHref } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
@@ -153,7 +153,7 @@ function ScheduleCard({ project, status }: { project: string; status: CuratorSta
           </Fact>
         ) : null}
         <Fact label={t("worker")}>
-          <Identifier value={charter.worker} href={ownWorker ? workerHref(charter.worker_id) : undefined} testId="curator-worker" />
+          <Identifier value={charter.worker ?? `pool=${charter.pool}`} href={!ownWorker ? undefined : charter.worker_id !== null ? workerHref(charter.worker_id) : charter.pool ? poolHref(charter.pool) : undefined} testId="curator-worker" />
         </Fact>
         <Fact label={t("owner")}>
           <span className="font-mono text-xs">{charter.schedule_owner}</span>
