@@ -18,6 +18,13 @@ export type Worker = Schemas["Worker"];
 export type Pairing = Schemas["Pairing"];
 export type PairingState = Schemas["PairingState"];
 export type PairingRequest = Schemas["PairingRequest"];
+export type Pool = Schemas["Pool"];
+export type PoolNode = Schemas["PoolNode"];
+export type PoolRequest = Schemas["PoolRequest"];
+export type PoolUpdate = Schemas["PoolUpdate"];
+export type JoinToken = Schemas["JoinToken"];
+export type IssuedJoinToken = Schemas["IssuedJoinToken"];
+export type JoinTokenRequest = Schemas["JoinTokenRequest"];
 
 /** The list and a worker's page poll the hub this often, so a heartbeat or a drain shows within seconds. */
 export const WORKERS_REFRESH_MS = 10_000;
@@ -37,6 +44,9 @@ export const workerKeys = {
   list: ["workers", "list"] as const,
   one: (id: number) => ["workers", "one", id] as const,
   pairing: (id: number) => ["workers", "pairing", id] as const,
+  pools: ["workers", "pools"] as const,
+  pool: (name: string) => ["workers", "pools", "one", name.toLowerCase()] as const,
+  tokens: (name: string) => ["workers", "pools", "tokens", name.toLowerCase()] as const,
 };
 
 /**
@@ -75,7 +85,54 @@ export const pairingQuery = (api: ApiSource, id: number) =>
     refetchIntervalInBackground: true, // the machine may join while the person is in a terminal window
   });
 
+/**
+ * The visitor's own pools (docs/workers.md, Pools), each with its nodes that are not revoked. Another member's pool is
+ * never listed, and answers 404 by name, the same as a name no pool has.
+ */
+export const poolsQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: workerKeys.pools,
+    queryFn: ({ signal }) => call(api().GET("/v1/worker-pools", { signal })),
+    refetchInterval: WORKERS_REFRESH_MS,
+  });
+
+export const poolQuery = (api: ApiSource, name: string) =>
+  queryOptions({
+    queryKey: workerKeys.pool(name),
+    queryFn: ({ signal }) => call(api().GET("/v1/worker-pools/{name}", { params: { path: { name } }, signal })),
+    refetchInterval: WORKERS_REFRESH_MS,
+  });
+
+/** A pool's join tokens, newest first: the hub shows their state and uses, never the token itself. */
+export const poolTokensQuery = (api: ApiSource, name: string) =>
+  queryOptions({
+    queryKey: workerKeys.tokens(name),
+    queryFn: ({ signal }) => call(api().GET("/v1/worker-pools/{name}/tokens", { params: { path: { name } }, signal })),
+    refetchInterval: 30_000,
+  });
+
 // Writes, each with the session's X-Evo-CSRF header.
+
+export async function createPool(api: ApiClient, body: PoolRequest): Promise<Pool> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/worker-pools", { body, headers }));
+}
+
+export async function updatePool(api: ApiClient, name: string, body: PoolUpdate): Promise<Pool> {
+  const headers = await csrfHeaders(api);
+  return call(api.PATCH("/v1/worker-pools/{name}", { params: { path: { name } }, body, headers }));
+}
+
+/** A new join token of the pool: the answer holds the token itself, the one time the hub shows it. */
+export async function createJoinToken(api: ApiClient, name: string, body: JoinTokenRequest): Promise<IssuedJoinToken> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/worker-pools/{name}/tokens", { params: { path: { name } }, body, headers }));
+}
+
+export async function revokeJoinToken(api: ApiClient, name: string, id: number): Promise<JoinToken> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/worker-pools/{name}/tokens/{token_id}/revoke", { params: { path: { name, token_id: id } }, headers }));
+}
 
 export async function createPairing(api: ApiClient, body: PairingRequest): Promise<Pairing> {
   const headers = await csrfHeaders(api);
@@ -115,4 +172,10 @@ export const WORKERS_HREF = "/workers" as Route;
 
 export function workerHref(id: number): Route {
   return `/workers/${id}` as Route;
+}
+
+export const POOLS_HREF = "/workers/pools" as Route;
+
+export function poolHref(name: string): Route {
+  return `/workers/pools/${encodeURIComponent(name)}` as Route;
 }

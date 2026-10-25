@@ -31,6 +31,7 @@ import {
   Ship,
   Signpost,
   Sparkles,
+  Store,
   Tags,
   Telescope,
   TrendingUp,
@@ -86,6 +87,7 @@ export type NavLabel =
   | "workers"
   | "myMemories"
   | "globalSkills"
+  | "market"
   | "secrets"
   | "accounts"
   | "admin";
@@ -176,6 +178,7 @@ export const HUB_NAV: readonly HubNavItem[] = [
   { label: "org", icon: Building2, href: "/org" },
   { label: "myMemories", icon: Brain, href: "/memories" },
   { label: "globalSkills", icon: Sparkles, href: "/skills" },
+  { label: "market", icon: Store, href: "/market", feature: "market" },
   { label: "secrets", icon: LockKeyhole, href: "/secrets", group: "settings" },
   { label: "accounts", icon: UserRoundCog, href: "/accounts", group: "settings" },
   { label: "admin", icon: Shield, href: "/admin", adminOnly: true, group: "settings" },

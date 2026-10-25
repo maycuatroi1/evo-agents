@@ -10,8 +10,9 @@ design, the models and the queries).
   the installed one to a newer version, remove it;
 - GET and POST /v1/plugins/{name}/config, GET .../config/versions and POST .../config/rollback: the hub's own layer
   (instance) of the config of an installed plugin, below every project's (``evo_agents.hub.server.plugin_configs``);
-- GET /v1/plugin-publishers: the publishers whose signatures the hub accepts (EVO_HUB_PLUGIN_PUBLISHERS), each with
-  the workflows and keys that sign for it, and whether its plugins may be core plugins (EVO_HUB_PLUGIN_CORE_PUBLISHERS).
+
+The publishers whose signatures publishing and installing accept are the operator's and those hub admins trusted
+(``evo_agents.hub.server.plugin_publishers``, GET|POST /v1/plugin-publishers).
 
 Writes are audited as plugin.publish, plugin.install, plugin.upgrade and plugin.remove, naming
 ``plugin:<name>@<version>``, and plugin.config. ``evo-agents hub plugin publish|list|show|install|upgrade|remove``
@@ -25,7 +26,6 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
-from pydantic import BaseModel, Field
 
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
@@ -64,6 +64,7 @@ from evo_agents.hub.server.plugin_store import (
     record_version,
     set_installed,
     set_removed,
+    trusted_publishers,
     version_model,
     version_rows,
 )
@@ -83,30 +84,6 @@ router = APIRouter(
     dependencies=[Depends(admin)],
     responses={401: {"model": ErrorBody}, 403: {"model": ErrorBody}},
 )
-publishers_router = APIRouter(
-    prefix="/v1/plugin-publishers",
-    tags=["plugins"],
-    dependencies=[Depends(admin)],
-    responses={401: {"model": ErrorBody}, 403: {"model": ErrorBody}},
-)
-
-
-class PluginPublisher(BaseModel):
-    id: str
-    identities: list[str] = Field(
-        description="what signs for it: sigstore:<workflow> for a CI workflow, ed25519:<key id> for a key"
-    )
-    core: bool = Field(description="whether its plugins may be core plugins, which run in the hub's processes")
-
-
-@publishers_router.get("", response_model=list[PluginPublisher])
-async def publishers(request: Request) -> list[PluginPublisher]:
-    """The publishers an operator of this hub trusts, in the order EVO_HUB_PLUGIN_PUBLISHERS names them."""
-    config = request.app.state.config
-    return [
-        PluginPublisher(id=item.id, identities=item.identities(), core=item.id in config.plugin_core_publishers)
-        for item in config.plugin_publishers
-    ]
 
 
 @router.get("", response_model=list[Plugin])
@@ -133,10 +110,11 @@ async def publish_version(request: Request, name: PluginName, body: PluginPublis
         held = await held_version(conn, name, body.sha256)
         if held is not None:
             return PluginPublished(name=name, created=False, version=version_model(held, state.hub_version))
+        trusted = await trusted_publishers(conn, state.config)
     data = await fetch_bundle(store, body.sha256, body.size)
     sigstore, version = state.plugin_sigstore, state.hub_version
     checked = await asyncio.to_thread(
-        check_bundle, data, body.signature, state.config, sigstore, version, NOTHING_PUBLISHED
+        check_bundle, data, body.signature, state.config, sigstore, version, NOTHING_PUBLISHED, trusted
     )
     if checked.manifest.id != name:
         raise HTTPException(
@@ -166,9 +144,17 @@ async def _install(request: Request, user, name: str, wanted: str | None, *, upg
         check_state(row, upgrade=upgrade, target=wanted)
         target = pick_version(name, rows, wanted, row.installed_version if upgrade else None, state.hub_version)
         check_placeable(row, target)
+        trusted = await trusted_publishers(conn, state.config)
     data = await fetch_bundle(blob_store(request), target.sha256, target.size)
     await asyncio.to_thread(
-        check_bundle, data, target.signature, state.config, state.plugin_sigstore, state.hub_version, NOTHING_INSTALLED
+        check_bundle,
+        data,
+        target.signature,
+        state.config,
+        state.plugin_sigstore,
+        state.hub_version,
+        NOTHING_INSTALLED,
+        trusted,
     )
     async with state.engine.begin() as conn:
         row = await find(conn, name, lock=True)

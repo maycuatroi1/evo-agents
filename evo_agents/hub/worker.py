@@ -15,6 +15,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.expire_seats``, hourly: the org seats past their end date or that of a cohort holding them are ended, audited
   with the hub as actor, and the leases still out of the runs of every person whose primary seat ended are taken back
   and their GitHub tokens revoked (``evo_agents.hub.server.org_expiry``).
+- ``hub.reap_pool_nodes``, hourly: each worker pool node offline longer than its pool's ``reap_after_days`` is
+  revoked as its owner's revoke would, with the hub as actor (``evo_agents.hub.server.worker_reaper``); workers
+  outside a pool are left alone.
 - ``hub.prune_jobs``, daily: finished jobs older than JOB_RETENTION, failed ones included.
 - ``hub.kg_build``: one build of a project's knowledge graph (``evo_agents.hub.kg_build``), deferred by the api
   under the project's kg lock.
@@ -235,6 +238,25 @@ async def expire_seats(context: JobContext, timestamp: int | None = None) -> dic
 
     found = hub(context)
     return await expire(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
+
+
+@queue.periodic(cron="41 */6 * * *")
+@queue.task(name=jobs.MARKET_REFRESH, pass_context=True, queueing_lock=jobs.MARKET_REFRESH)
+async def market_refresh(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.market_refresh import refresh
+
+    found = hub(context)
+    done = await refresh(found.engine, found.config, found.sealer)
+    return {"sources": len(done), "failed": sum(1 for item in done if item["error"])}
+
+
+@queue.periodic(cron="47 * * * *")
+@queue.task(name=jobs.REAP_POOL_NODES, pass_context=True, queueing_lock=jobs.REAP_POOL_NODES)
+async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.run_state import reap_pool_nodes as reap
+
+    found = hub(context)
+    return await reap(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
 @queue.task(name=jobs.KG_BUILD, pass_context=True)

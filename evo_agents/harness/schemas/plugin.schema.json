@@ -94,6 +94,14 @@
     },
     "backend": {
       "$ref": "#/$defs/backend"
+    },
+    "schema": {
+      "$ref": "#/$defs/plugin_schema"
+    },
+    "ui": {
+      "description": "Core plugins only: module:directory, the directory of the plugin's package (read with importlib.resources) that holds the built files of its pages, as an isolated plugin's bundle holds them under pages/. A core page that names an entry (pages/<file>.html) is framed from it in the sandbox, with the bridge evo-plugin/1 and the hub's UI kit (docs/plugins.md, Pages).",
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}$"
     }
   },
   "$defs": {
@@ -245,6 +253,12 @@
         },
         "loop_rules": {
           "$ref": "#/$defs/loop_rules"
+        },
+        "cli": {
+          "$ref": "#/$defs/cli"
+        },
+        "notice_kinds": {
+          "$ref": "#/$defs/notice_kinds"
         }
       }
     },
@@ -459,7 +473,7 @@
       }
     },
     "table": {
-      "description": "A table a core plugin owns, which a migration of the hub creates: its name starts with the plugin's id, - made _, then _.",
+      "description": "A table a core plugin owns: its name starts with the plugin's id, - made _, then _. The plugin's own chain of migrations makes it (schema), or, for the tables of the hub's older chain, a migration of the hub.",
       "type": "object",
       "required": [
         "name"
@@ -490,7 +504,7 @@
       }
     },
     "page": {
-      "description": "A page of the plugin on the hub's web, at /p/<project>/x/<id>/<name> in a project that enabled the plugin, with an item in the project's menu unless menu is false. An isolated plugin's page is an HTML file of its bundle under pages/ (entry), which the web shows in a sandboxed iframe with an opaque origin, under a strict CSP, talking to the hub only through the bridge evo-plugin/1 (docs/plugins.md); a core plugin's page is native, a page of the hub's web itself (web/src), and names no entry.",
+      "description": "A page of the plugin on the hub's web, at /p/<project>/x/<id>/<name> in a project that enabled the plugin, with an item in the project's menu unless menu is false. An isolated plugin's page is an HTML file of its bundle under pages/ (entry), which the web shows in a sandboxed iframe with an opaque origin, under a strict CSP, talking to the hub only through the bridge evo-plugin/1 (docs/plugins.md); a core plugin's page names an entry when the plugin has ui, and is framed the same way from its package; otherwise it is native, a page of the hub's web itself (web/src).",
       "type": "object",
       "required": [
         "name"
@@ -515,7 +529,7 @@
           "minimum": 1
         },
         "entry": {
-          "description": "Isolated plugins only: the page's HTML file, a path in the bundle under pages/, such as pages/board.html. The files it loads (scripts, styles, images) are the bundle's files under pages/ too, by relative URL.",
+          "description": "The page's HTML file, a path under pages/, such as pages/board.html: in an isolated plugin's bundle, or in a core plugin's ui directory (ui names it). The files it loads (scripts, styles, images) are files under pages/ too, by relative URL.",
           "type": "string",
           "pattern": "^pages/[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}[.]html$"
         },
@@ -545,6 +559,12 @@
         "menu": {
           "description": "Whether the page has an item in the project's menu; true when left out. A page without one is reached by a link.",
           "type": "boolean"
+        },
+        "slot": {
+          "description": "Where the hub's web shows the page instead of on a page of its own: decide, as a panel of the project's Decisions page, framed like the plugin's other pages, for what waits for a person in the plugin; the page hides itself (evo.resize(0)) while nothing waits. A page with a slot has no item in the project's menu.",
+          "enum": [
+            "decide"
+          ]
         }
       }
     },
@@ -1004,6 +1024,325 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/loop_rule"
+      }
+    },
+    "plugin_schema": {
+      "description": "Core plugins only: the plugin's own tables and their chain of migrations, which `evo-agents hub migrate` runs after the hub's chain, with a version table of its own, alembic_version_<id> (- made _). Every table of the metadata starts with the plugin's table prefix and points foreign keys only at the hub's keys (core_plugin_api.HUB_KEYS).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metadata",
+        "migrations"
+      ],
+      "properties": {
+        "metadata": {
+          "description": "module:attribute of the plugin's sqlalchemy.MetaData.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "migrations": {
+          "description": "The package of the plugin's Alembic revisions, NNNN_<name>.py in one straight chain, each revision id starting with the table prefix (northwind_ledger_0001).",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "adopts": {
+          "description": "Tables of the metadata that may exist already, made by an older chain of the hub: the plugin's first revision takes them as they are (core_plugin_api.adopt_tables) without changing a row, and creates them where they are missing.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
+        }
+      }
+    },
+    "cli_arg": {
+      "description": "An argument of a command: a flag (--name) or a positional, read as type, put in the route's path, query or JSON body.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "in"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,40}$"
+        },
+        "flag": {
+          "type": "string",
+          "pattern": "^--[a-z][a-z0-9-]{0,40}$"
+        },
+        "positional": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "file"
+          ]
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "in": {
+          "enum": [
+            "path",
+            "query",
+            "body"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "help": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "default": {
+          "description": "The value an argument left out takes; the route gets it as if it was given.",
+          "type": [
+            "string",
+            "integer",
+            "number"
+          ]
+        },
+        "metavar": {
+          "description": "The word that stands for the value in the help, the name in capitals when left out.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_-]{0,40}$"
+        },
+        "values": {
+          "description": "The flag takes one value for each of these names (--add KIND VALUE), each sent as a field of that name instead of one field of the argument's name.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$"
+          }
+        },
+        "group": {
+          "description": "Flags of the same group exclude each other: a command line gives at most one of them.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,40}$"
+        }
+      }
+    },
+    "cli_command": {
+      "description": "A command of `evo-agents hub <id> <name>`, which the CLI reads from the hub (GET /v1/cli/plugins) and runs by calling the plugin's route http.path under /v1/x/<id>/ (/v1/x/<id>/<project>/ when project is true), so a plugin adds commands without a release of the CLI.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "http"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$"
+        },
+        "help": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method",
+            "path"
+          ],
+          "properties": {
+            "method": {
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            },
+            "path": {
+              "description": "The route's path below the plugin's prefix, {name} for a path argument.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_{}./-]{0,200}$"
+            }
+          }
+        },
+        "project": {
+          "description": "The command takes --project, as the hub's other commands do, and calls the route of that project.",
+          "type": "boolean"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cli_arg"
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "json": {
+              "enum": [
+                "object",
+                "array"
+              ]
+            },
+            "table": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 60
+              }
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "render": {
+              "description": "text: without --json the CLI asks the route for its own words (query render=text) and prints the text of the answer as it is, nothing when it is empty.",
+              "enum": [
+                "text"
+              ]
+            },
+            "keys": {
+              "description": "The keys of what --json prints (of each object when json is array), for the CLI's contract.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 60
+              }
+            },
+            "schema": {
+              "description": "The OpenAPI component the route answers with, for the CLI's contract.",
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z0-9]{0,80}$"
+            }
+          }
+        },
+        "when": {
+          "description": "Other routes of the command: the first entry whose argument arg is given (not left out, a switch on) calls its http instead of the command's own.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "arg",
+              "http"
+            ],
+            "properties": {
+              "arg": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,40}$"
+              },
+              "http": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "method",
+                  "path"
+                ],
+                "properties": {
+                  "method": {
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ]
+                  },
+                  "path": {
+                    "description": "The route's path below the plugin's prefix, {name} for a path argument.",
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_{}./-]{0,200}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "confirm": {
+          "description": "The command acts only when the switch flag is given; without it the CLI prints text on stderr, with {name} for an argument's value and {project} for the project, and exits with status 2, calling nothing.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "flag",
+            "text"
+          ],
+          "properties": {
+            "flag": {
+              "type": "string",
+              "pattern": "^--[a-z][a-z0-9-]{0,40}$"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "client": {
+          "description": "A command the CLI runs with a client of its own instead of one call of http: browser_post claims the oldest post queued for a browser, posts it with the CLI's browser script and reports it (routes browser/claim and browser/{post_id}/result); browser_login opens a visible browser on the login page of a channel and seals the session the member makes (routes channels, channels/{channel_id}/session and the plugin's config field <channel>_session). Both need Playwright with Chromium where the CLI runs.",
+          "enum": [
+            "browser_post",
+            "browser_login"
+          ]
+        }
+      }
+    },
+    "cli": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cli_command"
+      }
+    },
+    "notice_kind": {
+      "description": "A kind of notification the plugin sends (core_plugin_api.notify), named with the plugin's table prefix (northwind_ledger_overdue), which a member's notification settings list.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9_]{1,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "notice_kinds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/notice_kind"
       }
     }
   }

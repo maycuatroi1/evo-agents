@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 
 from evo_agents.hub import config
+from evo_agents.hub.model_catalog import GATEWAY_VERSION
 from evo_agents.plugins.environment import NPROC
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +28,7 @@ COMPOSE = ROOT / "deploy/hub/docker-compose.yml"
 ENV_EXAMPLE = ROOT / "deploy/hub/.env.example"
 CONFIG = Path(config.__file__)
 BLOCK = "x-hub-environment"
+GATEWAY_BLOCK = "x-gateway-environment"  # the model gateway's variables, the api's alone
 NAME = re.compile(r"EVO_HUB_[A-Z0-9_]*[A-Z0-9]")  # a prefix such as EVO_HUB_S3_ ends with _ and is no variable
 DSN = "postgresql://hub@db/hub"
 
@@ -91,7 +93,10 @@ def compose() -> dict:
 
 
 def passed_by_compose() -> dict[str, str]:
-    return compose()[BLOCK]
+    """Every variable compose passes the hub: x-hub-environment, to api and worker, and x-gateway-environment, to the
+    api alone."""
+    data = compose()
+    return {**data[BLOCK], **data[GATEWAY_BLOCK]}
 
 
 def default_of(name: str, value: str) -> str | None:
@@ -144,10 +149,11 @@ def test_compose_passes_only_what_the_hub_config_reads_and_not_passed_stays_true
 
 
 def test_compose_gives_api_and_worker_the_block_each_line_as_name_colon_dash_default():
-    services = compose()["services"]
-    block = passed_by_compose()
-    for service in ("api", "worker"):
-        assert services[service]["environment"] == block, f"{service} must take environment: *hub-environment"
+    data = compose()
+    services, block = data["services"], passed_by_compose()
+    assert services["api"]["environment"] == block, "api must take <<: [*hub-environment, *gateway-environment]"
+    assert services["worker"]["environment"] == data[BLOCK], "worker must take environment: *hub-environment"
+    assert not set(data[GATEWAY_BLOCK]) & set(data[BLOCK]), f"{GATEWAY_BLOCK} is the api's alone"
     malformed = [f"  {name}: {value}" for name, value in block.items() if default_of(name, value) is None]
     assert not malformed, (
         f"each line of {BLOCK} is NAME: ${{NAME:-default}}, the default empty unless it equals the hub's own, so "
@@ -171,6 +177,51 @@ def test_compose_defaults_are_the_hub_config_defaults():
         "runs with another value than the code and docs/hub.md say; make the compose default empty, or equal to "
         "the hub's:\n" + "\n".join(differ)
     )
+
+
+# The model gateway (docs/hub.md, section Model gateway)
+
+GATEWAY_VARIABLES = {"EVO_HUB_GATEWAY_URL", "EVO_HUB_GATEWAY_SECRET"}
+
+
+def test_gateway_compose_variables_reach_the_api_alone_and_default_to_off():
+    data = compose()
+    assert set(data[GATEWAY_BLOCK]) == GATEWAY_VARIABLES == set(config.GATEWAY_VARIABLES)
+    assert all(default_of(name, value) == "" for name, value in data[GATEWAY_BLOCK].items()), (
+        "unset: the gateway is off"
+    )
+    assert GATEWAY_VARIABLES <= listed_in_env_example()
+    for name, service in data["services"].items():
+        environment = set(service.get("environment") or {})
+        expected = {"api": GATEWAY_VARIABLES, "gateway": {"EVO_HUB_GATEWAY_SECRET"}}.get(name, set())
+        assert environment & GATEWAY_VARIABLES == expected, f"{name} must not hold the gateway's credential"
+    assert config.load_config({"EVO_HUB_DSN": DSN}).gateway_missing() == ["EVO_HUB_GATEWAY_SECRET"]
+    on = config.load_config({"EVO_HUB_DSN": DSN, "EVO_HUB_GATEWAY_SECRET": "s" * 32})
+    assert on.gateway_url == config.DEFAULT_GATEWAY_URL and not on.gateway_missing()
+
+
+def test_gateway_compose_runs_the_pinned_image_on_its_own_network_without_a_port():
+    data = compose()
+    gateway, api = data["services"]["gateway"], data["services"]["api"]
+    image, _, digest = gateway["image"].partition("@")
+    assert image == f"diegosouzapw/omniroute:{GATEWAY_VERSION}" and re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+    assert "ports" not in gateway and "labels" not in gateway, "no published port, no domain"
+    assert set(gateway["networks"]) == {"gateway"}, "neither the database (platform) nor web (default)"
+    assert "evo-agents-hub-gateway" in gateway["networks"]["gateway"]["aliases"]
+    assert "gateway" in api["networks"]
+    # A host whose default address pools are all taken creates the network only with a stated subnet.
+    assert data["networks"]["gateway"] == {"ipam": {"config": [{"subnet": "${EVO_HUB_GATEWAY_SUBNET:-10.231.128.0/28}"}]}}
+    on_gateway = sorted(
+        name for name, service in data["services"].items() if "gateway" in (service.get("networks") or {})
+    )
+    assert on_gateway == ["api", "gateway"], "only the api reaches the gateway"
+    assert (
+        gateway["environment"]["REQUIRE_API_KEY"] == "true" and gateway["environment"]["ENABLE_REQUEST_LOGS"] == "false"
+    )
+    assert gateway["cap_drop"] == ["ALL"] and "no-new-privileges:true" in gateway["security_opt"]
+    assert {"cpus", "mem_limit"} <= set(gateway) and "env_file" not in gateway and "secrets" not in gateway
+    script = gateway["entrypoint"][-1]
+    assert "exit 0" in script.split("\n")[0] and "unset derived EVO_HUB_GATEWAY_SECRET" in script
 
 
 # The plugins service, which runs third-party code

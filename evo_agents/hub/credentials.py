@@ -6,17 +6,18 @@ A secret is a value its owner writes once into the hub and never reads back: kin
 environment as ``env_var``; kind ``git`` answers git's credential requests for origins under ``url_prefix`` with
 ``username`` and the value as password. A secret is bound to projects (and, optionally, to workers); a run of one of
 those projects, on one of those workers, gets a lease of it. Kind ``forge`` is the exception: a GitLab token for the
-projects of origins under ``url_prefix`` that the hub's own process uses to read, rebase and merge merge requests,
-never leased to a run (``LEASED_KINDS``) and never shown to an agent. The hub also leases tokens it makes itself:
-provider ``github-app`` is an installation token of the hub's GitHub App, for the run's repos on github.com only, that
-lives an hour and is revoked when the run ends; a review run's, a judge run's and an author run's read only
-(``github_permissions``). A run of the Curator (a review run, a judge run, or a plan run of a plan the Curator made,
-``evo_agents.hub.judge``) gets its token from a second App, the Curator's own (EVO_HUB_CURATOR_APP_ID and
+projects of origins under ``url_prefix`` that the hub's own process uses to read, rebase and merge merge requests, never
+leased to a run (``LEASED_KINDS``) and never shown to an agent. Kind ``provider`` is the API key of a provider account
+(``PROVIDER_KIND``): its endpoint and models are in provider_accounts, and no run is leased it raw. The hub also leases
+tokens it makes itself: provider ``github-app`` is an installation token of the hub's GitHub App, for the run's repos on
+github.com only, that lives an hour and is revoked when the run ends; a review run's, a judge run's and an author run's
+read only (``github_permissions``). A run of the Curator (a review run, a judge run, or a plan run of a plan the Curator
+made, ``evo_agents.hub.judge``) gets its token from a second App, the Curator's own (EVO_HUB_CURATOR_APP_ID and
 EVO_HUB_CURATOR_APP_PRIVATE_KEY), which the rulesets of the repos keep off their default branches, and never from the
 first: without the Curator's App it gets none. On other forges it gets the one git secret the charter names
 (``git_secret``) and the env secrets the charter lists (``env_secrets``), none of the owner's others. A release run
-(kind release, ``evo_agents.hub.releases``) gets only the env secrets of its runtime's login (RELEASE_ENV_VARS) and,
-for its repo on GitHub, a token of the first App with ``GITHUB_PERMISSIONS`` and never GITHUB_WORKFLOW_PERMISSIONS
+(kind release, ``evo_agents.hub.releases``) gets only the env secrets of its runtime's login (RELEASE_ENV_VARS) and, for
+its repo on GitHub, a token of the first App with ``GITHUB_PERMISSIONS`` and never GITHUB_WORKFLOW_PERMISSIONS
 (``github_workflows``), no git secret of its owner: like the Curator's, its agent holds nothing that pushes, and only
 its daemon pushes its branch release/<version>.
 
@@ -44,6 +45,9 @@ LEASED_KINDS = ("env", "git")  # the kinds a run is leased; a forge secret never
 TEST_ENVIRONMENT = "test"
 SECRET_ENVIRONMENTS = (TEST_ENVIRONMENT,)
 FORGE_KIND = "forge"  # a GitLab token only the hub's process opens, to drive merge requests (server/forge.py)
+# The API key of a provider account (schema 0151, server/provider_accounts.py): never leased raw, as LEASED_KINDS
+# leaves it out, and written through /v1/provider-accounts, never /v1/secrets
+PROVIDER_KIND = "provider"
 PROVIDERS = ("secret", "github-app")  # a member's secret, or an installation token the hub's GitHub App makes
 
 ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
@@ -180,6 +184,10 @@ class Lease:
     username: str | None = None
     value: str = field(default="", repr=False)
     expires_at: datetime | None = None
+    # kind gateway (``evo_agents.hub.gateway_runs``): the hub's gateway route, the run's model and the format it speaks
+    base_url: str | None = None
+    model: str | None = None
+    api_format: str | None = None
 
     def __repr__(self) -> str:
         target = self.env_var if self.kind == "env" else self.url_prefix
@@ -201,6 +209,9 @@ class Lease:
             "username": self.username,
             "value": self.value,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            **(
+                {"base_url": self.base_url, "model": self.model, "api_format": self.api_format} if self.base_url else {}
+            ),
         }
 
     @classmethod
@@ -216,6 +227,9 @@ class Lease:
             username=data.get("username"),
             value=str(data.get("value") or ""),
             expires_at=datetime.fromisoformat(expires) if expires else None,
+            base_url=data.get("base_url"),
+            model=data.get("model"),
+            api_format=data.get("api_format"),
         )
 
     def seconds_left(self, now: datetime) -> float | None:

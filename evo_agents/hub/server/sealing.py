@@ -6,7 +6,8 @@ associated data binds a value to where it belongs, ``secret:{owner_id}:{name}:{k
 ``agent-secret:{profile_id}:{name}`` for an env secret an agent profile owns (never of the member form, so a sealed
 value copied between the two kinds of row does not open) and ``lease:{id}`` for a token the hub leased, ``plugin-config:{plugin}:{layer}:{project}:{profile}:{field}`` for a
 secret field of a plugin's config, and ``browser-identity:{id}:{version}`` for the data key of one version of a browser
-identity's profile (``evo_agents.hub.server.browser_profiles``), so a sealed value copied into another row, or to
+identity's profile (``evo_agents.hub.server.browser_profiles``), and ``market-source:{id}`` for the GitHub token of a
+market source (``evo_agents.hub.market_refresh``), so a sealed value copied into another row, or to
 another version, does not open there. The key is 32 bytes in base64url, read by ``evo_agents.hub.config``; it never
 reaches the database, a log line or an error. ``Sealer.seal`` and ``Sealer.open`` take text; ``seal_bytes`` and
 ``open_bytes`` take bytes, such as a data key, in the same form.
@@ -69,6 +70,12 @@ def agent_secret_aad(profile_id: int, name: str) -> bytes:
     return f"agent-secret:{profile_id}:{name}".encode()
 
 
+def agent_provider_aad(profile_id: int, name: str) -> bytes:
+    """The associated data of the key of an agent's provider account: it opens neither as an env secret of the
+    profile of the same name nor as a member's."""
+    return f"agent-provider:{profile_id}:{name}".encode()
+
+
 def lease_aad(lease_id: int) -> bytes:
     """The associated data of a leased token: it opens only as the value of this lease."""
     return f"lease:{lease_id}".encode()
@@ -84,6 +91,11 @@ def browser_identity_aad(identity_id: int, version: int) -> bytes:
     """The associated data of the data key of version ``version`` of a browser identity's profile: it opens only for
     that identity at that version, so a sealed key copied to another identity or version does not open."""
     return f"browser-identity:{identity_id}:{version}".encode()
+
+
+def market_source_aad(source_id: int) -> bytes:
+    """The associated data of the GitHub token of market source ``source_id``: it opens only as that source's."""
+    return f"market-source:{source_id}".encode()
 
 
 class Sealer:
@@ -117,6 +129,23 @@ class Sealer:
             return self.open_bytes(sealed, aad).decode()
         except UnicodeDecodeError:  # bytes sealed as bytes, never as text
             raise _altered(sealed) from None
+
+    def seal_stored(self, value: str, aad: bytes) -> dict:
+        """``value`` sealed for ``aad`` as a JSONB column keeps it: ``{ciphertext, nonce, key_id}``, base64."""
+        sealed = self.seal(value, aad)
+        return {
+            "ciphertext": base64.b64encode(sealed.ciphertext).decode(),
+            "nonce": base64.b64encode(sealed.nonce).decode(),
+            "key_id": sealed.key_id,
+        }
+
+    def open_stored(self, stored: dict, aad: bytes) -> str:
+        """The value ``seal_stored`` gave ``stored`` for ``aad``; ``Unsealable`` otherwise."""
+        try:
+            sealed = Sealed(base64.b64decode(stored["ciphertext"]), base64.b64decode(stored["nonce"]), stored["key_id"])
+        except (KeyError, TypeError, ValueError):
+            raise Unsealable("a sealed value that is not {ciphertext, nonce, key_id}") from None
+        return self.open(sealed, aad)
 
     def open_bytes(self, sealed: Sealed, aad: bytes) -> bytes:
         """The bytes ``sealed`` holds; ``Unsealable`` when this key did not seal them for ``aad``."""

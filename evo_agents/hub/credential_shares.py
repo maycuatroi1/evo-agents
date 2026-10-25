@@ -18,6 +18,7 @@ git secret and any other env secret need none.
 from __future__ import annotations
 
 from evo_agents.hub.account_providers import provider_of
+from evo_agents.hub.credentials import PROVIDER_KIND
 
 USER, UNIT, ALL = GRANTEE_KINDS = ("user", "unit", "all")
 SUBSCRIPTION, API_KEY, GIT, ENV = CREDENTIAL_CLASSES = ("subscription", "api_key", "git", "env")
@@ -40,9 +41,11 @@ ACK_HINT = "To share it anyway, acknowledge the warning: terms_ack true in the A
 
 def credential_class(kind: str, env_var: str | None) -> str:
     """The class of a secret of ``kind`` setting ``env_var``: subscription for a personal Claude account, whatever
-    its sign-in (token or OAuth); api_key for an API key of a model provider; git for kind git; env for the rest."""
+    its sign-in (token or OAuth); api_key for an API key of a model provider, a provider account's among them; git for kind git; env for the rest."""
     if kind == "git":
         return GIT
+    if kind == PROVIDER_KIND:  # the API key of a provider account
+        return API_KEY
     provider = provider_of(env_var or "")
     if provider in SUBSCRIPTION_PROVIDERS:
         return SUBSCRIPTION

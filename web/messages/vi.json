@@ -280,7 +280,9 @@
       "apps": "Ứng dụng",
       "settings": "Cài đặt"
     },
-    "opportunities": "Cơ hội"
+    "opportunities": "Cơ hội",
+    "market": "Chợ plugin",
+    "pools": "Pool"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -815,7 +817,8 @@
       "plugins": "Plugin",
       "diagnostics": "Chẩn đoán",
       "branding": "Nhận diện",
-      "features": "Tính năng"
+      "features": "Tính năng",
+      "market": "Chợ plugin"
     },
     "filters": {
       "apply": "Lọc",
@@ -1254,6 +1257,7 @@
         "curator": "Curator",
         "kg": "Knowledge graph",
         "monitor": "Monitor",
+        "market": "Chợ plugin",
         "canvas": "Canvas",
         "srs": "Yêu cầu (SRS)",
         "tasks": "Task"
@@ -1263,6 +1267,7 @@
         "curator": "Ca đêm của Curator, các đề xuất và bản tin sáng của nó.",
         "kg": "Knowledge graph của dự án: các trang, API và các tool kg trên MCP của hub.",
         "monitor": "Các run đang chạy ở mọi dự án, theo dõi trực tiếp.",
+        "market": "Chợ plugin: duyệt các chợ hub đọc và cài plugin từ đó.",
         "canvas": "Canvas của dự án: các nhận định, bằng chứng và phần chấm của chúng, cùng @strategist.",
         "srs": "Các tài liệu yêu cầu của dự án, phần review và duyệt của chúng, cùng @ba.",
         "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt."
@@ -2553,7 +2558,12 @@
         "terminal": "Terminal trên web",
         "terminalOn": "Cho phép",
         "terminalOff": "Không cho phép",
-        "host": "Máy"
+        "host": "Máy",
+        "pool": "Pool",
+        "autoLabels": "Label tự động",
+        "noAutoLabels": "Chưa báo cáo",
+        "taints": "Taint",
+        "noTaints": "Không có"
       },
       "checkouts": {
         "title": "Checkout",
@@ -2575,7 +2585,9 @@
         "empty": "Worker này chưa nhận run nào.",
         "caption": "Run gần đây của worker {name}",
         "hidden": "{count, plural, =1 {Không hiện run của dự án {projects}: bạn không có quyền trên dự án đó.} other {Không hiện run của các dự án {projects}: bạn không có quyền trên các dự án đó.}}"
-      }
+      },
+      "notReady": "Chưa sẵn sàng: worker không nhận run nào. {reason}",
+      "notReadyNoReason": "Chưa sẵn sàng: worker không nhận run nào cho đến khi doctor báo cáo lại."
     },
     "actions": {
       "drain": "Ngừng nhận việc",
@@ -2654,7 +2666,14 @@
       "savedText": "Worker nhận chúng ở nhịp heartbeat kế tiếp.",
       "failed": "Không lưu được cài đặt của {name}",
       "revoked": "Worker đã bị thu hồi nên không đổi cài đặt được nữa. Trang vừa được tải lại.",
-      "requestId": "Mã request: {id}"
+      "requestId": "Mã request: {id}",
+      "taints": "Taint",
+      "taintsPlaceholder": "gpu, cost=high",
+      "taintsHint": "Không bắt buộc. Worker chỉ nhận các run chấp nhận mọi taint, hoặc các run ghim vào nó.",
+      "taintsHintPool": "Taint riêng của worker. Taint của pool {pool} được thêm sau; hãy sửa chúng ở pool.",
+      "labelsHintPool": "Label riêng của worker. Label của pool {pool} được thêm sau; hãy sửa chúng ở pool.",
+      "taintsInvalid": "Taint không hợp lệ: {taints}. Taint là một từ hoặc key=value gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.",
+      "taintsTooMany": "Tối đa {max} taint."
     },
     "version": {
       "title": "Phiên bản",
@@ -2806,6 +2825,153 @@
       "askFailed": "Không gửi được yêu cầu cài trình duyệt cho {name}",
       "cancelFailed": "Không huỷ được yêu cầu cài trình duyệt của {name}",
       "refused": "Hub từ chối, lý do ở dưới. Trang đã tải lại."
+    },
+    "poolsButton": "Pool",
+    "pools": {
+      "title": "Pool",
+      "description": "Pool cho mọi máy tham gia cùng dự án, slot, label và taint. Join token cho một máy mới tham gia bằng một lệnh.",
+      "count": "{count, plural, other {# pool}}",
+      "createButton": "Pool mới",
+      "caption": "Pool của bạn",
+      "ownerLine": "Chủ: {owner}",
+      "nodesCount": "{count, plural, other {# node}}",
+      "mobileMeta": "{nodes, plural, other {# node}}, mỗi node {slots, plural, other {# slot}}",
+      "notReady": "Chưa sẵn sàng",
+      "notReadyTip": "Chưa sẵn sàng: {reason}",
+      "notReadyCount": "{count} chưa sẵn sàng",
+      "offlineCount": "{count} offline",
+      "columns": {
+        "pool": "Pool",
+        "nodes": "Node",
+        "projects": "Dự án",
+        "slots": "Slot",
+        "taints": "Taint"
+      },
+      "empty": {
+        "title": "Chưa có pool nào",
+        "description": "Tạo một pool, rồi thêm máy vào bằng join token: mỗi máy trở thành một worker với thiết lập của pool."
+      },
+      "form": {
+        "name": "Tên",
+        "nameHint": "Không trùng với pool khác của bạn. Tên các node bắt đầu bằng tên này, và không đổi được về sau.",
+        "namePlaceholder": "build-farm",
+        "projects": "Dự án",
+        "projectsHint": "Các node nhận run của những dự án này. Bạn cần vai trò writer trên từng dự án.",
+        "projectsFailed": "Không tải được dự án của bạn. Hãy tải lại trang để thử lại.",
+        "noProjects": "Bạn không có vai trò writer trên dự án nào, nên pool không phục vụ được dự án nào.",
+        "slots": "Slot mỗi node",
+        "slotsHint": "Số run mỗi node giữ cùng lúc, từ 1 đến {max}.",
+        "reapDays": "Số ngày offline trước khi thu hồi",
+        "reapDaysHint": "Node offline lâu như vậy sẽ bị thu hồi, từ {min} đến {max} ngày.",
+        "labels": "Label",
+        "labelsHint": "Không bắt buộc, tối đa {max}. Một từ hoặc key=value; hub tự thêm pool=<name>.",
+        "labelsPlaceholder": "region=sg, ssd",
+        "taints": "Taint",
+        "taintsHint": "Không bắt buộc. Các node chỉ nhận run chấp nhận mọi taint.",
+        "taintsPlaceholder": "gpu, cost=high",
+        "accepted": "Kết quả doctor được chấp nhận",
+        "acceptedHint": "Không bắt buộc, tối đa {max}. Mã các kết quả mức cao mà node vẫn được coi là sẵn sàng, như evo-agents worker doctor in ra.",
+        "acceptedPlaceholder": "docker-missing",
+        "problems": {
+          "nameRequired": "Hãy nhập tên.",
+          "nameInvalid": "Tên bắt đầu bằng chữ hoặc số và chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới, tổng cộng tối đa 40 ký tự.",
+          "nameTaken": "Bạn đã có pool với tên này.",
+          "projectsRequired": "Hãy chọn ít nhất một dự án.",
+          "number": "Hãy nhập số nguyên từ {min} đến {max}.",
+          "invalid": "Không hợp lệ: {values}.",
+          "reserved": "Hub tự đặt các khóa này (pool, os, arch, runtime, feature): {values}.",
+          "tooMany": "Tối đa {max}."
+        }
+      },
+      "create": {
+        "title": "Pool mới",
+        "description": "Những gì mọi node của pool nhận được. Bạn có thể đổi về sau; các node nhận thay đổi ở heartbeat kế tiếp.",
+        "cancel": "Hủy",
+        "create": "Tạo pool",
+        "creating": "Đang tạo...",
+        "created": "Đã tạo pool {name}",
+        "createdText": "Hãy tạo join token để thêm node đầu tiên."
+      },
+      "detail": {
+        "title": "Pool",
+        "notFoundTitle": "Không tìm thấy pool",
+        "notFoundDescription": "Pool này không tồn tại, hoặc thuộc về thành viên khác.",
+        "facts": "Chủ {owner}, tạo ngày {date}",
+        "addNode": "Thêm node",
+        "notReadyNote": "{count, plural, other {# node}} không nhận run nào: doctor tìm thấy điều pool không chấp nhận. Mở một node để xem lý do.",
+        "offlineNote": "{count, plural, other {# node}} đang offline. Hub thu hồi node offline quá {days, plural, other {# ngày}}.",
+        "never": "Chưa bao giờ",
+        "nodeLine": "{hostname}, phiên bản {version}",
+        "nodes": "Node",
+        "nodesDescription": "Các máy đã tham gia bằng join token và chưa bị thu hồi, mới nhất trước.",
+        "noNodes": "Chưa có máy nào tham gia. Hãy tạo join token và chạy lệnh của nó trên một máy Ubuntu mới.",
+        "scope": "Mọi node nhận được",
+        "scopeDescription": "Mỗi node có những thứ này, cộng thêm thiết lập riêng.",
+        "projects": "Dự án",
+        "slots": "Slot",
+        "labels": "Label",
+        "taints": "Taint",
+        "noTaints": "Không có",
+        "accepted": "Kết quả được chấp nhận",
+        "noAccepted": "Không có",
+        "reap": "Thu hồi sau",
+        "reapDays": "{days, plural, other {# ngày}} offline"
+      },
+      "join": {
+        "title": "Join token cho {pool}",
+        "description": "Máy chạy lệnh với token này sẽ tham gia pool. Token chỉ hiện một lần.",
+        "hours": "Hiệu lực (giờ)",
+        "hoursHint": "Từ {min} đến {max} giờ.",
+        "uses": "Số máy",
+        "usesHint": "Số máy được tham gia bằng token này, từ {min} đến {max}.",
+        "cancel": "Hủy",
+        "create": "Tạo token",
+        "creating": "Đang tạo...",
+        "issuedTitle": "Thêm node vào {pool}",
+        "issuedDescription": "{uses, plural, other {# máy}} được tham gia bằng token này cho đến {expires}.",
+        "once": "Hãy sao chép ngay: token chỉ hiện một lần.",
+        "onceText": "Hub chỉ giữ mã băm của token. Ai có token đều thêm được máy vào pool cho đến khi token dùng hết, hết hạn hoặc bị thu hồi.",
+        "bootstrap": "Lệnh bootstrap",
+        "bootstrapHint": "Chạy với quyền root trên một máy Ubuntu mới: lệnh cài toolchain và worker, tham gia pool và khởi động dịch vụ.",
+        "token": "Join token",
+        "userData": "Cloud-init user-data",
+        "userDataHint": "Cho nhà cung cấp nhận user-data khi tạo máy: lệnh này in bootstrap kèm một token mới riêng.",
+        "done": "Xong"
+      },
+      "tokens": {
+        "title": "Join token",
+        "description": "Mới nhất trước. Hub không bao giờ hiện lại token sau khi tạo.",
+        "failed": "Không tải được join token. Chúng sẽ tải lại sau ít phút.",
+        "empty": "Chưa có join token nào.",
+        "create": "Tạo join token",
+        "name": "Token #{id}",
+        "expiringSoon": "Sắp hết hạn",
+        "status": {
+          "live": "Còn hiệu lực",
+          "expired": "Đã hết hạn",
+          "revoked": "Đã thu hồi",
+          "used": "Đã dùng hết"
+        },
+        "line": "Đã dùng {uses}/{max}, bởi {by}, đến {expires}",
+        "lastUsed": "dùng lần cuối",
+        "revoke": "Thu hồi",
+        "revoking": "Đang thu hồi...",
+        "cancel": "Hủy",
+        "revokeTitle": "Thu hồi token #{id}?",
+        "revokeText": "Không máy nào tham gia bằng token này được nữa. Các node đã tham gia vẫn ở lại pool.",
+        "revokedAlready": "Token này không còn hiệu lực: nó đã bị thu hồi, dùng hết hoặc hết hạn trong lúc đó.",
+        "revoked": "Đã thu hồi token #{id}",
+        "revokedText": "Không máy nào tham gia bằng token này được nữa."
+      },
+      "settings": {
+        "title": "Thiết lập",
+        "description": "Các node nhận thay đổi ở heartbeat kế tiếp.",
+        "save": "Lưu",
+        "saving": "Đang lưu...",
+        "discard": "Bỏ thay đổi",
+        "saved": "Đã lưu pool {name}",
+        "savedText": "Các node nhận thay đổi ở heartbeat kế tiếp."
+      }
     }
   },
   "secrets": {
@@ -2878,6 +3044,11 @@
       "workers": "Worker",
       "workersHint": "Không chọn worker nào thì mọi worker của bạn đều nhận; chọn vài worker để chỉ chúng nhận.",
       "noWorkers": "Bạn chưa có worker nào: secret sẽ đến mọi worker bạn đăng ký sau này.",
+      "pools": "Pool",
+      "poolsHint": "Hoặc chọn pool: khi đó secret chỉ đến các node của những pool ấy.",
+      "noPools": "Bạn chưa có pool nào: tạo pool ở trang Pool để gắn secret cho các node của nó.",
+      "workersLocked": "Secret đang đến các pool đã chọn bên dưới: bỏ chọn chúng để chọn worker.",
+      "poolsLocked": "Secret đang đến các worker đã chọn bên trên: bỏ chọn chúng để chọn pool.",
       "expires": "Hết hạn vào ngày",
       "expiresHint": "Không bắt buộc. Từ 00:00 UTC của ngày đó không run nào nhận nó nữa, giống cách GitLab cho access token hết hạn vào ngày hết hạn.",
       "value": "Value",
@@ -3953,7 +4124,7 @@
       "renewLabel": "Gia hạn token của {name}"
     },
     "empty": {
-      "title": "Chưa có tài khoản nào",
+      "title": "Chưa có tài khoản mô hình",
       "description": "Một tài khoản là một env secret của bạn, chẳng hạn token của <code>claude setup-token</code> cho <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Thêm ở đây hoặc bằng <code>evo-agents hub account login</code>; có vài cái cho cùng một biến thì các run lần lượt dùng chúng."
     },
     "errors": {
@@ -4003,6 +4174,12 @@
       "workersOptional": "Worker (không bắt buộc)",
       "workersHint": "Không chọn worker nào thì mọi worker của bạn đều dùng được; chọn vài worker để chỉ chúng dùng.",
       "noWorkers": "Bạn chưa có worker nào: tài khoản sẽ đến mọi worker bạn đăng ký sau này.",
+      "pools": "Pool",
+      "poolsOptional": "Pool (không bắt buộc)",
+      "poolsHint": "Hoặc chọn pool: khi đó tài khoản chỉ đến các node của những pool ấy.",
+      "noPools": "Bạn chưa có pool nào: tạo pool ở trang Pool để giữ tài khoản cho các node của nó.",
+      "workersLocked": "Tài khoản đang đến các pool đã chọn bên dưới: bỏ chọn chúng để chọn worker.",
+      "poolsLocked": "Tài khoản đang đến các worker đã chọn bên trên: bỏ chọn chúng để chọn pool.",
       "anyWorker": "Mọi worker của bạn",
       "keptHint": "Gia hạn giữ nguyên nơi tài khoản được dùng. Muốn đổi thì thay secret ở trang Secret.",
       "expires": "Token hết hạn vào ngày",
@@ -4245,6 +4422,181 @@
       "errors": {
         "forbidden": "Hub từ chối: chỉ admin của dự án mới đổi tài khoản của agent.",
         "conflict": "Hub từ chối: agent đã có số tài khoản tối đa. Xoá bớt một tài khoản trước."
+      }
+    },
+    "addProvider": "Thêm nhà cung cấp",
+    "sharedMark": "Được chia sẻ",
+    "provider": {
+      "editLabel": "Sửa tài khoản nhà cung cấp {name}",
+      "keyLabel": "Đổi khóa của {name}",
+      "key": "Đổi khóa",
+      "deleteLabel": "Xóa tài khoản nhà cung cấp {name}",
+      "delete": "Xóa",
+      "loadFailed": "Không tải được các tài khoản nhà cung cấp.",
+      "tabs": {
+        "label": "Tài khoản",
+        "providers": "Nhà cung cấp",
+        "models": "Mô hình",
+        "services": "Thông tin dịch vụ",
+        "rotation": "Luân phiên",
+        "sharing": "Chia sẻ"
+      },
+      "card": {
+        "keys": "{count, plural, other {# khóa}}",
+        "login": "Đăng nhập trên worker",
+        "envKey": "Khóa đặt làm env secret",
+        "format": "Định dạng API",
+        "addLabel": "Thêm một khóa của {name}",
+        "add": "Thêm khóa",
+        "models": "{count, plural, other {# mô hình}}",
+        "moreModels": "và {count} mô hình khác",
+        "loginModels": "Các lần chạy dùng mô hình riêng của Claude Code.",
+        "caption": "Các khóa của {name}"
+      },
+      "gateway": {
+        "offTitle": "Hub này không chạy model gateway",
+        "offText": "Các lần chạy chưa dùng được tài khoản nhà cung cấp cho đến khi quản trị viên hub bật model gateway. Tài khoản Claude vẫn hoạt động.",
+        "errorTitle": "Model gateway không phản hồi",
+        "errorText": "Các lần chạy cần mô hình của nhà cung cấp sẽ chờ đến khi nó phản hồi lại. Tài khoản Claude vẫn hoạt động."
+      },
+      "models": {
+        "servedBy": "Tài khoản: {accounts}. Dự án: {projects}.",
+        "runtimes": "Runtime",
+        "unknown": "Không rõ",
+        "loadFailed": "Không tải được các mô hình mà lần chạy của bạn có thể dùng.",
+        "emptyTitle": "Chưa có mô hình nào để chạy",
+        "emptyText": "Thêm một nhà cung cấp: các mô hình của nó hiện ở đây và trong ô Mô hình của các biểu mẫu chạy.",
+        "add": "Thêm nhà cung cấp",
+        "count": "{count, plural, other {# mô hình}}",
+        "claudeTitle": "Claude Code",
+        "claudeText": "Lần chạy đăng nhập bằng tài khoản Claude dùng mô hình của Claude Code, do runtime chọn."
+      },
+      "catalog": {
+        "title": "Thêm nhà cung cấp",
+        "description": "Chọn nhà cung cấp của khóa. Claude đăng nhập trên worker; nhà cung cấp khác cần một khóa và một base URL.",
+        "search": "Tìm nhà cung cấp theo tên hoặc id",
+        "groups": "Nhóm nhà cung cấp",
+        "filters": {
+          "all": "Tất cả",
+          "popular": "Phổ biến",
+          "gateways": "Gateway và tổng hợp",
+          "inference": "Dịch vụ suy luận",
+          "regional": "Khu vực",
+          "local": "Cục bộ",
+          "custom": "Tùy chỉnh"
+        },
+        "count": "{count, plural, other {# nhà cung cấp}}",
+        "loading": "Đang tải nhà cung cấp",
+        "loadFailed": "Không tải được danh mục.",
+        "retry": "Thử lại",
+        "noMatch": "Không có nhà cung cấp nào khớp. Thử tên khác, hoặc chọn Tùy chỉnh để nhập base URL.",
+        "more": "Hiện thêm {count}",
+        "free": "Miễn phí",
+        "login": "Đăng nhập trên worker",
+        "custom": "Endpoint của bạn"
+      },
+      "form": {
+        "back": "Quay lại danh mục",
+        "addTitle": "Thêm {provider}",
+        "editTitle": "Sửa {name}",
+        "addDescription": "Khóa được mã hóa và giữ trên hub. Lần chạy của các dự án bạn chọn gọi nhà cung cấp qua model gateway.",
+        "editDescription": "Khóa giữ nguyên: Đổi khóa sẽ thay nó. Chỉ những gì bạn thay đổi được gửi đi.",
+        "name": "Tên",
+        "nameHint": "Chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới. Lần chạy và nhật ký hiện tên này, không bao giờ hiện khóa.",
+        "nameLocked": "Tên không đổi được. Hãy thêm tài khoản khác nếu cần tên khác.",
+        "baseUrl": "Base URL",
+        "baseUrlHint": "Gốc API của nhà cung cấp, qua HTTPS.",
+        "format": "Định dạng API",
+        "formats": {
+          "openai": "OpenAI chat",
+          "anthropic": "Anthropic messages",
+          "openai-responses": "OpenAI responses",
+          "gemini": "Gemini"
+        },
+        "key": "Khóa",
+        "keySource": "Nguồn của khóa",
+        "sourcePaste": "Dán khóa",
+        "sourceSecret": "Dùng secret có sẵn",
+        "keyValue": "Khóa API",
+        "keyHint": "Gửi một lần lên hub, rồi trang này quên nó.",
+        "keyHintOf": "Gửi một lần lên hub, rồi trang này quên nó. {hint}",
+        "noSecrets": "Bạn chưa có env secret nào. Hãy dán khóa, hoặc thêm nó ở trang Secrets trước.",
+        "secret": "Secret",
+        "secretPick": "Chọn một secret",
+        "secretHint": "Hub sao chép giá trị của nó; trang này không bao giờ thấy giá trị đó.",
+        "test": "Kiểm tra kết nối",
+        "testHint": "Gọi endpoint bằng khóa này và không lưu gì.",
+        "testSaved": "Gọi endpoint bằng khóa đã lưu.",
+        "probeOk": "Endpoint đã phản hồi và liệt kê {count, plural, =0 {không mô hình nào} other {# mô hình}}.",
+        "probeFailed": "Endpoint từ chối (mã {status}): {error}",
+        "models": "Mô hình",
+        "modelsSearch": "Tìm mô hình",
+        "fetchModels": "Lấy danh sách mô hình",
+        "modelsPicked": "Đã chọn {count} trên {total}",
+        "modelsNone": "Chưa có mô hình. Lấy danh sách từ endpoint, hoặc thêm theo id.",
+        "modelsNoMatch": "Không có mô hình nào khớp.",
+        "modelAdd": "Thêm mô hình theo id",
+        "modelAddPlaceholder": "Id mô hình, đúng như nhà cung cấp viết",
+        "modelAddButton": "Thêm",
+        "modelsHint": "Lần chạy gọi mô hình theo dạng tiền-tố/tên-mô-hình. Không chọn mô hình nào: tài khoản phục vụ mọi mô hình endpoint liệt kê.",
+        "projects": "Dự án",
+        "projectsHint": "Lần chạy của các dự án này có thể dùng tài khoản.",
+        "noProjects": "Bạn không có quyền writer ở dự án nào.",
+        "workers": "Worker",
+        "workersHint": "Không chọn: mọi worker của các dự án. Nếu chọn: chỉ các worker đó.",
+        "noWorkers": "Bạn chưa có worker nào đang hoạt động.",
+        "expires": "Hết hạn vào",
+        "expiresHint": "Không bắt buộc. Từ ngày này, không lần chạy nào dùng nó.",
+        "requestId": "Mã yêu cầu: {id}",
+        "keyForgotten": "Khóa chưa được lưu và trang này đã quên nó: hãy dán lại.",
+        "cancel": "Hủy",
+        "add": "Thêm tài khoản",
+        "save": "Lưu",
+        "saving": "Đang lưu",
+        "added": "Đã thêm tài khoản nhà cung cấp {name}",
+        "addedText": "Lần chạy gọi mô hình của nó với tiền tố {alias}, theo dạng {alias}/tên-mô-hình.",
+        "saved": "Đã đổi tài khoản nhà cung cấp {name}",
+        "savedText": "Lần chạy kế tiếp dùng nó sẽ đọc thay đổi.",
+        "problems": {
+          "nameRequired": "Nhập tên.",
+          "nameInvalid": "Dùng chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới, bắt đầu bằng chữ hoặc số.",
+          "nameTaken": "Bạn đã có một secret hoặc tài khoản tên {name}.",
+          "urlRequired": "Nhập base URL.",
+          "urlInvalid": "Nhập URL đầy đủ, ví dụ https://api.example.com/v1.",
+          "urlHttps": "Base URL phải dùng HTTPS.",
+          "keyRequired": "Dán khóa.",
+          "keyLine": "Khóa là một dòng, không có khoảng trắng hay ký tự điều khiển.",
+          "keyTooLong": "Khóa dài tối đa {max} byte.",
+          "secretRequired": "Chọn secret chứa khóa.",
+          "projectsRequired": "Chọn ít nhất một dự án.",
+          "expiresInvalid": "Nhập một ngày hợp lệ.",
+          "expiresPast": "Chọn một ngày sau hôm nay.",
+          "modelInvalid": "Id mô hình gồm chữ, số và . _ : / @ + -, tối đa 200 ký tự.",
+          "modelsTooMany": "Một tài khoản liệt kê tối đa {max} mô hình."
+        }
+      },
+      "keyForm": {
+        "title": "Đổi khóa của {name}",
+        "description": "Khóa mới thay khóa cũ cho mọi lần chạy dùng tài khoản này từ bây giờ.",
+        "save": "Đổi khóa",
+        "saved": "Đã đổi khóa của {name}",
+        "savedText": "Lần chạy kế tiếp dùng nó sẽ dùng khóa mới."
+      },
+      "deleteForm": {
+        "title": "Xóa {name}?",
+        "description": "Khóa của nó bị xóa theo, và không lần chạy nào dùng nó nữa. Lần chạy đang giữ nó sẽ chạy xong.",
+        "confirm": "Xóa tài khoản",
+        "pending": "Đang xóa",
+        "cancel": "Hủy",
+        "deleted": "Đã xóa tài khoản nhà cung cấp {name}",
+        "deletedText": "Khóa của nó không còn trên hub."
+      },
+      "errors": {
+        "forbidden": "Hub từ chối: bạn cần quyền writer ở mọi dự án đã chọn.",
+        "notFound": "Tài khoản hoặc secret không còn. Danh sách đã được tải lại.",
+        "conflict": "Tên này thuộc một loại secret khác của bạn. Hãy chọn tên khác.",
+        "invalid": "Hub từ chối một giá trị: kiểm tra base URL, mô hình và dự án.",
+        "unavailable": "Hub không gọi được endpoint. Kiểm tra base URL rồi thử lại."
       }
     }
   },
@@ -4502,7 +4854,8 @@
         "placeholderOpencode": "provider/model",
         "line": "Tên model chỉ gồm một dòng, không có ký tự điều khiển.",
         "long": "Tên model dài tối đa {max} ký tự.",
-        "runtime": "Chọn runtime cho model này: tên model chỉ có nghĩa với runtime mà nó được viết cho."
+        "runtime": "Chọn runtime cho model này: tên model chỉ có nghĩa với runtime mà nó được viết cho.",
+        "provider": "Nhà cung cấp {prefix}"
       },
       "summary": {
         "title": "Run này sẽ làm gì",
@@ -6285,7 +6638,8 @@
       "worker_doctor": "Doctor của một worker được chia phát hiện mức high",
       "curator_probe_report": "Báo cáo probe hằng tuần của Curator",
       "opportunity_window": "Hạn của một cơ hội sắp đóng",
-      "today": "Tóm tắt Today"
+      "today": "Tóm tắt Today",
+      "market_install_request": "Một dự án xin cài plugin từ market"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -7152,7 +7506,7 @@
         "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
         "timezone": "Tên IANA, ví dụ Asia/Ho_Chi_Minh.",
         "briefAt": "Bản tóm tắt buổi sáng cho chủ dự án, theo múi giờ của cửa sổ.",
-        "worker": "Một worker của chính bạn phục vụ dự án này và nhận run từ hub; ca đêm chạy với tư cách chủ worker.",
+        "worker": "Một worker của chính bạn phục vụ dự án này và nhận run từ hub, hoặc một pool của bạn phục vụ dự án; ca đêm chạy với tư cách chủ của nó.",
         "noWorker": "Không worker nào của bạn nhận được run của ca đêm. <link>Đăng ký một worker</link> cho dự án này.",
         "usd": "Lớn hơn 0, tối đa {max}.",
         "runBudget": "Để trống: run được dùng phần còn lại của đêm.",
@@ -7210,7 +7564,9 @@
       "historyBudgetOff": "Không có: không chạy run lịch sử",
       "historyModelDefault": "model rẻ nhất worker báo",
       "probeBudgetNone": "Không có: không chạy probe",
-      "probeModelsBuilder": "Runtime và model của Builder"
+      "probeModelsBuilder": "Runtime và model của Builder",
+      "poolsGroup": "Pool của bạn",
+      "poolOption": "Pool {pool}, node sẵn sàng bất kỳ"
     },
     "metaHistory": "Lịch sử của {project}",
     "metaGraph": "Sức khoẻ graph của {project}",
@@ -8327,7 +8683,8 @@
       "missingDescription": "Dự án này chưa bật plugin, hoặc plugin không có trang này."
     },
     "frame": {
-      "title": "{page}, một trang của plugin {plugin}"
+      "title": "{page}, một trang của plugin {plugin}",
+      "toastFrom": "Từ plugin {plugin}"
     },
     "notes": {
       "metaTitle": "Ghi chú | {project}",
@@ -9275,295 +9632,6 @@
       "noPreviewText": "Dán hay đọc một file, rồi bấm Xem trước: hub đọc nó theo dự án và không ghi gì.",
       "readerTitle": "Nhập task vào {project} cần vai trò ghi",
       "backToBoard": "Quay lại bảng"
-    }
-  },
-  "pm": {
-    "meta": {
-      "daily": "PM daily của {project}"
-    },
-    "sub": "Báo cáo ngày {date}. Việc đã xong tính theo ngày làm việc trước đó: {previous}.",
-    "day": "Ngày",
-    "today": "Hôm nay",
-    "count": "{count, plural, other {# mục}}",
-    "hidden": "{count, plural, other {Còn # mục bạn không được xem, chỉ tính vào số đếm.}}",
-    "bareTitle": "Dự án chưa có task nào để báo cáo",
-    "bareText": "Báo cáo sẽ có nội dung khi dự án có task và có sprint đang chạy. Thêm task hoặc bắt đầu sprint trên bảng.",
-    "openBoard": "Mở bảng task",
-    "notReady": {
-      "title": "Báo cáo daily chưa sẵn sàng",
-      "text": "Báo cáo đọc task của dự án và cấu hình pm. Hãy bật plugin Tasks, hoặc sửa cấu hình pm nêu dưới đây.",
-      "tasks": "Plugin Tasks",
-      "config": "Cấu hình pm"
-    },
-    "done": {
-      "title": "Đã xong ngày {day}",
-      "empty": "Không có gì chuyển sang xong trong ngày đó."
-    },
-    "sprint": {
-      "title": "Sprint đang chạy",
-      "empty": "Chưa có sprint nào đang chạy.",
-      "done": "Đã xong",
-      "time": "Thời gian đã qua",
-      "scope": "Task lúc mở",
-      "changed": "Từ lúc mở",
-      "changedValue": "thêm {added}, bớt {removed}",
-      "useCases": "Use case của sprint",
-      "ratio": "xong {done} trên {total}"
-    },
-    "late": {
-      "title": "Trễ và nguy cơ trễ",
-      "empty": "Không có task nào trễ.",
-      "overdue": "Hạn {due}, trễ {days} ngày làm việc",
-      "atRisk": "Hạn {due}, còn {days} ngày làm việc"
-    },
-    "review": {
-      "title": "Đang review",
-      "empty": "Không có task nào chờ review.",
-      "age": "{days, plural, =0 {từ hôm nay} other {đã review # ngày làm việc}}",
-      "qa": "QA {who}"
-    },
-    "stale": {
-      "title": "Im lặng quá lâu",
-      "empty": "Không có task đang làm nào im lặng.",
-      "idle": "Không có hoạt động {days} ngày làm việc"
-    },
-    "blocked": {
-      "title": "Bị chặn",
-      "empty": "Không có gì bị chặn.",
-      "byDecision": "Decision đang mở",
-      "byHand": "Đặt bằng tay",
-      "waitingMember": "Đang chờ",
-      "waitingTask": "Đang chờ task",
-      "waitingText": "Đang chờ",
-      "age": "{days, plural, =0 {từ hôm nay} other {# ngày làm việc}}"
-    },
-    "escalate": {
-      "title": "Cần escalate",
-      "empty": "Chưa có blocker nào đủ lâu để escalate."
-    },
-    "load": {
-      "title": "Tải theo thành viên",
-      "empty": "Chưa có thành viên nào có quyền ghi.",
-      "overloaded": "Quá tải",
-      "free": "Trống",
-      "counts": "đang làm {doing} trên {limit}, review với vai QA {review}, trễ {late}"
-    }
-  },
-  "crm": {
-    "meta": {
-      "contacts": "Liên hệ của {project}",
-      "contact": "{login} trong {project}"
-    },
-    "sub": "Những người tự tìm đến dự án, và mỗi người đã đi tới đâu: tiềm năng, đã mời, đã kích hoạt, gắn bó.",
-    "readerTitle": "Bạn chỉ đọc {project}",
-    "readerText": "Bạn xem được các liên hệ và lịch sử của họ. Người viết thêm ghi chú; quản trị viên xóa một liên hệ khi chính người đó yêu cầu.",
-    "all": "Tất cả",
-    "pipeline": "Phễu",
-    "pipelineFilter": "Chỉ hiện liên hệ của một giai đoạn",
-    "stages": {
-      "lead": "Tiềm năng",
-      "invited": "Đã mời",
-      "activated": "Đã kích hoạt",
-      "retained": "Gắn bó"
-    },
-    "kinds": {
-      "invite_request": "Xin lời mời",
-      "invite_link": "Liên kết mời",
-      "grant": "Cấp quyền",
-      "issue": "Issue",
-      "pull_request": "Pull request",
-      "discussion": "Thảo luận",
-      "note": "Ghi chú"
-    },
-    "emptyTitle": "Chưa có liên hệ nào",
-    "emptyText": "Một liên hệ xuất hiện khi ai đó xin lời mời, mở issue hay pull request, hoặc tham gia bằng liên kết.",
-    "emptyStage": "Không có liên hệ nào ở giai đoạn {stage}",
-    "tableLabel": "Liên hệ",
-    "columns": {
-      "login": "Tài khoản GitHub",
-      "stage": "Giai đoạn",
-      "source": "Đến từ",
-      "firstSeen": "Thấy lần đầu",
-      "stageAt": "Ở giai đoạn này từ"
-    },
-    "back": "Tất cả liên hệ",
-    "detail": {
-      "sub": "Đến từ: {source}",
-      "profile": "Hồ sơ GitHub",
-      "touchpoints": "Điểm chạm",
-      "noTouchpoints": "Chưa lưu điểm chạm nào cho liên hệ này.",
-      "by": "(bởi {author})",
-      "history": "Các giai đoạn đã đạt",
-      "noteLabel": "Thêm ghi chú",
-      "addNote": "Thêm ghi chú",
-      "noting": "Đang thêm",
-      "noted": "Đã thêm ghi chú",
-      "delete": "Xóa liên hệ",
-      "deleteTitle": "Xóa {login}?",
-      "deleteText": "Liên hệ, mọi điểm chạm và lịch sử giai đoạn bị xóa hẳn, theo yêu cầu của người đó. Nhật ký kiểm toán chỉ giữ việc đã xóa.",
-      "deleteConfirm": "Xóa hẳn",
-      "deleting": "Đang xóa",
-      "keep": "Giữ lại",
-      "deleted": "Đã xóa {login}",
-      "deleteForbidden": "Chỉ quản trị viên của dự án mới xóa được liên hệ."
-    }
-  },
-  "marketing": {
-    "meta": {
-      "overview": "Marketing của {project}",
-      "posts": "Bài đăng của {project}",
-      "weekly": "Tăng trưởng hằng tuần của {project}"
-    },
-    "sub": "Mọi bài đăng đi qua cổng; cầu dao dừng một kênh và công tắc khẩn cấp dừng tất cả.",
-    "readerTitle": "Bạn chỉ đọc {project}",
-    "readerText": "Bạn xem được các kênh, ngân sách và tuần. Người viết đề xuất bài và dừng đăng; quản trị viên cho đăng lại.",
-    "month": "Tháng này",
-    "channelCount": "Tài khoản kênh",
-    "breakerCount": "Cầu dao đang mở",
-    "tabs": {
-      "label": "Các trang Marketing",
-      "overview": "Tổng quan",
-      "posts": "Bài đăng",
-      "weekly": "Tăng trưởng hằng tuần"
-    },
-    "budget": {
-      "label": "Chi phí tháng {month}",
-      "figures": "{used} trên {cap}",
-      "split": "Đã chi {spent}, bài đang xử lý giữ {reserved}.",
-      "spentAll": "Ngân sách tháng đã hết."
-    },
-    "kill": {
-      "stop": "Dừng mọi bài đăng",
-      "stopTitle": "Dừng mọi bài đăng trong dự án này?",
-      "stopText": "Không kênh nào đăng cho tới khi quản trị viên cho đăng lại. Bản nháp và bài đang chờ ở cổng giữ nguyên.",
-      "stopConfirm": "Dừng đăng",
-      "resume": "Cho đăng lại",
-      "resumeTitle": "Cho đăng lại?",
-      "resumeText": "Các kênh lại đăng qua cổng. Cầu dao đang mở vẫn mở.",
-      "resumeConfirm": "Cho đăng lại",
-      "pending": "Đang lưu",
-      "cancel": "Hủy",
-      "stopped": "Đã dừng mọi bài đăng",
-      "resumed": "Đã cho đăng lại",
-      "forbidden": "Chỉ người viết mới dừng đăng, và chỉ quản trị viên mới cho đăng lại.",
-      "killedTitle": "Mọi bài đăng đang bị dừng",
-      "killedReason": "Lý do: {reason}",
-      "killedText": "Không kênh nào đăng cho tới khi quản trị viên cho đăng lại.",
-      "killedBadge": "Đã dừng"
-    },
-    "channels": {
-      "title": "Kênh",
-      "tableLabel": "Tài khoản kênh",
-      "channel": "Kênh",
-      "mode": "Chế độ",
-      "breaker": "Cầu dao",
-      "session": "Phiên đăng nhập",
-      "actions": "Thao tác",
-      "ownedBy": "của {owner}",
-      "autonomous": "Tự động",
-      "draftOnly": "Chỉ bản nháp",
-      "open": "Đang mở, không đăng",
-      "shut": "Đóng",
-      "close": "Đóng cầu dao",
-      "closed": "Đã đóng cầu dao của {channel} {account}",
-      "noSession": "Không cần",
-      "stale": "Đã hết hạn",
-      "sessionOk": "Còn hiệu lực",
-      "sessionNone": "Chưa có",
-      "health": "Sức khoẻ",
-      "healthOk": "Ổn",
-      "healthFailing": "Lỗi",
-      "healthNa": "Không áp dụng",
-      "healthUnknown": "Chưa kiểm",
-      "emptyTitle": "Chưa có tài khoản kênh nào",
-      "emptyText": "Quản trị viên thêm tài khoản của dự án, mỗi thành viên thêm tài khoản riêng bằng evo-agents hub marketing add."
-    },
-    "posts": {
-      "sub": "Các bài đăng của dự án theo kết quả của cổng. Sao chép một bản nháp để tự chia sẻ.",
-      "readerText": "Nội dung bài đăng dành cho người viết của dự án; bạn đọc được trang tổng quan và tuần.",
-      "groups": {
-        "drafts": "Bản nháp để tự chia sẻ",
-        "waiting": "Đang chờ cổng",
-        "passed": "Đã qua cổng",
-        "posted": "Đã đăng",
-        "stopped": "Bị dừng"
-      },
-      "groupText": {
-        "drafts": "Cho tài khoản cá nhân của thành viên hoặc nhóm Facebook: không máy nào đăng, thành viên sao chép rồi tự chia sẻ.",
-        "waiting": "Danh sách chặn, các quy tắc và Judge chưa quyết định.",
-        "passed": "Đang xếp hàng để đăng lên kênh.",
-        "posted": "Đã đăng lên kênh của chúng.",
-        "stopped": "Bị cổng chặn hoặc đã rút, kèm lý do."
-      },
-      "states": {
-        "proposed": "Đã đề xuất",
-        "judging": "Đang chấm",
-        "queued": "Đang chờ đăng",
-        "posting": "Đang đăng",
-        "posted": "Đã đăng",
-        "draft": "Bản nháp",
-        "failed": "Bị cổng chặn",
-        "withdrawn": "Đã rút"
-      },
-      "count": "{count, plural, other {# bài}}",
-      "none": "Không có.",
-      "dryRun": "Chạy thử",
-      "reason": "Lý do: {reason}",
-      "open": "Mở bài đăng",
-      "cost": "Chi phí {cost}",
-      "copy": "Sao chép nội dung",
-      "copiedShort": "Đã sao chép",
-      "copied": "Đã sao chép bản nháp vào bộ nhớ tạm",
-      "selected": "Đã chọn nội dung bản nháp: nhấn Ctrl+C hoặc Cmd+C",
-      "emptyTitle": "Chưa có bài đăng nào",
-      "emptyText": "Bài đăng xuất hiện khi @marketer hoặc một thành viên đề xuất."
-    },
-    "weekly": {
-      "sub": "Từ {since} đến {until}",
-      "count": "{count, plural, =0 {không có} other {#}}",
-      "goals": "Tín hiệu so với Goal",
-      "noGoals": "Không có Goal đang hoạt động nào có chỉ số.",
-      "goal": "Goal",
-      "signal": "Tín hiệu",
-      "value": "Giá trị",
-      "target": "Mục tiêu",
-      "met": "Đạt",
-      "noValue": "Chưa có tín hiệu",
-      "unknown": "Chưa rõ",
-      "reached": "Đạt",
-      "notReached": "Chưa đạt",
-      "killed": "Mọi bài đăng đang bị dừng",
-      "posted": "Bài đã đăng",
-      "noPosts": "Tuần này chưa đăng bài nào.",
-      "open": "Mở",
-      "breakers": "Cầu dao đang mở",
-      "noBreakers": "Không cầu dao nào đang mở.",
-      "cost": "Chi phí",
-      "weekCost": "Tuần này:",
-      "proposals": "Đề xuất cho dự án blog",
-      "proposalsFor": "Đề xuất cho {project}",
-      "noProposalsProject": "Chưa đặt dự án blog: cấu hình proposals_project của marketing đặt tên nó.",
-      "noProposals": "Tuần này không có đề xuất nào."
-    },
-    "decide": {
-      "title": "Tăng trưởng",
-      "note": "Kênh, phiên đăng nhập và ngân sách của plugin marketing",
-      "waiting": "{count, plural, other {# việc đang chờ}}",
-      "kind": {
-        "breaker": "Cầu dao mở",
-        "session": "Phiên hết hạn",
-        "budget": "Hết ngân sách"
-      },
-      "who": {
-        "breaker": "Quản trị viên đóng nó ở trang Marketing khi đã sửa nguyên nhân.",
-        "session": "Chủ tài khoản đăng nhập lại bằng evo-agents hub marketing session.",
-        "budget": "Quản trị viên tăng budget_usd, hoặc việc đăng chờ sang tháng sau."
-      },
-      "breaker": "{channel} {account} đã ngừng đăng: cầu dao chờ được đặt lại",
-      "session": "Phiên đăng nhập của {channel} {account} đã hết hạn",
-      "budget": "Ngân sách tháng {month} ({cap}) đã hết",
-      "open": "Mở",
-      "openLabel": "Mở trong Marketing: {title}"
     }
   },
   "canvas": {
@@ -11189,6 +11257,181 @@
     "notices": {
       "title": "Thông báo có thể tắt",
       "description": "Khi tắt, loại thông báo đó không tới bạn ở đâu cả, kể cả Inbox. Câu hỏi của các run của bạn luôn tới."
+    }
+  },
+  "market": {
+    "title": "Chợ plugin",
+    "caption": "Plugin của các chợ mà hub này đọc",
+    "count": "{count, plural, other {# plugin}}",
+    "manage": "Quản lý chợ",
+    "noResults": "Không có plugin nào khớp bộ lọc",
+    "columns": {
+      "plugin": "Plugin",
+      "publisher": "Nhà phát hành",
+      "categories": "Danh mục",
+      "price": "Giá",
+      "status": "Trạng thái"
+    },
+    "filters": {
+      "search": "Tìm trong chợ",
+      "placeholder": "Tìm plugin",
+      "clear": "Xóa nội dung tìm",
+      "industry": "Ngành",
+      "category": "Danh mục",
+      "allIndustries": "Mọi ngành",
+      "allCategories": "Mọi danh mục"
+    },
+    "summary": {
+      "all": "{count, plural, other {# plugin}}",
+      "filtered": "{shown} trên {count, plural, other {# plugin}}"
+    },
+    "empty": {
+      "title": "Chưa có chợ nào",
+      "admin": "Thêm một chợ, tức một repo GitHub có chỉ mục plugin-market-v1, rồi plugin của nó hiện ở đây cho mọi thành viên.",
+      "member": "Hub này chưa đọc chợ nào. Quản trị viên hub sẽ thêm."
+    },
+    "status": {
+      "not_installed": "Chưa cài",
+      "installed": "Đã cài",
+      "upgrade": "Có bản nâng cấp",
+      "in_image": "Có sẵn trong image",
+      "not_in_image": "Không có trong image",
+      "needs_license": "Cần giấy phép",
+      "unavailable": "Không dùng được"
+    },
+    "price": {
+      "free": "Miễn phí",
+      "subscription": "Thuê bao",
+      "perMonth": "{amount} mỗi hub một tháng"
+    },
+    "tier": {
+      "isolated": "Tách biệt",
+      "core": "Lõi"
+    },
+    "reason": {
+      "inImage": "Plugin lõi có sẵn trong image của hub: quản trị viên dự án bật nó ở mục Plugin của dự án.",
+      "core": "Plugin lõi chạy trong chính tiến trình của hub, nên nó đi kèm image của hub và không bao giờ cài từ đây. Hãy nhờ người vận hành hub dùng image có nó.",
+      "paid": "Plugin trả phí cần giấy phép từ người bán. Giấy phép có ở bản phát hành sau; hiện chưa cài được gì từ đây.",
+      "unavailable": "Bản phát hành mới nhất của nó không đọc được, nên chưa cài được cho tới khi nhà phát hành sửa."
+    },
+    "errors": {
+      "forbidden": "Chỉ quản trị viên hub mới làm được việc này.",
+      "conflict": "Hub từ chối vì tình trạng hiện tại. Tải lại trang để xem lý do."
+    },
+    "install": {
+      "install": "Cài đặt",
+      "upgrade": "Nâng cấp lên {version}",
+      "installing": "Đang cài…",
+      "installed": "Đã cài {name} {version}",
+      "upgraded": "Đã nâng cấp {name} lên {version}",
+      "trustedNow": "Hub đã tin chữ ký của {publisher}.",
+      "openStore": "Mở trong kho",
+      "failed": "Không cài được {name}",
+      "trustTitle": "Tin {publisher}?",
+      "trustDescription": "Hub này chưa tin nhà phát hành của {name}. Cài đặt sẽ tin chủ thể ký bên dưới cho các plugin của nhà phát hành này từ nay; bạn có thể thôi tin ở Quản trị, Chợ plugin.",
+      "publisher": "Nhà phát hành",
+      "signer": "Ký bởi",
+      "cancel": "Hủy",
+      "trustConfirm": "Tin và cài đặt"
+    },
+    "request": {
+      "description": "Chỉ quản trị viên hub mới cài plugin. Hãy nhờ họ cài plugin này cho một dự án bạn quản trị.",
+      "project": "Dự án",
+      "noProjects": "Chỉ quản trị viên hub mới cài plugin, và quản trị viên dự án có thể đề nghị. Bạn không quản trị dự án nào.",
+      "send": "Đề nghị quản trị viên hub",
+      "sending": "Đang gửi…",
+      "sent": "Đã đề nghị quản trị viên hub cài cho {project}",
+      "already": "Đã có đề nghị cho {project} rồi",
+      "failed": "Không gửi được đề nghị"
+    },
+    "detail": {
+      "from": "Từ {market}, của {publisher}",
+      "aboutTitle": "Giới thiệu",
+      "latest": "Bản phát hành mới nhất",
+      "installedVersion": "Đã cài ở đây",
+      "none": "Chưa có",
+      "package": "Gói",
+      "license": "Giấy phép mã nguồn",
+      "requires": "Cần evo-agents",
+      "homepage": "Trang chủ",
+      "asksFor": "Quyền",
+      "asksForDescription": "Những quyền bản phát hành mới nhất yêu cầu. Quản trị viên dự án cấp từng quyền khi bật nó.",
+      "noRelease": "Hub chỉ đọc bản phát hành của plugin tách biệt miễn phí.",
+      "releaseError": "Bản phát hành mới nhất không đọc được: {error}",
+      "noPermissions": "Nó không yêu cầu quyền nào.",
+      "publisherTitle": "Nhà phát hành",
+      "publisher": "Nhà phát hành",
+      "identity": "Ký bởi",
+      "trust": "Trên hub này",
+      "trustImage": "Đi kèm image của hub",
+      "trusted": "Đã tin",
+      "notTrusted": "Chưa tin: khi cài sẽ hỏi trước",
+      "locked": "Chưa tin, và người vận hành đã khóa danh sách nhà phát hành của hub",
+      "repo": "Kho mã",
+      "licenseTitle": "Giấy phép",
+      "licenseDescription": "Plugin trả phí cài bằng giấy phép từ người bán, điều hub này chưa hỗ trợ.",
+      "requestTitle": "Đề nghị cài",
+      "missingTitle": "Không có plugin này",
+      "missingDescription": "Địa chỉ không trỏ tới plugin nào của chợ."
+    },
+    "admin": {
+      "title": "Chợ plugin",
+      "sourcesCaption": "Các chợ hub này đọc",
+      "builtin": "Mặc định",
+      "private": "Riêng tư",
+      "columns": {
+        "market": "Chợ",
+        "plugins": "Plugin",
+        "fetched": "Lần đọc",
+        "actions": "Thao tác"
+      },
+      "never": "Chưa đọc",
+      "pluginCount": "{count, plural, other {# plugin}}",
+      "refresh": "Làm mới",
+      "refreshing": "Đang làm mới…",
+      "refreshed": "Đã đọc {repo}: {count, plural, other {# plugin}}",
+      "refreshFailed": "Không đọc được {repo}",
+      "removeLabel": "Gỡ {repo}",
+      "removeTitle": "Gỡ chợ {repo}?",
+      "removeDescription": "Plugin của nó rời trang chợ. Plugin đã cài từ nó vẫn được giữ.",
+      "removeConfirm": "Gỡ",
+      "removing": "Đang gỡ…",
+      "removed": "Đã gỡ {repo}",
+      "cancel": "Hủy",
+      "lockedNotice": "Người vận hành đã khóa danh sách nhà phát hành hub tin (EVO_HUB_PLUGIN_PUBLISHERS_LOCKED): plugin chỉ cài từ chợ khi chủ thể ký của nhà phát hành đã được tin sẵn.",
+      "empty": {
+        "title": "Chưa có chợ nào",
+        "description": "Thêm một repo GitHub có chỉ mục plugin-market-v1. Hub đọc nó ngay và đọc lại mỗi 6 giờ."
+      },
+      "trusted": {
+        "title": "Tin từ chợ",
+        "description": "Các chủ thể ký mà quản trị viên hub đã tin khi cài từ chợ. Nhà phát hành của người vận hành nằm ở Quản trị, Plugin.",
+        "locked": "Người vận hành đã khóa danh sách nhà phát hành: không quản trị viên nào tin thêm được từ đây.",
+        "none": "Chưa tin chủ thể ký nào từ chợ.",
+        "addedBy": "Tin bởi {login}",
+        "removeLabel": "Thôi tin {publisher}",
+        "removeTitle": "Thôi tin {publisher}?",
+        "removeDescription": "Plugin đã cài vẫn chạy. Phiên bản mới do chủ thể này ký sẽ không cài được cho tới khi có người tin lại.",
+        "removed": "Đã thôi tin {publisher}"
+      },
+      "add": {
+        "open": "Thêm chợ",
+        "title": "Thêm một chợ",
+        "description": "Một repo GitHub có chỉ mục plugin-market-v1. Hub đọc nó ngay và mỗi 6 giờ.",
+        "repo": "Kho mã",
+        "repoHint": "OWNER/REPO, hoặc địa chỉ github.com của nó.",
+        "repoInvalid": "Hãy viết repo dạng OWNER/REPO.",
+        "ref": "Nhánh hoặc tag",
+        "path": "Tệp chỉ mục",
+        "token": "Token (chỉ cho repo riêng tư)",
+        "tokenHint": "Token GitHub chỉ đọc. Hub niêm phong nó và không bao giờ hiện lại.",
+        "cancel": "Hủy",
+        "save": "Thêm chợ",
+        "adding": "Đang thêm…",
+        "added": "Đã thêm {repo}",
+        "addedCount": "Chỉ mục của nó có {count, plural, other {# plugin}}.",
+        "addedWithError": "Chỉ mục của nó chưa đọc được: {error}"
+      }
     }
   }
 }

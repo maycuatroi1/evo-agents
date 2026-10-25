@@ -118,6 +118,9 @@ async def _run(conn: AsyncConnection, run_id: int):
         r.c.worker_id,
         r.c.dispatched_by,
         r.c.requested_runtime,
+        r.c.selector,
+        r.c.tolerations,
+        r.c.pinned_worker_id,
     ).where(r.c.id == run_id)
     return (await conn.execute(query)).one()
 
@@ -130,8 +133,10 @@ def _repos(run) -> list[str]:
 
 async def _accounts(conn: AsyncConnection, owner_id: int, project_id: int, run_id: int, names: dict[int, str]):
     """The owner's env accounts bound to the project: (secret id, ``AccountCandidate``) for each, and by secret id its
-    state with the worker ids it is bound to (None: any), and the secret ids the run took."""
+    state with the worker ids it is bound to (None: any) and the names of the pools it is bound to, and the secret ids
+    the run took."""
     s, a, b, ra = tables.secrets, tables.accounts, tables.secret_bindings, tables.run_accounts
+    p = tables.worker_pools
     rows = await conn.execute(
         select(s.c.id, s.c.name, s.c.expires_at, a.c.oauth_sealed, a.c.paused_at, a.c.cooldown_until)
         .outerjoin_from(s, a, a.c.secret_id == s.c.id)
@@ -140,12 +145,17 @@ async def _accounts(conn: AsyncConnection, owner_id: int, project_id: int, run_i
     )
     secrets = rows.all()
     bound: dict[int, set[int | None]] = {}
+    pools: dict[int, set[str]] = {}
     for row in await conn.execute(
-        select(b.c.secret_id, b.c.worker_id).where(
-            b.c.project_id == project_id, b.c.secret_id.in_([row.id for row in secrets])
-        )
+        select(b.c.secret_id, b.c.worker_id, p.c.name.label("pool"))
+        .outerjoin_from(b, p, p.c.id == b.c.pool_id)
+        .where(b.c.project_id == project_id, b.c.secret_id.in_([row.id for row in secrets]))
     ):
-        bound.setdefault(row.secret_id, set()).add(row.worker_id)
+        if row.pool is not None:
+            pools.setdefault(row.secret_id, set()).add(row.pool)
+            bound.setdefault(row.secret_id, set())
+        else:
+            bound.setdefault(row.secret_id, set()).add(row.worker_id)
     used = set((await conn.execute(select(ra.c.secret_id).where(ra.c.run_id == run_id))).scalars())
     now = datetime.now(UTC)
     found, ready = [], {}
@@ -159,32 +169,40 @@ async def _accounts(conn: AsyncConnection, owner_id: int, project_id: int, run_i
             None if row.oauth_sealed is not None else row.expires_at,  # an OAuth token is renewed at lease time
             now,
         )
-        workers = ["any"] if None in where else sorted(names[w] for w in where if w in names)
+        on_pools = sorted(f"pool {name}" for name in pools.get(row.id, ()))
+        workers = ["any"] if None in where else sorted(names[w] for w in where if w in names) + on_pools
         found.append(
             (row.id, AccountCandidate(name=row.name, state=state, workers=workers, used_by_run=row.id in used))
         )
-        ready[row.id] = (state, where)
+        ready[row.id] = (state, where, pools.get(row.id, set()))
     return found, ready, used
 
 
-def _ready_on(worker_id: int, ready: dict, found) -> list[tuple[int, str]]:
-    """(secret id, name) of the accounts that are ready on worker ``worker_id``."""
+def _ready_on(row, ready: dict, found) -> list[tuple[int, str]]:
+    """(secret id, name) of the accounts that are ready on worker ``row``: bound to any worker, to it, or to its pool."""
+    pool = row.place_pool  # worker_placement.columns, in workers_of
     return [
         (secret_id, account.name)
         for secret_id, account in found
-        if ready[secret_id][0] == "ready" and ready[secret_id][1] & {None, worker_id}
+        if ready[secret_id][0] == "ready" and (ready[secret_id][1] & {None, row.id} or pool in ready[secret_id][2])
     ]
+
+
+def _placed(run, row) -> dict:
+    """The selector and tolerations of ``run`` for ``worker_problems`` of worker ``row``, as its claim counts them."""
+    return {"selector": run.selector, "tolerations": run.tolerations, "pinned": run.pinned_worker_id == row.id}
 
 
 def _worker_view(row, profile, run, repos, project, accounts, cause):
     """(the candidate of worker ``row``, its sort key): the run's owner's own workers before those shared with them."""
     found, ready, used = accounts
-    reasons = worker_problems(row, profile, run.dispatched_via or "machine", run.kind, run.requested_runtime or "any")
+    via, runtime = run.dispatched_via or "machine", run.requested_runtime or "any"
+    reasons = worker_problems(row, profile, via, run.kind, runtime, **_placed(run, row))
     missing = [name for name in repos if f"{project}/{name}" not in (row.checkouts or {})]
     clones = runs.CLONES_CHECKOUTS in (row.features or ())
     if missing and not clones:
         reasons.append(f"has no checkout of {', '.join(missing)}")
-    mine = _ready_on(row.id, ready, found)
+    mine = _ready_on(row, ready, found)
     if found and not mine:
         reasons.append("has no account of yours that is ready for this project")
     fit = not reasons
@@ -245,7 +263,9 @@ def _agent_view(profile: Profile, rows, run, cause: str | None, writer: bool, pr
         reasons.append("was deleted")
     via = run.dispatched_via or "machine"
     problems = [
-        f"{row.name} {why}" for row in rows if (why := (worker_problems(row, profile, via, "chat") or [None])[0])
+        f"{row.name} {why}"
+        for row in rows
+        if (why := (worker_problems(row, profile, via, "chat", **_placed(run, row)) or [None])[0])
     ]
     if rows and len(problems) == len(rows):
         reasons.append(f"no worker of yours, nor one shared with you, can take it: {'; '.join(problems)}")

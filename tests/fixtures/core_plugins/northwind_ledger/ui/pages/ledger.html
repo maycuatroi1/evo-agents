@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ledger</title>
+    <link rel="stylesheet" href="/v1/plugin-ui/kit/1/evo-ui.css" />
+    <script src="/v1/plugin-ui/kit/1/evo-ui.js"></script>
+    <script src="ledger.js" defer></script>
+  </head>
+  <body>
+    <main class="evo-stack">
+      <div class="evo-row evo-row-between">
+        <h1 class="evo-card-title" data-i18n="title"></h1>
+        <button class="evo-btn evo-btn-primary" id="remind" type="button" data-i18n="remind"></button>
+      </div>
+      <p class="evo-muted" data-i18n="intro"></p>
+      <div class="evo-table-wrap">
+        <table class="evo-table" id="entries">
+          <thead>
+            <tr>
+              <th data-i18n="memo"></th>
+              <th data-i18n="amount"></th>
+              <th class="evo-hide-sm" data-i18n="due"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="evo-empty" id="empty" hidden><p class="evo-empty-title" data-i18n="empty"></p></div>
+    </main>
+  </body>
+</html>

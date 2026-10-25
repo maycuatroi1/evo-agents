@@ -30,7 +30,7 @@ from evo_agents.hub import author, autonomy_card, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import attachment_store, principals, run_autonomy
+from evo_agents.hub.server import attachment_store, gateway_accounts, principals, run_autonomy, worker_placement
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -424,6 +424,9 @@ async def _claim_once(
         kinds, features, labels, plugins, shared = said  # what its daemon says it runs: kinds of run, features
         if drained_at is not None:
             return None
+        node = await worker_placement.placement(conn, worker_id)
+        if not node.ready:  # a node of a pool whose doctor report is stale or has a high finding it does not accept
+            return None
         r = tables.runs
         holding = select(func.count()).select_from(r).where(r.c.worker_id == worker_id, r.c.state.in_(runs.HELD_STATES))
         if (await conn.execute(holding)).scalar_one() >= slots:
@@ -469,6 +472,8 @@ async def _claim_once(
             profile_gate=and_(
                 claim_clause(name, labels, runtimes, features, offered, environments, plugins),
                 browsers.claim_gate(worker_id, features),
+                gateway_accounts.claim_gate(version),
+                node.gate(worker_id),
             ),
         )
         row = (await conn.execute(query)).one_or_none()

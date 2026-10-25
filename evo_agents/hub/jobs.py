@@ -61,6 +61,8 @@ OPPORTUNITY_DEADLINES = "hub.opportunity_deadlines"  # hourly: owners told as th
 TODAY_DIGEST = "hub.today_digest"  # every minute: the summary push of Today, at each member's time, once a day
 MEMORY_UPKEEP = "hub.memory_upkeep"  # daily: agents' memories nobody opened for 30 days archived, stale ones marked
 EXPIRE_SEATS = "hub.expire_seats"  # hourly: org seats past their end date ended, the leases of people at A0 back
+MARKET_REFRESH = "hub.market_refresh"  # every 6 hours: each plugin market's index and its plugins' latest releases
+REAP_POOL_NODES = "hub.reap_pool_nodes"  # hourly: pool nodes offline past their pool's reap_after_days revoked
 
 
 def kg_lock(project: str) -> str:

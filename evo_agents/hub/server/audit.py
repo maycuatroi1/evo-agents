@@ -53,7 +53,9 @@ KG_REVIEW = "kg.review"
 KG_DECISION = "kg.decision"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
-WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token
+# A machine joined with a code or a pool's join token, as its owner with the new worker token:
+# "worker:<id> name=<n> pairing:<id>", or "worker:<id> name=<n> pool:<id> join_token:<id>"
+WORKER_JOIN = "worker.join"
 WORKER_REGISTER = "worker.register"  # a machine registered itself with its machine token
 WORKER_DRAIN = "worker.drain"
 WORKER_UNDRAIN = "worker.undrain"
@@ -63,6 +65,13 @@ WORKER_DISPATCH_FROM = "worker.dispatch_from"
 # The owner changed the worker's settings; the target names each field that changed, "<field>=<was>-><is>", after
 # "worker:<id> name=<n> owner=<login>": "slots=1->4 labels=[]->[gpu,mac] name=old->new", never a token.
 WORKER_UPDATE = "worker.update"
+# Worker pools (evo_agents.hub.server.worker_pools), "pool:<id> name=<n>" first: a member created one, changed its
+# settings ("<field>=<was>-><is>" as WORKER_UPDATE), created a join token of it ("join_token:<id> hours=<h>
+# max_uses=<n>") or revoked one ("join_token:<id>"); never the token.
+WORKER_POOL_CREATE = "worker_pool.create"
+WORKER_POOL_UPDATE = "worker_pool.update"
+WORKER_POOL_TOKEN = "worker_pool.token"
+WORKER_POOL_TOKEN_REVOKE = "worker_pool.token_revoke"
 # The owner or a hub admin asked the worker's daemon to update itself to nightly now, or cancelled that request:
 # "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.update_now)
 WORKER_UPDATE_NOW = "worker.update_now"
@@ -128,6 +137,12 @@ SHARE_REVOKE = "share.revoke"
 ACCOUNT_SET = "account.set"  # the owner changed the weight or priority of an account, or paused or resumed it
 ACCOUNT_POLICY_PUT = "account.policy-put"  # the member set their policy for the project
 ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the defaults hold again
+# A provider account (evo_agents.hub.server.provider_accounts), a member's in no project and an agent's in its project:
+# "secret:<id> provider=<catalog id> host=<host of its base URL>", after "<project>/@<handle> " for an agent's, with
+# " fields=<names>" for a change; never its name, its key or the path of its base URL.
+PROVIDER_ACCOUNT_PUT = "provider-account.put"  # created, or replaced whole with a new key
+PROVIDER_ACCOUNT_SET = "provider-account.set"  # its key, endpoint, models, bindings, end, weight, priority or pause
+PROVIDER_ACCOUNT_DELETE = "provider-account.delete"  # deleted: its sealed key and bindings went
 # A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
 # run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
 ACCOUNT_FAILOVER = "account.failover"
@@ -175,6 +190,15 @@ PLUGIN_INSTALL = "plugin.install"  # a hub admin installed a version, or install
 PLUGIN_UPGRADE = "plugin.upgrade"  # a hub admin moved the installed version to a newer one
 PLUGIN_REMOVE = "plugin.remove"  # a hub admin removed the installed version; the versions stay in the store
 PLUGIN_DISABLE = "plugin.disable"  # the hub turned off an installed version that no longer runs on its release
+# The plugin market (evo_agents.hub.server.market), outside any project: "publisher:<id> signer:<signer>" for a
+# publisher a hub admin trusted or stopped trusting, "market:<OWNER/REPO>" for a market source added or removed.
+PLUGIN_PUBLISHER_ADD = "plugin.publisher.add"
+PLUGIN_PUBLISHER_REMOVE = "plugin.publisher.remove"
+MARKET_SOURCE_ADD = "market.source.add"
+MARKET_SOURCE_REMOVE = "market.source.remove"
+# A project admin asked the hub admins to install a plugin of a market, in that project:
+# "<project>/market:<source id>/<plugin>".
+MARKET_REQUEST = "market.request"
 # Plugins in a project (evo_agents.hub.server.plugin_grants), in that project; the target is
 # "<project>/plugin:<name>@<version>", then " permissions=<names>" for a grant.
 PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it

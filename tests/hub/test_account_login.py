@@ -153,7 +153,7 @@ def test_login_is_in_the_contract_and_takes_no_token_on_its_command_line():
     login = commands()["hub account login"]
     assert [p["name"] for p in login["positionals"]] == ["name"]
     options = {o["flags"][0]: o for o in login["options"]}
-    assert set(options) == {"--project", "--worker", "--expires", "--paste", "--json"}
+    assert set(options) == {"--project", "--worker", "--pool", "--expires", "--paste", "--json"}
     assert options["--project"]["repeatable"] and not options["--project"]["required"]
     assert options["--worker"]["repeatable"] and options["--paste"]["value"] is None
     assert login["json"]["schema"] == "Account" and "value" not in login["json"]["keys"]

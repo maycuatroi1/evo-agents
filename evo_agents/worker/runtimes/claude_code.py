@@ -149,7 +149,7 @@ from evo_agents.worker.adapter import (
     ToolImage,
     command_output,
 )
-from evo_agents.worker.runtimes import claude_home, hub_tools, profiles
+from evo_agents.worker.runtimes import claude_home, gateway, hub_tools, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -334,7 +334,9 @@ def drops_api_key(context: RunContext) -> bool:
 
 def dropped_env(context: RunContext) -> tuple[str, ...]:
     """The variables of ``context.env`` Claude Code does not get: DROPPED_ENV, and ANTHROPIC_API_KEY when
-    ``drops_api_key``."""
+    ``drops_api_key``, or each of ``gateway.CLAUDE_DROPPED`` for a run through the hub's gateway route."""
+    if gateway.active(context):
+        return (*DROPPED_ENV, *gateway.CLAUDE_DROPPED)
     return (*DROPPED_ENV, API_KEY) if drops_api_key(context) else DROPPED_ENV
 
 
@@ -795,7 +797,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         program = environment.program(self.binary, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-claude-"))
         self.pid_file = self._dir / "pid"
-        unset = (API_KEY,) if drops_api_key(self.context) else ()  # the SDK passes on the daemon's own
+        unset = [key for key in dropped_env(self.context) if key not in DROPPED_ENV]  # the SDK passes the daemon's
         command = environment.command(program, context=self.context, directory=self._dir)
         self.options = self.build_options(str(write_launcher(self._dir, *command, unset=unset)))
         self._client = self.make_client(self.options)

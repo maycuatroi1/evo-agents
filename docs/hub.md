@@ -101,7 +101,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../shape`, `.../nodes`, `.../node`, `.../neighbourhood`, `.../clusters`, `.../cluster`, `.../whole`, `.../review`, `POST .../review/{fingerprint}/dismiss`, `.../decisions` (`GET`, `POST`), `POST .../decisions/{number}/{accept,reject,undo}`; the worker on duty's are under worker protocol |
-| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
+| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}`; worker pools: `GET` and `POST /v1/worker-pools`, `GET` and `PATCH /v1/worker-pools/{name}`, `GET` and `POST .../{name}/tokens`, `POST .../{name}/tokens/{id}/revoke`; for a pool node's token, `GET /v1/worker/skills` and `GET /v1/worker/skills/global/{name}/bundle` (`docs/workers.md`, Pools) |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
@@ -125,7 +125,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
 | srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews`, `/items/{ref}/reviews` (one use case) and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
-| pm | `GET /v1/x/pm/{project}/daily?date=`: the daily report of a project (`docs/pm-plugin.md`) |
+| pm | `GET /v1/x/pm/{project}/daily?date=`: the daily report of a project (`docs/pm-plugin.md` of evo-agents-core-plugins) |
 | canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
@@ -1039,7 +1039,7 @@ PROD checks) and `merge_samples`; 0084 `merge_breakers` and the notice `merge_pa
 no plan and the merge_paused notices, and puts back the checks they widened. Schemas 0085 to 0090 belong to the
 plugins tasks and pm, to the run figures and to the outputs of runs: 0085 `tasks_blockers` and
 `tasks_sprints.activated_at`, 0086 `pm_sends` and the notices `pm_daily` and `pm_escalation`, 0087
-`run_tool_stats.skills`, 0088 `tasks_items.outcome_md` (`docs/tasks-plugin.md`, `docs/pm-plugin.md`,
+`run_tool_stats.skills`, 0088 `tasks_items.outcome_md` (`docs/tasks-plugin.md`, `docs/pm-plugin.md` of evo-agents-core-plugins,
 `docs/workers.md`), 0089 `run_outputs` and `run_output_links`, 0090 `notification_mutes` and the notice `run_outputs`
 (section Outputs of runs). Schema 0091 adds `goals` and `goal_revisions` and the @builder proposal kind `goal` (section
 Goals); going back to 0090 deletes the goal proposals and their notices and drops both tables. Schema 0092 adds the
@@ -1082,7 +1082,24 @@ what it added, the proposals of kind problem and the work items of kind discover
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
 queue below). A machine joins with a pairing code from the web's Workers page, or registers directly once signed in
-with `evo-agents hub login`.
+with `evo-agents hub login`. A server made for runs joins one of the member's worker pools with a join token instead
+(`docs/workers.md`, Pools):
+
+```sh
+evo-agents worker pool create vps --project demo --slots 2 --taint dedicated  # needs hub login
+evo-agents worker pool token create vps --hours 24 --max-uses 2  # evj_..., printed once
+evo-agents worker join --url https://hub.example.org --token evj_...  # on the new machine; or EVO_JOIN_TOKEN
+evo-agents worker pool user-data vps --max-nodes 1 > user-data.sh  # a token and the bootstrap, as cloud-init user-data
+evo-agents worker pool show vps                               # its nodes, each ready or why not
+```
+
+`worker pool` (`evo_agents/worker/pool_cli.py`) reads and writes `/v1/worker-pools` with the machine token of `hub
+login`: `create NAME --project P [--slots N] [--label L ...] [--taint T ...] [--accept-finding CODE ...]
+[--reap-after-days D]`, `list`, `show NAME`, `set NAME` with the same flags (a list given replaces the whole list;
+`--no-labels`, `--no-taints` and `--no-accepted-findings` empty one), `token create NAME [--hours H] [--max-uses N]`,
+`token list NAME`, `token revoke NAME ID`, and `user-data NAME [--ttl H] [--max-nodes N]`, which prints the user-data
+on stdout and the token's id on stderr. Each but `user-data` prints the hub's answer with `--json`. A node is named
+`<pool>-<host>`, carries the pool's labels and `pool=<name>`, and takes runs once its doctor report is clean.
 
 Runs are driven from any machine signed in to the hub:
 
@@ -1113,7 +1130,8 @@ evo-agents hub run finish 42                                  # end the chat: th
 ```
 
 `run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
-has the project's harness checked out (`--worker`, required), whose agent writes an execution plan from REQUEST
+has the project's harness checked out (pinned with `--worker`, or any that `--pool`, `--label` and `--tolerate`
+let take it), whose agent writes an execution plan from REQUEST
 (at most 16 KiB of UTF-8, `-` reads it from stdin) with the create-exec-plan skill the hub holds, and puts it on the
 hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (1, 2 or 4 hours of agent time, 2 by
 default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
@@ -1158,6 +1176,15 @@ KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (
 a queued attempt whose run before it was lost on a worker that is not steady yet has a `waits for` line naming that
 worker and when it becomes steady (`steady_wait`; `docs/workers.md`, Run states).
 
+`dispatch`, `plan`, `author` and `rerun` take where the run may go besides `--worker`: `--pool NAME` (one of your
+worker pools: only its nodes take the run, as the label `pool=NAME`), `--label LABEL` (a label the claiming worker must
+have, a word or key=value: its own, its pool's, or one the hub gives it, `os=`, `arch=`, `runtime=NAME`,
+`feature=browser`; repeat it, and every one is needed) and `--tolerate TAINT` (a taint of a worker the run accepts;
+repeat it). They go to the body as `pool`, `labels` and `tolerations`, and the run keeps them as `selector` and
+`tolerations`; only what is given is sent, so an older hub takes the rest. A worker with a taint the run does not
+tolerate leaves it to others unless the run is pinned to it, and a node of a pool whose doctor report is not clean
+takes none (`docs/workers.md`, Pools). A `rerun` without any of the three keeps the run's own.
+
 A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
 and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and
 `missing_tool` when the preflight stopped it before its agent started, or `push_conflict`, `verify_failed`, `timeout`,
@@ -1200,7 +1227,9 @@ evo-agents hub secret delete gitlab-kb                        # its leases still
 break dropped, and otherwise it is asked for without echo. Every argument is checked before the value is read, and no
 command prints the value, an error included. `--kind env` needs `--env-var`; `--kind git` needs `--url-prefix`, and
 `--username` defaults to `oauth2`. `--project` names a project whose runs get it, on which you hold writer, and
-`--worker` one of your workers that alone gets it; both repeat. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
+`--worker` one of your workers that alone gets it; both repeat. `--pool NAME` (repeatable, not with `--worker`)
+binds it to one of your worker pools instead, so each node of the pool gets it, those that join later too; `hub
+account login` and `hub account oauth-login` take `--pool` as well. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
 day, as GitLab ends an access token on its expiry date. `secret list` reads `GET /v1/secrets` (`--json` prints it),
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
@@ -2688,6 +2717,26 @@ the plugin's `engines` or `plugin_api`). A signature the hub cannot check now, S
 503 and records nothing. Each write is audited as `plugin.publish`, `plugin.install`, `plugin.upgrade` or
 `plugin.remove`, naming `plugin:<name>@<version>`.
 
+Besides publishing a bundle by hand, a hub admin installs a free isolated plugin from a **market**, a GitHub
+repository whose `market.json` lists plugins with their publisher, signer, tier and price (plugin-market-v1), or
+straight from a plugin repository's GitHub release. The hub downloads the release's bundle and signature, checks the
+identity that signed it against the publisher, asks before it trusts a new signer, and then publishes and installs it
+through the store as above. A signer a hub admin trusted so is kept in the database (table `plugin_publishers`) beside
+`EVO_HUB_PLUGIN_PUBLISHERS`, shown and removed from Administration, Market, unless the operator sets
+`EVO_HUB_PLUGIN_PUBLISHERS_LOCKED=true`, which the api enforces. `EVO_HUB_MARKET_DEFAULT_SOURCE` names the operator's
+market, `maycuatroi1/evo-agents-market` unless set, and `none` for none. Every member browses the markets under Market,
+and a project's admin asks the hub admins for a plugin there. How markets, trust, installing and requests work is in
+`docs/market.md`:
+
+```sh
+evo-agents hub market source add northwind/market    # a hub admin: a market the hub reads every six hours
+evo-agents hub market list --search notes            # any member: what the markets list, and each one's status
+evo-agents hub market install lumen-notes --trust    # a hub admin: the latest release, trusting its signer
+evo-agents hub market request lumen-notes --project atlas   # a project's admin: ask the hub admins
+evo-agents hub plugin install --github lumen-labs/lumen-notes@v1.2.0 --trust
+evo-agents hub plugin publisher list                 # the signers hub admins trusted, beside the operator's
+```
+
 As the api starts, it turns off every installed plugin whose version no longer runs on its release, the hub having
 been upgraded past the plugin's `engines`: the plugin shows `disabled` with the reason, the audit trail
 `plugin.disable`, and every hub admin who has signed in gets the notice `plugin_disabled`. The hub serves on, and a
@@ -3131,7 +3180,8 @@ pulls that release from GHCR instead. Postgres is not in it: point `EVO_HUB_DSN`
 reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK` (default `dokploy-network`). The volumes `api-cache` and
 `worker-cache` are caches; deleting them loses nothing. `plugins-cache` holds the code and the environments of the
 isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep state:
-deleting it loses that state. A hub for a client, from the same images with its own branding, publishers and plugins,
+deleting it loses that state. The fifth service, `gateway`, runs a pinned image it does not build, and its volume
+`gateway-data` holds what the api reconciles into it, rebuilt when lost (section Model gateway). A hub for a client, from the same images with its own branding, publishers and plugins,
 is in `docs/hub-deployment.md`, and so are the core plugins the image installs: those `deploy/hub/core-plugins.txt`
 pins, from PyPI, and a hub's own, from the two build variables below. Set the variables in the platform's
 environment, never in a committed file.
@@ -3168,11 +3218,17 @@ environment, never in a committed file.
 | `EVO_HUB_FCM_SERVICE_ACCOUNT` | api, worker | the JSON key file of a Google service account that may send Firebase Cloud Messaging for the app's project, on one line or in base64; the hub takes an OAuth token with it for the HTTP v1 API. Unset, FCM is off, `GET /v1/push/config` says so and the rest of the notifications go on (`docs/notifications.md`) |
 | `EVO_HUB_PLUGIN_PUBLISHERS` | api | the publishers whose signed plugin bundles the hub accepts: comma-separated `ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml` (a GitHub Actions workflow that signs keyless with Sigstore) or `ID=ed25519:KEY` (a public key, 32 bytes in base64) entries, several for one id; unset trusts nobody and every bundle is refused (section Plugins) |
 | `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
+| `EVO_HUB_PLUGIN_PUBLISHERS_LOCKED` | api | `true` refuses every publisher signer a hub admin would trust from the market or a GitHub release, so the hub trusts only `EVO_HUB_PLUGIN_PUBLISHERS`; `false` by default (`docs/market.md`) |
+| `EVO_HUB_MARKET_DEFAULT_SOURCE` | api | the operator's market, a GitHub `OWNER/REPO` whose `market.json` the hub lists and its admins cannot remove: `maycuatroi1/evo-agents-market` when unset, none when `none` (`docs/market.md`) |
 | `EVO_HUB_PLUGIN_HOST_URL` | api, worker | where the api reaches the plugin host, such as `http://evo-agents-hub-plugins:8090`; with the token below, both or the api runs no isolated backend (section Isolated backends) |
 | `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
+| `EVO_HUB_GATEWAY_SECRET` | api, gateway | the root secret of the model gateway, at least 32 random characters: the `gateway` service derives OmniRoute's secrets and dashboard password from it and the api signs in with the same password; unset, the gateway is off and the hub runs without it (section Model gateway). The worker does not get it |
+| `EVO_HUB_GATEWAY_URL` | api | where the api reaches the gateway; empty is `http://evo-agents-hub-gateway:20128`, the service on its own network |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
+| `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |
+| `EVO_HUB_GATEWAY_SUBNET` | compose | the subnet of the `gateway` network, default `10.231.128.0/28`, outside Docker's default address pools so the network is created on a host whose pools are all taken; change it when it overlaps a network of the host |
 | `EVO_HUB_EXTRA_CORE_PLUGINS` | build | a hub's own core plugins, beside those `deploy/hub/core-plugins.txt` pins: requirements `name==version --hash=sha256:<64 hex>` separated by spaces or line breaks, every dependency the image lacks among them; a build argument, never a variable of a service (`docs/hub-deployment.md`, section Core plugins in the image) |
 | `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
@@ -3199,6 +3255,28 @@ refused pairing codes counts per client address, so behind a proxy that is not l
 every join for 10 minutes. List the address or network the proxy reaches the api from, as `docker inspect` shows it on
 the shared network, and nothing wider: a listed address can claim any client address in `X-Forwarded-For`, and `*`
 lets every client do that. The default trusts nobody new.
+
+### Model gateway
+
+The `gateway` service runs OmniRoute, pinned by digest to the version the model catalog was generated from
+(`GATEWAY_VERSION` in `evo_agents/hub/model_catalog.py`, the client in `evo_agents/hub/server/gateway_client.py`).
+Only the api calls it. It publishes no port and has no domain, so neither its dashboard nor its management API is on
+the internet, and it sits on the network `gateway` alone, which the api joins: it has no route to Postgres (the
+platform's network) nor to web. `EVO_HUB_GATEWAY_SECRET` turns it on. The service derives from it OmniRoute's JWT
+secret, API key secret, storage key and dashboard password (each the HMAC-SHA256 of `evo-hub-gateway/<label>` under
+the root secret, in hex) and the api derives the same password, signs in with it and keeps the session in memory, so
+no credential is copied by hand and none is stored by the hub. Without the secret the service exits at once, the hub
+runs as before, and whatever needs the gateway says it is not configured. Every request needs a gateway key, request
+logs are off, and each key the hub makes is noLog: the gateway keeps no prompt or response body.
+
+The hub is the source of truth (`evo_agents/hub/server/gateway_sync.py`). When the api starts, shortly after each write
+of a provider account and every minute, it makes each live provider account a connection of the gateway, named
+`evo-<secret id>-<fingerprint>`: of the catalog's provider at the account's base URL, or of a provider node of its own
+for a custom endpoint. The key is opened in the api's memory only and sent to the gateway alone. A paused or expired
+account's connection is inactive; a deleted account's connection, and every connection or node the hub does not know,
+is deleted. A lost `gateway-data` volume is therefore rebuilt on the next round; changing the root secret needs that
+volume dropped, since the old volume keeps the old password and storage key. `GET /v1/health` reports `gateway`: `ok`,
+`off` without the secret, or `error`, which fails the check, when the gateway does not answer.
 
 ### Deploying main
 
@@ -3279,9 +3357,10 @@ with a release at least as new as the one that wrote the dump. A newer release m
 forward. The caches fill again on their own. The job queue is part of the dump, so builds that were queued run, and
 the recovery job fails and queues again any build that was running when the dump was taken.
 
-**Health.** `GET /v1/health` reports the package version, the schema revision, `db` and `r2`. It answers 503 and
-lists the failed component when Postgres or the bucket does not answer within 3 seconds; a hub without the S3
-variables reports `r2: unconfigured` and stays healthy. `GET /v1/health/live` only says the process serves requests.
+**Health.** `GET /v1/health` reports the package version, the schema revision, `db`, `r2` and `gateway`. It answers
+503 and lists the failed component when Postgres, the bucket or a configured model gateway does not answer within 3
+seconds; a hub without the S3 variables reports `r2: unconfigured`, one without `EVO_HUB_GATEWAY_SECRET` reports
+`gateway: off`, and both stay healthy. `GET /v1/health/live` only says the process serves requests.
 The container healthcheck uses the live route on purpose: an R2 outage must not get the api restarted while it still
 answers from its cache. Point uptime monitoring at `/v1/health`.
 

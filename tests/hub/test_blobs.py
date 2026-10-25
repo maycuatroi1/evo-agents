@@ -522,6 +522,7 @@ def test_health_is_503_naming_r2_while_the_moto_server_is_stopped(hub):
         "schema": HEAD,
         "db": "ok",
         "r2": "ok",
+        "gateway": "off",
         "failed": [],
     }
     alpha = live.add_project(hub.db, "alpha")
@@ -541,6 +542,7 @@ def test_health_is_503_naming_r2_while_the_moto_server_is_stopped(hub):
         "schema": HEAD,
         "db": "ok",
         "r2": "unavailable",
+        "gateway": "off",
         "failed": ["r2"],
     }
     assert hub.client.get("/v1/health/live").status_code == 200

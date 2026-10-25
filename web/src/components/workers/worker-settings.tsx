@@ -19,7 +19,8 @@ import { cn } from "@/lib/utils";
 import { FormError } from "./form-error";
 import { useWorkerFailure, useWorkerWrite } from "./hooks";
 import { isWorkerName, parseLabels, workerView } from "./model";
-import { MAX_LABELS, MAX_SLOTS, MIN_SLOTS, type Worker } from "./queries";
+import { inheritedOf, type Inherited, ownOf, parseList, TAINT } from "./pool-model";
+import { MAX_LABELS, MAX_SLOTS, MIN_SLOTS, poolQuery, type Worker } from "./queries";
 import { updateWorker, type WorkerUpdate } from "./update-worker";
 import { VersionLockSwitch } from "./version-lock";
 
@@ -34,15 +35,17 @@ export function parsePlugins(input: string): { plugins: string[]; invalid: strin
   return { plugins, invalid: words.filter((word) => !PLUGIN_ID.test(word)), tooMany: plugins.length > MAX_PLUGINS };
 }
 
-type Form = { name: string; slots: string; labels: string; plugins: string; projects: string[] };
+type Form = { name: string; slots: string; labels: string; taints: string; plugins: string; projects: string[] };
 type Field = keyof Form;
 type Errors = Partial<Record<Field, string>>;
 
-function formOf(worker: Worker): Form {
+/** The form as the hub holds the worker; its own labels and taints only, those of its pool being the pool's to change. */
+function formOf(worker: Worker, own: Inherited | null): Form {
   return {
     name: worker.name,
     slots: String(worker.slots),
-    labels: worker.labels.join(", "),
+    labels: (own?.labels ?? []).join(", "),
+    taints: (own?.taints ?? []).join(", "),
     plugins: worker.plugins.join(", "),
     projects: [...worker.projects].sort(),
   };
@@ -80,7 +83,10 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
   const failure = useWorkerFailure();
   const write = useWorkerWrite((api, body: WorkerUpdate) => updateWorker(api, worker.id, body));
   const projects = useQuery(projectsQuery(browserApi));
-  const [edits, setEdits] = useState<Form | null>(null);
+  // A node's labels and taints show its pool's after its own: the form edits its own, known once the pool is read.
+  const pool = useQuery({ ...poolQuery(browserApi, worker.pool ?? ""), enabled: Boolean(worker.pool) });
+  const own = worker.pool ? (pool.data ? ownOf(worker, inheritedOf(pool.data)) : null) : ownOf(worker, null);
+  const [edits, setEdits] = useState<Partial<Form> | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const revoked = workerView(worker) === "revoked";
   const pending = write.isPending;
@@ -88,10 +94,11 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
   // A revoked worker changes no more; the card stays only to say why the last save failed.
   if (revoked && !write.isError) return null;
 
-  const form = edits ?? formOf(worker);
+  const base = formOf(worker, own);
+  const form = { ...base, ...edits };
   const choices = projectChoices(worker, projects.data);
   const set = <F extends Field>(field: F, value: Form[F]) => {
-    setEdits({ ...form, [field]: value });
+    setEdits({ ...edits, [field]: value });
     setErrors((current) => ({ ...current, [field]: undefined }));
     if (write.isError) write.reset();
   };
@@ -111,12 +118,15 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
     const labels = parseLabels(form.labels);
     if (labels.invalid.length) found.labels = t("labelsInvalid", { labels: labels.invalid.join(", ") });
     else if (labels.tooMany) found.labels = t("labelsTooMany", { max: MAX_LABELS });
+    const taints = parseList(form.taints, TAINT, MAX_LABELS, { lower: true });
+    if (taints.invalid.length) found.taints = t("taintsInvalid", { taints: taints.invalid.join(", ") });
+    else if (taints.tooMany) found.taints = t("taintsTooMany", { max: MAX_LABELS });
     const plugins = parsePlugins(form.plugins);
     if (plugins.invalid.length) found.plugins = t("pluginsInvalid", { plugins: plugins.invalid.join(", ") });
     else if (plugins.tooMany) found.plugins = t("pluginsTooMany", { max: MAX_PLUGINS });
     if (form.projects.length === 0) found.projects = t("projectsRequired");
     setErrors(found);
-    const first = (["name", "slots", "labels", "plugins", "projects"] as const).find((key) => found[key]);
+    const first = (["name", "slots", "labels", "taints", "plugins", "projects"] as const).find((key) => found[key]);
     if (first) {
       document.getElementById(first === "projects" ? `${ids}-project-0` : `${ids}-${first}`)?.focus();
       return;
@@ -125,7 +135,8 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
     const body: WorkerUpdate = {};
     if (name !== worker.name) body.name = name;
     if (slots !== worker.slots) body.slots = slots;
-    if (!sameLabels(labels.labels, worker.labels)) body.labels = labels.labels;
+    if (own && !sameLabels(labels.labels, own.labels)) body.labels = labels.labels;
+    if (own && !sameLabels(taints.values, own.taints)) body.taints = taints.values;
     if (!sameLabels(plugins.plugins, worker.plugins)) body.plugins = plugins.plugins;
     if (!sameLabels(form.projects, [...worker.projects].sort())) body.projects = form.projects;
     if (Object.keys(body).length === 0) {
@@ -154,7 +165,7 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
 
   const revokedMeanwhile = revoked || (isApiError(write.error) && write.error.status === 409 && /revoked/i.test(write.error.info.message));
   const error = write.isError ? failure(write.error, revokedMeanwhile ? { 409: t("revoked") } : {}) : null;
-  const dirty = edits !== null && JSON.stringify(edits) !== JSON.stringify(formOf(worker));
+  const dirty = edits !== null && JSON.stringify(form) !== JSON.stringify(base);
 
   return (
     <Card className="min-w-0" data-testid="worker-settings">
@@ -229,15 +240,39 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
                 autoCapitalize="none"
                 spellCheck={false}
                 maxLength={800}
+                disabled={own === null}
                 className="h-9 font-mono placeholder:font-sans"
                 aria-invalid={errors.labels ? true : undefined}
                 aria-describedby={describedBy("labels")}
                 data-testid="worker-settings-labels"
               />
               <p id={`${ids}-labels-hint`} className="text-xs text-muted-foreground">
-                {t("labelsHint")}
+                {worker.pool ? t("labelsHintPool", { pool: worker.pool }) : t("labelsHint")}
               </p>
               <FieldError id={`${ids}-labels-error`} text={errors.labels} />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor={`${ids}-taints`}>{t("taints")}</Label>
+              <Input
+                id={`${ids}-taints`}
+                name="taints"
+                value={form.taints}
+                onChange={(event) => set("taints", event.target.value)}
+                placeholder={t("taintsPlaceholder")}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={1600}
+                disabled={own === null}
+                className="h-9 font-mono placeholder:font-sans"
+                aria-invalid={errors.taints ? true : undefined}
+                aria-describedby={describedBy("taints")}
+                data-testid="worker-settings-taints"
+              />
+              <p id={`${ids}-taints-hint`} className="text-xs text-muted-foreground">
+                {worker.pool ? t("taintsHintPool", { pool: worker.pool }) : t("taintsHint")}
+              </p>
+              <FieldError id={`${ids}-taints-error`} text={errors.taints} />
             </div>
             <div className="flex min-w-0 flex-col gap-1.5 md:col-span-2">
               <Label htmlFor={`${ids}-plugins`}>{t("plugins")}</Label>

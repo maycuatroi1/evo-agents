@@ -9,9 +9,10 @@ without one the hub refuses the bundle as unsigned. The hub checks the bundle wh
 
 ``list`` prints every plugin with its state, installed and latest version and the upgrade waiting; ``show NAME`` one
 plugin with every version. ``install NAME`` installs the newest version that runs on the hub, or ``--version``;
+``install --github OWNER/REPO[@TAG]`` installs from a GitHub release instead (``evo_agents.hub.cli_market``);
 ``upgrade NAME`` moves the installed one to the newest above it, or ``--version``; ``remove NAME`` removes it, every
 version staying in the store. ``--json`` prints what the hub answered. Standard library only, like the rest of the
-client. ``list --project``, ``enable``, ``disable``, ``config`` and ``rollback``, for the members of a project, are in
+client. ``publisher list|add|remove`` are in ``evo_agents.hub.cli_market``. ``list --project``, ``enable``, ``disable``, ``config`` and ``rollback``, for the members of a project, are in
 ``evo_agents.hub.cli_plugin_projects``.
 """
 
@@ -21,6 +22,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli_market import INSTALLED_KEYS, install_github, register_publishers
 from evo_agents.hub.cli_plugin_projects import list_project, project_list_output, register_project_commands
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
@@ -179,6 +181,12 @@ def _changed(args, plugin: dict, verb: str) -> int:
 
 @client_command
 def cmd_install(args) -> int:
+    if (args.github is None) == (args.name is None):
+        raise HubError("name the plugin, or its GitHub repo with --github OWNER/REPO[@TAG], not both")
+    if args.github is not None:
+        return install_github(args)
+    if args.signer or args.trust:
+        raise HubError("--signer and --trust go with --github")
     hub, _ = signed_in()
     return _changed(args, hub.call("POST", _path(args.name, "install"), {"version": args.version}), "Installed")
 
@@ -224,18 +232,34 @@ def register_plugins(hsub) -> None:
     json_option(show, returns_object(*DETAIL_KEYS, schema="PluginDetail"))
     show.set_defaults(func=cmd_show)
 
-    for verb, func, text in (
-        ("install", cmd_install, "install a version: the newest that runs on the hub, or --version"),
-        ("upgrade", cmd_upgrade, "move the installed version to a newer one: the newest that runs, or --version"),
-    ):
-        changed = psub.add_parser(verb, help=text)
-        _name(changed)
-        changed.add_argument("--version", metavar="VERSION", help="the version, such as 1.2.0")
-        json_option(changed, returns_object(*PLUGIN_KEYS, schema="Plugin"))
-        changed.set_defaults(func=func)
+    install = psub.add_parser(
+        "install", help="install a version: the newest that runs on the hub, or --version; or a GitHub release"
+    )
+    install.add_argument("name", metavar="NAME", nargs="?", help="the plugin's id, as its manifest gives it")
+    install.add_argument("--version", metavar="VERSION", help="the version, such as 1.2.0")
+    install.add_argument(
+        "--github", metavar="OWNER/REPO[@TAG]", help="install from the repo's GitHub release: the latest, or TAG"
+    )
+    install.add_argument(
+        "--signer",
+        help="with --github: what signs its releases (default: sigstore:OWNER/REPO/.github/workflows/ci.yml)",
+    )
+    install.add_argument("--trust", action="store_true", help="with --github: trust the signer if the hub does not yet")
+    github = returns_object(*INSTALLED_KEYS, schema="MarketInstalled")
+    json_option(install, returns_object(*PLUGIN_KEYS, schema="Plugin", variants=(("--github", github),)))
+    install.set_defaults(func=cmd_install)
+
+    upgrade = psub.add_parser(
+        "upgrade", help="move the installed version to a newer one: the newest that runs, or --version"
+    )
+    _name(upgrade)
+    upgrade.add_argument("--version", metavar="VERSION", help="the version, such as 1.2.0")
+    json_option(upgrade, returns_object(*PLUGIN_KEYS, schema="Plugin"))
+    upgrade.set_defaults(func=cmd_upgrade)
 
     removed = psub.add_parser("remove", help="remove the installed version; every version stays on the hub")
     _name(removed)
     json_option(removed, returns_object(*PLUGIN_KEYS, schema="Plugin"))
     removed.set_defaults(func=cmd_remove)
     register_project_commands(psub, _name)
+    register_publishers(psub)

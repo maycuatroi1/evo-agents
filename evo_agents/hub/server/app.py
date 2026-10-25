@@ -43,7 +43,19 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import GraphCache, Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import admin, auth, blobs, errors, health, invites, projects, tokens, user_emails, web_auth
+from evo_agents.hub.server import (
+    admin,
+    auth,
+    blobs,
+    errors,
+    gateway_sync,
+    health,
+    invites,
+    projects,
+    tokens,
+    user_emails,
+    web_auth,
+)
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
@@ -136,8 +148,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 if opened is not None:
                     await opened.aclose()
             raise
-        app.state.pool = pool
-        app.state.engine = make_engine(pool)  # disposed of before the pool closes
+        app.state.pool, app.state.engine = pool, make_engine(pool)  # the engine is disposed of before the pool closes
         app.state.github = GitHub(config)
         app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
         app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
@@ -151,6 +162,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 extra={"missing": config.blob_store_missing()},
             )
         await _check_plugins(app, config)
+        app.state.gateway_run = await gateway_sync.start(app, config)  # off without EVO_HUB_GATEWAY_SECRET
         log.info(
             "hub ready",
             extra={
@@ -166,6 +178,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "telegram_missing": config.telegram_missing(),
                 "plugin_publishers": [publisher.id for publisher in config.plugin_publishers],
                 "plugin_host_missing": config.plugin_host_missing(),
+                "gateway_missing": config.gateway_missing(),
             },
         )
         try:
@@ -176,7 +189,7 @@ def create_app(config: HubConfig) -> FastAPI:
             await app.state.browser_views.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
-            for opened in (app.state.github_app, app.state.curator_app, app.state.plugin_host):
+            for opened in (app.state.gateway_run, app.state.github_app, app.state.curator_app, app.state.plugin_host):
                 if opened is not None:
                     await opened.aclose()
             if app.state.blobs is not None:
@@ -228,6 +241,7 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import skills
 
     app.include_router(skills.router)
+    app.include_router(skills.worker_router)  # the skill sync of worker pool nodes
 
     from evo_agents.hub.server import kg
 
@@ -253,10 +267,11 @@ def create_app(config: HubConfig) -> FastAPI:
 
     app.include_router(admin_console.router)
 
-    from evo_agents.hub.server import workers
+    from evo_agents.hub.server import worker_join, worker_pools, workers
 
     app.include_router(workers.router)
-    app.include_router(workers.worker_router)
+    app.include_router(worker_pools.router)
+    app.include_router(worker_join.worker_router)
     app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
 
     from evo_agents.hub.server import author_chat, chat_events, listen, run_events, runs, tool_stats
@@ -393,6 +408,7 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_accounts,
         agent_packs,
         agent_profiles,
+        agent_provider_accounts,
         agent_types,
         autonomy_policies,
         branding,
@@ -411,22 +427,30 @@ def create_app(config: HubConfig) -> FastAPI:
         credential_shares,
         credentials,
         features,
+        gateway_proxy,
         goals,
         intake,
+        market,
+        market_install,
         merge_judge,
         merge_view,
+        model_catalog,
         opportunities,
         opportunity_evidence,
+        plugin_cli,
         plugin_host,
         plugin_notify,
+        plugin_publishers,
         plugin_ui,
         plugins,
         problem_evidence,
         problems,
         project_plugins,
+        provider_accounts,
         rate_limits,
         run_leases,
         run_waits,
+        runnable_models,
         secrets,
         signal_keys,
         signals,
@@ -447,6 +471,7 @@ def create_app(config: HubConfig) -> FastAPI:
         worker_autonomy.worker_router,
         agent_profiles.router,
         agent_accounts.router,
+        agent_provider_accounts.router,
         agent_account_views.router,
         agent_packs.router,
         agent_types.router,
@@ -471,15 +496,24 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_agents.worker_router,
         chat_read.worker_router,
         triage_actions.worker_router,
+        market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,
-        plugins.publishers_router,
+        plugin_publishers.router,
+        market.sources_router,  # before market.router, whose /{source}/{plugin} would take /sources/{id}
+        market_install.router,
+        market.router,
         project_plugins.router,
         plugin_ui.router,
+        plugin_cli.router,
         plugin_host.router,
         branding.router,
         branding.admin_router,
         features.router,
         features.admin_router,
+        model_catalog.router,
+        provider_accounts.router,
+        runnable_models.router,
+        gateway_proxy.router,  # /v1/messages and the like: a run's token to the model gateway
         signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
         signals.router,
         signal_keys.router,

@@ -113,8 +113,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
       - run: uv pip install --system -e '.[test,graphify,hub-server,worker]'
-      # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt): telegram and chats of
-      # evo-agents-core-plugins, whose routes the golden copy of the API holds and with which tests build a hub's graph.
+      # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt): telegram, chats, crm, pm and
+      # marketing of evo-agents-core-plugins, whose routes the golden copy of the API holds and with which tests build a hub's graph.
       - run: uv pip install --system --no-deps --require-hashes -r deploy/hub/core-plugins.txt
       - name: Install tmux, for the interactive runs of the worker
         if: matrix.part == 'worker'
@@ -188,7 +188,7 @@ jobs:
           EVO_TEST_HUB_IMAGE: "1"
         run: pytest -q -rs -p no:cacheprovider tests/plugins/test_core_install_image.py
 
-  # The tests of the core plugins deploy/hub/core-plugins.txt pins, telegram and chats: the repository
+  # The tests of the core plugins deploy/hub/core-plugins.txt pins, telegram, chats, crm, pm and marketing: the repository
   # evo-agents-core-plugins at the tag of the pinned release, its tests run against this checkout of evo-agents in place
   # of the commit its evo-agents.lock names (`make setup` with EVO_AGENTS_URL and EVO_AGENTS_REF), on a Postgres service
   # as the test jobs'. A change of the hub that breaks them without changing the core plugin API fails here, not only

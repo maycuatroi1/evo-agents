@@ -1,7 +1,7 @@
 {
   "api_version": [
     1,
-    2
+    3
   ],
   "names": {
     "ANSWER_EVENT": {
@@ -112,6 +112,32 @@
         {
           "name": "project",
           "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "AgentTypeRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "handle",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "annotation": "bool",
           "default": null
         }
       ]
@@ -254,6 +280,134 @@
         }
       ]
     },
+    "ChatRunRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "run_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "root_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "dispatcher_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "dispatcher",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "ClaimCardRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "number",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "cell",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "text",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "test_card",
+          "annotation": "Mapping[str, Any] | None",
+          "default": null
+        },
+        {
+          "name": "signal_keys",
+          "annotation": "tuple[str, ...]",
+          "default": null
+        }
+      ]
+    },
+    "ClaimRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "canvas_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "number",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "cell",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "text",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "status",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "confidence",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "rev",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "label",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
     "Clearance": {
       "kind": "dataclass",
       "frozen": true,
@@ -352,6 +506,62 @@
         }
       ]
     },
+    "DecisionRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "plan_id",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "step_key",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "category",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "question",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "answer_option",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "asked_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "answered_at",
+          "annotation": "datetime | None",
+          "default": null
+        }
+      ]
+    },
     "DirectChat": {
       "kind": "dataclass",
       "frozen": true,
@@ -364,6 +574,27 @@
         {
           "name": "made",
           "annotation": "bool",
+          "default": null
+        }
+      ]
+    },
+    "EnabledProject": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "default_label",
+          "annotation": "Mapping[str, Any]",
           "default": null
         }
       ]
@@ -389,11 +620,215 @@
         }
       }
     },
+    "GoalMeasure": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "code",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "statement",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "metric",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "metric_text",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "value",
+          "annotation": "float | None",
+          "default": null
+        },
+        {
+          "name": "target",
+          "annotation": "float | None",
+          "default": null
+        },
+        {
+          "name": "reached",
+          "annotation": "bool | None",
+          "default": null
+        }
+      ]
+    },
+    "GoalRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "code",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "alias",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "revision",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "statement",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "metric",
+          "annotation": "Mapping[str, Any] | None",
+          "default": null
+        },
+        {
+          "name": "metric_text",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "deadline",
+          "annotation": "Any",
+          "default": null
+        },
+        {
+          "name": "status",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "owner",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "GrantRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "login",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "user_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "role",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "max_level",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "granted_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "HUB_KEYS": {
+      "kind": "constant",
+      "value": "('projects.id', 'users.id', 'canvas_claims.id', 'runs.id', 'invites.id')"
+    },
     "HubAdmin": {
       "kind": "alias",
       "annotated": "Session",
       "metadata": [
         "Depends(hub_admin)"
+      ]
+    },
+    "Invite": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "token",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "url",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "expires_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "InviteRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "role",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "for_login",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "expires_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "accepted_by",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "accepted_at",
+          "annotation": "datetime | None",
+          "default": null
+        }
       ]
     },
     "KgSourceAnswer": {
@@ -406,6 +841,32 @@
       "required": [
         "identifiers",
         "items"
+      ]
+    },
+    "LabelReader": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "max_level",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "hub_sink",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "_rules",
+          "annotation": "ProjectRules",
+          "default": null
+        }
       ]
     },
     "LinkCode": {
@@ -631,6 +1092,87 @@
         }
       ]
     },
+    "PROJECT_NAME": {
+      "kind": "constant",
+      "value": "'^[a-z0-9][a-z0-9-]{0,99}$'"
+    },
+    "PlanRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "plan_id",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "area",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "revision",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "status",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "label",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "PlanStepChangeRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "plan_id",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "step_key",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "revision",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "changed_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "from_status",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "to_status",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
     "Plugin": {
       "kind": "dataclass",
       "frozen": true,
@@ -663,6 +1205,95 @@
         }
       ]
     },
+    "PluginSchemaError": {
+      "kind": "error",
+      "bases": [
+        "RuntimeError"
+      ]
+    },
+    "ProjectAgentTypeRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "plugin",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "handle",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "annotation": "bool",
+          "default": null
+        }
+      ]
+    },
+    "ProjectConfig": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "values",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "version",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "missing_secrets",
+          "annotation": "tuple[str, ...]",
+          "default": "()"
+        }
+      ]
+    },
+    "ProjectRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "role",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "max_level",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ]
+    },
     "ProposalAnswer": {
       "kind": "dataclass",
       "frozen": true,
@@ -687,6 +1318,10 @@
     "RESTRICTED_ANSWER": {
       "kind": "constant",
       "value": "'answer this on the hub: its project keeps its decisions and proposals off this channel'"
+    },
+    "ROLES": {
+      "kind": "constant",
+      "value": "('reader', 'writer', 'admin')"
     },
     "Refused": {
       "kind": "error",
@@ -722,6 +1357,98 @@
         ],
         "returns": ""
       }
+    },
+    "RunActorRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "dispatcher_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "dispatcher",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "RunRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "plan_id",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "step_key",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "dispatched_by",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "queued_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "finished_at",
+          "annotation": "datetime | None",
+          "default": null
+        }
+      ]
     },
     "SESSION_ENDED": {
       "kind": "constant",
@@ -771,6 +1498,786 @@
           "name": "web",
           "annotation": "bool",
           "default": "True"
+        },
+        {
+          "name": "machine",
+          "annotation": "bool",
+          "default": "False"
+        }
+      ]
+    },
+    "SignalPoint": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "key",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "value",
+          "annotation": "float | None",
+          "default": "None"
+        },
+        {
+          "name": "text",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "measured_at",
+          "annotation": "datetime | None",
+          "default": "None"
+        },
+        {
+          "name": "tenant",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "external_id",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ]
+    },
+    "SignalPushed": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "stored",
+          "annotation": "bool",
+          "default": null
+        },
+        {
+          "name": "duplicate",
+          "annotation": "bool",
+          "default": null
+        },
+        {
+          "name": "refused",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "SignalValue": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "key",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "value",
+          "annotation": "float | None",
+          "default": null
+        },
+        {
+          "name": "text",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "source",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "tenant",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "measured_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "label",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        }
+      ]
+    },
+    "SignalsPushed": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "accepted",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "duplicates",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "rejected",
+          "annotation": "tuple[str, ...]",
+          "default": null
+        }
+      ]
+    },
+    "SprintDetailRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "goal",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "starts_on",
+          "annotation": "Any",
+          "default": null
+        },
+        {
+          "name": "ends_on",
+          "annotation": "Any",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "activated_at",
+          "annotation": "datetime | None",
+          "default": null
+        },
+        {
+          "name": "closed_at",
+          "annotation": "datetime | None",
+          "default": null
+        }
+      ]
+    },
+    "SprintRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "goal",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "starts_on",
+          "annotation": "Any",
+          "default": null
+        },
+        {
+          "name": "ends_on",
+          "annotation": "Any",
+          "default": null
+        }
+      ]
+    },
+    "SrsItemRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "document",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "key",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "code",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "created_in",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "retired_in",
+          "annotation": "int | None",
+          "default": null
+        }
+      ]
+    },
+    "SrsVersionRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "document",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "number",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "summary",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "decided_at",
+          "annotation": "datetime | None",
+          "default": null
+        }
+      ]
+    },
+    "StepRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "plan_id",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "key",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "index",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "status",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "depends_on",
+          "annotation": "tuple[str, ...]",
+          "default": null
+        },
+        {
+          "name": "data",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        }
+      ]
+    },
+    "TaskActivityRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "task_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "commented_at",
+          "annotation": "datetime | None",
+          "default": null
+        },
+        {
+          "name": "run_at",
+          "annotation": "datetime | None",
+          "default": null
+        }
+      ]
+    },
+    "TaskBlockerRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "task_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "reason",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "since",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "set_by",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "waiting_login",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "waiting_task_number",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "waiting_text",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "TaskDecisionRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "task_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "decision_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "question",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "asked_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "dispatched_by",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "TaskDetailRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "number",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "type",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "status",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "priority",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "due_on",
+          "annotation": "Any",
+          "default": null
+        },
+        {
+          "name": "sprint_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "sprint",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "parent_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "description_md",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "outcome_md",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "external_key",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "frame",
+          "annotation": "bool",
+          "default": null
+        },
+        {
+          "name": "label",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "TaskEventRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "task_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "field",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "from_value",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "to_value",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "TaskHanded": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "refused",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "TaskLinkRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "task_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "srs_item_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "plan_id",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "step_id",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "url",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "TaskPersonRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "task_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "role",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "user_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "login",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "TaskRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "number",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "type",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "status",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "priority",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "due_on",
+          "annotation": "Any",
+          "default": null
+        },
+        {
+          "name": "sprint_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "parent_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "label",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "TaskSrsItemRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "task_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "item_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "document",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "code",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "retired_in",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "label",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        }
+      ]
+    },
+    "ToolCaller": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "session",
+          "annotation": "Session | None",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "run_kind",
+          "annotation": "str | None",
+          "default": "None"
         }
       ]
     },
@@ -802,12 +2309,155 @@
         "RuntimeError"
       ]
     },
+    "UserRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "login",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "last_seen_at",
+          "annotation": "datetime | None",
+          "default": null
+        }
+      ]
+    },
+    "Visibility": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "levels",
+          "annotation": "tuple[str, ...]",
+          "default": null
+        },
+        {
+          "name": "max_level",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "sink",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
     "WebSession": {
       "kind": "alias",
       "annotated": "Session",
       "metadata": [
         "Depends(web_session)"
       ]
+    },
+    "WorkItemRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "key",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "admins_notified": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "key",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "value",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "bool"
+    },
+    "adopt_tables": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "connection",
+          "kind": "positional_or_keyword",
+          "annotation": "Connection",
+          "default": null
+        },
+        {
+          "name": "metadata",
+          "kind": "positional_or_keyword",
+          "annotation": "MetaData",
+          "default": null
+        },
+        {
+          "name": "names",
+          "kind": "positional_or_keyword",
+          "annotation": "",
+          "default": null
+        }
+      ],
+      "returns": "list[str]"
     },
     "agents": {
       "kind": "async function",
@@ -1015,6 +2665,12 @@
           "kind": "positional_or_keyword",
           "annotation": "str",
           "default": null
+        },
+        {
+          "name": "project",
+          "kind": "keyword_only",
+          "annotation": "ProjectRef | None",
+          "default": "None"
         }
       ],
       "returns": "None"
@@ -1054,6 +2710,84 @@
         }
       ],
       "returns": "KgSourceAnswer"
+    },
+    "chat_run_of": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int | None",
+          "default": null
+        }
+      ],
+      "returns": "ChatRunRef | None"
+    },
+    "create_invite": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "HubConfig | None",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "created_by",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "for_login",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "role",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": "'reader'"
+        },
+        {
+          "name": "days",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "7"
+        }
+      ],
+      "returns": "Invite"
     },
     "delivered_notification": {
       "kind": "async function",
@@ -1108,6 +2842,102 @@
         }
       ],
       "returns": "Member | None"
+    },
+    "emit_event": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "name",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "payload",
+          "kind": "positional_or_keyword",
+          "annotation": "dict",
+          "default": null
+        }
+      ],
+      "returns": "int"
+    },
+    "enabled_agent_type": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "name",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "AgentTypeRef | None"
+    },
+    "enabled_plugin_config": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "name",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "ProjectConfig | None"
     },
     "find_member": {
       "kind": "async function",
@@ -1175,6 +3005,72 @@
       ],
       "returns": "bool"
     },
+    "hand_task": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "agent_type",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "title",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "for_user",
+          "kind": "keyword_only",
+          "annotation": "int | None",
+          "default": "None"
+        }
+      ],
+      "returns": "TaskHanded"
+    },
+    "has_role": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "held",
+          "kind": "positional_or_keyword",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "needed",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "bool"
+    },
     "hub_config": {
       "kind": "function",
       "params": [
@@ -1186,6 +3082,30 @@
         }
       ],
       "returns": "HubConfig"
+    },
+    "label_reader": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "access",
+          "kind": "positional_or_keyword",
+          "annotation": "ProjectRef",
+          "default": null
+        }
+      ],
+      "returns": "LabelReader"
     },
     "link_channel": {
       "kind": "async function",
@@ -1289,6 +3209,168 @@
       ],
       "returns": "LinkedChannel | None"
     },
+    "match_users": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "logins",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[str]",
+          "default": null
+        }
+      ],
+      "returns": "tuple[UserRef, ...]"
+    },
+    "measure_goals": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "at",
+          "kind": "positional_or_keyword",
+          "annotation": "datetime",
+          "default": null
+        }
+      ],
+      "returns": "tuple[GoalMeasure, ...]"
+    },
+    "notify": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "notice_kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "users",
+          "kind": "keyword_only",
+          "annotation": "Iterable[int]",
+          "default": null
+        },
+        {
+          "name": "title",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "body",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "link",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "details",
+          "kind": "keyword_only",
+          "annotation": "Mapping | None",
+          "default": "None"
+        }
+      ],
+      "returns": "tuple[int, ...]"
+    },
+    "notify_admins": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "title",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "body",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "link",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "details",
+          "kind": "keyword_only",
+          "annotation": "Mapping[str, Any] | None",
+          "default": "None"
+        }
+      ],
+      "returns": "tuple[int, ...]"
+    },
     "open_direct_chat": {
       "kind": "async function",
       "params": [
@@ -1312,6 +3394,18 @@
         }
       ],
       "returns": "DirectChat"
+    },
+    "own_tables": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        }
+      ],
+      "returns": "tuple[str, ...]"
     },
     "plugin": {
       "kind": "function",
@@ -1367,6 +3461,47 @@
       ],
       "returns": "Mapping[str, str]"
     },
+    "plugin_metadata": {
+      "kind": "function",
+      "params": [],
+      "returns": "MetaData"
+    },
+    "post_in_chat": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "text",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "int | None"
+    },
     "prepare": {
       "kind": "async function",
       "params": [
@@ -1391,6 +3526,186 @@
       ],
       "returns": "Outgoing"
     },
+    "project_access": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "caller",
+          "kind": "positional_or_keyword",
+          "annotation": "Session",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "role",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": "'reader'"
+        }
+      ],
+      "returns": "ProjectRef"
+    },
+    "project_configs": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "HubConfig",
+          "default": null
+        }
+      ],
+      "returns": "list[ProjectConfig]"
+    },
+    "push_signal": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "key",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "value",
+          "kind": "positional_or_keyword",
+          "annotation": "float | None",
+          "default": "None"
+        },
+        {
+          "name": "text",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "measured_at",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        },
+        {
+          "name": "tenant",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "external_id",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "days",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "90"
+        }
+      ],
+      "returns": "SignalPushed"
+    },
+    "push_signals": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "points",
+          "kind": "positional_or_keyword",
+          "annotation": "Sequence[SignalPoint]",
+          "default": null
+        },
+        {
+          "name": "days",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "90"
+        }
+      ],
+      "returns": "SignalsPushed"
+    },
+    "queue_kg_build": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "None"
+    },
     "read_agent_answer": {
       "kind": "async function",
       "params": [
@@ -1414,6 +3729,276 @@
         }
       ],
       "returns": "AgentAnswer"
+    },
+    "read_agent_types": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "profile_id",
+          "kind": "keyword_only",
+          "annotation": "int | None",
+          "default": "None"
+        }
+      ],
+      "returns": "tuple[ProjectAgentTypeRef, ...]"
+    },
+    "read_claim_cards": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "ids",
+          "kind": "keyword_only",
+          "annotation": "Iterable[int]",
+          "default": "()"
+        },
+        {
+          "name": "numbers",
+          "kind": "keyword_only",
+          "annotation": "Iterable[int]",
+          "default": "()"
+        }
+      ],
+      "returns": "tuple[ClaimCardRef, ...]"
+    },
+    "read_claims": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "canvas",
+          "kind": "keyword_only",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "statuses",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "()"
+        }
+      ],
+      "returns": "tuple[ClaimRef, ...]"
+    },
+    "read_decisions": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        },
+        {
+          "name": "states",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "()"
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "500"
+        }
+      ],
+      "returns": "tuple[DecisionRef, ...]"
+    },
+    "read_first_runs": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "users",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        },
+        {
+          "name": "before",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        }
+      ],
+      "returns": "Mapping[int, datetime]"
+    },
+    "read_goals": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "tuple[GoalRef, ...]"
+    },
+    "read_grants": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "tuple[GrantRef, ...]"
+    },
+    "read_invites": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kinds",
+          "kind": "keyword_only",
+          "annotation": "Iterable[str]",
+          "default": "()"
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        }
+      ],
+      "returns": "tuple[InviteRef, ...]"
     },
     "read_message": {
       "kind": "async function",
@@ -1451,6 +4036,792 @@
       ],
       "returns": "ChatMessage"
     },
+    "read_plan_step_changes": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "plans",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[str]",
+          "default": null
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime",
+          "default": null
+        }
+      ],
+      "returns": "tuple[PlanStepChangeRef, ...]"
+    },
+    "read_plan_steps": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "plan",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "tuple[StepRef, ...]"
+    },
+    "read_plans": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "statuses",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "()"
+        }
+      ],
+      "returns": "tuple[PlanRef, ...]"
+    },
+    "read_project": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str | int",
+          "default": null
+        }
+      ],
+      "returns": "EnabledProject"
+    },
+    "read_run": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int | None",
+          "default": null
+        }
+      ],
+      "returns": "RunActorRef | None"
+    },
+    "read_runs": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        },
+        {
+          "name": "kinds",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "()"
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "500"
+        }
+      ],
+      "returns": "tuple[RunRef, ...]"
+    },
+    "read_signals": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "key",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "500"
+        }
+      ],
+      "returns": "tuple[SignalValue, ...]"
+    },
+    "read_sprint_details": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "states",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "()"
+        }
+      ],
+      "returns": "tuple[SprintDetailRef, ...]"
+    },
+    "read_sprints": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "tuple[SprintRef, ...]"
+    },
+    "read_srs_items": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "document",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "tuple[SrsItemRef, ...]"
+    },
+    "read_srs_versions": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "document",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "tuple[SrsVersionRef, ...]"
+    },
+    "read_task_activity": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task_ids",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        }
+      ],
+      "returns": "tuple[TaskActivityRef, ...]"
+    },
+    "read_task_blockers": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task_ids",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        }
+      ],
+      "returns": "tuple[TaskBlockerRef, ...]"
+    },
+    "read_task_decisions": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task_ids",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        },
+        {
+          "name": "states",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "('open',)"
+        }
+      ],
+      "returns": "tuple[TaskDecisionRef, ...]"
+    },
+    "read_task_details": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "5000"
+        }
+      ],
+      "returns": "tuple[TaskDetailRef, ...]"
+    },
+    "read_task_events": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task_ids",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        }
+      ],
+      "returns": "tuple[TaskEventRef, ...]"
+    },
+    "read_task_links": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task_ids",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        }
+      ],
+      "returns": "tuple[TaskLinkRef, ...]"
+    },
+    "read_task_people": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task_ids",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        },
+        {
+          "name": "roles",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "()"
+        }
+      ],
+      "returns": "tuple[TaskPersonRef, ...]"
+    },
+    "read_task_srs_items": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task_ids",
+          "kind": "positional_or_keyword",
+          "annotation": "Iterable[int]",
+          "default": null
+        }
+      ],
+      "returns": "tuple[TaskSrsItemRef, ...]"
+    },
+    "read_tasks": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "sprint",
+          "kind": "keyword_only",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "statuses",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str]",
+          "default": "()"
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "500"
+        }
+      ],
+      "returns": "tuple[TaskRef, ...]"
+    },
+    "read_users": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "ids",
+          "kind": "keyword_only",
+          "annotation": "Iterable[int]",
+          "default": "()"
+        },
+        {
+          "name": "logins",
+          "kind": "keyword_only",
+          "annotation": "Iterable[str]",
+          "default": "()"
+        }
+      ],
+      "returns": ""
+    },
+    "read_visibility": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "max_level",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "sink",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "Visibility"
+    },
+    "read_work_items": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "keys",
+          "kind": "keyword_only",
+          "annotation": "Iterable[str] | None",
+          "default": "None"
+        },
+        {
+          "name": "key_prefix",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        }
+      ],
+      "returns": "tuple[WorkItemRef, ...]"
+    },
+    "record_audit": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "action",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "target",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "actor",
+          "kind": "keyword_only",
+          "annotation": "Session | int | None",
+          "default": "None"
+        }
+      ],
+      "returns": "None"
+    },
     "redeem_link_code": {
       "kind": "async function",
       "params": [
@@ -1480,6 +4851,36 @@
         }
       ],
       "returns": "Session | None"
+    },
+    "reply_in_chat": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "run",
+          "kind": "positional_or_keyword",
+          "annotation": "ChatRunRef",
+          "default": null
+        },
+        {
+          "name": "text",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "int"
     },
     "require": {
       "kind": "function",
@@ -1523,6 +4924,60 @@
       ],
       "returns": "bool"
     },
+    "run_member": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int | None",
+          "default": null
+        }
+      ],
+      "returns": "Session | None"
+    },
+    "run_session": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int | None",
+          "default": null
+        }
+      ],
+      "returns": "Session | None"
+    },
     "send_message": {
       "kind": "async function",
       "params": [
@@ -1559,6 +5014,18 @@
       ],
       "returns": "SentMessage"
     },
+    "session_run": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "session",
+          "kind": "positional_or_keyword",
+          "annotation": "Session",
+          "default": null
+        }
+      ],
+      "returns": "int | None"
+    },
     "set_channel_state": {
       "kind": "async function",
       "params": [
@@ -1582,6 +5049,54 @@
         }
       ],
       "returns": "None"
+    },
+    "step_key": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "step",
+          "kind": "positional_or_keyword",
+          "annotation": "",
+          "default": null
+        },
+        {
+          "name": "index",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "str"
+    },
+    "tool_caller": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "context",
+          "kind": "positional_or_keyword",
+          "annotation": "ApiContext",
+          "default": null
+        },
+        {
+          "name": "params",
+          "kind": "positional_or_keyword",
+          "annotation": "Mapping",
+          "default": null
+        }
+      ],
+      "returns": "ToolCaller"
     },
     "transaction": {
       "kind": "function",
