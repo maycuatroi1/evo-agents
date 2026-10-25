@@ -16,8 +16,9 @@ turned the kind off (``muted``) gets no such notice; their decisions and every o
 .prepare``): those of a decision, or of a notice of a run's files, never of source tool, at most CHANNEL_OUTPUTS of
 them, each with a presigned GET of its bytes when the job's pass has the blob store (``notifications.PASS_BLOBS``).
 
-GET and PUT /v1/me/notification-settings read and set the notices the caller turned off (audited
-``notification.settings``, naming the kinds).
+GET and PUT /v1/me/notification-settings read and set the notices the caller turned off, and whether their push
+notifications hide details (``hide_details``: only the kind of thing, the project and the link, ``push_payload``);
+audited ``notification.settings``, naming the kinds and the choice. A PUT sets what it names and leaves the rest.
 """
 
 from __future__ import annotations
@@ -28,14 +29,14 @@ from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import outputs, runs, tables
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, push_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import PASS_BLOBS, Outgoing, notify, one_line, run_link
 from evo_agents.hub.server.security import CurrentUser
@@ -65,14 +66,23 @@ class NoticeSetting(BaseModel):
     on: bool = Field(description="false: the member gets no notice of this kind, on any channel")
 
 
+HIDE_DETAILS = (
+    "push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read"
+)
+
+
 class NotificationSettings(BaseModel):
     notices: list[NoticeSetting] = Field(description="each kind of notice a member may turn off, and whether it is on")
+    hide_details: bool = Field(False, description=HIDE_DETAILS)
 
 
 class NotificationSettingsIn(BaseModel):
     notices: list[NoticeSetting] = Field(
-        min_length=1, max_length=len(runs.MUTABLE_NOTICE_KINDS), description="the kinds to set; the others stay"
+        default_factory=list,
+        max_length=len(runs.MUTABLE_NOTICE_KINDS),
+        description="the kinds to set; the others stay",
     )
+    hide_details: bool | None = Field(None, description=f"{HIDE_DETAILS}; unchanged when left out")
 
     @field_validator("notices")
     @classmethod
@@ -81,11 +91,20 @@ class NotificationSettingsIn(BaseModel):
             raise ValueError("name each kind of notice once")
         return value
 
+    @model_validator(mode="after")
+    def _something(self):
+        if not self.notices and self.hide_details is None:
+            raise ValueError("set notices, hide_details or both")
+        return self
+
 
 async def _settings(conn: AsyncConnection, user_id: int) -> NotificationSettings:
     m = tables.notification_mutes
     off = set((await conn.execute(select(m.c.notice_kind).where(m.c.user_id == user_id))).scalars())
-    return NotificationSettings(notices=[NoticeSetting(kind=k, on=k not in off) for k in runs.MUTABLE_NOTICE_KINDS])
+    return NotificationSettings(
+        notices=[NoticeSetting(kind=k, on=k not in off) for k in runs.MUTABLE_NOTICE_KINDS],
+        hide_details=await push_store.hides_details(conn, user_id),
+    )
 
 
 @router.get("/notification-settings", response_model=NotificationSettings)
@@ -99,7 +118,8 @@ async def show_notification_settings(request: Request, user: CurrentUser) -> Not
 async def set_notification_settings(
     request: Request, body: NotificationSettingsIn, user: CurrentUser
 ) -> NotificationSettings:
-    """Turn kinds of notice on or off for the caller; decisions and the other notices always come."""
+    """Turn kinds of notice on or off for the caller, and choose whether push hides details; decisions and the other
+    notices always come."""
     m = tables.notification_mutes
     off = [setting.kind for setting in body.notices if not setting.on]
     on = [setting.kind for setting in body.notices if setting.on]
@@ -109,7 +129,12 @@ async def set_notification_settings(
         if off:
             rows = [{"user_id": user.user_id, "notice_kind": kind} for kind in off]
             await conn.execute(pg_insert(m).values(rows).on_conflict_do_nothing())
-        shown = " ".join(f"{setting.kind}={'on' if setting.on else 'off'}" for setting in body.notices)
+        if body.hide_details is not None:
+            await push_store.set_hide_details(conn, user.user_id, body.hide_details)
+        chosen = [f"{setting.kind}={'on' if setting.on else 'off'}" for setting in body.notices]
+        if body.hide_details is not None:
+            chosen.append(f"hide_details={'on' if body.hide_details else 'off'}")
+        shown = " ".join(chosen)
         await audit.record(
             conn,
             actor_id=user.user_id,

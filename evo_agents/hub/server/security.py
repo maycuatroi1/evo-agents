@@ -100,6 +100,7 @@ PUBLIC_PATHS = frozenset(
         "/v1/branding",  # the sign-in page shows the hub's branding (evo_agents.hub.server.branding)
         "/v1/branding/logo",
         "/v1/branding/favicon",
+        "/v1/push/config",  # the public VAPID key a browser subscribes with, and which push senders are on
     }
 )
 HOOKS_PREFIX = "/v1/hooks/"  # the webhooks of core plugins, /v1/hooks/<plugin id>/... (plugin_routes)

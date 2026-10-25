@@ -59,6 +59,12 @@ secrets. Without either the channel is off: linking answers 503, the webhook 404
 and the hub runs on. EVO_HUB_TELEGRAM_API_URL is where the Bot API is (https://api.telegram.org), so tests can point the
 hub at a fake one.
 
+Web Push (``evo_agents.hub.server.webpush``) is optional too. EVO_HUB_VAPID_PRIVATE_KEY is the hub's VAPID key, the
+private scalar of a P-256 key in base64url (32 bytes, 43 characters), registered as a secret; the public key browsers
+subscribe with is derived from it. EVO_HUB_VAPID_SUBJECT is where a push service may reach the hub's operator, a
+mailto: or https: URL, EVO_HUB_PUBLIC_URL when unset. Without the key, or without a subject and a public URL, Web Push
+is off: GET /v1/push/config says so, a delivery to a browser fails at once, and the rest of the outbox runs as before.
+
 Plugins (``evo_agents.plugins``) are optional too. EVO_HUB_PLUGIN_PUBLISHERS lists the publishers whose signed bundles
 the hub accepts, comma-separated ``ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml`` (a GitHub Actions workflow that
 signs keyless with Sigstore) or ``ID=ed25519:KEY`` (a public key, 32 bytes in base64) entries, several for one id when
@@ -141,6 +147,11 @@ TELEGRAM_VARIABLES = ("EVO_HUB_TELEGRAM_BOT_TOKEN", "EVO_HUB_TELEGRAM_WEBHOOK_SE
 DEFAULT_TELEGRAM_API_URL = "https://api.telegram.org"
 TELEGRAM_BOT_TOKEN = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")  # <bot id>:<secret>, as BotFather gives it
 TELEGRAM_WEBHOOK_SECRET = re.compile(r"[A-Za-z0-9_-]{1,256}")  # what setWebhook takes as secret_token
+VAPID_VARIABLES = ("EVO_HUB_VAPID_PRIVATE_KEY", "EVO_HUB_VAPID_SUBJECT")
+VAPID_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # the private scalar of a P-256 key: 32 bytes in base64url
+# The order of P-256's group: a private scalar lies in [1, n - 1] (SEC 2, section 2.4.2).
+P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+VAPID_SUBJECT = re.compile(r"mailto:[^\s@]+@[^\s@]+|https://[^\s]+")  # what RFC 8292's "sub" may be
 # The PEM GitHub gives an App (PKCS#1), or the same key as PKCS#8; the second group is its base64.
 PRIVATE_KEY_PEM = re.compile(
     r"-----BEGIN ((?:RSA )?)PRIVATE KEY-----\n([A-Za-z0-9+/=\n]+)\n-----END \1PRIVATE KEY-----"
@@ -193,6 +204,8 @@ class HubConfig:
     telegram_bot_token: str | None = None  # the hub's bot; never logged, returned or stored
     telegram_webhook_secret: str | None = None  # the secret_token of its webhook; never logged or returned
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
+    vapid_private_key: str | None = None  # the hub's VAPID key in base64url; never logged or returned
+    vapid_subject: str | None = None  # where push services may reach the operator; None: the public URL
     plugin_publishers: tuple[Publisher, ...] = ()  # whose signed plugin bundles the hub accepts
     plugin_core_publishers: frozenset[str] = frozenset()  # the ids among them whose plugins may be core plugins
     plugin_host_url: str | None = None  # where the api reaches the plugin host
@@ -232,6 +245,16 @@ class HubConfig:
         """The EVO_HUB_TELEGRAM_* variables the Telegram channel still needs; empty when it is on."""
         values = (self.telegram_bot_token, self.telegram_webhook_secret)
         return [name for name, value in zip(TELEGRAM_VARIABLES, values, strict=True) if not value]
+
+    @property
+    def push_subject(self) -> str | None:
+        """The subject of the hub's VAPID JWTs: EVO_HUB_VAPID_SUBJECT, else the public URL."""
+        return self.vapid_subject or self.public_url
+
+    def webpush_missing(self) -> list[str]:
+        """The variables Web Push still needs, the key and a subject (or the public URL); empty when it is on."""
+        missing = [] if self.vapid_private_key else [VAPID_VARIABLES[0]]
+        return missing + ([] if self.push_subject else [VAPID_VARIABLES[1]])
 
     def github_app_missing(self) -> list[str]:
         """The EVO_HUB_GITHUB_APP_* variables the runs' GitHub tokens still need; empty when the App is configured."""
@@ -482,6 +505,25 @@ def _telegram(env: Mapping[str, str]) -> dict:
     }
 
 
+def _vapid(env: Mapping[str, str]) -> dict:
+    """The VAPID key, registered as a secret before anything can fail, and the subject; no error shows the key."""
+    key_name, subject_name = VAPID_VARIABLES
+    key = _secret(env, key_name)
+    if key is not None:
+        raw = base64.urlsafe_b64decode(key.rstrip("=") + "=") if VAPID_KEY.fullmatch(key) else b""
+        if not 0 < int.from_bytes(raw, "big") < P256_ORDER:
+            raise ConfigError(
+                key_name,
+                f"{key_name} must be the private key of a P-256 key pair, 32 bytes in base64url (43 characters of A-Z, "
+                "a-z, 0-9, - and _), such as `npx web-push generate-vapid-keys` prints",
+            )
+        register_secret(base64.b64encode(raw).decode())  # the same key in standard base64, as a tool may print it
+    subject = _text(env, subject_name)
+    if subject is not None and not VAPID_SUBJECT.fullmatch(subject):
+        raise ConfigError(subject_name, f"{subject_name} must be a mailto: or https: URL, got {subject!r}")
+    return {"vapid_private_key": key, "vapid_subject": subject}
+
+
 def _plugins(env: Mapping[str, str]) -> dict:
     """The publishers of plugins the hub trusts, and the ids among them whose plugins may be core plugins."""
     name, core_name = "EVO_HUB_PLUGIN_PUBLISHERS", "EVO_HUB_PLUGIN_CORE_PUBLISHERS"
@@ -590,5 +632,6 @@ def load_config(
         secrets_key=_secrets_key(env),
         **_apps(env),
         **_telegram(env),
+        **_vapid(env),
         **_plugins(env),
     )
