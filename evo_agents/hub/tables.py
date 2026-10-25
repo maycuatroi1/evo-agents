@@ -44,6 +44,7 @@ from evo_agents.hub import (
     tables_invites,
     tables_kg,
     tables_loop,
+    tables_market,
     tables_marketing,
     tables_memory_agents,
     tables_merge,
@@ -964,6 +965,7 @@ chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events =
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 retired_project_plugins = tables_plugins.retired_table(metadata)  # canvas, srs and tasks before 0147
+market_sources, plugin_publishers, market_install_requests = tables_market.market_tables(metadata)  # 0149
 hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)

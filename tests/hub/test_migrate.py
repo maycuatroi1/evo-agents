@@ -144,6 +144,7 @@ TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
 TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
+TABLES |= pg.MARKET_TABLES  # migration 0149
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -3686,3 +3687,63 @@ def test_0148_notices_take_the_kinds_of_core_plugins_and_going_back_deletes_thos
         conn.execute(delete(n))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]
+
+
+def test_0149_adds_the_market_sources_publishers_and_install_requests_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0148")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0149")
+    assert pg.MARKET_TABLES <= tables(hub_db)
+    t = hub_tables
+    sources, publishers, requests = t.market_sources, t.plugin_publishers, t.market_install_requests
+    signer = "sigstore:lumen-labs/lumen-notes/.github/workflows/ci.yml"
+    with live.connect(hub_db) as conn:
+        builtin = one(conn, insert(sources).values(repo="northwind/market", builtin=True).returning(sources.c.id))
+        added = one(
+            conn, insert(sources).values(repo="lumen-labs/market", added_by=ids["user"]).returning(sources.c.id)
+        )
+        row = conn.execute(select(sources).where(sources.c.id == builtin)).mappings().one()
+        assert (row["ref"], row["path"], row["releases"], row["index"]) == ("main", "market.json", {}, None)
+        conn.execute(insert(publishers).values(publisher="lumen", signer=signer, added_by=ids["user"]))
+        request = {
+            "project_id": ids["project"],
+            "source_id": added,
+            "plugin": "lumen-notes",
+            "requested_by": ids["user"],
+        }
+        conn.execute(insert(requests).values(request))
+    bad = (
+        (sources, {"repo": "northwind", "added_by": ids["user"]}),  # not OWNER/REPO
+        (sources, {"repo": "northwind/other"}),  # neither the default market nor added by someone
+        (sources, {"repo": "northwind/second", "builtin": True}),  # a second default market
+        (sources, {"repo": "lumen-labs/market", "added_by": ids["user"]}),  # the same index twice
+        (publishers, {"publisher": "Lumen", "signer": signer, "added_by": ids["user"]}),
+        (publishers, {"publisher": "lumen", "signer": "github:lumen", "added_by": ids["user"]}),
+        (publishers, {"publisher": "lumen", "signer": signer, "added_by": ids["user"]}),  # trusted already
+        (publishers, {"publisher": "acme", "signer": signer, "added_by": ids["user"], "removed_at": func.now()}),
+        (requests, request),  # a second open request
+        (requests, {**request, "plugin": "Lumen"}),
+        (requests, {**request, "plugin": "other", "state": "installed"}),  # decided by nobody
+        (
+            requests,
+            {**request, "plugin": "other", "state": "merged", "decided_by": ids["user"], "decided_at": func.now()},
+        ),
+    )
+    for target, values in bad:
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+            conn.execute(insert(target).values(values))
+    with live.connect(hub_db) as conn:
+        decided = {"state": "installed", "decided_by": ids["user"], "decided_at": func.now()}
+        conn.execute(update(requests).values(decided))
+        conn.execute(insert(requests).values(request))  # a new request once the first is decided
+        gone = {"removed_by": ids["user"], "removed_at": func.now()}
+        conn.execute(update(publishers).values(gone))
+        conn.execute(insert(publishers).values(publisher="lumen", signer=signer, added_by=ids["user"]))
+        conn.execute(delete(sources).where(sources.c.id == added))  # its requests go with it
+        assert query(hub_db, select(func.count()).select_from(requests)) == [(0,)]
+    move_to(hub_db, "0148", down=True)
+    assert not pg.MARKET_TABLES & tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0149") :]
