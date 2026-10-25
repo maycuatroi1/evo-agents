@@ -90,7 +90,7 @@ test("the runs list starts on the first screen, and its filters apply from a she
     [DESKTOP_UA, "table"],
   ]) {
     for (const [path, testId] of [
-      [`/p/${project}/runs`, "runs-table"],
+      [`/p/${project}/runs?state=all`, "runs-table"],
       [`/p/${project}/plans`, "plans-table-active"],
     ]) {
       const html = await (await page.request.get(path, { headers: { "user-agent": agent } })).text();
@@ -99,7 +99,7 @@ test("the runs list starts on the first screen, and its filters apply from a she
     }
   }
 
-  await open(page, `/p/${project}/runs`);
+  await open(page, `/p/${project}/runs?state=all`); // the page opens on Running, which neither run is
   const rows = list(page, "runs-table").getByRole("listitem");
   await expect(rows).toHaveCount(2);
   const first = await box(rows.first());
@@ -117,7 +117,7 @@ test("the runs list starts on the first screen, and its filters apply from a she
   expect(await fieldText(search)).toBe("16px");
   await expect(main(page).getByTestId("runs-facets")).toHaveCount(0);
   const filters = main(page).getByTestId("runs-filters-open");
-  await expect(filters).toHaveText("Filters");
+  await expect(filters).toHaveText("Filters (1)"); // All, not the page's own Running
   await touchSized(filters, "Filters");
   expect(Math.abs((await box(filters)).y - (await box(search)).y), "Filters beside the search").toBeLessThan(2);
 
@@ -125,7 +125,7 @@ test("the runs list starts on the first screen, and its filters apply from a she
   const sheet = page.getByTestId("runs-filters");
   await expect(sheet.getByRole("heading", { name: "Filters" })).toBeVisible();
   const chips = sheet.getByTestId("runs-facets").getByRole("button");
-  await expect(chips).toHaveCount(5);
+  await expect(chips).toHaveCount(7);
   for (const chip of await chips.all()) await touchSized(chip, `the chip ${await chip.textContent()}`);
   await expectNoSeriousViolations(page, "runs filter sheet at 375 px");
 
@@ -139,12 +139,17 @@ test("the runs list starts on the first screen, and its filters apply from a she
   await expect(rows).toHaveCount(1);
   await expect(main(page).locator(`li[data-run-id="${failing.id}"]`)).toBeVisible();
 
-  // Clear filters puts every run back.
+  // Clear filters goes back to Running, which neither run is; All puts every run back.
   await filters.click();
   await sheet.getByTestId("filter-sheet-clear").click();
   await expect(sheet).toBeHidden();
-  await expect(rows).toHaveCount(2);
+  await expect(rows).toHaveCount(0);
   await expect(filters).toHaveText("Filters");
+  await filters.click();
+  await sheet.getByTestId("runs-facets").locator('[data-facet-value=""]').click();
+  await sheet.getByTestId("filter-sheet-done").click();
+  await expect(sheet).toBeHidden();
+  await expect(rows).toHaveCount(2);
 
   // A tap anywhere on a row opens the run.
   await tapRow(main(page).locator(`li[data-run-id="${waiting.id}"]`));
