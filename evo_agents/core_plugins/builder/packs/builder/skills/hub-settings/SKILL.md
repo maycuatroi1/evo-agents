@@ -1,6 +1,6 @@
 ---
 name: hub-settings
-description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config, an agent profile, the autonomy policy, a problem or a goal of the project with the tool builder__propose, which an admin (a writer, for a problem) approves before the hub applies it.
+description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config, an agent profile, the autonomy policy, a problem or a goal of the project, or a new plugin, its install or its listing, with the tool builder__propose, which an admin (a writer, for a problem) approves before the hub applies it.
 ---
 
 # Proposing a change of a setting
@@ -9,7 +9,7 @@ The tool `builder__propose` takes one change:
 
 ```json
 {
-  "kind": "branding | features | plugin_config | agent | policy | problem | goal",
+  "kind": "branding | features | plugin_config | agent | policy | problem | goal | plugin | plugin_install | plugin_listing",
   "summary": "what it changes and why, 1 to 500 characters",
   "target": {},
   "set": {"field": "new value"},
@@ -32,6 +32,9 @@ the thread with its number and tells the members who may approve it. It applies 
 | `policy` | `{}` | a key of the autonomy policy by its dotted path | an admin of the project |
 | `problem` | `{"problem": "P-<number>"}`, or `{}` for a new problem | `statement`, `who`, `when`, `workaround`, `metric`, `rank`, `owner`, `status`, `close_reason` | a writer of the project |
 | `goal` | `{"goal": "G-<number>"}`, or `{}` for a new goal | `statement`, `metric`, `deadline`, `canvas`, `problem`, `rank`, `owner`, `status`, `close_reason` | an admin of the project |
+| `plugin` | `{}` | `name`, `industry`, `need`, `owner`, `visibility`, `price`; `repo`, `categories` optional | an admin of the project |
+| `plugin_install` | `{}` | `repo`; `tag`, `signer` optional | a hub admin |
+| `plugin_listing` | `{}` | `repo`, `tag`, `price`, `industries`; `categories`, `seller`, `index` optional | an admin of the project |
 
 - **branding.** `colors` is `{"light": {...}, "dark": {...}}`, each mapping the tokens `brand`, `brand-hover`,
   `brand-soft` and `on-brand` to `#rrggbb`. The hub refuses colours whose contrast falls under WCAG 2.2 AA. The logo and
@@ -70,9 +73,23 @@ the thread with its number and tells the members who may approve it. It applies 
   one. You may unset `metric`, `deadline`, `canvas`, `problem` and `close_reason`. A goal has no budget.
   `evo-agents hub goal list --project <project>` prints the goals now.
 
+- **plugin, plugin_install, plugin_listing.** Actions, not settings: approving one does it once, and it never rolls
+  back; none unsets a field. `plugin` is a new plugin a member asked for: `name` its id (lower case letters, digits
+  and `-`), `industry` a slug such as `retail`, `need` the member's need in at most 2000 characters, `owner` the GitHub
+  user or organisation of its repository, `visibility` `public` or `private`, `price` `free` or the USD a hub pays
+  each month (`49.5`), `repo` the repository's name (the id when left out) and `categories` a list of slugs. Approving
+  it hands you the task of making it (skill `plugin-authoring`). `plugin_install` names `repo` as `OWNER/REPO`, with a
+  release's `tag` (the latest when left out) and its `signer`
+  (`sigstore:OWNER/REPO/.github/workflows/ci.yml` when left out): approved by a hub admin, the hub trusts the signer
+  for the plugin's publisher and installs the release. `plugin_listing` names `repo` as `OWNER/REPO`, the release's
+  `tag`, the `price`, the `industries` (at least one) and optional `categories`, `seller` (the seller's id in the
+  market, for a paid plugin) and `index` (`OWNER/REPO` of the market, `maycuatroi1/evo-agents-market` when left out):
+  approving it hands you the pull request into the index, or the listing on the seller's hub.
+
 ## What happens next
 
 A member who may approve it answers in the thread (`approve N`, `reject N`), or from the Inbox. Approved, the hub applies the change as
 the setting's next version, only while the setting is still at the version the proposal was made on; otherwise the
-proposal fails with the reason, and you propose again. `rollback N` brings back the version before an applied one.
+proposal fails with the reason, and you propose again. `rollback N` brings back the version before an applied one;
+an action never rolls back.
 Those messages are for the hub: say nothing about them.

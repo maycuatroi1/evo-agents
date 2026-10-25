@@ -8,7 +8,7 @@ plugin/1, the iframe bridge of a page, signing, the CI that publishes a version 
 branding, the features, the config of a plugin and an agent profile. The type takes work from the project's admins
 alone (``mentioned_by: admin``): a writer who mentions @builder gets the hub's refusal in the thread.
 
-Two routes for a change:
+Three routes for a change:
 
 - A declarative one (the branding of the hub, a layer of features, a layer of a plugin's config in the project, an
   agent profile, the autonomy policy, a problem or a goal of the project) is a proposal: the agent calls the tool
@@ -22,6 +22,14 @@ Two routes for a change:
 - A change of code is the chat run itself: the agent works on the client's plugin repo the chat run checks out, pushes
   its branch and the hub opens the draft pull request; the repo's CI (the skill's ``ci.yml``) tests, packs, signs and
   publishes the version to the hub, where it waits as available until a hub admin upgrades to it.
+- A new plugin for an industry (plan plugin-market, criterion a8) is a proposal of an action, done once when approved
+  and never rolled back: kind ``plugin`` names the plugin, the industry, the need, the GitHub owner, public or private
+  and free or its price; approving it hands @builder the task in the thread, for the member who approved it: create the
+  repo from the template maycuatroi1/evo-plugin-template, write the plugin, pass ``evo-agents plugin test``, push and
+  tag it so the repo's CI signs and releases it (or uploads it to the seller), and add the repo to the project. The
+  agent then proposes ``plugin_install``, which a hub admin approves and the hub installs from the release, and
+  ``plugin_listing``, whose approval hands it the pull request into the market's index (free) or the listing on the
+  seller's hub (paid). @builder never publishes, installs or sets a secret itself (``plugin_changes``).
 
 The hub imports this package for the manifest only; ``server`` holds the tool, the event and the routes, and
 ``proposals`` what they share.
@@ -37,6 +45,9 @@ KINDS = (
     "problem",
     "goal",
     "opportunity",
+    "plugin",
+    "plugin_install",
+    "plugin_listing",
 )  # tables_settings.PROPOSAL_KINDS
 # The vocabulary of a line of evidence, copies of evo_agents.hub.problems (this package is read for its manifest alone;
 # tests.hub.test_builder keeps them equal).
@@ -64,9 +75,9 @@ MAX_FIELDS = 50  # fields one proposal sets or unsets
 
 INSTRUCTIONS = (
     "You are @builder, the agent that changes this hub and the client's plugins for the project's admins. You change "
-    "nothing yourself: a change of a setting is a proposal (the tool builder__propose) that an admin approves, and a "
-    "change of code is a branch of the plugin's repo whose draft pull request the hub opens. Follow the instructions "
-    "of your pack."
+    "nothing yourself: a change of a setting, a new plugin, its install and its listing are proposals (the tool "
+    "builder__propose) that an admin approves, and a change of code is a branch of the plugin's repo whose draft pull "
+    "request the hub opens. Follow the instructions of your pack."
 )
 
 PROPOSE_SCHEMA = {
@@ -86,7 +97,15 @@ PROPOSE_SCHEMA = {
             "new goal), its fields statement, metric, deadline, canvas, problem (a problem's code), rank, owner, "
             "status and close_reason; opportunity: an opportunity of the project (target.opportunity, its code; none for a "
             "new one), its fields statement, beneficiary, leverage, window_until, window_note, answers (problem codes), "
-            "metric, rank, owner, status (open, captured, missed, dropped) and close_reason, which a writer approves",
+            "metric, rank, owner, status (open, captured, missed, dropped) and close_reason, which a writer approves. "
+            "Three actions, no target, done once when approved and never rolled back: plugin: a new plugin a member "
+            "asked for, set name (the plugin's id), industry (a slug), need, owner (GitHub user or organisation), "
+            "visibility (public, private), price (free, or USD per hub per month such as 49.5), and optional repo (its "
+            "name, the id when left out) and categories; approving hands you the task of making it in the thread. "
+            "plugin_install: set repo (OWNER/REPO) and optional tag and signer; a hub admin approves, and the hub "
+            "trusts the signer and installs the release. plugin_listing: set repo, tag, price, industries, and "
+            "optional categories, seller and index (OWNER/REPO of the market); approving hands you the pull request "
+            "into the index (free) or the listing on the seller's hub (paid)",
         },
         "summary": {
             "type": "string",
@@ -122,7 +141,7 @@ PROPOSE_SCHEMA = {
                 },
             },
         },
-        "set": {"type": "object", "description": "field -> new value"},
+        "set": {"type": "object", "description": "field -> new value; the fields of an action"},
         "evidence": {
             "type": "array",
             "maxItems": 20,
@@ -186,8 +205,9 @@ MANIFEST = {
                 "name": "propose",
                 "title": "Propose a change of a setting",
                 "description": "Propose a change of the hub's branding, a layer of features, a layer of a plugin's "
-                "config, an agent profile, the autonomy policy, a problem or a goal of the project, which an admin "
-                "(a writer, for a problem) approves before the hub applies it. Only the agent of a chat run of @builder may call it, and the Curator's "
+                "config, an agent profile, the autonomy policy, a problem or a goal of the project, or a new plugin, "
+                "its install or its listing, which an admin (a writer, for a problem) approves before the hub "
+                "applies it. Only the agent of a chat run of @builder may call it, and the Curator's "
                 "review run on a night of the lens product for a change of the autonomy policy; it applies nothing.",
                 "python": f"{SERVER}:propose",
                 "input_schema": PROPOSE_SCHEMA,

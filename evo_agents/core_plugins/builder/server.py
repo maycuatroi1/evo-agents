@@ -15,6 +15,9 @@ change with, the event that reads an admin's answer in the thread, and the route
   said, and says nothing.
 - ``router`` lists and shows a project's proposals, and answers and rolls one back, under /v1/x/builder/<project>/
   for a member with a grant on the project; the agent of a run never answers one.
+
+Approving a proposal of kind plugin_install installs the release from GitHub (``market_install.install_github``) with
+what the request's app holds, or, in the thread, with the hub's engine, config, blob store and Sigstore.
 """
 
 from __future__ import annotations
@@ -30,10 +33,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents import __version__
-from evo_agents.core_plugins.builder import proposals
+from evo_agents.core_plugins.builder import plugin_changes, proposals
 from evo_agents.core_plugins.builder.proposals import APPROVE, REJECT, ROLLBACK, BuilderProposal, ProposalError
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.review import PRODUCT
 from evo_agents.hub.server import notifications
@@ -42,9 +46,11 @@ from evo_agents.hub.server.agent_types import enabled_type
 from evo_agents.hub.server.chat_runs import ChatRun, chat_run, hub_reply
 from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.market_install import GitHubInstallIn, Installing, install_github
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.hub.tables_settings import PROPOSAL_STATES
+from evo_agents.plugins.signing import default_sigstore
 
 log = logging.getLogger(__name__)
 
@@ -227,6 +233,8 @@ async def propose(params: dict, context: CoreContext) -> dict:
 def outcome(found: BuilderProposal) -> str:
     """What the hub says in the thread once proposal ``found`` was decided or rolled back."""
     head = f"Proposal {found.id}"
+    if found.state == proposals.APPLIED and found.kind in proposals.ACTIONS:
+        return f"{head} is approved by {found.decided_by}: {found.outcome}."
     if found.state == proposals.APPLIED:
         return (
             f"{head} is applied by {found.decided_by}: the setting is at version {found.applied_version} now. "
@@ -248,16 +256,45 @@ def _verb(word: str) -> str:
 
 
 async def answer_as(
-    conn: AsyncConnection, member: Principal, project: str, proposal_id: int, verb: str, hub_version: str
+    conn: AsyncConnection,
+    member: Principal,
+    project: str,
+    proposal_id: int,
+    verb: str,
+    hub_version: str,
+    install: plugin_changes.Install | None = None,
 ) -> BuilderProposal:
-    """Decide (APPROVE, REJECT) or roll back (ROLLBACK) proposal ``proposal_id`` as ``member``; ProposalError when
-    they may not, or the hub cannot."""
+    """Decide (APPROVE, REJECT) or roll back (ROLLBACK) proposal ``proposal_id`` as ``member``, ``install``
+    installing a release for one of kind plugin_install; ProposalError when they may not, or the hub cannot."""
     if member.scope is not None:
         raise ProposalError(403, "the agent of a run never answers a proposal of @builder: an admin does")
     access = await _access(conn, member, project)
     if verb == ROLLBACK:
         return await proposals.rollback(conn, member, access, proposal_id, hub_version)
-    return await proposals.decide(conn, member, access, proposal_id, verb, hub_version)
+    return await proposals.decide(conn, member, access, proposal_id, verb, hub_version, install)
+
+
+def installer(hub: Installing, transport=None) -> plugin_changes.Install:
+    """Installing a GitHub release with what ``hub`` holds, reading GitHub through ``transport``."""
+
+    async def install(user: Principal, body: GitHubInstallIn):
+        return await install_github(hub, transport, user, body)
+
+    return install
+
+
+def _context_installer(context: CoreContext) -> plugin_changes.Install:
+    """Installing a GitHub release from the event's context, as the worker's jobs install one."""
+
+    async def install(user: Principal, body: GitHubInstallIn):
+        store = BlobStore.from_config(context.config)
+        if store is None:
+            missing = ", ".join(context.config.blob_store_missing())
+            raise ProposalError(503, f"the blob store is not configured on this hub: set {missing}")
+        hub = Installing(context.engine, context.config, default_sigstore(), __version__, store)
+        return await install_github(hub, None, user, body)
+
+    return install
 
 
 async def _refused_already(conn: AsyncConnection, payload: dict, seq: int, text: str) -> bool:
@@ -292,7 +329,9 @@ async def _thread_answer(conn: AsyncConnection, payload: dict, context: CoreCont
         return None
     member = await _member(conn, said.author_user_id, context.config)
     try:
-        text = outcome(await answer_as(conn, member, context.project, proposal_id, verb, __version__))
+        install = _context_installer(context) if context.config is not None else None
+        found = await answer_as(conn, member, context.project, proposal_id, verb, __version__, install)
+        text = outcome(found)
     except ProposalError as exc:
         text = f"{member.login}: {exc.message}"
         if await _refused_already(conn, payload, said.seq, text):
@@ -332,10 +371,19 @@ async def _say_in_thread(conn: AsyncConnection, proposal_id: int, found: Builder
         await hub_reply(conn, *thread, outcome(found))
 
 
+def _request_installer(request: Request) -> plugin_changes.Install:
+    async def install(user: Principal, body: GitHubInstallIn):
+        hub = Installing.of(request)
+        return await installer(hub, getattr(request.app.state, "market_transport", None))(user, body)
+
+    return install
+
+
 async def _answered(request: Request, user: Principal, project: str, proposal_id: int, verb: str) -> BuilderProposal:
+    install = _request_installer(request)
     try:
         async with request.app.state.engine.begin() as conn:
-            found = await answer_as(conn, user, project, proposal_id, verb, request.app.state.hub_version)
+            found = await answer_as(conn, user, project, proposal_id, verb, request.app.state.hub_version, install)
             await _say_in_thread(conn, proposal_id, found)
     except ProposalError as exc:
         raise HTTPException(exc.status, exc.message) from None
@@ -368,9 +416,10 @@ async def show_proposal(
 async def answer_proposal(
     request: Request, project: ProjectName, proposal_id: ProposalId, body: BuilderProposalAnswer, user: CurrentUser
 ) -> BuilderProposal:
-    """Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
-    it could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one
-    of a problem, an admin of the project the others."""
+    """Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or does its
+    action once (plugin, plugin_install, plugin_listing), or keeps why it could not (state failed). A hub admin
+    decides one of the branding, the features or an install, a writer of the project one of a problem or an
+    opportunity, an admin of the project the others."""
     return await _answered(request, user, project, proposal_id, body.answer)
 
 
@@ -379,5 +428,5 @@ async def roll_back_proposal(
     request: Request, project: ProjectName, proposal_id: ProposalId, user: CurrentUser
 ) -> BuilderProposal:
     """Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is
-    still at the version the proposal made."""
+    still at the version the proposal made. An action never rolls back (409)."""
     return await _answered(request, user, project, proposal_id, ROLLBACK)

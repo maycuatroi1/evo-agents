@@ -49645,7 +49645,7 @@
             "plugins"
           ],
           "summary": "Answer Proposal",
-          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why\nit could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one\nof a problem, an admin of the project the others.",
+          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or does its\naction once (plugin, plugin_install, plugin_listing), or keeps why it could not (state failed). A hub admin\ndecides one of the branding, the features or an install, a writer of the project one of a problem or an\nopportunity, an admin of the project the others.",
           "operationId": "answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post",
           "parameters": [
             {
@@ -49749,7 +49749,7 @@
             "plugins"
           ],
           "summary": "Roll Back Proposal",
-          "description": "Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is\nstill at the version the proposal made.",
+          "description": "Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is\nstill at the version the proposal made. An action never rolls back (409).",
           "operationId": "roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post",
           "parameters": [
             {
@@ -86550,7 +86550,10 @@
                 "policy",
                 "problem",
                 "goal",
-                "opportunity"
+                "opportunity",
+                "plugin",
+                "plugin_install",
+                "plugin_listing"
               ],
               "title": "Kind"
             },
@@ -86560,7 +86563,7 @@
               },
               "type": "object",
               "title": "Target",
-              "description": "layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy"
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set"
             },
             "change": {
               "additionalProperties": true,
@@ -86678,6 +86681,30 @@
               ],
               "title": "Run Id",
               "description": "the chat run of @builder, or the Curator's review run, it came from"
+            },
+            "opened_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opened Run Id",
+              "description": "an approved plugin or plugin_listing: the chat run of @builder that took its task"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "an approved action: what approving it did"
             },
             "link": {
               "anyOf": [

@@ -37,8 +37,20 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 KINDS = ("branding", "features")  # hub_settings.kind (0037)
-# builder_proposals.kind (0043, 0079, 0091, 0134, 0143)
-PROPOSAL_KINDS = ("branding", "features", "plugin_config", "agent", "policy", "problem", "goal", "opportunity")
+# builder_proposals.kind (0043, 0079, 0091, 0134, 0143, 0160)
+PROPOSAL_KINDS = (
+    "branding",
+    "features",
+    "plugin_config",
+    "agent",
+    "policy",
+    "problem",
+    "goal",
+    "opportunity",
+    "plugin",
+    "plugin_install",
+    "plugin_listing",
+)
 PROPOSAL_STATES = ("pending", "applied", "rejected", "failed", "rolled_back")  # builder_proposals.state (0043)
 
 
@@ -92,8 +104,11 @@ def proposals_table(metadata: MetaData) -> Table:
         Column("applied_version", Integer),
         Column("rollback_version", Integer),
         Column("error", Text),
+        Column("opened_run_id", BigInteger),  # the chat run approving a proposal of an action opened (0160)
+        Column("outcome", Text),  # what approving a proposal of an action did (0160)
         _proposal_key("project_id", "projects", ondelete="RESTRICT"),
         _proposal_key("run_id", "runs", ondelete="SET NULL"),
+        _proposal_key("opened_run_id", "runs", ondelete="SET NULL"),
         _proposal_key("chat_id", "chats", ondelete="SET NULL"),
         _proposal_key("thread_root_id", "chat_messages", ondelete="SET NULL"),
         _proposal_key("message_id", "chat_messages", ondelete="SET NULL"),

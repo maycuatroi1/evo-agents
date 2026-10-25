@@ -5181,9 +5181,10 @@ export interface paths {
         put?: never;
         /**
          * Answer Proposal
-         * @description Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
-         *     it could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one
-         *     of a problem, an admin of the project the others.
+         * @description Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or does its
+         *     action once (plugin, plugin_install, plugin_listing), or keeps why it could not (state failed). A hub admin
+         *     decides one of the branding, the features or an install, a writer of the project one of a problem or an
+         *     opportunity, an admin of the project the others.
          */
         post: operations["answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post"];
         delete?: never;
@@ -5204,7 +5205,7 @@ export interface paths {
         /**
          * Roll Back Proposal
          * @description Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is
-         *     still at the version the proposal made.
+         *     still at the version the proposal made. An action never rolls back (409).
          */
         post: operations["roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post"];
         delete?: never;
@@ -12889,10 +12890,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity" | "plugin" | "plugin_install" | "plugin_listing";
             /**
              * Target
-             * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy
+             * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set
              */
             target: {
                 [key: string]: string;
@@ -12956,6 +12957,16 @@ export interface components {
              * @description the chat run of @builder, or the Curator's review run, it came from
              */
             run_id: number | null;
+            /**
+             * Opened Run Id
+             * @description an approved plugin or plugin_listing: the chat run of @builder that took its task
+             */
+            opened_run_id?: number | null;
+            /**
+             * Outcome
+             * @description an approved action: what approving it did
+             */
+            outcome?: string | null;
             /**
              * Link
              * @description the hub's message that shows it in its thread; none for a review run's
