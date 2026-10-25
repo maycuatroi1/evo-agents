@@ -8704,6 +8704,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/model-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Catalog
+         * @description The providers a member can add an account for, with where the catalog came from.
+         */
+        get: operations["get_model_catalog_v1_model_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/signals/{project}": {
         parameters: {
             query?: never;
@@ -13137,6 +13157,70 @@ export interface components {
         CanvasWithdrawIn: {
             /** Reason */
             reason: string;
+        };
+        /** CatalogProvider */
+        CatalogProvider: {
+            /** Id */
+            id: string;
+            /**
+             * Alias
+             * @description what the gateway reads before the slash of a model name
+             */
+            alias: string;
+            /** Name */
+            name: string;
+            /** Group */
+            group: string;
+            /** Color */
+            color: string;
+            /** Text Icon */
+            text_icon: string;
+            /** Website */
+            website: string;
+            /** Key Hint */
+            key_hint: string;
+            /**
+             * Base Url
+             * @description the root of the API; empty for the custom entries and the Claude subscription
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @enum {string}
+             */
+            api_format: "openai" | "anthropic" | "openai-responses" | "gemini";
+            /** Default Model */
+            default_model: string;
+            /** Key Required */
+            key_required: boolean;
+            /** Free */
+            free: boolean;
+            /**
+             * Via
+             * @description login: the Claude subscription, which skips the gateway
+             * @enum {string}
+             */
+            via: "gateway" | "login";
+        };
+        /** CatalogSource */
+        CatalogSource: {
+            /** Name */
+            name: string;
+            /** Repository */
+            repository: string;
+            /** Tag */
+            tag: string;
+            /**
+             * Version
+             * @description the OmniRoute version, the one of the gateway image
+             */
+            version: string;
+            /** Commit */
+            commit: string;
+            /** License */
+            license: string;
+            /** Copyright */
+            copyright: string;
         };
         /**
          * CeilingSet
@@ -19677,6 +19761,14 @@ export interface components {
             origin: string | null;
             /** Reason */
             reason: string;
+        };
+        /** ModelCatalog */
+        ModelCatalog: {
+            source: components["schemas"]["CatalogSource"];
+            /** Groups */
+            groups: string[];
+            /** Providers */
+            providers: components["schemas"]["CatalogProvider"][];
         };
         /** ModelCount */
         ModelCount: {
@@ -66312,6 +66404,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_model_catalog_v1_model_catalog_get: {
+        parameters: {
+            query?: {
+                /** @description only the providers of this group */
+                group?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCatalog"];
+                };
+            };
+            /** @description unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

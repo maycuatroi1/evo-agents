@@ -100,6 +100,7 @@ include = ["evo_agents*"]
 [tool.setuptools.package-data]
 evo_agents = [
     "harness/schemas/*.json",
+    "hub/model_catalog.json",
     "hub/migrations/*.py",
     "hub/migrations/*.mako",
     "hub/migrations/versions/*.py",

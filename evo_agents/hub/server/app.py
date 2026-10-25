@@ -410,6 +410,7 @@ def create_app(config: HubConfig) -> FastAPI:
         intake,
         merge_judge,
         merge_view,
+        model_catalog,
         opportunities,
         opportunity_evidence,
         plugin_host,
@@ -475,6 +476,7 @@ def create_app(config: HubConfig) -> FastAPI:
         branding.admin_router,
         features.router,
         features.admin_router,
+        model_catalog.router,
         signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
         signals.router,
         signal_keys.router,
