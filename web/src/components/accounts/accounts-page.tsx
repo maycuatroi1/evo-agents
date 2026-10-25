@@ -37,13 +37,17 @@ const TABS = ["providers", "models", "services", "rotation", "sharing"] as const
 type Tab = (typeof TABS)[number];
 const tabOf = (value: string | null): Tab => (TABS as readonly string[]).includes(value ?? "") ? (value as Tab) : "providers";
 
-/** The tab in the URL, changed through the History API (Next.js syncs useSearchParams with it). */
+/**
+ * The tab shown, read from the URL as the page opens. A change shows at once and is written back to the URL through
+ * the History API; reading it back from useSearchParams would lag a render behind the arrow keys of the tab list.
+ */
 function useTab(): [Tab, (next: string) => void] {
   const params = useSearchParams();
   const pathname = usePathname();
-  const tab = tabOf(params.get("tab"));
+  const [tab, setTab] = useState<Tab>(() => tabOf(params.get("tab")));
   const set = (next: string) => {
-    const search = new URLSearchParams(params.toString());
+    setTab(tabOf(next));
+    const search = new URLSearchParams(window.location.search);
     if (next === "providers") search.delete("tab");
     else search.set("tab", next);
     const query = search.toString();
