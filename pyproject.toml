@@ -106,6 +106,7 @@ evo_agents = [
     "hub/migrations/sql/*",
     "core_plugins/*/packs/**/*",  # the agent packs a core plugin ships (evo_agents.plugins.core.image_bundle)
     "core_plugins/*/packs/**/.mcp.json",  # a dotfile no star matches
+    "worker/bootstrap.sh",  # a link to deploy/worker/bootstrap.sh, copied in as a file (`worker pool user-data`)
 ]
 
 [tool.ruff]

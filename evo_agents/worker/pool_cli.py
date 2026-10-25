@@ -8,6 +8,9 @@ the machine token of ``evo-agents hub login`` (/v1/worker-pools, ``evo_agents.hu
   the pool's whole list, and ``--no-labels``, ``--no-taints`` and ``--no-accepted-findings`` empty one.
 - ``pool token create NAME``: a join token, ``evj_...``, printed once; ``pool token list NAME`` and ``pool token
   revoke NAME ID``.
+- ``pool user-data NAME``: a new join token, and the cloud-init user-data of a new machine of the pool on stdout:
+  ``deploy/worker/bootstrap.sh`` (shipped in the package as ``evo_agents/worker/bootstrap.sh``) with the hub and the
+  token written in.
 
 A machine joins a pool with ``evo-agents worker join --url URL --token evj_...``, or with the token in
 EVO_JOIN_TOKEN (``join_secret``), so it stays out of the shell's history and the process list. Each command prints
@@ -19,11 +22,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
+import sys
+from importlib import resources
 
 from evo_agents.hub.client import Hub, HubError, load_credentials
 
 JOIN_TOKEN_ENV = "EVO_JOIN_TOKEN"
 POOLS = "/v1/worker-pools"
+BOOTSTRAP = "bootstrap.sh"  # in evo_agents.worker, a copy of deploy/worker/bootstrap.sh
+SETTINGS_MARK = "# evo-bootstrap settings:"
 
 
 def join_secret(args) -> tuple[str | None, str | None]:
@@ -138,6 +146,41 @@ def cmd_token_revoke(args) -> int:
     return _printed(answer, args, text)
 
 
+def bootstrap_script() -> str:
+    """The text of deploy/worker/bootstrap.sh, as the package ships it."""
+    return resources.files("evo_agents.worker").joinpath(BOOTSTRAP).read_text(encoding="utf-8")
+
+
+def render_user_data(url: str, token: str, script: str | None = None) -> str:
+    """The bootstrap script as cloud-init user-data: its settings line replaced with the hub and the join token."""
+    script = bootstrap_script() if script is None else script
+    lines = script.splitlines(keepends=True)
+    marks = [index for index, line in enumerate(lines) if line.startswith(SETTINGS_MARK)]
+    if len(marks) != 1 or not lines[0].startswith("#!"):
+        raise HubError(f"{BOOTSTRAP} of this install has no single settings line; install evo-agents again")
+    settings = (
+        f"{SETTINGS_MARK} written by `evo-agents worker pool user-data`; the join token is a secret\n"
+        f"EVO_HUB_URL={shlex.quote(url)}\n"
+        f"{JOIN_TOKEN_ENV}={shlex.quote(token)}\n"
+    )
+    lines[marks[0]] = settings
+    return "".join(lines)
+
+
+def cmd_user_data(args) -> int:
+    hub = _hub()
+    script = bootstrap_script()
+    answer = hub.call("POST", _path(args.name, "tokens"), {"hours": args.ttl, "max_uses": args.max_nodes})
+    sys.stdout.write(render_user_data(hub.url, answer["token"], script))
+    print(
+        f"Join token {answer['id']} of pool {answer['pool']} is in this user-data, for {answer['max_uses']} "
+        f"machine(s) until {answer['expires_at']}; keep it as a secret, and revoke it with "
+        f"`evo-agents worker pool token revoke {answer['pool']} {answer['id']}`.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _int_in(low: int, high: int):
     def parse(text: str) -> int:
         try:
@@ -217,3 +260,15 @@ def register_pool(wsub) -> None:
     revoke.add_argument("id", type=int, help="the token's id, from `pool token list`")
     revoke.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
     revoke.set_defaults(func=worker_command(cmd_token_revoke))
+
+    data = psub.add_parser(
+        "user-data", help="a new join token, and the cloud-init user-data that makes a new machine a node of the pool"
+    )
+    data.add_argument("name", help="the pool")
+    data.add_argument(
+        "--ttl", type=_int_in(1, 720), default=24, help="hours its join token works, 1 to 720 (default 24)"
+    )
+    data.add_argument(
+        "--max-nodes", type=_int_in(1, 100), default=1, help="machines its join token joins, 1 to 100 (default 1)"
+    )
+    data.set_defaults(func=worker_command(cmd_user_data))
