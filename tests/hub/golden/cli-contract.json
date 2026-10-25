@@ -23,6 +23,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -73,6 +74,14 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--expires"
           ],
           "value": "string",
@@ -106,6 +115,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -156,6 +166,14 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--no-browser"
           ],
           "value": null,
@@ -189,6 +207,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -240,6 +259,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -370,6 +390,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -437,6 +458,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -627,6 +649,7 @@
           "auth",
           "projects",
           "workers",
+          "pools",
           "weight",
           "priority",
           "paused_at",
@@ -15416,6 +15439,7 @@
           "environment",
           "projects",
           "workers",
+          "pools",
           "expires_at",
           "created_at",
           "updated_at",
@@ -15494,6 +15518,14 @@
         {
           "flags": [
             "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--pool"
           ],
           "value": "string",
           "required": false,
@@ -74636,6 +74668,15 @@
               "title": "Workers",
               "description": "the workers it is bound to; empty for any worker of its owner"
             },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
             "auth": {
               "type": "string",
               "enum": [
@@ -118254,6 +118295,15 @@
               "title": "Workers",
               "description": "the workers it is bound to; empty for any worker of its owner"
             },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
             "expires_at": {
               "anyOf": [
                 {
@@ -118390,6 +118440,16 @@
               "title": "Workers",
               "description": "names of the caller's own workers that are not revoked; left out or empty for any of them; none for kind forge"
             },
+            "pools": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Pools",
+              "description": "names of the caller's own worker pools: each node of each gets it, the nodes that join later too; never with workers, and none for kind forge"
+            },
             "expires_at": {
               "anyOf": [
                 {
@@ -118510,6 +118570,15 @@
               "type": "array",
               "title": "Workers",
               "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
             },
             "expires_at": {
               "anyOf": [

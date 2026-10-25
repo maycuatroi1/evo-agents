@@ -100,7 +100,7 @@ async def _duty_pool(conn: AsyncConnection, user: Principal, access: ProjectAcce
         raise HTTPException(
             403,
             f"the night shift runs on a pool of the admin who names it, and you have no pool {name}: create it "
-            "(`evo-agents hub worker pool create`), or keep the charter's pool; nothing was written",
+            "(POST /v1/worker-pools), or keep the charter's pool; nothing was written",
         )
     if not row.listed:
         raise HTTPException(

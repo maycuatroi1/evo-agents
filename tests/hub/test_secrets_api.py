@@ -47,6 +47,7 @@ SECRET_FIELDS = {
     "username",
     "projects",
     "workers",
+    "pools",
     "environment",
     "expires_at",
     "created_at",
