@@ -103,6 +103,10 @@ DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<s
 NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "notifications:<id>,<id>" or ":all"
 # A member turned kinds of notice on or off: "notifications:settings run_outputs=off" (server.output_notices).
 NOTIFICATION_SETTINGS = "notification.settings"
+# A member added a push device, or it went: removed by the member, or by the hub when its push service no longer knew
+# it or its sign-in ended. "push_device:<id> kind=<kind> user=<login> by=<member|hub>", never its endpoint or token.
+PUSH_DEVICE_ADD = "push_device.add"
+PUSH_DEVICE_REMOVE = "push_device.remove"
 # The web terminal of a run; the target names the run as above, and on close the bytes relayed each way and how it
 # ended ("... to_worker=<n> to_browser=<n> end=<idle|timeout|browser|worker|protocol|shutdown>"), never the bytes.
 TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a browser

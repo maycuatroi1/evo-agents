@@ -270,6 +270,41 @@ def test_the_telegram_variables_turn_the_channel_on_are_secrets_and_either_missi
         assert caught.value.variable == variable and value not in str(caught.value)
 
 
+def test_the_vapid_key_turns_web_push_on_is_a_secret_and_the_subject_falls_back_to_the_public_url():
+    # A P-256 private scalar (1 below the group's order would do too): 32 bytes in base64url, built for the test.
+    raw = (0x5EED_C0FFEE).to_bytes(32, "big")
+    key = base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+    base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    assert load_config(base).webpush_missing() == ["EVO_HUB_VAPID_PRIVATE_KEY", "EVO_HUB_VAPID_SUBJECT"]
+    config = load_config({**base, "EVO_HUB_VAPID_PRIVATE_KEY": key, "EVO_HUB_PUBLIC_URL": "https://hub.example.org"})
+    assert (config.vapid_private_key, config.vapid_subject) == (key, None)
+    assert config.push_subject == "https://hub.example.org" and config.webpush_missing() == []
+    for leaked in (key, base64.b64encode(raw).decode()):
+        line = scrub(f"signing with {leaked}")
+        assert leaked not in line and "***" in line, line
+    assert key not in repr(config)
+    # without a public URL the subject is needed; with one, it wins
+    assert load_config({**base, "EVO_HUB_VAPID_PRIVATE_KEY": key}).webpush_missing() == ["EVO_HUB_VAPID_SUBJECT"]
+    mailto = load_config({**base, "EVO_HUB_VAPID_PRIVATE_KEY": key, "EVO_HUB_VAPID_SUBJECT": "mailto:ops@example.org"})
+    assert mailto.push_subject == "mailto:ops@example.org" and mailto.webpush_missing() == []
+
+    # A malformed value is named, never shown: not base64url, too short, zero, or past the order of P-256.
+    order = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+    for variable, value in (
+        ("EVO_HUB_VAPID_PRIVATE_KEY", "not a key at all, with spaces and more than forty-three chars"),
+        ("EVO_HUB_VAPID_PRIVATE_KEY", key[:-2]),
+        ("EVO_HUB_VAPID_PRIVATE_KEY", base64.urlsafe_b64encode(bytes(32)).rstrip(b"=").decode()),
+        ("EVO_HUB_VAPID_PRIVATE_KEY", base64.urlsafe_b64encode(order.to_bytes(32, "big")).rstrip(b"=").decode()),
+        ("EVO_HUB_VAPID_SUBJECT", "ops@example.org"),
+        ("EVO_HUB_VAPID_SUBJECT", "http://hub.example.org"),
+    ):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**base, "EVO_HUB_VAPID_PRIVATE_KEY": key, variable: value})
+        assert caught.value.variable == variable
+        if variable == "EVO_HUB_VAPID_PRIVATE_KEY":
+            assert value not in str(caught.value)
+
+
 def test_plugin_sign_publishers_and_core_publishers_load_from_the_environment():
     from tests.plugins.samples import WORKFLOW, public_key
 

@@ -143,6 +143,7 @@ TABLES |= pg.INTAKE_TABLES  # migration 0138
 TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
+TABLES |= pg.PUSH_TABLES  # migration 0148
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -224,8 +225,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_seventy_nine_tables(hub_db):
-    assert len(TABLES) == 179  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eighty_one_tables(hub_db):
+    assert len(TABLES) == 181  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3630,3 +3631,60 @@ def test_0147_keeps_the_recommended_reason_reversible_undo_and_decision_evidence
     move_to(hub_db, "0146", down=True)
     assert not added & columns(hub_db, "decisions")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]
+
+
+def test_0148_keeps_push_devices_their_deliveries_and_preferences_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0147")
+    t = hub_tables
+    n, dl = t.notifications, t.notification_deliveries
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token = one(conn, _token(ids, kind="machine", token_hash="6" * 64, host="phone").returning(t.tokens.c.id))
+        stored = insert(n).values(user_id=ids["user"], kind="notice", notice_kind="plan_finished", title="Done")
+        notification = one(conn, stored.returning(n.c.id))
+        one(conn, insert(dl).values(notification_id=notification).returning(dl.c.id))  # the web's
+    move_to(hub_db, "0148")
+    added = {"push_devices", "notification_preferences"}
+    assert added <= tables(hub_db) and "device_id" in columns(hub_db, "notification_deliveries")
+    d, p, c = t.push_devices, t.notification_preferences, t.notification_channels
+    endpoint = "https://fcm.googleapis.com/fcm/send/a"
+    device = {"user_id": ids["user"], "token_id": token, "kind": "webpush", "params": {"p256dh": "k", "auth": "a"}}
+    with live.connect(hub_db) as conn:
+        first = one(conn, insert(d).values(**device, address=endpoint).returning(d.c.id))
+        second = one(conn, insert(d).values(**device, address=endpoint + "b", label="Phone").returning(d.c.id))
+        one(conn, insert(d).values({**device, "kind": "apns", "address": endpoint}).returning(d.c.id))  # another kind
+        for device_id in (first, second):
+            one(conn, insert(dl).values(notification_id=notification, device_id=device_id).returning(dl.c.id))
+        channel = one(conn, insert(c).values(user_id=ids["user"], kind="fake").returning(c.c.id))
+        one(conn, insert(dl).values(notification_id=notification, channel_id=channel).returning(dl.c.id))
+        conn.execute(insert(p).values(user_id=ids["user"], hide_details=True))
+        for bad in (
+            {"kind": "mail", "address": "x"},
+            {"address": ""},
+            {"address": "x" * 2049},
+            {"address": "y", "label": ""},
+            {"address": "y", "label": "x" * 101},
+            {"address": "y", "params": ["p256dh"]},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(d).values({**device, **bad}))
+        with pytest.raises(errors.UniqueViolation):  # an address of a kind is one device
+            conn.execute(insert(d).values(**device, address=endpoint))
+        with pytest.raises(errors.UniqueViolation):  # one delivery a device
+            conn.execute(insert(dl).values(notification_id=notification, device_id=first))
+        with pytest.raises(errors.UniqueViolation):  # one delivery on the web
+            conn.execute(insert(dl).values(notification_id=notification))
+        with pytest.raises(errors.CheckViolation):  # a channel or a device, not both
+            conn.execute(insert(dl).values(notification_id=notification, channel_id=channel, device_id=second))
+        conn.execute(delete(d).where(d.c.id == first))  # its deliveries go with it
+    count = select(func.count()).select_from(dl)
+    assert query(hub_db, count) == [(3,)]
+    assert query(hub_db, select(p.c.hide_details)) == [(True,)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.tokens).where(t.tokens.c.id == token))  # a token's devices go with it
+    assert query(hub_db, select(func.count()).select_from(d)) == [(0,)]
+    assert query(hub_db, count) == [(2,)]
+    move_to(hub_db, "0147", down=True)
+    assert not added & tables(hub_db) and "device_id" not in columns(hub_db, "notification_deliveries")
+    assert query(hub_db, count) == [(2,)]  # the web's and the channel's stay
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]

@@ -6,7 +6,8 @@ channel of the member's that is on: the web, which every member has without a ro
 delivery without a channel), and each enabled row. The table is the outbox: nothing is sent while the transaction is
 open, and a hub that stops between the commit and the send loses nothing. A notification of a project also goes to
 the channels of the isolated plugins the project enabled and granted notifications:send, through the plugins' own
-outbox (``evo_agents.hub.plugin_events``).
+outbox (``evo_agents.hub.plugin_events``). A notification of the interrupt tier also gets one delivery on each push
+device of its member that reaches them (a delivery with a ``device_id``, ``evo_agents.hub.server.push_store``).
 
 ``deliver_notifications`` is the job hub.deliver_notifications, every minute. It takes the pending deliveries whose
 ``next_at`` has passed, each in a transaction of its own with ``FOR UPDATE SKIP LOCKED``, and hands each to an
@@ -21,8 +22,9 @@ in CHANNELS, or a channel turned off since, fails its delivery at once with that
 does not try it forever. So does a kind whose class a core plugin contributes but does not load, or does not make (its
 import or its ``__init__`` raises): ``last_error`` says why, and the deliveries of every other kind, the web's
 included, go on. Adding a channel takes a subclass of Channel, contributed by a core plugin to the channels
-under the kind's name (as the core plugin telegram does), or an entry in CHANNELS; the tables, the outbox and the
-job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
+under the kind's name (as the core plugin telegram does), or an entry in CHANNELS, a class or the ``module:name`` of
+one, imported when a pass first needs it (as the senders of push devices are, ``push_senders``); the tables, the
+outbox and the job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
 transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's ``external_id``.
 
 Before a channel of a row gets a notification, the job checks two things as they stand at the delivery, not as they
@@ -30,6 +32,12 @@ stood when it was stored. The member must still hold a grant on the notification
 delivery at once; the channel stays). And a channel bound to the web session that linked it (``token_id``), or of a
 class that needs one (``Channel.needs_session``, as Telegram's does), lives no longer than that session: once it is
 revoked, signed out or expired, the delivery fails and the channel is turned off with SESSION_ENDED as its reason.
+
+A delivery to a push device goes to the class CHANNELS names for the device's kind, with the device's address and
+params as the channel's config, after the same check of the grant. A device lives no longer than the token that added
+it: once that token is revoked or expired, the delivery fails and the device is removed. ChannelGone from a device's
+class (the push service no longer knows it) removes that device alone, with its deliveries; a delivery that went out
+marks when the device last got a push.
 
 POST /v1/worker/runs/{id}/notices takes a notice (``runs.NOTICE_KINDS``) from the worker holding a plan run: a title,
 a body, and the repo, branch and commits of a push or merge. It notifies the run's owner, links to the run's page and
@@ -77,7 +85,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import plugin_events, review, runs, tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import core_registry, load
-from evo_agents.hub.server import audit, output_views
+from evo_agents.hub.server import audit, output_views, push_store
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.output_views import RunOutput
@@ -86,6 +94,7 @@ from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME, REFUSAL
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.security import WEB as WEB_SESSION
 from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.tables_push import WEBPUSH
 
 log = logging.getLogger(__name__)
 
@@ -192,6 +201,8 @@ async def notify(
     )
     notification_id = inserted.scalar_one()
     await conn.execute(_deliveries(notification_id, user_id))
+    if await push_store.interrupts(conn, kind=kind, user_id=user_id, decision_id=decision_id):
+        await conn.execute(push_store.device_deliveries(notification_id, user_id))
     await plugin_events.emit_notification(conn, notification_id, project_id)  # the channels of isolated plugins
     return notification_id
 
@@ -262,13 +273,24 @@ class WebChannel(Channel):
         return None
 
 
-CHANNELS: dict[str, type[Channel]] = {WEB: WebChannel}
+# The classes of the channels the hub has itself: a class, or the ``module:name`` of one, imported when needed.
+CHANNELS: dict[str, type[Channel] | str] = {
+    WEB: WebChannel,
+    WEBPUSH: "evo_agents.hub.server.push_senders:WebPushChannel",  # the devices of push_devices of kind webpush
+}
 
 
 def _channel_class(kind: str) -> tuple[type[Channel] | None, str]:
     """(the class of channels of ``kind``, or None) and, for None, why: no class, or one that did not load."""
     if kind in CHANNELS:
-        return CHANNELS[kind], ""
+        named = CHANNELS[kind]
+        if not isinstance(named, str):
+            return named, ""
+        try:
+            return load(named), ""
+        except Exception as exc:  # a class that does not import fails its own kind's deliveries, never the job
+            log.warning("notification channel not loaded", extra={"channel": kind}, exc_info=True)
+            return None, f"the class of channels of kind {kind} ({named}) did not load: {_error_text(exc)}"
     contributed = core_registry().contributions("channels")
     found = next(
         ((manifest, item) for manifest, item in contributed if item["name"] == kind and "python" in item), None
@@ -310,10 +332,11 @@ OUTGOING = tuple(field.name for field in dataclasses.fields(Outgoing) if field.n
 
 
 def _lock_due(delivery_id: int):
-    """Delivery ``delivery_id`` while it is pending and due, locked, with its channel and its notification as
-    Outgoing names the columns, whether the member holds a grant on its project now (``granted``) and whether the
-    web session its channel is bound to lives (``session_live``); no row when another pass holds it."""
-    deliveries, channels = tables.notification_deliveries, tables.notification_channels
+    """Delivery ``delivery_id`` while it is pending and due, locked, with its channel or its device and its
+    notification as Outgoing names the columns, whether the member holds a grant on its project now (``granted``),
+    whether the web session its channel is bound to lives (``session_live``) and whether the token that added its
+    device does (``device_live``); no row when another pass holds it."""
+    deliveries, channels, devices = tables.notification_deliveries, tables.notification_channels, tables.push_devices
     stored, users, projects = tables.notifications, tables.users, tables.projects
     grants, tokens = tables.grants, tables.tokens
     granted = or_(
@@ -352,11 +375,17 @@ def _lock_due(delivery_id: int):
             channels.c.token_id,
             granted.label("granted"),
             session_live.label("session_live"),
+            deliveries.c.device_id,
+            devices.c.kind.label("device_kind"),
+            devices.c.address.label("device_address"),
+            devices.c.params.label("device_params"),
+            push_store.device_live(devices).label("device_live"),
         )
         .select_from(
             deliveries.join(stored, stored.c.id == deliveries.c.notification_id)
             .join(users, users.c.id == stored.c.user_id)
             .outerjoin(channels, channels.c.id == deliveries.c.channel_id)
+            .outerjoin(devices, devices.c.id == deliveries.c.device_id)
             .outerjoin(projects, projects.c.id == stored.c.project_id)
         )
         .where(deliveries.c.id == delivery_id, deliveries.c.state == "pending", deliveries.c.next_at <= func.now())
@@ -423,32 +452,50 @@ def _error_text(exc: BaseException) -> str:
     return text[:MAX_ERROR_CHARS]
 
 
-async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict, config) -> str | None:
-    """Try delivery ``delivery_id`` once, in the caller's transaction; delivered, retried or failed, or None when it
-    is no longer due (taken by another pass, or done meanwhile)."""
-    row = (await conn.execute(_lock_due(delivery_id))).one_or_none()
-    if row is None:
-        return None
-    found = row._mapping
-    attempts, has_channel = row.attempts, row.has_channel
-    notification = Outgoing(**{name: found[name] for name in OUTGOING})
-    kind = row.channel_kind if has_channel else WEB
-    cls, missing = _channel_class(kind)
+def _target(row) -> tuple[str, dict]:
+    """The kind of the class a locked delivery goes to, and the config its ``send`` gets: the device's address and
+    params for a device, the channel's config for a channel, nothing for the web."""
+    if row.device_id is not None:
+        return row.device_kind, {**(row.device_params or {}), "address": row.device_address}
+    if row.has_channel:
+        return row.channel_kind, dict(row.channel_config or {})
+    return WEB, {}
+
+
+def _refused(row, cls: type[Channel] | None, missing: str) -> str | None:
+    """Why a locked delivery fails before its class is tried, or None: no class, a channel turned off, no grant on the
+    project now, or the web session of its channel, or the token of its device, ended."""
     if cls is None:
-        await conn.execute(_failed(delivery_id, missing))
-        return "failed"
-    if has_channel and not row.enabled:
-        await conn.execute(_failed(delivery_id, "the channel was turned off before the notification went out"))
-        return "failed"
-    if has_channel and not row.granted:
-        await conn.execute(_failed(delivery_id, NO_GRANT))
-        log.info("notification not delivered: no grant", extra={"delivery_id": delivery_id, "channel": kind})
-        return "failed"
-    if has_channel and (cls.needs_session or row.token_id is not None) and not row.session_live:
-        await conn.execute(_failed(delivery_id, SESSION_ENDED))
-        await conn.execute(_turn_off(row.channel_id, SESSION_ENDED))
-        log.info("notification channel off: its session ended", extra={"delivery_id": delivery_id, "channel": kind})
-        return "failed"
+        return missing
+    if row.has_channel and not row.enabled:
+        return "the channel was turned off before the notification went out"
+    if (row.has_channel or row.device_id is not None) and not row.granted:
+        return NO_GRANT
+    if row.has_channel and (cls.needs_session or row.token_id is not None) and not row.session_live:
+        return SESSION_ENDED
+    if row.device_id is not None and not row.device_live:
+        return push_store.SIGN_IN_ENDED
+    return None
+
+
+async def _gone(conn: AsyncConnection, row, reason: str) -> None:
+    """The channel of a delivery turned off, or its device removed with its deliveries, for ``reason``."""
+    if row.device_id is not None:
+        removed = await push_store.remove_device(conn, row.device_id)
+        if removed is not None:
+            await audit.record(
+                conn,
+                actor_id=None,
+                token_id=None,
+                action=audit.PUSH_DEVICE_REMOVE,
+                target=f"push_device:{removed[0]} kind={removed[1]} user={removed[2]} by=hub",
+            )
+    elif row.channel_id is not None:
+        await conn.execute(_turn_off(row.channel_id, reason))
+
+
+async def _instance(conn: AsyncConnection, delivery_id: int, kind: str, cls, instances: dict, config):
+    """The pass's instance of ``cls`` for ``kind``, made once; None when it cannot be made (the delivery failed)."""
     channel = instances.get(kind)
     if channel is None:
         try:
@@ -456,33 +503,61 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
         except Exception as exc:  # a class that cannot be made fails its kind's deliveries, never the job
             await conn.execute(_failed(delivery_id, f"the class of channels of kind {kind} failed: {_error_text(exc)}"))
             log.warning("notification channel not made", extra={"delivery_id": delivery_id, "channel": kind})
-            return "failed"
+    return channel
+
+
+async def _not_sent(conn: AsyncConnection, delivery_id: int, row, kind: str, exc: Exception) -> str:
+    """What becomes of a delivery whose class raised ``exc``: tried later, or failed (and its channel or device gone
+    for ChannelGone)."""
+    where = {"delivery_id": delivery_id, "channel": kind}
+    if isinstance(exc, RetryAfter):
+        await conn.execute(_later(delivery_id, timedelta(seconds=exc.seconds), _error_text(exc)))
+        log.info("notification delivery waits as its channel asked", extra=where)
+        return "retried"
+    error = _error_text(exc) or "the channel failed"
+    if isinstance(exc, Undeliverable):
+        await conn.execute(_failed(delivery_id, error))
+        if isinstance(exc, ChannelGone):
+            await _gone(conn, row, str(exc) or error)
+        log.warning("notification undeliverable", extra=where)
+        return "failed"
+    if row.attempts + 1 >= runs.MAX_DELIVERY_ATTEMPTS:
+        await conn.execute(_failed(delivery_id, error))
+        log.warning("notification delivery failed", extra=where)
+        return "failed"
+    await conn.execute(_retry(delivery_id, backoff(row.attempts + 1), error))
+    log.info("notification delivery to try again", extra=where)
+    return "retried"
+
+
+async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict, config) -> str | None:
+    """Try delivery ``delivery_id`` once, in the caller's transaction; delivered, retried or failed, or None when it
+    is no longer due (taken by another pass, or done meanwhile)."""
+    row = (await conn.execute(_lock_due(delivery_id))).one_or_none()
+    if row is None:
+        return None
+    found = row._mapping
+    notification = Outgoing(**{name: found[name] for name in OUTGOING})
+    kind, target = _target(row)
+    cls, missing = _channel_class(kind)
+    refused = _refused(row, cls, missing)
+    if refused is not None:
+        await conn.execute(_failed(delivery_id, refused))
+        if refused in (SESSION_ENDED, push_store.SIGN_IN_ENDED):
+            await _gone(conn, row, refused)
+        log.info("notification not delivered", extra={"delivery_id": delivery_id, "channel": kind, "why": refused})
+        return "failed"
+    channel = await _instance(conn, delivery_id, kind, cls, instances, config)
+    if channel is None:
+        return "failed"
     try:
         notification = await channel.prepare(conn, notification)
-        sent = await asyncio.wait_for(channel.send(notification, dict(row.channel_config or {})), SEND_TIMEOUT_SECONDS)
-    except RetryAfter as exc:
-        await conn.execute(_later(delivery_id, timedelta(seconds=exc.seconds), _error_text(exc)))
-        log.info(
-            "notification delivery waits as its channel asked", extra={"delivery_id": delivery_id, "channel": kind}
-        )
-        return "retried"
-    except Undeliverable as exc:
-        error = _error_text(exc)
-        await conn.execute(_failed(delivery_id, error))
-        if isinstance(exc, ChannelGone) and row.channel_id is not None:
-            await conn.execute(_turn_off(row.channel_id, str(exc) or error))
-        log.warning("notification undeliverable", extra={"delivery_id": delivery_id, "channel": kind})
-        return "failed"
+        sent = await asyncio.wait_for(channel.send(notification, target), SEND_TIMEOUT_SECONDS)
     except Exception as exc:  # any failure of a channel is the delivery's, never the job's
-        error = _error_text(exc) or "the channel failed"
-        if attempts + 1 >= runs.MAX_DELIVERY_ATTEMPTS:
-            await conn.execute(_failed(delivery_id, error))
-            log.warning("notification delivery failed", extra={"delivery_id": delivery_id, "channel": kind})
-            return "failed"
-        await conn.execute(_retry(delivery_id, backoff(attempts + 1), error))
-        log.info("notification delivery to try again", extra={"delivery_id": delivery_id, "channel": kind})
-        return "retried"
+        return await _not_sent(conn, delivery_id, row, kind, exc)
     await conn.execute(_delivered(delivery_id, sent))
+    if row.device_id is not None:
+        await push_store.sent(conn, row.device_id)
     return "delivered"
 
 

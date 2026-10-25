@@ -56,6 +56,7 @@ from evo_agents.hub import (
     tables_pm,
     tables_problems,
     tables_profiles,
+    tables_push,
     tables_release,
     tables_sessions,
     tables_settings,
@@ -682,11 +683,15 @@ notification_deliveries = Table(
     _stamp("created_at"),
     _when("delivered_at"),
     Column("external_id", Text),
+    Column("device_id", BigInteger),  # a delivery to a push device, never with a channel (0148)
     ForeignKeyConstraint(
         ["channel_id"],
         ["notification_channels.id"],
         ondelete="CASCADE",
         name="notification_deliveries_channel_id_fkey",
+    ),
+    ForeignKeyConstraint(
+        ["device_id"], ["push_devices.id"], ondelete="CASCADE", name="notification_deliveries_device_id_fkey"
     ),
     ForeignKeyConstraint(
         ["notification_id"],
@@ -696,12 +701,13 @@ notification_deliveries = Table(
     ),
     PrimaryKeyConstraint("id", name="notification_deliveries_pkey"),
     Index("notification_deliveries_channel_key", "notification_id", "channel_id", unique=True),
+    Index("notification_deliveries_device_key", "device_id", "notification_id", unique=True),
 )
-Index(
+Index(  # the web's delivery: no channel and no device (0148)
     "notification_deliveries_web_key",
     notification_deliveries.c.notification_id,
     unique=True,
-    postgresql_where=notification_deliveries.c.channel_id.is_(None),
+    postgresql_where=notification_deliveries.c.channel_id.is_(None) & notification_deliveries.c.device_id.is_(None),
 )
 Index(
     "notification_deliveries_due_idx",
@@ -971,6 +977,7 @@ hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_ta
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
+push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0148)
 attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077

@@ -35229,7 +35229,7 @@
             "notifications"
           ],
           "summary": "Set Notification Settings",
-          "description": "Turn kinds of notice on or off for the caller; decisions and the other notices always come.",
+          "description": "Turn kinds of notice on or off for the caller, and choose whether push hides details; decisions and the other\nnotices always come.",
           "operationId": "set_notification_settings_v1_me_notification_settings_put",
           "requestBody": {
             "content": {
@@ -35268,6 +35268,264 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/me/push/devices": {
+        "get": {
+          "tags": [
+            "push"
+          ],
+          "summary": "List Devices",
+          "description": "The caller's push devices that push reaches, newest first.",
+          "operationId": "list_devices_v1_me_push_devices_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PushDeviceList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "push"
+          ],
+          "summary": "Add Device",
+          "description": "Add a push device of the caller's, or refresh it.",
+          "operationId": "add_device_v1_me_push_devices_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WebPushDeviceIn"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ApnsDeviceIn"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FcmDeviceIn"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PushDevice"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/me/push/devices/{device_id}": {
+        "delete": {
+          "tags": [
+            "push"
+          ],
+          "summary": "Remove Device",
+          "description": "Remove a push device of the caller's; the pushes waiting for it go with it.",
+          "operationId": "remove_device_v1_me_push_devices__device_id__delete",
+          "parameters": [
+            {
+              "name": "device_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Device Id"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/me/push/devices/{device_id}/test": {
+        "post": {
+          "tags": [
+            "push"
+          ],
+          "summary": "Try Device",
+          "description": "Push a test notification to one of the caller's devices now.",
+          "operationId": "try_device_v1_me_push_devices__device_id__test_post",
+          "parameters": [
+            {
+              "name": "device_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Device Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PushTestResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/push/config": {
+        "get": {
+          "tags": [
+            "push"
+          ],
+          "summary": "Push Config",
+          "description": "The public VAPID key and the senders that are on; no sign-in needed.",
+          "operationId": "push_config_v1_push_config_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PushConfig"
                   }
                 }
               }
@@ -76330,6 +76588,59 @@
           "type": "object",
           "title": "AnswerIn"
         },
+        "ApnsDeviceIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "apns",
+              "title": "Kind"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "the member's name for it"
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{64,200}$",
+              "title": "Token",
+              "description": "the device token, in hex"
+            },
+            "topic": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$",
+              "title": "Topic",
+              "description": "the app's bundle id"
+            },
+            "environment": {
+              "type": "string",
+              "enum": [
+                "sandbox",
+                "production"
+              ],
+              "title": "Environment",
+              "description": "the APNs servers the token belongs to"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "token",
+            "topic",
+            "environment"
+          ],
+          "title": "ApnsDeviceIn"
+        },
         "ArmResult": {
           "properties": {
             "passed": {
@@ -88235,6 +88546,42 @@
           ],
           "title": "FailedBuildCounts"
         },
+        "FcmDeviceIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fcm",
+              "title": "Kind"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "the member's name for it"
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:-]{20,2048}$",
+              "title": "Token",
+              "description": "the registration token"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "token"
+          ],
+          "title": "FcmDeviceIn"
+        },
         "FeatureState": {
           "properties": {
             "id": {
@@ -98486,6 +98833,12 @@
               "type": "array",
               "title": "Notices",
               "description": "each kind of notice a member may turn off, and whether it is on"
+            },
+            "hide_details": {
+              "type": "boolean",
+              "title": "Hide Details",
+              "description": "push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read",
+              "default": false
             }
           },
           "type": "object",
@@ -98502,15 +98855,23 @@
               },
               "type": "array",
               "maxItems": 1,
-              "minItems": 1,
               "title": "Notices",
               "description": "the kinds to set; the others stay"
+            },
+            "hide_details": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hide Details",
+              "description": "push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read; unchanged when left out"
             }
           },
           "type": "object",
-          "required": [
-            "notices"
-          ],
           "title": "NotificationSettingsIn"
         },
         "OAuthTokens": {
@@ -109365,6 +109726,169 @@
             "audience"
           ],
           "title": "Published"
+        },
+        "PushConfig": {
+          "properties": {
+            "vapid_public_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vapid Public Key",
+              "description": "the applicationServerKey a browser subscribes with, base64url; null while Web Push is off"
+            },
+            "senders": {
+              "$ref": "#/components/schemas/PushSenders",
+              "description": "which kinds of push device the hub sends to now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "vapid_public_key",
+            "senders"
+          ],
+          "title": "PushConfig"
+        },
+        "PushDevice": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "webpush",
+                "apns",
+                "fcm"
+              ],
+              "title": "Kind"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_sent_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Sent At",
+              "description": "when a push last reached it; null before the first"
+            },
+            "this_session": {
+              "type": "boolean",
+              "title": "This Session",
+              "description": "the sign-in this request was made with added it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "created_at",
+            "last_sent_at",
+            "this_session"
+          ],
+          "title": "PushDevice"
+        },
+        "PushDeviceList": {
+          "properties": {
+            "devices": {
+              "items": {
+                "$ref": "#/components/schemas/PushDevice"
+              },
+              "type": "array",
+              "title": "Devices",
+              "description": "the caller's devices that push reaches, newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "devices"
+          ],
+          "title": "PushDeviceList"
+        },
+        "PushSenders": {
+          "properties": {
+            "webpush": {
+              "type": "boolean",
+              "title": "Webpush",
+              "description": "Web Push to browsers: the hub has its VAPID key"
+            },
+            "apns": {
+              "type": "boolean",
+              "title": "Apns",
+              "description": "APNs to iPhones and iPads"
+            },
+            "fcm": {
+              "type": "boolean",
+              "title": "Fcm",
+              "description": "Firebase Cloud Messaging to Android phones"
+            }
+          },
+          "type": "object",
+          "required": [
+            "webpush",
+            "apns",
+            "fcm"
+          ],
+          "title": "PushSenders"
+        },
+        "PushTestResult": {
+          "properties": {
+            "sent": {
+              "type": "boolean",
+              "title": "Sent",
+              "description": "the push service took the test push"
+            },
+            "removed": {
+              "type": "boolean",
+              "title": "Removed",
+              "description": "the push service no longer knows the device, so it was removed"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the test push did not go"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sent",
+            "removed",
+            "error"
+          ],
+          "title": "PushTestResult"
         },
         "Queued": {
           "properties": {
@@ -127418,6 +127942,84 @@
             "contains"
           ],
           "title": "WakeOn"
+        },
+        "WebPushDeviceIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "webpush",
+              "title": "Kind"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "the member's name for it"
+            },
+            "subscription": {
+              "$ref": "#/components/schemas/WebPushSubscription"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "subscription"
+          ],
+          "title": "WebPushDeviceIn"
+        },
+        "WebPushKeys": {
+          "properties": {
+            "p256dh": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "P256Dh",
+              "description": "the browser's P-256 public key, base64url"
+            },
+            "auth": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Auth",
+              "description": "the subscription's 16-byte secret, base64url"
+            }
+          },
+          "type": "object",
+          "required": [
+            "p256dh",
+            "auth"
+          ],
+          "title": "WebPushKeys"
+        },
+        "WebPushSubscription": {
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Endpoint",
+              "description": "a push service's URL"
+            },
+            "keys": {
+              "$ref": "#/components/schemas/WebPushKeys"
+            }
+          },
+          "type": "object",
+          "required": [
+            "endpoint",
+            "keys"
+          ],
+          "title": "WebPushSubscription",
+          "description": "A browser's subscription, as ``PushSubscription.toJSON()`` gives it; expirationTime is not kept."
         },
         "WebhookAnswer": {
           "properties": {
