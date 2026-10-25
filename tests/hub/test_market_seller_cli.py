@@ -31,7 +31,7 @@ def test_seller_key_writes_the_seed_and_prints_only_the_public_half(tmp_path, ca
 
 def test_seller_key_never_overwrites_a_key(tmp_path, capsys):
     target = tmp_path / "seller.key"
-    target.write_text("kept\n")
+    target.write_text("kept\n", newline="\n")
     assert main(["hub", "market", "seller-key", str(target)]) == 1
     assert target.read_text() == "kept\n"
     assert "never overwrites" in capsys.readouterr().err
