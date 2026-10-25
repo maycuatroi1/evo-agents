@@ -23,7 +23,10 @@ from evo_agents.hub.server.autonomy_ledger import ALLOWED, REFUSED
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 READS = ("GET", "HEAD", "OPTIONS")
-ASK_HINT = "ask your principal with ask_member: they make the change themself, or change your autonomy"
+ASK_HINT = (
+    "ask your principal with ask_member, with recommended and recommended_reason, and reversible (with undo when it "
+    "can be undone): they make the change themself, or change your autonomy"
+)
 
 
 async def held(request: Request, user: Principal, klass: str) -> None:

@@ -205,6 +205,7 @@ def test_autonomy_level_ask_refuses_and_names_the_category_to_ask(tmp_path):
     why = check(made, "gh release create v1.0.0")
     assert "K6" in why and "is ask" in why and "ceiling:unit/interns" in why
     assert "evo-agents worker ask --category deploy" in why and "EVO_DECISION=<the decision's id>" in why
+    assert "`--recommended KEY --recommended-reason TEXT`" in why and "`--reversible no`" in why
     assert recorder.acts == []
     assert check(made, "EVO_DECISION=31 gh release create v1.0.0") is None, "the hub says #31 is answered"
     assert recorder.acts == [{"klass": "K6", "what": "gh release create v1.0.0", "decision_id": 31}]

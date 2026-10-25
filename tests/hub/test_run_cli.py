@@ -425,6 +425,60 @@ def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypat
     (run_line,) = [line for line in shown.splitlines() if line.strip().startswith("run ")]
     assert run_line.split(None, 1)[1] == "#40 (waiting), no plan"
     assert "None" not in shown and "null" not in shown
+    assert "reversible" not in shown and "Why poll" not in shown and "Evidence" not in shown
+
+
+def test_decision_show_prints_the_recommended_reason_reversible_undo_and_decision_evidence(
+    monkeypatch, capsys, tmp_path
+):
+    from evo_agents.hub import decision_cli
+
+    found = {
+        "id": 14,
+        "project": "demo",
+        "run_id": 41,
+        "run_state": "waiting",
+        "plan_id": "wait-helper",
+        "step_key": "2",
+        "category": "merge",
+        "question": "Merge it now?",
+        "context": None,
+        "options": [
+            {"key": "merge", "label": "Merge", "description": None, "recommended": True},
+            {"key": "wait", "label": "Wait", "description": None, "recommended": False},
+        ],
+        "recommended": "merge",
+        "recommended_reason": "The verify passed.",
+        "reversible": True,
+        "undo": "Revert the merge commit.",
+        "evidence": ["run:41", "https://example.org/pr/3"],
+        "state": "open",
+        "owner": "owner",
+        "answer_option": None,
+        "answer_text": None,
+        "answered_by": None,
+        "answer_run_id": None,
+        "asked_at": AT,
+        "answered_at": None,
+        "delivered_at": None,
+    }
+
+    class Answers:
+        def call(self, method, path, body=None):
+            return found if path.endswith("/decisions/14") else {**found, "reversible": False, "undo": None}
+
+    monkeypatch.setattr(decision_cli, "_signed_in", lambda: (Answers(), None))
+    home = tmp_path / "home"
+    shown = ok(cli(monkeypatch, capsys, home, "hub", "decision", "show", "14", "--project", "demo")).out
+    lines = [line.strip() for line in shown.splitlines()]
+    reversible = [line for line in lines if line.startswith("reversible")]
+    assert reversible == ["reversible  yes: Revert the merge commit."]
+    assert lines[lines.index("Why merge:") + 1] == "The verify passed."
+    assert lines[lines.index("Evidence:") + 1 : lines.index("Evidence:") + 3] == ["run:41", "https://example.org/pr/3"]
+    one_way = ok(cli(monkeypatch, capsys, home, "hub", "decision", "show", "15", "--project", "demo")).out
+    assert any(
+        line.strip().startswith("reversible") and "no: it cannot be undone" in line for line in one_way.splitlines()
+    )
 
 
 @pytest.mark.parametrize(

@@ -79,6 +79,7 @@ def _ask(name: str, run_id: int, project: str, body: BrowserLoginBody) -> LoginA
         context=browser_login.login_context(name, body.url, body.reason, project, run_id),
         options=options,
         recommended=browser_login.LOGIN_DONE,
+        recommended_reason=browser_login.LOGIN_REASON,
     )
 
 

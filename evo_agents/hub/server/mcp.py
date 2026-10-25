@@ -163,6 +163,7 @@ EVERY_INTERFACE = ("0.0.0.0", "::", "")
 SESSION = "evo_mcp"  # the key of McpSession in request.state
 SHOWN_PROBLEMS = 5
 ASK_WAIT_SECONDS = 20  # ask_member holds this long for an answer, well inside the proxy's 120 s and a tool's deadline
+ASK_EXTRAS = ("recommended_reason", "reversible", "undo", "evidence")  # what ask_member passes on as it is
 PLAN_WIDTH = 110  # as the copies in git
 _PROJECT = re.compile(PROJECT_NAME)
 _SINK = re.compile(r"[^\x00-\x1f\x7f]{1,100}")
@@ -825,6 +826,7 @@ class HubMcp(MCPServer):
                     context=arguments.get("context"),
                     options=options,
                     recommended=recommended,
+                    **{key: arguments[key] for key in ASK_EXTRAS if arguments.get(key) is not None},
                     step_key=str(arguments["step"]) if arguments.get("step") is not None else None,
                 )
             except ValidationError as exc:
@@ -1022,8 +1024,10 @@ class HubMcp(MCPServer):
         for item in found.decisions:
             answer = item.answer_option or ("text" if item.answer_text else "-")
             of = f"run #{item.run_id}, plan {item.plan_id}" if item.plan_id else f"run #{item.run_id}, no plan"
+            recommends = f"; recommends {item.recommended}" if item.recommended else ""
             lines.append(
-                f"#{item.id} {item.category} ({item.state}, {of}): {one_line(item.question, EXCERPT)}; answer {answer}"
+                f"#{item.id} {item.category} ({item.state}, {of}): {one_line(item.question, EXCERPT)}{recommends}; "
+                f"answer {answer}"
             )
         text = "\n".join(lines) or f"no decision of project {project} matches"
         data = {"project": project, **found.model_dump(mode="json"), "summary": f"{found.total} decisions"}

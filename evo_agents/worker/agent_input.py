@@ -1,5 +1,5 @@
 """What the commands of a run's agent read (``evo_agents.worker.cli``): a text from a file or stdin, within a bound,
-an option of a decision, the time and the event a wait wakes on (``wait_until``, ``payload_contains``), the evidence
+an option of a decision and what else a question carries (``decision_extras``), the time and the event a wait wakes on (``wait_until``, ``payload_contains``), the evidence
 specs of a finding or a proposal (``evo_agents.hub.review.parse_evidence``) and the code evidence checked against the
 run's worktrees (``attest``), and the draft plan or the promotion of a proposal from a YAML or JSON file
 (``plan_file``, ``promotion_file``). A problem is a WorkerStateError, which the command prints as one ``error:``
@@ -38,6 +38,41 @@ def decision_option(text: str) -> dict:
             f"--option takes KEY=LABEL[:DESCRIPTION], KEY being letters, digits, _ and - (at most 32), not {text!r}"
         )
     return {"key": key, "label": label, **({"description": description} if description else {})}
+
+
+def decision_extras(
+    recommended: str | None, reason: str | None, reversible: str | None, undo: str | None, evidence: list[str] | None
+) -> dict:
+    """What ``worker ask`` sends besides its options (``evo_agents.hub.decision_asks``): ``--recommended-reason``,
+    which goes with ``--recommended``; ``--reversible yes|no`` and ``--undo``, which says ``--reversible yes``; and each
+    ``--evidence`` as the command line writes the ref. Only what was given; WorkerStateError for what the hub would
+    refuse."""
+    from evo_agents.hub import decision_asks
+
+    extras: dict = {}
+    if reason is not None:
+        if recommended is None:
+            raise WorkerStateError("--recommended-reason says why you recommend an option: name it with --recommended")
+        if not reason.strip() or len(reason) > decision_asks.MAX_REASON_CHARS:
+            raise WorkerStateError(f"--recommended-reason takes 1 to {decision_asks.MAX_REASON_CHARS} characters")
+        extras["recommended_reason"] = reason
+    if undo is not None:
+        if reversible == "no":
+            raise WorkerStateError("--undo says how to undo the act: it goes with --reversible yes, not no")
+        if not undo.strip() or len(undo) > decision_asks.MAX_UNDO_CHARS:
+            raise WorkerStateError(f"--undo takes 1 to {decision_asks.MAX_UNDO_CHARS} characters")
+        extras["undo"], reversible = undo, "yes"
+    if reversible is not None:
+        extras["reversible"] = reversible == "yes"
+    if len(evidence or ()) > decision_asks.MAX_EVIDENCE:
+        raise WorkerStateError(f"a decision names at most {decision_asks.MAX_EVIDENCE} refs with --evidence")
+    try:
+        refs = [decision_asks.evidence_ref(ref) for ref in evidence or ()]
+    except decision_asks.RefProblem as exc:
+        raise WorkerStateError(f"--evidence: {exc}") from None
+    if refs:
+        extras["evidence"] = refs
+    return extras
 
 
 RELATIVE = re.compile(r"^\+(\d{1,5})([mhd])$")  # +90m, +6h, +5d: a wait's time from now

@@ -5,8 +5,10 @@
 POST /v1/worker/runs/{id}/decisions takes a decision from the worker holding a plan run, an author run or a chat run
 (404 for any other run: a run of one step, a review run, a judge run): a category of ``runs.DECISION_CATEGORIES`` (a
 chat run's is ``triage`` alone, and ``triage`` is no other run's; 422 for any other), a question, a context in markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the
-agent recommends, the step it is about, which must be a step of the run's plan (422 for an author run that has put
-no plan yet, which has no steps), and the outputs of the run it carries (``output_ids``, 422 for one of another run;
+agent recommends, and optionally why, whether the act it asks about can be undone and how, and the refs of what it
+rests on (``decision_models``, which holds the models, 422 for a ref in no form ``decision_asks`` reads), the step it
+is about, which must be a step of the run's plan (422 for an author run that has put no plan yet, which has no steps),
+and the outputs of the run it carries (``output_ids``, 422 for one of another run;
 ``output_store``), which every view of the decision lists with the decision's URL of their bytes. The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
 for an author run that has put no plan yet. It answers 201 with the decision, whose id the agent waits for, leaves a
 ``system`` event in the run's log and notifies the run's owner (``notifications.notify``); the notification of a
@@ -54,33 +56,36 @@ project's runs on no plan (``views.sees_unplanned``).
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import BigInteger, and_, case, false, func, insert, literal, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
 
-from evo_agents.hub import outputs, runs, tables
+from evo_agents.hub import runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit, principals
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.decision_models import AnswerIn as AnswerIn
+from evo_agents.hub.server.decision_models import Decision as Decision
+from evo_agents.hub.server.decision_models import DecisionAsk as DecisionAsk
+from evo_agents.hub.server.decision_models import DecisionList as DecisionList
+from evo_agents.hub.server.decision_models import DecisionOption as DecisionOption
+from evo_agents.hub.server.decision_models import OptionIn as OptionIn
+from evo_agents.hub.server.decision_models import WakeOn as WakeOn
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import decision_link, notify, one_line
 from evo_agents.hub.server.output_store import link_decision
-from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.output_views import by_decision as outputs_by_decision
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
-from evo_agents.hub.server.runs.models import LINE, MAX_ID, REFUSALS, RunId
+from evo_agents.hub.server.runs.models import MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.controls import web_only_steering
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
@@ -90,9 +95,6 @@ from evo_agents.hub.server.security import CurrentUser, Principal
 log = logging.getLogger(__name__)
 
 MAX_OPEN_DECISIONS = 20  # a run's agent asks at most this many before one is answered
-LABEL_CHARS = 200  # an option's label, one line
-DESCRIPTION_CHARS = 1000  # an option's description
-MAX_OPTIONS_BYTES = 16 * 1024  # all the options of a decision as JSON, as schema 0010 bounds them
 QUESTION_IN_MESSAGE = 500  # characters of the question the answer's inbox message repeats
 MAX_LIST = 200
 MAX_OFFSET = 100_000
@@ -101,149 +103,6 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 router = APIRouter(prefix="/v1/projects", tags=["decisions"], responses={401: {"model": ErrorBody}})
 
 DecisionId = Annotated[int, Path(ge=1, le=MAX_ID)]
-OptionKey = Annotated[str, Field(pattern=runs.OPTION_KEY, description="letters, digits, _ and -, at most 32")]
-
-
-# Models
-
-
-class OptionIn(BaseModel):
-    key: OptionKey
-    label: str = Field(min_length=1, max_length=LABEL_CHARS, pattern=LINE, description="one line")
-    description: str | None = Field(None, min_length=1, max_length=DESCRIPTION_CHARS)
-    waits: bool | None = Field(
-        None,
-        description="true when the option says not yet: choosing it leaves the decision open and the run waiting, and "
-        "no answer goes to the agent",
-    )
-
-
-class DecisionAsk(BaseModel):
-    category: Literal[runs.ASKED_DECISION_CATEGORIES] = Field(description="the agent asks only about these")
-    question: str = Field(min_length=1, max_length=runs.MAX_QUESTION_CHARS)
-    context: str | None = Field(
-        None, min_length=1, max_length=runs.MAX_DECISION_CONTEXT_BYTES, description="markdown, at most 16 KiB of UTF-8"
-    )
-    options: list[OptionIn] = Field(min_length=runs.DECISION_OPTIONS[0], max_length=runs.DECISION_OPTIONS[1])
-    recommended: OptionKey | None = Field(None, description="the key of the option the agent recommends")
-    step_key: str | None = Field(
-        None, min_length=1, max_length=200, pattern=LINE, description="the step of the plan it is about"
-    )
-    output_ids: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
-        default_factory=list,
-        max_length=outputs.MAX_ATTACHED,
-        description="outputs of the run the question carries, such as the screenshot it is about",
-    )
-
-    @model_validator(mode="after")
-    def _consistent(self):
-        if not self.question.strip():
-            raise ValueError("a decision needs a question")
-        if self.context is not None and len(self.context.encode()) > runs.MAX_DECISION_CONTEXT_BYTES:
-            raise ValueError(f"a decision's context is at most {runs.MAX_DECISION_CONTEXT_BYTES} bytes of UTF-8")
-        keys = [option.key for option in self.options]
-        if len(set(keys)) != len(keys):
-            raise ValueError("each option of a decision needs a key of its own")
-        if self.recommended is not None and self.recommended not in keys:
-            raise ValueError(f"the recommended option {self.recommended!r} is not one of {', '.join(keys)}")
-        if all(option.waits for option in self.options):
-            raise ValueError("a decision needs an option that answers it: every option of this one waits")
-        if len(json.dumps(self.stored_options(), ensure_ascii=False).encode()) > MAX_OPTIONS_BYTES:
-            raise ValueError(f"the options of a decision take at most {MAX_OPTIONS_BYTES} bytes of JSON")
-        return self
-
-    def stored_options(self) -> list[dict]:
-        stored = []
-        for option in self.options:
-            entry = {"key": option.key, "label": option.label}
-            if option.description is not None:
-                entry["description"] = option.description
-            if option.key == self.recommended:
-                entry["recommended"] = True
-            if option.waits:
-                entry["waits"] = True
-            stored.append(entry)
-        return stored
-
-
-class DecisionOption(BaseModel):
-    key: str
-    label: str
-    description: str | None
-    recommended: bool
-    waits: bool = Field(False, description="choosing it leaves the decision open: the person answers later")
-
-
-class WakeOn(BaseModel):
-    kind: str = Field(description="the kind of hub event the wait wakes on, such as canvas.baseline")
-    contains: dict = Field(description="what the event's payload contains, as JSONB containment reads it")
-
-
-class Decision(BaseModel):
-    id: int
-    project: str
-    run_id: int = Field(description="the plan run or author run the decision belongs to")
-    run_state: Literal[runs.SHOWN_STATES]
-    plan_id: str | None = Field(
-        description="the run's plan when its agent asked; null for an author run that had put no plan yet"
-    )
-    step_key: str | None = Field(description="the step it is about, when the agent named one")
-    category: Literal[runs.SHOWN_DECISION_CATEGORIES]
-    question: str
-    context: str | None = Field(description="markdown")
-    options: list[DecisionOption]
-    recommended: str | None = Field(description="the key of the option the agent recommends")
-    state: Literal[runs.DECISION_STATES]
-    owner: str = Field(description="the login of the run's owner")
-    asked_of: str = Field(
-        description="the login of the person asked, who answers it: the principal of its run, or the person an intern "
-        "reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a "
-        "decision asked before schema 0115"
-    )
-    answer_option: str | None
-    answer_text: str | None
-    answered_by: str | None
-    answer_run_id: int | None = Field(
-        description="the run whose inbox the answer went to: the decision's run, or the run that resumed it"
-    )
-    asked_at: datetime
-    answered_at: datetime | None
-    delivered_at: datetime | None = Field(description="when the worker handed the answer to the agent")
-    held_at: datetime | None = Field(
-        None, description="when the person asked last chose an option that waits, leaving the decision open"
-    )
-    wake_at: datetime | None = Field(
-        None, description="a wait (category wait): when the hub answers it at the latest, its time come"
-    )
-    wake_on: WakeOn | None = Field(None, description="a wait: the event of the hub that answers it sooner")
-    outputs: list[RunOutput] = Field(
-        default_factory=list,
-        description="the files of its run it carries, oldest first, each with the decision's URL of its bytes",
-    )
-
-
-class DecisionList(BaseModel):
-    decisions: list[Decision] = Field(description="newest first")
-    total: int = Field(description="decisions that match the filters")
-    limit: int
-    offset: int
-
-
-class AnswerIn(BaseModel):
-    option: OptionKey | None = Field(None, description="the key of one of the decision's options")
-    text: str | None = Field(
-        None, min_length=1, max_length=runs.MAX_ANSWER_BYTES, description="the owner's own words, at most 4 KiB"
-    )
-
-    @model_validator(mode="after")
-    def _something(self):
-        if self.text is not None and not self.text.strip():
-            raise ValueError("an answer's text needs some words")
-        if self.text is not None and len(self.text.encode()) > runs.MAX_ANSWER_BYTES:
-            raise ValueError(f"an answer's text is at most {runs.MAX_ANSWER_BYTES} bytes of UTF-8")
-        if self.option is None and self.text is None:
-            raise ValueError("an answer names an option, gives text, or both")
-        return self
 
 
 # Reading decisions
@@ -275,6 +134,10 @@ def _decisions():
         d.c.question,
         d.c.context,
         d.c.options,
+        d.c.recommended_reason,
+        d.c.reversible,
+        d.c.undo,
+        d.c.evidence,
         d.c.state,
         owner.c.login.label("owner"),
         asked.c.login.label("asked_of"),
@@ -347,6 +210,7 @@ def _decision(row) -> Decision:
     recommended = next((option.key for option in shown if option.recommended), None)
     wake_on = fields.pop("wake_on")
     shown_wake = None if wake_on is None else WakeOn(kind=wake_on["kind"], contains=wake_on.get("contains") or {})
+    fields["evidence"] = fields["evidence"] or []
     return Decision(**fields, options=shown, recommended=recommended, wake_on=shown_wake)
 
 
@@ -539,6 +403,7 @@ async def store_decision(
             question=body.question,
             context=body.context,
             options=body.stored_options(),
+            **body.stored_extras(),
             asked_of=asked,
             **(wake or {}),
         )

@@ -8,8 +8,9 @@ has none, and shows its run alone.
 words of your own (``--text``, ``-`` reads them from stdin), or both; only the member who dispatched the run may, and
 the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. An option marked waits
 leaves the decision open and tells the agent nothing; a decision of category wait is a wait of the agent's for a time
-or an event, which the hub answers itself, and ``decision show`` says what it waits for. ``docs/notifications.md``
-describes decisions, their categories and their life.
+or an event, which the hub answers itself, and ``decision show`` says what it waits for, and for any decision why the
+agent recommends its option, whether the act can be undone and how, and the refs of its evidence.
+``docs/notifications.md`` describes decisions, their categories and their life.
 
 ``notifications`` lists your notifications, open decisions first, then newest first (GET /v1/me/notifications), with
 how many are unread and how many decisions wait for your answer (GET /v1/me/notifications/count). ``--read all`` or
@@ -50,6 +51,10 @@ DECISION_KEYS = (
     "context",
     "options",
     "recommended",
+    "recommended_reason",
+    "reversible",
+    "undo",
+    "evidence",
     "state",
     "owner",
     "asked_of",
@@ -206,6 +211,24 @@ def _print_options(decision: dict) -> None:
             print(f"  {'':<{width}}  {line}".rstrip())
 
 
+def _reversible_lines(decision: dict) -> list[tuple[str, str]]:
+    """Whether the act a decision asks about can be undone, and how, when the agent said."""
+    reversible = decision.get("reversible")
+    if reversible is None:
+        return []
+    if not reversible:
+        return [("reversible", "no: it cannot be undone")]
+    return [("reversible", "yes" + (f": {decision['undo']}" if decision.get("undo") else ""))]
+
+
+def _print_grounds(decision: dict) -> None:
+    """Why the agent recommends its option, and the refs of what the question rests on."""
+    if decision.get("recommended_reason"):
+        _print_block(f"Why {decision['recommended']}", decision["recommended_reason"])
+    if decision.get("evidence"):
+        _print_block("Evidence", "\n".join(decision["evidence"]))
+
+
 def _run_line(decision: dict, step: str) -> str:
     """The run of a decision, with its plan and step, or the run alone when it has put no plan."""
     run = f"#{decision['run_id']} ({decision['run_state']})"
@@ -229,6 +252,7 @@ def cmd_show(args) -> int:
         ("owner", decision["owner"]),
         ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
         ("asked", f"{_when(decision['asked_at'])} UTC"),
+        *_reversible_lines(decision),
         *_wait_lines(decision),
         *_answer_lines(decision),
     ]
@@ -237,6 +261,7 @@ def cmd_show(args) -> int:
     if decision["context"]:
         _print_block("Context", decision["context"])
     _print_options(decision)
+    _print_grounds(decision)
     if decision["state"] == "open":
         print(
             f"Answer it with `evo-agents hub decision answer {decision['id']} --option KEY"

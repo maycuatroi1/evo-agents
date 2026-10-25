@@ -6485,6 +6485,10 @@
           "context",
           "options",
           "recommended",
+          "recommended_reason",
+          "reversible",
+          "undo",
+          "evidence",
           "state",
           "owner",
           "asked_of",
@@ -6624,6 +6628,10 @@
           "context",
           "options",
           "recommended",
+          "recommended_reason",
+          "reversible",
+          "undo",
+          "evidence",
           "state",
           "owner",
           "asked_of",
@@ -18509,6 +18517,42 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--recommended-reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reversible"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "yes",
+            "no"
+          ]
+        },
+        {
+          "flags": [
+            "--undo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -86197,6 +86241,50 @@
               "title": "Recommended",
               "description": "the key of the option the agent recommends"
             },
+            "recommended_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Reason",
+              "description": "why the agent recommends that option"
+            },
+            "reversible": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reversible",
+              "description": "for an act: whether it can be undone; null when the question asks about no act, or nobody said"
+            },
+            "undo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undo",
+              "description": "how to undo the act, when it can be"
+            },
+            "evidence": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Evidence",
+              "description": "what the question rests on, as refs: run:ID, run:ID:SEQ, output:ID, P-<n>/E-<n>, an https URL, session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, code:REPO:PATH[:LINE] or memory:ID:REV"
+            },
             "state": {
               "type": "string",
               "enum": [
@@ -86426,6 +86514,57 @@
               ],
               "title": "Recommended",
               "description": "the key of the option the agent recommends"
+            },
+            "recommended_reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Reason",
+              "description": "why the agent recommends that option, at most 500 characters; only with recommended"
+            },
+            "reversible": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reversible",
+              "description": "for an act: whether it can be undone; null when the question asks about no act, or nobody said"
+            },
+            "undo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undo",
+              "description": "how to undo the act, at most 500 characters; only with reversible true"
+            },
+            "evidence": {
+              "items": {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Evidence",
+              "description": "what the question rests on, at most 20 refs, each one of run:ID, run:ID:SEQ, output:ID, P-<n>/E-<n>, an https URL, session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, code:REPO:PATH[:LINE] or memory:ID:REV"
             },
             "step_key": {
               "anyOf": [
@@ -93341,6 +93480,57 @@
               ],
               "title": "Recommended",
               "description": "the key of the option the agent recommends"
+            },
+            "recommended_reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Reason",
+              "description": "why the agent recommends that option, at most 500 characters; only with recommended"
+            },
+            "reversible": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reversible",
+              "description": "for an act: whether it can be undone; null when the question asks about no act, or nobody said"
+            },
+            "undo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undo",
+              "description": "how to undo the act, at most 500 characters; only with reversible true"
+            },
+            "evidence": {
+              "items": {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Evidence",
+              "description": "what the question rests on, at most 20 refs, each one of run:ID, run:ID:SEQ, output:ID, P-<n>/E-<n>, an https URL, session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, code:REPO:PATH[:LINE] or memory:ID:REV"
             },
             "step_key": {
               "anyOf": [
