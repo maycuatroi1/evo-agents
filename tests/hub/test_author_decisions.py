@@ -336,6 +336,28 @@ def test_an_author_decision_without_a_plan_notifies_its_owner_naming_the_run_and
     assert decision["run_kind"] == "author"
 
 
+def test_a_channel_gets_the_recommended_reason_reversible_undo_and_decision_evidence_of_a_decision(
+    client,
+    hub,
+    hub_db,
+    tmp_path,
+    northwind,  # noqa: F811
+):
+    linked(hub_db, OWNER)
+    worker, run_id = running(client, hub, tmp_path)
+    asks(client, worker, run_id, category="scope")
+    assert deliver(client)["failed"] == 0
+    decision = northwind.outgoing[-1].extra["decision"]
+    grounds = ("recommended_reason", "reversible", "undo", "evidence")
+    assert {key: decision[key] for key in grounds} == dict(zip(grounds, (None, None, None, []), strict=True))
+    given = {"recommended_reason": "It is reversible.", "reversible": True, "undo": "Drop the table."}
+    given |= {"evidence": ["run:3", "P-1/E-1"]}
+    asks(client, worker, run_id, category="scope", **given)
+    assert deliver(client)["failed"] == 0
+    decision = northwind.outgoing[-1].extra["decision"]
+    assert {key: decision[key] for key in grounds} == given, "a channel may show them; Telegram does not yet"
+
+
 def test_an_author_run_waiting_with_a_decision_open_sends_no_notice_and_home_shows_it_once_through_the_decision(
     client, hub, hub_db, tmp_path
 ):

@@ -213,7 +213,7 @@ function LiveTile({ tile, run, flight, decision, viewer, signals, onClose }: Omi
             {t("waitingYou")}
           </span>
         ) : waiting ? (
-          <span data-testid="tile-waiting-for">{t("waitingFor", { owner: decision.owner })}</span>
+          <span data-testid="tile-waiting-for">{t("waitingFor", { owner: decision.asked_of })}</span>
         ) : null}
         <StreamState status={log.status} />
       </div>

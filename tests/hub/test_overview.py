@@ -425,6 +425,31 @@ def test_the_counts_match_the_lists(client, members, world, hub_db):
     assert sum(p["open_decisions"] for p in shown["projects"]) == len(decisions)
 
 
+def ask_of(db, decision_id: int, login: str) -> None:
+    """Decision ``decision_id`` asked of ``login``, as an agent asks someone other than the run's owner."""
+    users, decisions = tables.users, tables.decisions
+    asked = select(users.c.id).where(users.c.login == login).scalar_subquery()
+    sql(db, decisions.update().values(asked_of=asked).where(decisions.c.id == decision_id))
+
+
+def test_waiting_on_you_counts_the_questions_asked_of_you_not_those_of_your_runs(client, members, world, hub_db):
+    ask_of(hub_db, world["d_mine"], OTHER)  # owner's run asks other
+    ask_of(hub_db, world["d_other"], OWNER)  # other's parked run asks owner
+    shown = overview(client, members[OWNER])
+    decisions = shown["open_decisions"]
+    assert shown["counts"]["waiting_on_you"] == sum(item["yours"] for item in decisions) == 2
+    assert [item["id"] for item in decisions if item["yours"]] == [world["d_other"], world["d_vault"]]
+    asked = by_id(decisions)[world["d_other"]]
+    assert (asked["owner"], asked["asked_of"], asked["yours"]) == (OTHER, OWNER, True)
+    mine = by_id(decisions)[world["d_mine"]]
+    assert (mine["owner"], mine["asked_of"], mine["yours"]) == (OWNER, OTHER, False)
+    theirs = overview(client, members[OTHER])
+    assert theirs["counts"]["waiting_on_you"] == 1
+    assert [item["id"] for item in theirs["open_decisions"] if item["yours"]] == [world["d_mine"]]
+    # the counts of each project stay those of every open decision the caller reads
+    assert [(p["name"], p["open_decisions"]) for p in shown["projects"]] == [(B, 1), (A, 3)]
+
+
 def test_done_by_day_follows_utc_days(client, members, hub_db):
     assert sql(hub_db, select(func.current_setting("TimeZone"))) == [(SESSION_ZONE,)]
     wid = add_worker(client, members[OWNER], "mac-mini")["id"]

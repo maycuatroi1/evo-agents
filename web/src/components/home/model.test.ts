@@ -58,6 +58,7 @@ function decision(id: number, yours: boolean, extra: Partial<OverviewDecision> =
     category: "deploy",
     question: "Deploy to staging now?",
     owner: yours ? "octo" : "hubot",
+    asked_of: yours ? "octo" : "hubot",
     yours,
     asked_at: "2026-10-07T01:00:00Z",
     parks_at: "2026-10-08T01:00:00Z",

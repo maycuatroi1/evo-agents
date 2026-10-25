@@ -212,7 +212,7 @@ test("Revise with agent from a plan's page and from the palette queues an author
   // The run's page names the plan it revises; the runs list tags the run.
   await open(page, runPath(project, run.id));
   await expect(main(page).getByTestId("run-plan-link")).toHaveAttribute("href", `/p/${project}/plans/${RUN_PLAN}`);
-  await open(page, `/p/${project}/runs`);
+  await open(page, `/p/${project}/runs?state=all`); // the run is queued: the page opens on Running
   await expect(main(page).locator(`[data-run-id="${run.id}"]`).first()).toBeVisible();
   await expect(main(page).getByTestId("run-kind").filter({ hasText: "Author run" })).toHaveCount(1);
 });

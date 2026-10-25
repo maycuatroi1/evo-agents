@@ -70,6 +70,8 @@ def test_the_author_prompt_of_a_worker_with_author_decisions_asks_options_as_dec
     assert "`evo-agents worker ask --category scope` or `--category architecture`" in prompt
     assert "scope for the scope, outcome, compatibility and rollout of the plan; architecture for a choice" in prompt
     assert "`--recommended KEY`" in prompt and f"`--context-file` under {runs.RESULT_DIR}/" in prompt
+    assert "`--recommended-reason TEXT`" in prompt and "`--reversible yes` with `--undo TEXT`" in prompt
+    assert "`--evidence REF`" in prompt
     assert "An open question, without options, goes in that message." in prompt
     assert "the last message of each of your turns goes to the chat as yours" in prompt
     assert "Do not use an interactive question tool (AskUserQuestion, or any tool like it)" in prompt

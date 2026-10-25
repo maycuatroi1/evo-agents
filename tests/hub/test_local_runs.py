@@ -255,6 +255,18 @@ def test_a_decision_notifies_the_member_and_the_first_answer_wins(client, hub, h
     assert (taken["state"], taken["answer_option"]) == ("answered", "yes") and taken["delivered_at"]
 
 
+def test_a_local_decision_keeps_its_recommended_reason_reversible_undo_and_decision_evidence(client, hub):
+    run = registered(client, hub["owner"])
+    given = {"recommended": "yes", "recommended_reason": "The tests passed.", "reversible": True}
+    given |= {"undo": "git revert the merge", "evidence": ["run:5", "https://example.org/ci/5"]}
+    decision = asked(client, hub["owner"], run["id"], **given)
+    assert {key: decision[key] for key in given} == given
+    taken = client.get(path(run["id"], "decisions", decision["id"]), headers=hub["owner"]).json()
+    assert {key: taken[key] for key in given} == given
+    bad = ask(client, hub["owner"], run["id"], evidence=["somewhere"])
+    assert bad.status_code == 422 and "run:ID" in bad.text
+
+
 def test_an_answer_on_the_spot_wins_over_a_later_one_on_the_web(client, hub):
     run = registered(client, hub["owner"])
     decision = asked(client, hub["owner"], run["id"])

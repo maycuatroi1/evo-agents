@@ -90,7 +90,7 @@ test("the runs list starts on the first screen, and its filters apply from a she
     [DESKTOP_UA, "table"],
   ]) {
     for (const [path, testId] of [
-      [`/p/${project}/runs`, "runs-table"],
+      [`/p/${project}/runs?state=all`, "runs-table"],
       [`/p/${project}/plans`, "plans-table-active"],
     ]) {
       const html = await (await page.request.get(path, { headers: { "user-agent": agent } })).text();
@@ -99,7 +99,8 @@ test("the runs list starts on the first screen, and its filters apply from a she
     }
   }
 
-  await open(page, `/p/${project}/runs`);
+  // Every run: the page opens on Running, and these two are failed and queued.
+  await open(page, `/p/${project}/runs?state=all`);
   const rows = list(page, "runs-table").getByRole("listitem");
   await expect(rows).toHaveCount(2);
   const first = await box(rows.first());
@@ -117,7 +118,8 @@ test("the runs list starts on the first screen, and its filters apply from a she
   expect(await fieldText(search)).toBe("16px");
   await expect(main(page).getByTestId("runs-facets")).toHaveCount(0);
   const filters = main(page).getByTestId("runs-filters-open");
-  await expect(filters).toHaveText("Filters");
+  // All is a filter of its own, the page's default being Running.
+  await expect(filters).toHaveText("Filters (1)");
   await touchSized(filters, "Filters");
   expect(Math.abs((await box(filters)).y - (await box(search)).y), "Filters beside the search").toBeLessThan(2);
 
@@ -125,7 +127,7 @@ test("the runs list starts on the first screen, and its filters apply from a she
   const sheet = page.getByTestId("runs-filters");
   await expect(sheet.getByRole("heading", { name: "Filters" })).toBeVisible();
   const chips = sheet.getByTestId("runs-facets").getByRole("button");
-  await expect(chips).toHaveCount(5);
+  await expect(chips).toHaveCount(7);
   for (const chip of await chips.all()) await touchSized(chip, `the chip ${await chip.textContent()}`);
   await expectNoSeriousViolations(page, "runs filter sheet at 375 px");
 
@@ -139,12 +141,17 @@ test("the runs list starts on the first screen, and its filters apply from a she
   await expect(rows).toHaveCount(1);
   await expect(main(page).locator(`li[data-run-id="${failing.id}"]`)).toBeVisible();
 
-  // Clear filters puts every run back.
+  // Clear filters goes back to the page's default, Running, where neither run is; All puts both back.
   await filters.click();
   await sheet.getByTestId("filter-sheet-clear").click();
   await expect(sheet).toBeHidden();
-  await expect(rows).toHaveCount(2);
   await expect(filters).toHaveText("Filters");
+  await expect(rows).toHaveCount(0);
+  await filters.click();
+  await sheet.locator('[data-facet-value=""]').first().click();
+  await sheet.getByTestId("filter-sheet-done").click();
+  await expect(sheet).toBeHidden();
+  await expect(rows).toHaveCount(2);
 
   // A tap anywhere on a row opens the run.
   await tapRow(main(page).locator(`li[data-run-id="${waiting.id}"]`));
@@ -467,6 +474,50 @@ test("a decision is answered on a screen of its own, its bar in reach while the 
   await expect(page).toHaveURL(/\/inbox$/);
   await expect(page.getByTestId("decision-sheet")).toHaveCount(0);
   await expect(main(page).locator(`[data-decision-link="${decision}"]`)).toBeFocused();
+});
+
+test("a decision's screen says why the agent picks its option, how to undo the act and what it rests on, each ref a link", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const { live, run } = await planRunUnderway(me, project, uniqueName("phone-why"));
+  const decision = await askDecision(live, run.id, "Drop the staging bucket of the old build now?", "3", {
+    category: "delete_data",
+    options: [
+      { key: "drop", label: "Drop it now" },
+      { key: "keep", label: "Keep it a week" },
+    ],
+    recommended: "drop",
+    recommended_reason: "Nothing reads it since the cut-over, and it costs 40 USD a month.",
+    reversible: true,
+    undo: "Restore it from last night's snapshot within 7 days.",
+    evidence: [`run:${run.id}`, "https://console.example.test/buckets/staging-old", "code:api:deploy/buckets.tf:12"],
+  });
+
+  await open(page, `/inbox?decision=${decision}`);
+  const screen = page.getByTestId("decision-sheet");
+  await expect(screen).toHaveAttribute("data-layout", "screen");
+  const grounds = screen.getByRole("region", { name: "Why, how to undo it, and the evidence" });
+  await expect(grounds.getByTestId("decision-reason")).toHaveText("Why “Drop it now”: Nothing reads it since the cut-over, and it costs 40 USD a month.");
+  await expect(grounds.getByTestId("decision-undo")).toHaveText("Can be undone: Restore it from last night's snapshot within 7 days.");
+  expect(await grounds.getByTestId("decision-reason").locator("p").evaluate((element) => getComputedStyle(element).fontSize)).toBe("15px");
+  const links = grounds.getByTestId("decision-evidence-link");
+  await expect(links).toHaveCount(3);
+  await expect(links.nth(0)).toHaveAttribute("href", `/p/${project}/runs/${run.id}`);
+  await expect(links.nth(1)).toHaveAttribute("href", "https://console.example.test/buckets/staging-old");
+  await expect(links.nth(1)).toHaveAttribute("target", "_blank");
+  await expect(links.nth(2)).toHaveAttribute("href", `/p/${project}/kg?q=deploy%2Fbuckets.tf`);
+  for (const item of await grounds.getByTestId("decision-evidence-item").all()) {
+    expect((await box(item)).height, "each ref is a touch target").toBeGreaterThanOrEqual(44);
+  }
+  // The grounds sit between the question and the answer's options.
+  expect((await box(grounds)).y).toBeGreaterThan((await box(screen.getByRole("heading", { level: 1 }))).y);
+  expect((await box(grounds)).y).toBeLessThan((await box(screen.getByTestId("decision-choice-drop"))).y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  await expectNoSeriousViolations(page, "decision screen with its grounds at 375 px");
+
+  await links.nth(0).click();
+  await expect(page).toHaveURL(new RegExp(`/p/${project}/runs/${run.id}$`));
 });
 
 test("the chats list's row of agents scrolls sideways on its own while the page does not, and an agent opens its chat as a page", async ({ page, member }) => {

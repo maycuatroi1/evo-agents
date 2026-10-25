@@ -40,6 +40,7 @@ def test_autonomy_level_card_of_an_intern_names_their_mentor_and_each_class_in_d
         assert f"{klass} {autonomy_levels.CLASS_NAMES[klass]}" in deny, klass
     asked = next(line for line in text.splitlines() if line.startswith("- Ask first with `evo-agents worker ask"))
     assert "K6" in asked and "(category deploy)" in asked and "(category external_send)" in asked
+    assert "--recommended KEY --recommended-reason TEXT --reversible yes --undo TEXT" in asked
     notify = next(line for line in text.splitlines() if "(notify)" in line)
     assert "K5" in notify and "but ask, category merge, when it touches a risk path" in notify
     assert made.categories == ("deploy", "external_send", "merge", *FREE_CATEGORIES)

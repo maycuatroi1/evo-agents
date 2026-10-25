@@ -1,6 +1,9 @@
 "use client";
 
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Settings2 } from "lucide-react";
+import type { Route } from "next";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useId } from "react";
 
@@ -10,33 +13,25 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { type ApiClient, call } from "@/lib/api/client";
 import { browserApi } from "@/lib/api/browser";
-import { csrfHeaders } from "@/lib/api/csrf";
-import type { components } from "@/lib/api/schema";
-import type { ApiSource } from "@/lib/queries";
+import { type NotificationSettings, notificationKeys, notificationSettingsQuery, putNotificationSettings } from "@/lib/notification-queries";
 
 /**
  * Notices in the Inbox's header (docs/notifications.md, Notices): a `secondary` button that opens a dialog of the kinds
  * of notice a member may turn off (GET and PUT /v1/me/notification-settings), each a switch that applies once flipped,
  * with what it brings. Today that is `run_outputs`, the files an agent sends from a run the member dispatched; the
  * questions of their runs always come. Off, the hub sends that kind on no channel, the Inbox included. A change is a
- * toast; a refusal too, and the switch shows what the hub holds.
+ * toast; a refusal too, and the switch shows what the hub holds. Its footer leads to every notification setting
+ * (`/settings/notifications`: push, devices, tiers, quiet hours), which shares the settings it holds.
  */
-type NoticeSetting = components["schemas"]["NoticeSetting"];
+type NoticeSetting = NotificationSettings["notices"][number];
 type NoticeKind = NoticeSetting["kind"];
 
-const settingsKey = ["me", "notification-settings"] as const;
+const settingsKey = notificationKeys.settings;
+const SETTINGS_HREF = "/settings/notifications" as Route;
 
-const settingsQuery = (api: ApiSource) =>
-  queryOptions({
-    queryKey: settingsKey,
-    queryFn: ({ signal }) => call(api().GET("/v1/me/notification-settings", { signal })),
-  });
-
-async function putSetting(api: ApiClient, kind: NoticeKind, on: boolean) {
-  const headers = await csrfHeaders(api);
-  return call(api.PUT("/v1/me/notification-settings", { body: { notices: [{ kind, on }] }, headers }));
+function putSetting(kind: NoticeKind, on: boolean) {
+  return putNotificationSettings(browserApi(), { notices: [{ kind, on }] });
 }
 
 function SettingRow({ setting }: { setting: NoticeSetting }) {
@@ -46,7 +41,7 @@ function SettingRow({ setting }: { setting: NoticeSetting }) {
   const failure = useWriteFailure();
   const label = t(`kind.${setting.kind}.label`);
   const change = useMutation({
-    mutationFn: (on: boolean) => putSetting(browserApi(), setting.kind, on),
+    mutationFn: (on: boolean) => putSetting(setting.kind, on),
     onSuccess: (settings, on) => {
       queryClient.setQueryData(settingsKey, settings);
       notify({ tone: "success", text: t("saved", { on: String(on), kind: label }) });
@@ -81,7 +76,7 @@ function SettingRow({ setting }: { setting: NoticeSetting }) {
 
 export function NoticeSettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const t = useTranslations("inbox.settings");
-  const settings = useQuery({ ...settingsQuery(browserApi), enabled: open });
+  const settings = useQuery({ ...notificationSettingsQuery(browserApi), enabled: open });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" data-testid="notice-settings-dialog">
@@ -108,7 +103,13 @@ export function NoticeSettingsDialog({ open, onOpenChange }: { open: boolean; on
             ))}
           </ul>
         )}
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between">
+          <Button asChild variant="ghost" className="max-sm:self-start">
+            <Link href={SETTINGS_HREF} data-testid="notice-settings-all">
+              <Settings2 aria-hidden="true" />
+              {t("allSettings")}
+            </Link>
+          </Button>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             {t("close")}
           </Button>

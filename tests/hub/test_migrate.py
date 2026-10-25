@@ -149,6 +149,8 @@ TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
 TABLES |= pg.POOL_TABLES  # migration 0148
 TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0151
 TABLES |= pg.MARKET_TABLES  # migration 0154
+TABLES |= pg.PUSH_TABLES  # migration 0156
+TABLES |= pg.TODAY_TABLES  # migration 0158
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -239,8 +241,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_eighty_seven_tables(hub_db):
-    assert len(TABLES) == 187  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_ninety_tables(hub_db):
+    assert len(TABLES) == 190  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3914,3 +3916,184 @@ def test_0154_adds_the_market_sources_publishers_and_install_requests_and_going_
     assert not pg.MARKET_TABLES & tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0154") :]
+
+
+def test_0155_keeps_the_recommended_reason_reversible_undo_and_decision_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0154")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        before = one(conn, _decision_row(ids, run_id, "wait-helper"))
+    move_to(hub_db, "0155")
+    added = {"recommended_reason", "reversible", "undo", "evidence"}
+    assert added <= columns(hub_db, "decisions")
+    d = t.decisions
+    shown = select(d.c.recommended_reason, d.c.reversible, d.c.undo, d.c.evidence).where(d.c.id == before)
+    assert query(hub_db, shown) == [(None, None, None, None)], "a decision made before carries none of them"
+    recommended = [{"key": "a", "label": "A", "recommended": True}, {"key": "b", "label": "B"}]
+    full = {"options": recommended, "recommended_reason": "A is cheaper.", "reversible": True, "undo": "Revert it."}
+    full |= {"evidence": ["run:12", "P-3/E-2", "https://example.org/x"]}
+    with live.connect(hub_db) as conn:
+        kept = one(conn, _decision_row(ids, run_id, "wait-helper").values(**full))
+        one(conn, _decision_row(ids, run_id, "wait-helper").values(reversible=False))
+        for bad in (
+            {"recommended_reason": "A is cheaper."},  # a reason without a recommended option
+            {**full, "recommended_reason": ""},
+            {**full, "recommended_reason": "x" * 501},
+            {**full, "undo": "Revert it.", "reversible": False},  # how to undo what cannot be undone
+            {**full, "undo": "Revert it.", "reversible": None},
+            {**full, "undo": "x" * 501},
+            {**full, "evidence": []},
+            {**full, "evidence": [f"run:{n}" for n in range(1, 22)]},
+            {**full, "evidence": ["run:1", 2]},
+            {**full, "evidence": [""]},
+            {**full, "evidence": {"ref": "run:1"}},
+            {**full, "evidence": "run:1"},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(_decision_row(ids, run_id, "wait-helper").values(**bad))
+    found = select(d.c.recommended_reason, d.c.reversible, d.c.undo, d.c.evidence).where(d.c.id == kept)
+    assert query(hub_db, found) == [("A is cheaper.", True, "Revert it.", full["evidence"])]
+    move_to(hub_db, "0154", down=True)
+    assert not added & columns(hub_db, "decisions")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0155") :]
+
+
+def test_0156_keeps_push_devices_their_deliveries_and_preferences_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0155")
+    t = hub_tables
+    n, dl = t.notifications, t.notification_deliveries
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token = one(conn, _token(ids, kind="machine", token_hash="6" * 64, host="phone").returning(t.tokens.c.id))
+        stored = insert(n).values(user_id=ids["user"], kind="notice", notice_kind="plan_finished", title="Done")
+        notification = one(conn, stored.returning(n.c.id))
+        one(conn, insert(dl).values(notification_id=notification).returning(dl.c.id))  # the web's
+    move_to(hub_db, "0156")
+    added = {"push_devices", "notification_preferences"}
+    assert added <= tables(hub_db) and "device_id" in columns(hub_db, "notification_deliveries")
+    d, p, c = t.push_devices, t.notification_preferences, t.notification_channels
+    endpoint = "https://fcm.googleapis.com/fcm/send/a"
+    device = {"user_id": ids["user"], "token_id": token, "kind": "webpush", "params": {"p256dh": "k", "auth": "a"}}
+    with live.connect(hub_db) as conn:
+        first = one(conn, insert(d).values(**device, address=endpoint).returning(d.c.id))
+        second = one(conn, insert(d).values(**device, address=endpoint + "b", label="Phone").returning(d.c.id))
+        one(conn, insert(d).values({**device, "kind": "apns", "address": endpoint}).returning(d.c.id))  # another kind
+        for device_id in (first, second):
+            one(conn, insert(dl).values(notification_id=notification, device_id=device_id).returning(dl.c.id))
+        channel = one(conn, insert(c).values(user_id=ids["user"], kind="fake").returning(c.c.id))
+        one(conn, insert(dl).values(notification_id=notification, channel_id=channel).returning(dl.c.id))
+        conn.execute(insert(p).values(user_id=ids["user"], hide_details=True))
+        for bad in (
+            {"kind": "mail", "address": "x"},
+            {"address": ""},
+            {"address": "x" * 2049},
+            {"address": "y", "label": ""},
+            {"address": "y", "label": "x" * 101},
+            {"address": "y", "params": ["p256dh"]},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(d).values({**device, **bad}))
+        with pytest.raises(errors.UniqueViolation):  # an address of a kind is one device
+            conn.execute(insert(d).values(**device, address=endpoint))
+        with pytest.raises(errors.UniqueViolation):  # one delivery a device
+            conn.execute(insert(dl).values(notification_id=notification, device_id=first))
+        with pytest.raises(errors.UniqueViolation):  # one delivery on the web
+            conn.execute(insert(dl).values(notification_id=notification))
+        with pytest.raises(errors.CheckViolation):  # a channel or a device, not both
+            conn.execute(insert(dl).values(notification_id=notification, channel_id=channel, device_id=second))
+        conn.execute(delete(d).where(d.c.id == first))  # its deliveries go with it
+    count = select(func.count()).select_from(dl)
+    assert query(hub_db, count) == [(3,)]
+    assert query(hub_db, select(p.c.hide_details)) == [(True,)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.tokens).where(t.tokens.c.id == token))  # a token's devices go with it
+    assert query(hub_db, select(func.count()).select_from(d)) == [(0,)]
+    assert query(hub_db, count) == [(2,)]
+    move_to(hub_db, "0155", down=True)
+    assert not added & tables(hub_db) and "device_id" not in columns(hub_db, "notification_deliveries")
+    assert query(hub_db, count) == [(2,)]  # the web's and the channel's stay
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0156") :]
+
+
+def test_0157_keeps_the_tiers_quiet_hours_time_zone_and_summary_time_of_a_member_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0156")
+    t = hub_tables
+    p = t.notification_preferences
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        conn.execute(insert(p).values(user_id=ids["user"], hide_details=True))
+    move_to(hub_db, "0157")
+    added = {"tiers", "quiet_start", "quiet_end", "time_zone", "digest_at"}
+    assert added <= columns(hub_db, "notification_preferences")
+    shown = select(p.c.hide_details, p.c.tiers, p.c.quiet_start, p.c.quiet_end, p.c.time_zone, p.c.digest_at)
+    assert query(hub_db, shown) == [(True, {}, None, None, None, None)], "a member's row of 0156 gets the defaults"
+    chosen = {
+        "tiers": {"decision": "off", "plan_finished": "interrupt", "run_failed": "brief"},
+        "quiet_start": "22:00",
+        "quiet_end": "07:00",
+        "time_zone": "Asia/Tokyo",
+        "digest_at": "08:15",
+    }
+    with live.connect(hub_db) as conn:
+        conn.execute(update(p).values(**chosen).where(p.c.user_id == ids["user"]))
+        for bad in (
+            {"tiers": {"decision": "loud"}},
+            {"tiers": {"decision": 1}},
+            {"tiers": {"": "off"}},
+            {"tiers": {"Decision": "off"}},
+            {"tiers": {"x" * 65: "off"}},
+            {"tiers": ["decision"]},
+            {"quiet_start": None},  # quiet hours are both ends or neither
+            {"quiet_end": "22:00"},  # and end at another time than they start
+            {"quiet_start": "24:00"},
+            {"quiet_end": "7:00"},
+            {"time_zone": ""},
+            {"time_zone": "x" * 65},
+            {"digest_at": "8:15"},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(p).values(**bad).where(p.c.user_id == ids["user"]))
+        conn.execute(update(p).values(quiet_start=None, quiet_end=None, time_zone=None, digest_at=None))
+    assert query(hub_db, select(p.c.tiers, p.c.quiet_start)) == [(chosen["tiers"], None)]
+    move_to(hub_db, "0156", down=True)
+    assert not added & columns(hub_db, "notification_preferences")
+    assert query(hub_db, select(p.c.hide_details)) == [(True,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0157") :]
+
+
+def test_0158_keeps_the_seen_mark_and_summary_day_of_a_member_takes_the_notice_today_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0157")
+    t = hub_tables
+    n = t.notifications
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    notice = {"user_id": ids["user"], "kind": "notice", "title": "Today on the hub"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(n).values({**notice, "notice_kind": "today"}))
+    move_to(hub_db, "0158")
+    assert "today_marks" in tables(hub_db)
+    assert columns(hub_db, "today_marks") == {"user_id", "seen_at", "digest_on", "updated_at"}
+    m = t.today_marks
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(m).values(user_id=ids["user"], seen_at=func.now(), digest_on=date(2026, 10, 25)))
+        with pytest.raises(errors.UniqueViolation):  # one row a member
+            conn.execute(insert(m).values(user_id=ids["user"]))
+        # today beside the hub's other kinds and a core plugin's kind, which 0153 lets through by its shape
+        for kind in ("today", "opportunity_window", "release", "northwind_ledger_overdue"):
+            conn.execute(insert(n).values({**notice, "notice_kind": kind}))
+        for bad in ("summary", "Today"):  # no kind of the hub's and no plugin's name: no "_", or not lower-case
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(n).values({**notice, "notice_kind": bad}))
+    assert query(hub_db, select(m.c.digest_on)) == [(date(2026, 10, 25),)]
+    # Going back deletes the summary pushes and the marks, keeps the other notices and the check of 0153.
+    move_to(hub_db, "0157", down=True)
+    assert "today_marks" not in tables(hub_db)
+    kinds = select(n.c.notice_kind).order_by(n.c.id)
+    assert query(hub_db, kinds) == [("opportunity_window",), ("release",), ("northwind_ledger_overdue",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(n).values({**notice, "notice_kind": "northwind_ledger_paid"}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(n).values({**notice, "notice_kind": "today"}))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0158") :]

@@ -30,6 +30,9 @@ the reaper finds a run lost once its lease ran out, so tests shorten it, and it 
 heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
 for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
 (``runs.DECISION_WAIT_SECONDS``, a day, by default); the end-to-end tests shorten it to see a run parked and resumed.
+EVO_HUB_WEB_TIME_ZONE, the time zone of the dates the web renders (Asia/Ho_Chi_Minh by default), is also the time
+zone of a member's quiet hours and summary push until they choose one (``evo_agents.hub.server.push_tiers``): an IANA
+name such as Asia/Tokyo.
 
 deploy/hub/docker-compose.yml passes the api and the worker every variable read here except those the image sets
 (EVO_HUB_HOST, EVO_HUB_PORT, EVO_HUB_DATA_DIR) and those only tests point elsewhere (the GitHub and Telegram URLs and
@@ -58,6 +61,19 @@ sets with setWebhook and checks on every update (1 to 256 characters of A-Z, a-z
 secrets. Without either the channel is off: linking answers 503, the webhook 404, a delivery to Telegram fails at once,
 and the hub runs on. EVO_HUB_TELEGRAM_API_URL is where the Bot API is (https://api.telegram.org), so tests can point the
 hub at a fake one.
+
+Web Push (``evo_agents.hub.server.webpush``) is optional too. EVO_HUB_VAPID_PRIVATE_KEY is the hub's VAPID key, the
+private scalar of a P-256 key in base64url (32 bytes, 43 characters), registered as a secret; the public key browsers
+subscribe with is derived from it. EVO_HUB_VAPID_SUBJECT is where a push service may reach the hub's operator, a
+mailto: or https: URL, EVO_HUB_PUBLIC_URL when unset. Without the key, or without a subject and a public URL, Web Push
+is off: GET /v1/push/config says so, a delivery to a browser fails at once, and the rest of the outbox runs as before.
+Pushes to the hub's apps (``evo_agents.hub.server.push_native``) are optional the same way, each sender on its own.
+APNs takes EVO_HUB_APNS_KEY_ID and EVO_HUB_APNS_TEAM_ID (10 characters of A-Z and 0-9 each, as Apple shows them) and
+EVO_HUB_APNS_PRIVATE_KEY, the .p8 file of that key (a P-256 key in PEM, where ``\\n`` may stand for each line break),
+registered as a secret; a device names its app's topic and its environment itself. FCM takes
+EVO_HUB_FCM_SERVICE_ACCOUNT, the JSON key file of a Google service account that may send Firebase Cloud Messaging, on
+one line or in base64, registered as a secret with its private key. Without all of a sender's variables that sender
+is off, as Web Push is without its key; a malformed one is a ConfigError naming it, never showing it.
 
 Plugins (``evo_agents.plugins``) are optional too. EVO_HUB_PLUGIN_PUBLISHERS lists the publishers whose signed bundles
 the hub accepts, comma-separated ``ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml`` (a GitHub Actions workflow that
@@ -89,6 +105,7 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import json
 import os
 import re
 from collections.abc import Mapping
@@ -96,6 +113,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from evo_agents.hub.curator import MAX_TIME_ZONE_CHARS, TIME_ZONE
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
 from evo_agents.plugins.host import MIN_HOST_TOKEN, host_token_problem
@@ -130,6 +148,8 @@ MAX_RUN_LEASE_SECONDS = 3600
 # Seconds a plan run waits for its owner's answer before the reaper parks it (evo_agents.hub.server.run_state).
 MIN_DECISION_WAIT_SECONDS = 1
 MAX_DECISION_WAIT_SECONDS = 7 * 86400
+# The time zone of the web's dates and of members' notification settings until they choose one (web/src/i18n).
+DEFAULT_WEB_TIME_ZONE = "Asia/Ho_Chi_Minh"
 
 DEFAULT_DATA_DIR = "~/.evo/hub-server/cache"
 DEFAULT_HOST = "127.0.0.1"
@@ -157,6 +177,19 @@ TELEGRAM_VARIABLES = ("EVO_HUB_TELEGRAM_BOT_TOKEN", "EVO_HUB_TELEGRAM_WEBHOOK_SE
 DEFAULT_TELEGRAM_API_URL = "https://api.telegram.org"
 TELEGRAM_BOT_TOKEN = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")  # <bot id>:<secret>, as BotFather gives it
 TELEGRAM_WEBHOOK_SECRET = re.compile(r"[A-Za-z0-9_-]{1,256}")  # what setWebhook takes as secret_token
+VAPID_VARIABLES = ("EVO_HUB_VAPID_PRIVATE_KEY", "EVO_HUB_VAPID_SUBJECT")
+VAPID_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # the private scalar of a P-256 key: 32 bytes in base64url
+# The order of P-256's group: a private scalar lies in [1, n - 1] (SEC 2, section 2.4.2).
+P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+VAPID_SUBJECT = re.compile(r"mailto:[^\s@]+@[^\s@]+|https://[^\s]+")  # what RFC 8292's "sub" may be
+APNS_VARIABLES = ("EVO_HUB_APNS_KEY_ID", "EVO_HUB_APNS_TEAM_ID", "EVO_HUB_APNS_PRIVATE_KEY")
+APPLE_ID = re.compile(r"[A-Z0-9]{10}")  # a key ID or a team ID, as the Apple Developer account shows it
+# The DER of an elliptic-curve key on P-256 names both: id-ecPublicKey and prime256v1 (RFC 5480, section 2.1.1).
+EC_KEY_OID, P256_OID = bytes.fromhex("06072a8648ce3d0201"), bytes.fromhex("06082a8648ce3d030107")
+RSA_KEY_OID = bytes.fromhex("06092a864886f70d010101")  # rsaEncryption (RFC 8017, appendix C)
+FCM_VARIABLE = "EVO_HUB_FCM_SERVICE_ACCOUNT"
+GOOGLE_PROJECT_ID = re.compile(r"[a-z][a-z0-9-]{4,28}[a-z0-9]")
+SERVICE_ACCOUNT_EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 # The PEM GitHub gives an App (PKCS#1), or the same key as PKCS#8; the second group is its base64.
 PRIVATE_KEY_PEM = re.compile(
     r"-----BEGIN ((?:RSA )?)PRIVATE KEY-----\n([A-Za-z0-9+/=\n]+)\n-----END \1PRIVATE KEY-----"
@@ -200,6 +233,7 @@ class HubConfig:
     signal_days: int = DEFAULT_SIGNAL_DAYS  # days a signal is kept after it was measured
     run_lease_seconds: int = LEASE_SECONDS  # how long a claim and each heartbeat lease a run for
     decision_wait_seconds: int = DECISION_WAIT_SECONDS  # how long a plan run waits for an answer before it parks
+    web_time_zone: str = DEFAULT_WEB_TIME_ZONE  # an IANA name: members' notification settings until they choose one
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
     secrets_key: bytes | None = None  # seals the credentials of runs; never logged, returned or stored
     github_app_id: str | None = None  # the GitHub App that makes the runs' tokens: its ID or client ID
@@ -209,6 +243,14 @@ class HubConfig:
     telegram_bot_token: str | None = None  # the hub's bot; never logged, returned or stored
     telegram_webhook_secret: str | None = None  # the secret_token of its webhook; never logged or returned
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
+    vapid_private_key: str | None = None  # the hub's VAPID key in base64url; never logged or returned
+    vapid_subject: str | None = None  # where push services may reach the operator; None: the public URL
+    apns_key_id: str | None = None  # the APNs key the hub signs its provider tokens with
+    apns_team_id: str | None = None  # the Apple Developer team that key belongs to
+    apns_private_key: str | None = None  # that key's .p8, PEM with real line breaks; never logged or returned
+    fcm_project_id: str | None = None  # the Firebase project of the hub's service account
+    fcm_client_email: str | None = None  # the service account
+    fcm_private_key: str | None = None  # its private key, PEM; never logged or returned
     plugin_publishers: tuple[Publisher, ...] = ()  # whose signed plugin bundles the hub accepts
     plugin_core_publishers: frozenset[str] = frozenset()  # the ids among them whose plugins may be core plugins
     plugin_publishers_locked: bool = False  # hub admins may not trust more publishers than the operator lists
@@ -256,6 +298,25 @@ class HubConfig:
         """The EVO_HUB_TELEGRAM_* variables the Telegram channel still needs; empty when it is on."""
         values = (self.telegram_bot_token, self.telegram_webhook_secret)
         return [name for name, value in zip(TELEGRAM_VARIABLES, values, strict=True) if not value]
+
+    @property
+    def push_subject(self) -> str | None:
+        """The subject of the hub's VAPID JWTs: EVO_HUB_VAPID_SUBJECT, else the public URL."""
+        return self.vapid_subject or self.public_url
+
+    def webpush_missing(self) -> list[str]:
+        """The variables Web Push still needs, the key and a subject (or the public URL); empty when it is on."""
+        missing = [] if self.vapid_private_key else [VAPID_VARIABLES[0]]
+        return missing + ([] if self.push_subject else [VAPID_VARIABLES[1]])
+
+    def apns_missing(self) -> list[str]:
+        """The EVO_HUB_APNS_* variables APNs still needs; empty when the hub sends to iPhones."""
+        values = (self.apns_key_id, self.apns_team_id, self.apns_private_key)
+        return [name for name, value in zip(APNS_VARIABLES, values, strict=True) if not value]
+
+    def fcm_missing(self) -> list[str]:
+        """The variable FCM still needs; empty when the hub sends to Android phones."""
+        return [] if self.fcm_private_key else [FCM_VARIABLE]
 
     def github_app_missing(self) -> list[str]:
         """The EVO_HUB_GITHUB_APP_* variables the runs' GitHub tokens still need; empty when the App is configured."""
@@ -348,6 +409,14 @@ def _decision_wait_seconds(env: Mapping[str, str]) -> int:
     value = _number(env, name, DECISION_WAIT_SECONDS, minimum=MIN_DECISION_WAIT_SECONDS)
     if value > MAX_DECISION_WAIT_SECONDS:
         raise ConfigError(name, f"{name} must be at most {MAX_DECISION_WAIT_SECONDS}, got {value}")
+    return value
+
+
+def _web_time_zone(env: Mapping[str, str]) -> str:
+    name = "EVO_HUB_WEB_TIME_ZONE"
+    value = _text(env, name) or DEFAULT_WEB_TIME_ZONE
+    if len(value) > MAX_TIME_ZONE_CHARS or not re.fullmatch(TIME_ZONE, value):
+        raise ConfigError(name, f"{name} must be an IANA time zone such as Asia/Tokyo, got {value!r}")
     return value
 
 
@@ -506,6 +575,112 @@ def _telegram(env: Mapping[str, str]) -> dict:
     }
 
 
+def _vapid(env: Mapping[str, str]) -> dict:
+    """The VAPID key, registered as a secret before anything can fail, and the subject; no error shows the key."""
+    key_name, subject_name = VAPID_VARIABLES
+    key = _secret(env, key_name)
+    if key is not None:
+        raw = base64.urlsafe_b64decode(key.rstrip("=") + "=") if VAPID_KEY.fullmatch(key) else b""
+        if not 0 < int.from_bytes(raw, "big") < P256_ORDER:
+            raise ConfigError(
+                key_name,
+                f"{key_name} must be the private key of a P-256 key pair, 32 bytes in base64url (43 characters of A-Z, "
+                "a-z, 0-9, - and _), such as `npx web-push generate-vapid-keys` prints",
+            )
+        register_secret(base64.b64encode(raw).decode())  # the same key in standard base64, as a tool may print it
+    subject = _text(env, subject_name)
+    if subject is not None and not VAPID_SUBJECT.fullmatch(subject):
+        raise ConfigError(subject_name, f"{subject_name} must be a mailto: or https: URL, got {subject!r}")
+    return {"vapid_private_key": key, "vapid_subject": subject}
+
+
+def _pkcs8(pem: str) -> tuple[bytes, str] | None:
+    """The DER of the PKCS#8 key ``pem`` (with real line breaks), as Apple's .p8 file and a Google service account's
+    private_key hold one, with the key's canonical PEM; each are registered as secrets, the lines of its base64 too.
+    None when ``pem`` is no such key."""
+    match = PRIVATE_KEY_PEM.fullmatch(pem.replace("\r\n", "\n").strip())
+    if not match or match.group(1):  # PKCS#1 names its algorithm in the label; PKCS#8 names none
+        return None
+    lines = match.group(2).split("\n")
+    try:
+        der = base64.b64decode("".join(lines), validate=True)
+    except ValueError:
+        return None
+    canonical = match.group(0) + "\n"
+    for value in (pem, canonical, *[line for line in lines if len(line) >= 16]):
+        register_secret(value)  # a line of base64 shows up alone in a repr or a partial dump
+    return der, canonical
+
+
+def _apns(env: Mapping[str, str]) -> dict:
+    """The APNs key's ID, its team and its .p8, the key registered as a secret before anything can fail; any of them
+    missing turns APNs off. No error shows the key."""
+    id_name, team_name, key_name = APNS_VARIABLES
+    raw = _secret(env, key_name)
+    pem = None
+    if raw is not None:
+        found = _pkcs8(raw.replace("\\n", "\n"))
+        if found is None or EC_KEY_OID not in found[0] or P256_OID not in found[0]:
+            raise ConfigError(
+                key_name,
+                f"{key_name} must be the .p8 file of an APNs key, a P-256 key in PEM, with line breaks or \\n between "
+                "its lines",
+            )
+        pem = found[1]
+    found_ids = {name: _text(env, name) for name in (id_name, team_name)}
+    for name, value in found_ids.items():
+        if value is not None and not APPLE_ID.fullmatch(value):
+            raise ConfigError(
+                name, f"{name} must be 10 characters of A-Z and 0-9, as the Apple Developer account shows it"
+            )
+    return {"apns_key_id": found_ids[id_name], "apns_team_id": found_ids[team_name], "apns_private_key": pem}
+
+
+def _service_account(raw: str) -> dict | None:
+    """The JSON object of a service account's key file, given as JSON or as base64 of it; None for anything else."""
+    text = raw
+    if not raw.startswith("{"):
+        try:
+            text = base64.b64decode(raw, validate=True).decode()
+        except ValueError:  # not base64, or not UTF-8 underneath
+            return None
+        register_secret(text)
+    try:
+        account = json.loads(text)
+    except ValueError:
+        return None
+    return account if isinstance(account, dict) else None
+
+
+def _fcm(env: Mapping[str, str]) -> dict:
+    """The project, the email and the private key of the service account in EVO_HUB_FCM_SERVICE_ACCOUNT, registered
+    as secrets with the key before anything can fail; unset turns FCM off. No error shows the key."""
+    name = FCM_VARIABLE
+    raw = _secret(env, name)
+    if raw is None:
+        return {"fcm_project_id": None, "fcm_client_email": None, "fcm_private_key": None}
+    account = _service_account(raw)
+    if account is None:
+        raise ConfigError(
+            name, f"{name} must be the JSON key file of a Google service account, on one line or in base64"
+        )
+    key = account.get("private_key")
+    found = _pkcs8(key) if isinstance(key, str) else None
+    project, email = account.get("project_id"), account.get("client_email")
+    for field, good in (
+        ("type", account.get("type") == "service_account"),
+        ("private_key", found is not None and RSA_KEY_OID in found[0]),
+        ("project_id", isinstance(project, str) and GOOGLE_PROJECT_ID.fullmatch(project) is not None),
+        ("client_email", isinstance(email, str) and SERVICE_ACCOUNT_EMAIL.fullmatch(email) is not None),
+    ):
+        if not good:
+            raise ConfigError(
+                name,
+                f"{name} must be the JSON key file of a Google service account: its {field} is missing or not one",
+            )
+    return {"fcm_project_id": project, "fcm_client_email": email, "fcm_private_key": found[1]}
+
+
 def _plugins(env: Mapping[str, str]) -> dict:
     """The publishers of plugins the hub trusts, and the ids among them whose plugins may be core plugins."""
     name, core_name = "EVO_HUB_PLUGIN_PUBLISHERS", "EVO_HUB_PLUGIN_CORE_PUBLISHERS"
@@ -627,11 +802,15 @@ def load_config(
         signal_days=_signal_days(env),
         run_lease_seconds=_run_lease_seconds(env),
         decision_wait_seconds=_decision_wait_seconds(env),
+        web_time_zone=_web_time_zone(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),
         **_blob_store(env),
         secrets_key=_secrets_key(env),
         **_apps(env),
         **_telegram(env),
+        **_vapid(env),
+        **_apns(env),
+        **_fcm(env),
         **_plugins(env),
         **_gateway(env),
     )

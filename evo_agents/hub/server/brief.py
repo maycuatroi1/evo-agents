@@ -31,6 +31,9 @@ just ended (``probe_report.send``), in a transaction of its own, once a week.
 
 ``send_loop_notices`` is the job ``hub.loop_notices`` (``loop.notices.send``): the month's review of the goals of each
 project whose Loop is on, and the Loop's part of the brief, at 07:00, for a project whose Curator sends none.
+
+``send_today_digests`` is the job ``hub.today_digest`` (``today_digest.send``): the summary push of Today to each
+member away from the hub, at the local time they chose, once a day.
 """
 
 from __future__ import annotations
@@ -46,7 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server import probe_report
+from evo_agents.hub.server import probe_report, today_digest
 from evo_agents.hub.server.curator import _due, _owner_access, curator_state, night_figures
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.night_duty import on_duty
@@ -549,3 +552,9 @@ async def send_briefs(engine: AsyncEngine, *, now: datetime | None = None) -> di
 async def send_loop_notices(engine: AsyncEngine, *, now: datetime | None = None) -> dict:
     """One pass of ``hub.loop_notices`` (``loop.notices.send``) at ``now`` (the database's now when None)."""
     return await loop_notices.send(engine, now=now)
+
+
+async def send_today_digests(engine: AsyncEngine, *, config=None, now: datetime | None = None) -> dict:
+    """One pass of ``hub.today_digest`` (``today_digest.send``) on a hub configured with ``config``, at ``now`` (the
+    database's now when None)."""
+    return await today_digest.send(engine, config=config, now=now)

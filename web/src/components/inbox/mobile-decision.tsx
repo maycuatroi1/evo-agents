@@ -35,16 +35,8 @@ import { cn } from "@/lib/utils";
 import { agentDigest, type DigestLine } from "./agent-digest";
 import { DecisionCategoryBadge } from "./badges";
 import { AnsweredBy } from "./answered-by";
-import {
-  AnswerFields,
-  AnswerHint,
-  AnswerSummary,
-  AskedTiming,
-  DecisionStatePill,
-  DecisionWhere,
-  FoldedContext,
-  useAnswerForm,
-} from "./decision-view";
+import { DecisionGrounds } from "./decision-grounds";
+import { AnswerFields, AnswerHint, AnswerSummary, AskedTiming, DecisionStatePill, DecisionWhere, FoldedContext, useAnswerForm } from "./decision-view";
 import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
 import { OptionList } from "./decision-options";
 import { useInboxViewer, useParksAt } from "./hooks";
@@ -105,7 +97,7 @@ function ScreenScroll({ id, children }: { id: number; children: ReactNode }) {
 
 /**
  * The decision's state, its category, where it comes from and when it was asked (or who answered), then the question as
- * the screen's h1, which names the dialog, and while it is open the agent's context at 15 px.
+ * the screen's h1, which names the dialog, and while it is open the agent's context at 15 px with what it rests on.
  */
 function ScreenLead({
   decision,
@@ -151,6 +143,7 @@ function ScreenLead({
         </h1>
       </SheetTitle>
       {open && decision.context ? <FoldedContext text={decision.context} screen /> : null}
+      {open ? <DecisionGrounds decision={decision} screen /> : null}
       <DecisionFiles decision={decision} />
     </>
   );

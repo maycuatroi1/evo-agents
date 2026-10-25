@@ -685,7 +685,7 @@
     },
     {
       "name": "ask_member",
-      "description": "Ask the person who runs this session a question that has 2 to 6 options, in a session of a project on the hub: it reaches them as a decision in the Inbox, Telegram, the web and the run's page, and they can answer on any of them or on this machine with `evo-agents hub decision answer`. The first answer wins and comes back here with the words they wrote. It waits about 20 seconds; with no answer it says so, and you call it again with decision_id to wait longer or go on, and a late answer reaches you with the person's next message. Outside a hub project's session it is refused: use AskUserQuestion.",
+      "description": "Ask the person who runs this session a question that has 2 to 6 options, in a session of a project on the hub: it reaches them as a decision in the Inbox, Telegram, the web and the run's page, and they can answer on any of them or on this machine with `evo-agents hub decision answer`. The first answer wins and comes back here with the words they wrote. It waits about 20 seconds; with no answer it says so, and you call it again with decision_id to wait longer or go on, and a late answer reaches you with the person's next message. The person may answer on a phone with one tap: give a question with a natural choice recommended and recommended_reason, an act reversible (with undo when it can be undone), and evidence for what it rests on. Outside a hub project's session it is refused: use AskUserQuestion.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -726,6 +726,32 @@
           "recommended": {
             "type": "string",
             "description": "the key or the label of the option you recommend"
+          },
+          "recommended_reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "why you recommend that option, in a sentence or two; needs recommended"
+          },
+          "reversible": {
+            "type": "boolean",
+            "description": "for an act: whether it can be undone"
+          },
+          "undo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "how to undo the act; needs reversible true"
+          },
+          "evidence": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "description": "what the question rests on, each a ref: run:ID, run:ID:SEQ, output:ID, P-<n>/E-<n>, an https URL, session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, code:REPO:PATH[:LINE] or memory:ID:REV"
           },
           "context": {
             "type": "string",

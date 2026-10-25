@@ -113,6 +113,8 @@ def test_a_wait_is_an_open_decision_that_notifies_nobody_and_wakes_when_its_time
     assert wait["wake_on"] is None and wait["held_at"] is None
     assert [option["key"] for option in wait["options"]] == ["now", "stop"]
     assert "Its time:" in wait["context"]
+    # the hub answers a wait itself: neither option is its default, so it recommends none
+    assert (wait["recommended"], wait["recommended_reason"], wait["evidence"]) == (None, None, [])
     n = tables.notifications
     assert sql(hub_db, select(func.count()).select_from(n).where(n.c.decision_id == wait["id"])) == [(0,)]
 

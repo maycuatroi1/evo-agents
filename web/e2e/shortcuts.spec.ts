@@ -98,7 +98,7 @@ test("keys typed in a search field are text, and / still focuses it", async ({ p
   const project = me.projects[0];
   await seedRunPlan(me, project);
   await dispatch(me, project, ["2"]);
-  await open(page, `/p/${project}/runs`);
+  await open(page, `/p/${project}/runs?state=all`); // the run is queued: the page opens on Running
   await expect(main(page).getByTestId("runs-table")).toBeVisible();
   await hydrated(page);
   const url = page.url();
@@ -186,7 +186,7 @@ test("? lists every key; single keys turn off and on, and stay so after a reload
   const project = me.projects[0];
   await seedRunPlan(me, project);
   await dispatch(me, project, ["2"]);
-  await open(page, `/p/${project}/runs`);
+  await open(page, `/p/${project}/runs?state=all`); // the run is queued: the page opens on Running
   await expect(main(page).getByTestId("runs-table")).toBeVisible();
   await hydrated(page);
   const url = page.url();

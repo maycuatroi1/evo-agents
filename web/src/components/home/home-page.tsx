@@ -10,12 +10,13 @@ import { useState } from "react";
 import { Identifier } from "@/components/data/identifier";
 import type { DecisionTarget } from "@/components/inbox/decision-sheet";
 import { PageHeader } from "@/components/shell/page-header";
-import { QueryView, useHubQuery } from "@/components/states/query-view";
+import { type HubQueryState, QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { type Today, todayQuery } from "@/lib/notification-queries";
 import { overviewQuery, whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ import { AuthorWaiting } from "./author-waiting";
 import { LazyDecisionSheet, NeedsYou } from "./needs-you";
 import { Projects } from "./projects-card";
 import { InFlight, Recent } from "./run-lists";
+import { TodayCard } from "./today-card";
 
 /**
  * A member without a grant: who grants roles or sends invite links, and the login to send them; a hub admin goes to
@@ -100,7 +102,7 @@ function HomeSkeleton() {
   );
 }
 
-function MissionControl({ overview, viewer }: { overview: Overview; viewer: string | null }) {
+function MissionControl({ overview, viewer, today }: { overview: Overview; viewer: string | null; today: HubQueryState<Today> }) {
   const [target, setTarget] = useState<DecisionTarget | null>(null);
   const [sheetUsed, setSheetUsed] = useState(false);
   const answer = (decision: OverviewDecision) => {
@@ -109,6 +111,7 @@ function MissionControl({ overview, viewer }: { overview: Overview; viewer: stri
   };
   return (
     <div className="flex flex-col gap-6">
+      <TodayCard state={today} />
       <HomeMetrics overview={overview} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-5">
@@ -134,22 +137,24 @@ function MissionControl({ overview, viewer }: { overview: Overview; viewer: stri
 }
 
 /**
- * Home (`/`), the kit's MissionControl (web/DESIGN.md, Home): what needs the visitor, what is in flight, what ended
- * lately, their workers and their projects, from one read of GET /v1/me/overview (and the workers list for the Fleet
- * card). The overview is asked every 5 seconds while a run is in flight or a decision is open, every 30 otherwise, and
- * the top bar says whether the page is current. Under 768 px it is one column, Needs you first.
+ * Home (`/`), the kit's MissionControl (web/DESIGN.md, Home): Today first (what changed since the visitor last looked,
+ * read once a visit from GET /v1/me/today), then what needs the visitor, what is in flight, what ended lately, their
+ * workers and their projects, from one read of GET /v1/me/overview (and the workers list for the Fleet card). The
+ * overview is asked every 5 seconds while a run is in flight or a decision is open, every 30 otherwise, and the top
+ * bar says whether the page is current. Under 768 px it is one column, Today then Needs you first.
  */
-export function HomePage({ initialError }: { initialError: ApiErrorInfo | null }) {
+export function HomePage({ initialError, todayError = null }: { initialError: ApiErrorInfo | null; todayError?: ApiErrorInfo | null }) {
   const t = useTranslations("home");
   const { data: me } = useQuery(whoamiQuery(browserApi));
   // The page's main query: the top bar says from it whether Home is current.
   const state = useHubQuery({ ...overviewQuery(browserApi), refetchInterval: homeRefreshInterval }, initialError, { live: true });
+  const today = useHubQuery(todayQuery(browserApi), todayError);
   return (
     <>
       <PageHeader title={t("title")} />
       <QueryView state={state} loading={<HomeSkeleton />}>
         {(overview) =>
-          overview.projects.length === 0 ? <NoGrants /> : <MissionControl overview={overview} viewer={me?.login ?? null} />
+          overview.projects.length === 0 ? <NoGrants /> : <MissionControl overview={overview} viewer={me?.login ?? null} today={today} />
         }
       </QueryView>
     </>

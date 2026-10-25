@@ -37,6 +37,11 @@ log = logging.getLogger(__name__)
 
 DISPATCH = "release.dispatch"  # a cycle's run queued: "<project> cycle:<id> run:<id> mode=<mode>"
 QUESTION_REASON_CHARS = 600
+# Why the hub recommends closing a stopped cycle (``decision_asks``): it spends nothing and keeps the schedule.
+CLOSE_REASON = (
+    "Closing spends nothing more of the cap and keeps the schedule: its next daily check starts a new cycle when the "
+    "newest tag is red or a packaging path changed. Go on only when the reason above is one more cap can fix."
+)
 
 
 def releases_link(project: str) -> str:
@@ -190,7 +195,7 @@ async def _facts(conn: AsyncConnection, found) -> tuple[list[str], int]:
 def _options(cap: float) -> list[dict]:
     return [
         {"key": "continue", "label": f"Go on, with one more cap of {curator.money(cap)}"},
-        {"key": "close", "label": "Close the cycle"},
+        {"key": "close", "label": "Close the cycle", "recommended": True},
         {"key": "pause", "label": "Pause the release schedule"},
     ]
 
@@ -217,6 +222,7 @@ async def ask_owner(conn: AsyncConnection, cycle_id: int) -> int:
                 question=question,
                 context=runs.clip("\n".join(lines), runs.MAX_DECISION_CONTEXT_BYTES),
                 options=_options(cap),
+                recommended_reason=CLOSE_REASON,
             )
             .returning(d.c.id)
         )

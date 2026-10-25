@@ -523,6 +523,10 @@ def test_a_stop_opens_a_thread_in_the_triage_chat_and_asks_the_owner_a_decision_
     assert (run_id, category, state) == (spec["id"], "release", "open")
     assert [item["key"] for item in options] == ["continue", "close", "pause"]
     assert "one more cap of $200.00" in options[0]["label"] and "the bump script failed" in question
+    # the hub recommends closing it, which spends nothing and keeps the schedule, and says so
+    assert [item["key"] for item in options if item.get("recommended")] == ["close"]
+    reason = sql(world.db, select(d.c.recommended_reason).where(d.c.id == found["decision_id"]))[0][0]
+    assert reason.startswith("Closing spends nothing more of the cap")
     [(_, title, _, _, link, decision_id)] = notifications(world.db, "decision")
     assert decision_id == found["decision_id"] and link == f"/inbox?decision={decision_id}"
     assert f"Release cycle #{found['id']} of {PROJECT} stopped" in title

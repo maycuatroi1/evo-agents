@@ -26,22 +26,11 @@ import { cn } from "@/lib/utils";
 import { answerNotice } from "./answer-notice";
 import { DecisionCategoryBadge } from "./badges";
 import { AnsweredBy } from "./answered-by";
+import { DecisionGrounds } from "./decision-grounds";
 import { ClosedNote, DecisionFiles, DeliveryNote, NoFormNote } from "./decision-notes";
 import { type HeadingLevel, OptionCard, OptionList, Question } from "./decision-options";
 import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
-import {
-  type AnswerAccess,
-  answerAccess,
-  answerBody,
-  answerProblem,
-  optionWaits,
-  isHubDecision,
-  runLinkWords,
-  type AnswerProblem,
-  chosenOption,
-  initialOption,
-  parkTiming,
-} from "./model";
+import { type AnswerAccess, answerAccess, answerBody, answerProblem, optionWaits, isHubDecision, runLinkWords, type AnswerProblem, chosenOption, initialOption, parkTiming } from "./model";
 import { type Decision, MAX_ANSWER_BYTES } from "./queries";
 import { TakeOverButton } from "./take-over-button";
 
@@ -493,8 +482,8 @@ function AnswerForm({
 
 /**
  * One decision as the kit's DecisionCard. While it is open: the head on `attention-soft`, the question, the agent's
- * context folded after four lines, then for the run's owner the answer form, and for anyone else the options and why
- * they cannot answer. Once answered: one compact block, the head sunken with who answered and when, the question quiet
+ * context folded after four lines, why it recommends its option, how to undo the act and its evidence, then for the
+ * run's owner the answer form, and for anyone else the options and why they cannot answer. Once answered: one compact block, the head sunken with who answered and when, the question quiet
  * and the answer under it; expired or cancelled, the same with what happened.
  *
  * `where` inbox (the sheet of the Inbox and of Home) names the run, project, plan and step in the head and makes the
@@ -543,6 +532,7 @@ export function DecisionCard({
           {decision.question.trim()}
         </Question>
         {open && decision.context ? <FoldedContext text={decision.context} /> : null}
+        {open ? <DecisionGrounds decision={decision} /> : null}
         <DecisionFiles decision={decision} />
         {decision.state === "answered" ? <AnswerSummary decision={decision} /> : null}
         <ClosedNote decision={decision} />

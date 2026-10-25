@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, useCallback, useContext, useId, useMemo, useState } from "react";
 
 import type { DataListRow } from "@/components/data/data-list";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { Identifier, NAME_LINK, RunRef } from "@/components/data/identifier";
-import { useNow } from "@/components/kg/use-now";
 import { planHref, stepHref } from "@/components/plans/links";
 import { StatusBadge } from "@/components/status/status-badge";
 import { workerHref } from "@/components/workers/queries";
@@ -18,10 +17,11 @@ import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadg
 import { hasOtherTurns, isSessionTurn } from "./chat-session";
 import { SessionTurns, TurnsToggle } from "./chat-session-turns";
 import { PlanProgressLine } from "./plan-progress-line";
-import { CostCell, useDuration } from "./run-cost-duration";
+import { CostCell } from "./run-cost-duration";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
-import { runTiming, taskBranch } from "./model";
-import { isActiveState, type Run, runHref } from "./queries";
+import { taskBranch } from "./model";
+import { type Run, runHref } from "./queries";
+import { Timing } from "./run-cells";
 
 /** Who reads the table: a worker links to its page only for the member who owns it (or a hub admin). */
 export type Viewer = { login: string; admin: boolean };
@@ -59,34 +59,6 @@ const COLUMNS: Record<RunsTableVariant, string[]> = {
   step: ["run", "state", "cost", "worker", "dispatcher", "runtime", "started", "duration", "attempt"],
   worker: ["run", "step", "state", "cost", "runtime", "started", "duration", "attempt"],
 };
-
-function Timing({ run, part }: { run: Run; part: "started" | "duration" }) {
-  const t = useTranslations("runs");
-  const format = useFormatter();
-  const duration = useDuration();
-  const now = useNow(isActiveState(run.state));
-  const timing = runTiming(run, now);
-  if (part === "started") {
-    const at = timing.startedAt ?? run.queued_at;
-    const date = new Date(at);
-    return (
-      <time
-        dateTime={at}
-        title={format.dateTime(date, { dateStyle: "medium", timeStyle: "medium" })}
-        className={cn("whitespace-nowrap", !timing.startedAt && "text-fg-subtle")}
-      >
-        {timing.startedAt ? null : <span className="sr-only">{t("queuedAt")} </span>}
-        {format.dateTime(date, { dateStyle: "short", timeStyle: "short" })}
-      </time>
-    );
-  }
-  if (timing.durationMs === null) return <span className="text-fg-subtle">-</span>;
-  return (
-    <span className={cn("whitespace-nowrap", timing.waiting && "text-fg-subtle")} data-testid="run-duration">
-      {timing.waiting ? t("waiting", { duration: duration(timing.durationMs) }) : duration(timing.durationMs)}
-    </span>
-  );
-}
 
 /**
  * A chat session's row of a grouped table, its latest turn: open (its turns show under it) or not, and how to toggle it.

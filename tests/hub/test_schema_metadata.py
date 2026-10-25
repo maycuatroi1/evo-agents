@@ -8,6 +8,7 @@ and the WHERE of a partial index, which the migrations alone hold (``tests.hub.t
 ``tests.hub.test_run_tables`` exercise them).
 """
 
+import gc
 import warnings
 
 import pytest
@@ -59,19 +60,22 @@ def hub_tables() -> set[str]:
     return set(tables.metadata.tables) - PLUGIN_OWNED_TABLES
 
 
-def test_the_metadata_holds_the_one_hundred_and_sixty_nine_hub_tables():
+def test_the_metadata_holds_the_one_hundred_and_seventy_two_hub_tables():
     assert hub_tables() == TABLES - pg.QUEUE_TABLES - PLUGIN_OWNED_TABLES
     # the last added: problems, problem_revisions, problem_evidence, intakes, kg_review_dismissals, kg_decisions,
     # kg_decision_events, opportunities (4), retired_project_plugins, worker_pools, worker_pool_projects,
-    # worker_join_tokens, provider_accounts, market_sources, plugin_publishers, market_install_requests; 183 with the
-    # 14 tables of crm, pm and marketing, whose plugins keep them
-    assert len(hub_tables()) == 169
+    # worker_join_tokens, provider_accounts, market_sources, plugin_publishers, market_install_requests, push_devices,
+    # notification_preferences, today_marks; 186 with the 14 tables of crm, pm and marketing, whose plugins keep them
+    assert len(hub_tables()) == 172
     assert len(PLUGIN_OWNED_TABLES) == 14 and PLUGIN_OWNED_TABLES <= TABLES
 
 
 def test_the_metadata_matches_the_schema_at_head(hub_db):
     migrate(hub_db.dsn)
     engine = engine_on(hub_db)
+    # what earlier tests of this worker left for the collector (an sqlite connection of a knowledge graph) is
+    # collected now, so its ResourceWarning is not recorded as one of the comparison's
+    gc.collect()
     try:
         with engine.connect() as conn, warnings.catch_warnings(record=True) as warned:
             warnings.simplefilter("always")
