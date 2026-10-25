@@ -124,8 +124,8 @@ HUB_TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
 HUB_TABLES |= pg.MARKET_TABLES  # migration 0154
 HUB_TABLES |= pg.POOL_TABLES  # migration 0148
 HUB_TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0151
-HUB_TABLES |= pg.PUSH_TABLES  # migration 0149
-HUB_TABLES |= pg.TODAY_TABLES  # migration 0151
+HUB_TABLES |= pg.PUSH_TABLES  # migration 0156
+HUB_TABLES |= pg.TODAY_TABLES  # migration 0158
 HUB_TABLES |= pg.plugin_version_tables()  # the chains of the installed core plugins
 
 

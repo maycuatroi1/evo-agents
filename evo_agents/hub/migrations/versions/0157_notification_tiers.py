@@ -1,7 +1,7 @@
 """A member chooses the tier of each kind of notification, their quiet hours, their time zone and their summary push.
 
-Revision ID: 0150
-Revises: 0149
+Revision ID: 0157
+Revises: 0156
 Create Date: 2026-10-25
 
 notification_preferences gains (plan hub-mobile-phase-0, criterion a3):
@@ -14,11 +14,11 @@ notification_preferences gains (plan hub-mobile-phase-0, criterion a3):
   when the member sets it; NULL is the hub's web time zone.
 - ``digest_at``, the local time of the member's summary push as HH:MM; NULL is the hub's default.
 
-Every row of 0149 keeps its hide_details and gets the defaults. The names below are copies of
+Every row of 0156 keeps its hide_details and gets the defaults. The names below are copies of
 ``evo_agents.hub.tables_push`` and ``evo_agents.hub.curator`` as of this revision, never imports, so a later change to
 them takes a new revision. Every statement is an Alembic operation on SQLAlchemy Core expressions.
 
-Going back drops the five columns, which is the schema 0149 runs on: its hub pushes a decision asked of a member and
+Going back drops the five columns, which is the schema 0156 runs on: its hub pushes a decision asked of a member and
 nothing else, at any hour.
 """
 
@@ -26,8 +26,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0150"
-down_revision = "0149"
+revision = "0157"
+down_revision = "0156"
 branch_labels = None
 depends_on = None
 

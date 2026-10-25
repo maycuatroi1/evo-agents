@@ -1,7 +1,7 @@
 """A decision says why its option is recommended, whether its act can be undone and how, and what it rests on.
 
-Revision ID: 0148
-Revises: 0147
+Revision ID: 0155
+Revises: 0154
 Create Date: 2026-10-25
 
 decisions gains ``recommended_reason``, why the agent recommends the option it marks recommended (1 to 500
@@ -12,15 +12,15 @@ of what the question rests on: a JSON array of 1 to 20 texts that are not empty,
 decision made before, and for one asked without them. The bounds below are copies of ``evo_agents.hub.decision_asks``
 as of this revision, never imports, so a later change to them takes a new revision.
 
-Going back drops the four columns, which is the schema 0147 runs on: its hub shows no reason, undo or evidence.
+Going back drops the four columns, which is the schema 0154 runs on: its hub shows no reason, undo or evidence.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0148"
-down_revision = "0147"
+revision = "0155"
+down_revision = "0154"
 branch_labels = None
 depends_on = None
 
