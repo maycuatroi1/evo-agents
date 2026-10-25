@@ -2715,6 +2715,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -13496,6 +13497,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -13671,6 +13673,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -13779,6 +13782,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -14120,6 +14124,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -14228,6 +14233,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -14336,6 +14342,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -14818,6 +14825,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -14950,6 +14958,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -15116,6 +15125,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -15224,6 +15234,7 @@
           "verify",
           "evidence",
           "usage",
+          "plan_progress",
           "budget",
           "error",
           "log_sha256",
@@ -101734,6 +101745,59 @@
           ],
           "title": "PlanPatch"
         },
+        "PlanProgress": {
+          "properties": {
+            "done": {
+              "type": "integer",
+              "title": "Done",
+              "description": "steps with status done"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "steps of the plan"
+            },
+            "percent": {
+              "type": "integer",
+              "title": "Percent",
+              "description": "done of total, rounded down; 0 for a plan without steps"
+            },
+            "current_step": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Step",
+              "description": "the step in progress, else the first not done: its title, else its key; null once all are done"
+            },
+            "current_status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Status",
+              "description": "that step's status as the plan holds it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "done",
+            "total",
+            "percent",
+            "current_step",
+            "current_status"
+          ],
+          "title": "PlanProgress",
+          "description": "How far a plan run's plan has come, as the plan holds it now."
+        },
         "PlanPut": {
           "properties": {
             "body": {
@@ -113798,6 +113862,17 @@
                 }
               ],
               "title": "Usage"
+            },
+            "plan_progress": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanProgress"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a plan run's plan progress, set in a list of runs; null for any other run"
             },
             "budget": {
               "anyOf": [
