@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadge } from "./badges";
 import { hasOtherTurns, isSessionTurn } from "./chat-session";
 import { SessionTurns, TurnsToggle } from "./chat-session-turns";
+import { PlanProgressLine } from "./plan-progress-line";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
 import { readRunUsage } from "./usage-model";
 import { durationParts, runTiming, taskBranch } from "./model";
@@ -72,20 +73,6 @@ function CostCell({ run }: { run: Run }) {
   return (
     <span className="whitespace-nowrap font-mono text-xs" data-testid="run-cost">
       {amount}
-    </span>
-  );
-}
-
-/** A plan run's progress: how much of its plan is done and the step it is at, with that step's status. */
-function PlanProgressLine({ run }: { run: Run }) {
-  const t = useTranslations("runs.progress");
-  const progress = run.plan_progress;
-  if (!progress) return null;
-  return (
-    <span className="max-w-56 text-xs text-fg-subtle" data-testid="run-progress">
-      {progress.current_step
-        ? t("at", { percent: progress.percent, done: progress.done, total: progress.total, step: progress.current_step, status: progress.current_status ?? "" })
-        : t("complete", { percent: progress.percent, done: progress.done, total: progress.total })}
     </span>
   );
 }

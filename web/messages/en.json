@@ -5585,8 +5585,10 @@
       }
     },
     "progress": {
-      "at": "{percent}% ({done}/{total}) - {step}: {status}",
-      "complete": "{percent}% ({done}/{total}) - all steps done"
+      "label": "Plan progress",
+      "count": "{done}/{total}",
+      "at": "{step}: {status}",
+      "complete": "All steps done"
     }
   },
   "insights": {
