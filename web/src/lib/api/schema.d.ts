@@ -11769,8 +11769,8 @@ export interface components {
         /** ApnsDeviceIn */
         ApnsDeviceIn: {
             /**
-             * Kind
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             kind: "apns";
             /**
@@ -17184,8 +17184,8 @@ export interface components {
         /** FcmDeviceIn */
         FcmDeviceIn: {
             /**
-             * Kind
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             kind: "fcm";
             /**
@@ -36257,8 +36257,8 @@ export interface components {
         /** WebPushDeviceIn */
         WebPushDeviceIn: {
             /**
-             * Kind
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             kind: "webpush";
             /**
