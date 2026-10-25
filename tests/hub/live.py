@@ -104,7 +104,9 @@ def hub_config(db: pg.Database, tmp_path: Path, github, **changes):
         "github_client_id": github.client_id,
         "github_url": github.url,
         "github_api_url": github.url,
-        "github_timeout": 2.0,
+        # github_timeout stays the production default (10 s): the fake GitHub answers from a thread of the test's own
+        # process, which a loaded CI runner can leave waiting for a few seconds, and a fixture that signs members in
+        # must not fail on it. test_auth's test of a slow GitHub sets its own 2 s.
     }
     values.update(changes)
     return HubConfig(**values)
