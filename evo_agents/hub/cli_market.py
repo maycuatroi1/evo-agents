@@ -509,7 +509,7 @@ def cmd_seller_key(args) -> int:
     except FileExistsError:
         print(f"{args.file} exists: the hub never overwrites a seller key", file=sys.stderr)
         return 1
-    with os.fdopen(fd, "w") as out:
+    with os.fdopen(fd, "w", newline="\n") as out:
         out.write(base64.b64encode(seed).decode() + "\n")
     found = seller_key_json(args.file, key_id(base64.b64decode(public)), public)
     if args.json:
