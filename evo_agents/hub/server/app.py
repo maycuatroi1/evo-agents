@@ -228,6 +228,7 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import skills
 
     app.include_router(skills.router)
+    app.include_router(skills.worker_router)  # the skill sync of worker pool nodes
 
     from evo_agents.hub.server import kg
 
