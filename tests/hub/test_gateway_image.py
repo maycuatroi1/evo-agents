@@ -21,9 +21,12 @@ from tests.hub.test_compose import compose
 
 
 def _docker_works() -> bool:
+    """Docker answers and runs Linux images. Docker on a Windows runner answers in Windows containers mode, where the
+    gateway's Linux image does not start and ``docker run`` fails."""
     if not shutil.which("docker"):
         return False
-    return subprocess.run(["docker", "info"], capture_output=True, timeout=30).returncode == 0
+    info = subprocess.run(["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True, timeout=30)
+    return info.returncode == 0 and info.stdout.strip() == "linux"
 
 
 pytestmark = [

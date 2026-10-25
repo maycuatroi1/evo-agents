@@ -42,7 +42,7 @@ test("a subscription token is shared only once its owner ticks the warning, whic
   const lan = await otherMember("lan-tran");
   await putSecretByApi(me, "claude-main", { kind: "env", env_var: TOKEN_VAR, projects: [me.projects[0]], value: secretValue("oauth") });
 
-  await page.goto("/accounts");
+  await page.goto("/accounts?tab=sharing");
   const shares = main(page).getByTestId("account-shares");
   await expect(shares.getByRole("heading", { name: "Shared with other members" })).toBeVisible();
   await expect(shares.getByTestId("shares-empty")).toHaveText("Nothing is shared.");
@@ -168,7 +168,7 @@ test("the owner of a shared account reads what each member's runs took of it", a
   const lease = await sharedRun(admin, me, lan, project);
   expect(lease?.name).toBe("claude-main");
 
-  await page.goto("/accounts");
+  await page.goto("/accounts?tab=sharing");
   const table = main(page).getByTestId("cost-by-principal-table");
   await expect(table.getByTestId("cost-principal")).toHaveText([lan.login]);
   await expect(table.getByTestId("cost-month")).toHaveText(["$0.00"]);
