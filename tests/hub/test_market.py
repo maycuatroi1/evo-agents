@@ -232,6 +232,7 @@ def test_market_lists_the_plugins_of_a_source_with_their_status_and_filters(hub)
 
 
 def test_market_status_of_a_core_plugin_in_the_image_and_of_an_upgrade():
+    pytest.importorskip("fastapi")  # evo_agents.hub.server.market is a router of the hub-server extra
     from evo_agents.hub.server.market import status_of
 
     crm = market_index()["plugins"][2]
