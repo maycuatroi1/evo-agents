@@ -1258,6 +1258,7 @@
         "kg": "Knowledge graph",
         "monitor": "Monitor",
         "market": "Chợ plugin",
+        "seller": "Bán plugin",
         "canvas": "Canvas",
         "srs": "Yêu cầu (SRS)",
         "tasks": "Task"
@@ -1268,6 +1269,7 @@
         "kg": "Knowledge graph của dự án: các trang, API và các tool kg trên MCP của hub.",
         "monitor": "Các run đang chạy ở mọi dự án, theo dõi trực tiếp.",
         "market": "Chợ plugin: duyệt các chợ hub đọc và cài plugin từ đó.",
+        "seller": "Bán plugin cho các hub khác: sản phẩm niêm yết, đơn hàng trả bằng chuyển khoản, giấy phép và doanh thu hằng tháng.",
         "canvas": "Canvas của dự án: các nhận định, bằng chứng và phần chấm của chúng, cùng @strategist.",
         "srs": "Các tài liệu yêu cầu của dự án, phần review và duyệt của chúng, cùng @ba.",
         "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt."

@@ -1258,6 +1258,7 @@
         "kg": "Knowledge graph",
         "monitor": "Monitor",
         "market": "Market",
+        "seller": "Selling plugins",
         "canvas": "Canvas",
         "srs": "Requirements (SRS)",
         "tasks": "Tasks"
@@ -1268,6 +1269,7 @@
         "kg": "A project's knowledge graph: its pages, its API and the kg tools of the hub's MCP.",
         "monitor": "The runs at work in every project, watched live.",
         "market": "The plugin market: browsing the markets the hub reads and installing from them.",
+        "seller": "Selling plugins to other hubs: listings, orders paid by bank transfer, licences and the monthly revenue.",
         "canvas": "A project's canvas: its claims, their evidence and judging, and @strategist.",
         "srs": "A project's requirement documents, their reviews and approvals, and @ba.",
         "tasks": "A project's tasks and their board, made from approved requirements."
