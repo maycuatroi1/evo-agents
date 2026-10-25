@@ -667,8 +667,8 @@ def test_the_rows_of_0067_hold_together_and_it_goes_down_to_0066_and_up_again(wo
     at_0066 = {
         key: value
         for key, value in copy.items()
-        if key not in ("principal_id", "autonomy", "browser", "browser_identities", "selector", "tolerations")
-    }  # of 0113, 0118, 0119 and 0149
+        if key not in ("principal_id", "autonomy", "browser", "browser_identities")
+    }  # of 0113, 0118 and 0119
     refused(db, errors.CheckViolation, insert(r).values(**{**at_0066, "state": "cancelled", "finished_at": func.now()}))
     move_to(db, "0067")
     assert sql(db, select(func.count()).select_from(s)) == [(0,)]
