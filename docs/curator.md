@@ -85,7 +85,7 @@ evo-agents hub curator charter history --project demo         # every revision, 
 ```
 
 What `charter show --json` prints can be written back as it is: the keys it adds (`project`, `revision`,
-`updated_by`, `updated_at`, `worker_id`, `schedule_owner`) are ignored in a write. A body equal to the newest revision
+`updated_by`, `updated_at`, `worker_id`, `pool_id`, `schedule_owner`) are ignored in a write. A body equal to the newest revision
 writes nothing. The web shows the charter with its revisions under `/p/{project}/curator/charter`, and its form to an
 admin; the form writes the whole body, the replays (`replay`) and the history run (`history`) included, but not the
 owner's secrets (`git_secret`, `env_secrets`): a revision written from the form has none, so a charter that names them
@@ -124,7 +124,8 @@ env_secrets: [claude-oauth]
 | --- | --- | --- |
 | `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. Since plan loop-engine the project's goals live on the hub (`docs/hub.md`, Goals): a goal of the charter becomes a goal without a metric the first time the goals are read, its `id` kept as its alias, and the lens `product_goals` reads the project's active goals by rank. Change one with `evo-agents hub goal set` |
 | `window` | required | `start` and `end` as HH:MM and an IANA `timezone`. When `end` is not after `start` the window runs past midnight; start and end may not be equal |
-| `worker` | required | the worker on duty, by name (below) |
+| `worker` | required, unless `pool` | the worker on duty, by name (below) |
+| `pool` | null | instead of `worker`: one of the writer's worker pools whose nodes are on duty, by name (below); a charter names exactly one of the two |
 | `night_budget_usd` | required | the most a night may cost, every run of the night together |
 | `run_budget_usd` | null | the most one run may cost; null gives a run what the night has left. Never above `night_budget_usd` |
 | `run_max_turns` | 300 | the agent's turns in one run |
@@ -153,6 +154,18 @@ newest revision may be written by another admin. The member who owns that worker
 night shift dispatches every run as that member (`dispatched_by`), so the rule that a worker takes only its owner's
 runs holds as it is. Give that worker `--slots 1` and no credential of its owner but its leases
 (`docs/credentials.md`, "What is still a risk").
+
+**A pool on duty.** `pool` names one of the writer's own worker pools that lists the project (`docs/workers.md`,
+Pools), in place of `worker`; a charter names exactly one of the two, and the schedules follow it (`charters.pool_id`
+and `schedules.pool_id`, schema 0149, with a CHECK that exactly one of `worker_id` and `pool_id` is set). The pool's
+owner owns the schedules and the night shift dispatches as that member. A run of a pool's schedule is not pinned: it
+goes out with the selector `pool=<name>`, tolerating the pool's taints, and any ready node of the pool that serves the
+project claims it. A node is ready for the night when it is live and online, serves the project, is not draining,
+takes runs dispatched by the hub, has a clean doctor report and has no taint beyond the pool's. The keeper of the
+project's graph is the ready node with the lowest id, and the Judge's merge goes to a ready node that has the merge
+judge feature. A pool with no ready node waits, as an offline worker does. `charter show` prints `on duty: pool
+<name>` and `charter history` an ON DUTY column naming the worker or the pool; the web's charter form offers the pools
+in its duty select.
 
 **Hidden checks.** `judge.hidden_checks` are shown to the project's admins alone, and as null to anyone else. A write
 with `hidden_checks: null` keeps those of the newest revision, so a charter shown without them and written back keeps
