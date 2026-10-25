@@ -82,7 +82,7 @@ async def declared(conn: AsyncConnection, project_id: int, runtime: str) -> AcpR
     plugin = plugin_of(runtime)
     if plugin is None:
         return None
-    query = enabled_query().where(tables.plugins.c.name == plugin, tables.project_plugins.c.project_id == project_id)
+    query = enabled_query().where(tables.plugins.c.name == plugin, tables.projects.c.id == project_id)
     return _declared_by(await conn.execute(query)).get(runtime)
 
 
@@ -92,12 +92,12 @@ async def offered(conn: AsyncConnection, worker_id: int, plugins: Iterable[str])
     plugins = list(plugins or ())
     if not plugins:
         return []
-    wp, pp = tables.worker_projects, tables.project_plugins
+    wp, projects = tables.worker_projects, tables.projects
     served = select(wp.c.project_id).where(wp.c.worker_id == worker_id)
     query = (
         enabled_query()
-        .where(tables.plugins.c.name.in_(plugins), pp.c.project_id.in_(served))
-        .order_by(tables.plugins.c.name, pp.c.project_id)
+        .where(tables.plugins.c.name.in_(plugins), projects.c.id.in_(served))
+        .order_by(tables.plugins.c.name, projects.c.id)
     )
     found = _declared_by(await conn.execute(query))
     return [found[name] for name in sorted(found)]

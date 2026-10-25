@@ -50,7 +50,7 @@ every minute: in each charter's window it counts the night's figures and queues 
 on a hub without the Curator's App as this one is, so a planned change the night shift passes over keeps why.
 
 The canvas specs need the value check without the hub's worker: POST /canvas/value-check {project} runs one pass of the
-core plugin canvas's job value_check for that project alone (``evo_agents.core_plugins.canvas.value_check``), as the
+core plugin canvas's job value_check for that project alone (``evo_agents.hub.server.canvas.value_check``), as the
 worker does on each batch of its signals: each test card against the signals of its metric, as evidence the hub writes
 and proposals of a change of status.
 
@@ -427,7 +427,7 @@ def value_check(dsn: str, body: dict) -> dict:
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from evo_agents.core_plugins.canvas.value_check import check_project
+    from evo_agents.hub.server.canvas.value_check import check_project
 
     async def once() -> dict:
         engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)

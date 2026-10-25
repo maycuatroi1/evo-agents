@@ -1,4 +1,4 @@
-"""The core plugin tasks on the hub (``evo_agents.core_plugins.tasks``), as criterion a3 of plan srs-tasks-plugins
+"""The core plugin tasks on the hub (``evo_agents.hub.server.tasks``), as criterion a3 of plan srs-tasks-plugins
 names it: a project that enabled it keeps tasks. A writer creates, changes and assigns a task with a title, a
 description, a status from the project's list, assignees and the BA, QA and Dev slots, a due date, a sprint and a
 priority; links it to an SRS item by code (while the project enables srs), a plan step, a run and a pull request; a
@@ -25,9 +25,9 @@ import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
-from evo_agents.core_plugins.tasks.events import steps_done
 from evo_agents.hub import plugin_calls, plugin_events, tables
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.tasks.events import steps_done
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
@@ -37,8 +37,8 @@ from tests.hub.test_plans import registration
 from tests.hub.test_runs import PLAN, PROJECT, dispatched, plan_body
 
 CORE = {
-    "srs": EntryPoint("srs", "evo_agents.core_plugins.srs:MANIFEST", ENTRY_POINT_GROUP),
-    "tasks": EntryPoint("tasks", "evo_agents.core_plugins.tasks:MANIFEST", ENTRY_POINT_GROUP),
+    "srs": EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP),
+    "tasks": EntryPoint("tasks", "evo_agents.hub.server.tasks:MANIFEST", ENTRY_POINT_GROUP),
 }
 SAMPLE_SRS = Path(__file__).parent / "fixtures" / "srs" / "demo-shop-srs.md"
 SAMPLE_TASKS = Path(__file__).parent / "fixtures" / "tasks" / "demo-shop-tasks.json"

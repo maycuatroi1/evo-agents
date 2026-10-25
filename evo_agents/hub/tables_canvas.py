@@ -1,6 +1,6 @@
 """The tables of the core plugin canvas (0073, 0075, 0076, 0077, 0078, 0135), which ``evo_agents.hub.tables`` adds to its
 metadata as ``tables.canvas``: queries name them there (``tables.canvas.claims``). The plugin's code is
-``evo_agents.core_plugins.canvas``; the hub owns the tables because its one chain of migrations creates them
+``evo_agents.hub.server.canvas``; the hub owns the tables because its one chain of migrations creates them
 (``docs/plugins.md``, Core plugins).
 
 - canvas_canvases: the Lean Canvas of one product of a project: its slug (unique in the project), the product's name,

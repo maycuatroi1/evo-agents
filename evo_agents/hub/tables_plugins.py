@@ -47,6 +47,10 @@ request), the plugin's key of it (``ref``, one question per plugin, project and 
 them (``asker``, a person outside the hub), the clearance of the place the answer goes (``cleared``), and once the run
 ended its outcome, the answer (only when done) and the label it carries, and when.
 
+plugins.builtin (0147) marks canvas, srs and tasks: features of the hub that it registers itself, not plugins of the
+store. A project has them on through its features (``evo_agents.hub.feature_rule``), not through project_plugins;
+retired_project_plugins keeps the rows project_plugins held of them, for going back below 0147.
+
 ``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``),
 tasks (0047, ``tables_tasks``) and canvas (0073, ``tables_canvas``), each as one attribute of ``evo_agents.hub.tables``
 (``tables.srs``, ``tables.tasks``, ``tables.canvas``), and with them agent_questions (``tables.agent_questions``).
@@ -56,6 +60,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Double,
@@ -69,6 +74,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -101,6 +107,7 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         Column("disabled_reason", Text),
         Column("disabled_at", DateTime(timezone=True)),
         _stamp("created_at"),
+        Column("builtin", Boolean, nullable=False, server_default=false()),  # a feature of the hub (0147)
         ForeignKeyConstraint(["installed_by"], ["users.id"], ondelete="RESTRICT", name="plugins_installed_by_fkey"),
         ForeignKeyConstraint(
             ["id", "installed_version"],
@@ -210,6 +217,29 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         PrimaryKeyConstraint("run_id", "plugin_id", name="run_plugins_pkey"),
     )
     return project_plugins, plugin_configs, run_plugins
+
+
+def retired_table(metadata: MetaData) -> Table:
+    """retired_project_plugins (0147): the rows of project_plugins of canvas, srs and tasks as they were when those
+    became features of the hub, kept so that going back below 0147 puts them back as they were."""
+    return Table(
+        "retired_project_plugins",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("permissions", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("enabled_by", BigInteger, nullable=False),
+        Column("enabled_at", DateTime(timezone=True), nullable=False),
+        Column("granted_by", BigInteger, nullable=False),
+        Column("granted_at", DateTime(timezone=True), nullable=False),
+        Column("settings_version", Integer),  # the version of the project's features 0147 added; NULL: none
+        _stamp("retired_at"),
+        _fkey("project_id", "projects.id", "retired_project_plugins"),
+        _fkey("plugin_id", "plugins.id", "retired_project_plugins", "CASCADE"),
+        _fkey("enabled_by", "users.id", "retired_project_plugins"),
+        _fkey("granted_by", "users.id", "retired_project_plugins"),
+        PrimaryKeyConstraint("project_id", "plugin_id", name="retired_project_plugins_pkey"),
+    )
 
 
 def backend_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table]:

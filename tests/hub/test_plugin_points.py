@@ -618,8 +618,8 @@ def test_core_plugin_migration_made_tables_records_a_hub_wide_plugin_in_the_stor
     assert client.get("/v1/plugins/beacon", headers=notes.admin).json()["state"] == "installed"
 
     # No project's plugin: left out of the list, and nothing to read, enable, disable or configure in a project.
-    names = [plugin["name"] for plugin in client.get(f"/v1/projects/{PROJECT}/plugins", headers=notes.owner).json()]
-    assert names == ["notes"]
+    listed = client.get(f"/v1/projects/{PROJECT}/plugins", headers=notes.owner).json()
+    assert [plugin["name"] for plugin in listed if not plugin["builtin"]] == ["notes"]  # beside canvas, srs and tasks
     base = f"/v1/projects/{PROJECT}/plugins/beacon"
     asked = [
         ("GET", base, None),
@@ -693,7 +693,7 @@ def test_core_plugin_page_is_native_and_framed_nowhere(notes):
     client = notes.client
     listed = client.get(f"/v1/projects/{PROJECT}/plugins", headers=notes.reader)
     assert listed.status_code == 200, listed.text
-    (plugin,) = listed.json()
+    (plugin,) = [plugin for plugin in listed.json() if not plugin["builtin"]]  # beside the hub's features
     assert (plugin["name"], plugin["tier"], plugin["title"], plugin["enabled"]) == ("notes", "core", "Notes", False)
     page = {"name": "entries", "title": "Notes", "description": "", "icon": "notebook-pen", "menu": True}
     assert plugin["pages"] == [{**page, "native": True, "url": None}]

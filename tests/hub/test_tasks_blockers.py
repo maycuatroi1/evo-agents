@@ -1,4 +1,4 @@
-"""Blockers of a task (``evo_agents.core_plugins.tasks.blockers``), as criterion a1 of plan pm-daily-tracking names
+"""Blockers of a task (``evo_agents.hub.server.tasks.blockers``), as criterion a1 of plan pm-daily-tracking names
 them: a blocker is a flag beside the status, set by a writer against a member, another task or a text, cleared or
 edited later, with one row of the task's history each time; an open decision of a run that belongs to the task is a
 blocker read at the time; the tasks list says which tasks are blocked and keeps them with ``?blocked=true``. A sprint

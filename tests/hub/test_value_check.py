@@ -1,4 +1,4 @@
-"""The value check of the core plugin canvas (``evo_agents.core_plugins.canvas``: ``value_check``, ``checks``,
+"""The value check of the core plugin canvas (``evo_agents.hub.server.canvas``: ``value_check``, ``checks``,
 ``judging``), as criterion a4 of plan living-lean-canvas names it.
 
 A batch of a project's signals queues hub.value_check for the project; the job, and the plugin's hourly job, compare
@@ -29,8 +29,8 @@ if not pg.DSN:
 from sqlalchemy import column, func, insert, select, table, update
 from sqlalchemy.dialects.postgresql import JSONB
 
-from evo_agents.core_plugins.canvas import rules, value_check
 from evo_agents.hub import jobs, plugin_jobs, tables
+from evo_agents.hub.server.canvas import rules, value_check
 from evo_agents.hub.worker import queue
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import agent_of, enable, granted, members, mention, running, tool  # noqa: F401
@@ -360,7 +360,7 @@ def test_value_check_hands_strategist_a_judging_run_whose_one_tool_records_verdi
     # past the type's cap, the next items wait for a later pass
     ended(client, studio, run_id, usage={"total_cost_usd": 6})
     push(client, hub["chi"], {"key": FEEDBACK_KEY, "text": "We reorder on Fridays", "source": "widget"})
-    caplog.set_level(logging.INFO, logger="evo_agents.core_plugins.canvas.judging")
+    caplog.set_level(logging.INFO, logger="evo_agents.hub.server.canvas.judging")
     assert checked(client, hub_db).get("judging_runs") is None
     assert len(judgings_of(hub_db)) == 4
     (waited,) = [record for record in caplog.records if record.getMessage() == "no judging run: the items wait"]

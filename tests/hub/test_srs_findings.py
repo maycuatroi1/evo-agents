@@ -1,4 +1,4 @@
-"""The conflicts @ba finds in a BA document, and the gate of approval (``evo_agents.core_plugins.srs.findings``), as
+"""The conflicts @ba finds in a BA document, and the gate of approval (``evo_agents.hub.server.srs.findings``), as
 criteria a4 and a5 of plan srs-conflicts-and-tasks name them.
 
 The agent of a run of @ba records a finding with srs__finding, and only with sources the hub looks up first: a code an

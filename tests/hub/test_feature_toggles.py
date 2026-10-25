@@ -22,13 +22,18 @@ SECOND = "second-project"
 
 
 def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
-    assert features.IDS == ("chats", "curator", "kg", "monitor")
+    assert features.IDS == ("chats", "curator", "kg", "monitor", "canvas", "srs", "tasks")
     assert {f.id: f.layers for f in features.FEATURES} == {
         "chats": ("instance",),
         "curator": ("instance", "project"),
         "kg": ("instance", "project"),
         "monitor": ("instance",),
+        "canvas": ("instance", "project"),
+        "srs": ("instance", "project"),
+        "tasks": ("instance", "project"),
     }
+    # canvas, srs and tasks, plugins once, are off until a project turns them on
+    assert [f.id for f in features.FEATURES if not f.default] == ["canvas", "srs", "tasks"]
     owners = {
         "/v1/chats": ("chats", None),
         "/v1/chats/12/messages": ("chats", None),
@@ -41,6 +46,11 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
         "/v1/chatsroom": None,
         "/v1/projects/Demo/curator": None,  # not a project's name: the route refuses it on its own
         "/v1/worker/chats": None,
+        "/v1/x/canvas/demo": ("canvas", "demo"),
+        "/v1/x/srs/demo/documents/4/versions": ("srs", "demo"),
+        "/v1/x/tasks/demo/tasks": ("tasks", "demo"),
+        "/v1/x/tasksboard/demo": None,
+        "/v1/x/crm/demo/contacts": None,  # a plugin of the store, which its own gate turns away
     }
     for path, owner in owners.items():
         found = features.route_owner(path)
@@ -49,6 +59,8 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
     assert features.tool_owner("curator_figures").id == "curator"
     assert features.tool_owner("chat_message").id == features.tool_owner("chat_thread").id == "chats"
     assert features.tool_owner("memory_get") is None
+    assert features.tool_owner("canvas__read").id == "canvas" and features.tool_owner("srs__propose").id == "srs"
+    assert features.tool_owner("tasks__create").id == "tasks" and features.tool_owner("crm__invite") is None
 
 
 def test_a_projects_layer_wins_over_the_hubs_and_a_feature_neither_sets_is_on():
@@ -60,8 +72,11 @@ def test_a_projects_layer_wins_over_the_hubs_and_a_feature_neither_sets_is_on():
     assert not features.enabled(chats, {"chats": False}, {"chats": True})  # the hub's alone: a project's is ignored
     assert features.problems({"kg": False, "curator": True}, "project") == []
     assert features.problems({"wiki": False}, "instance") == [
-        "wiki: not a feature of this hub, which has chats, curator, kg, monitor"
+        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, canvas, srs, tasks"
     ]
+    srs = features.BY_ID["srs"]
+    assert not features.enabled(srs, {}) and features.enabled(srs, {}, {"srs": True})
+    assert features.enabled(srs, {"srs": True}) and not features.enabled(srs, {"srs": True}, {"srs": False})
     assert features.problems({"kg": "off"}, "instance") == ["kg: true turns it on and false off, nothing else"]
     assert features.problems({"chats": False}, "project") == [
         "chats: it is turned on or off for the whole hub only, not for one project"
@@ -142,6 +157,9 @@ def test_with_nothing_set_every_feature_is_on_and_no_route_is_turned_away(toggle
             {"id": "curator", "layers": ["instance", "project"], "enabled": True},
             {"id": "kg", "layers": ["instance", "project"], "enabled": True},
             {"id": "monitor", "layers": ["instance"], "enabled": True},
+            {"id": "canvas", "layers": ["instance", "project"], "enabled": False},
+            {"id": "srs", "layers": ["instance", "project"], "enabled": False},
+            {"id": "tasks", "layers": ["instance", "project"], "enabled": False},
         ],
         "projects": [],
     }
@@ -171,7 +189,7 @@ def test_a_feature_turned_off_for_a_project_answers_404_there_and_nowhere_else(t
 
     mine = get(toggles, "/v1/features").json()
     assert mine["projects"] == [{"project": PROJECT, "values": {"kg": False}}]
-    assert all(feature["enabled"] for feature in mine["features"])
+    assert all(feature["enabled"] == (feature["id"] not in ("canvas", "srs", "tasks")) for feature in mine["features"])
     assert get(toggles, "/v1/features", "stranger").json()["projects"] == []  # no grant on it
 
 
@@ -179,7 +197,15 @@ def test_a_feature_turned_off_for_a_project_answers_404_there_and_nowhere_else(t
 def test_the_hubs_layer_turns_a_feature_off_everywhere_and_a_projects_layer_turns_it_back_on(toggles):
     set_layer(toggles, "/v1/admin/features", values={"kg": False, "chats": False, "monitor": False})
     states = {f["id"]: f["enabled"] for f in get(toggles, "/v1/features", "reader").json()["features"]}
-    assert states == {"chats": False, "curator": True, "kg": False, "monitor": False}
+    assert states == {
+        "chats": False,
+        "curator": True,
+        "kg": False,
+        "monitor": False,
+        "canvas": False,
+        "srs": False,
+        "tasks": False,
+    }
     turned_away(get(toggles, "/v1/chats"), off("chats"))
     turned_away(get(toggles, f"/v1/kg/{SECOND}/builds"), off("kg", SECOND))
     turned_away(get(toggles, f"/v1/kg/{PROJECT}/builds"), off("kg", PROJECT))
@@ -254,6 +280,9 @@ def test_feature_on_is_the_same_rule_in_sql(toggles):
     set_layer(toggles, project_layer(), values={"curator": True, "kg": False})
     assert on("curator") and not on("curator", SECOND) and not on("kg") and on("kg", SECOND)
     assert live.sql(toggles.db, select(feature_on("chats", literal(0))))[0][0] is True
+    assert not on("srs") and not on("srs", SECOND)  # off by default, as the plugin was until a project enabled it
+    set_layer(toggles, project_layer(), values={"srs": True})
+    assert on("srs") and not on("srs", SECOND)
 
 
 @needs_pg
@@ -281,3 +310,49 @@ def test_a_tool_of_a_feature_turned_off_is_refused_as_its_route_is(hub):
     turned = hub.client.post("/v1/admin/features", json={"values": {"curator": False}}, headers=hub.admin)
     assert turned.status_code == 200, turned.text
     assert failed(hub, "alice", "curator_figures") == "error: " + off("curator", project)
+
+
+@needs_pg
+def test_canvas_srs_and_tasks_are_features_the_store_leaves_out_and_enabling_one_turns_it_on(toggles):
+    admin = toggles.headers["admin"]
+    grant = {"role": "admin", "max_level": "internal"}
+    made = toggles.client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=grant, headers=admin)
+    assert made.status_code == 200, made.text
+    owner = toggles.headers["owner"]  # an admin of the project, not of the hub
+    store = {plugin["name"] for plugin in get(toggles, "/v1/plugins", "admin").json()}
+    assert not {"canvas", "srs", "tasks"} & store
+    for name in ("canvas", "srs", "tasks"):
+        assert get(toggles, f"/v1/plugins/{name}", "admin").status_code == 404
+        refused = toggles.client.post(f"/v1/plugins/{name}/remove", json={}, headers=admin)
+        assert refused.status_code == 404, refused.text
+    listed = {plugin["name"]: plugin for plugin in get(toggles, f"/v1/projects/{PROJECT}/plugins").json()}
+    assert {name for name, plugin in listed.items() if plugin["builtin"]} == {"canvas", "srs", "tasks"}
+    assert not listed["srs"]["enabled"] and listed["srs"]["granted"] == []
+    message = (
+        f"srs is not enabled in project {PROJECT}: an admin of the project enables it on the project's Plugins page "
+        "(POST .../plugins/srs/enable), or a hub admin in the administration, Features"
+    )
+    turned_away(get(toggles, f"/v1/x/srs/{PROJECT}/documents"), message)
+
+    asked = [item["name"] for item in listed["tasks"]["permissions"]]
+    enabled = toggles.client.post(
+        f"/v1/projects/{PROJECT}/plugins/tasks/enable", json={"permissions": asked}, headers=owner
+    )
+    assert enabled.status_code == 200, enabled.text
+    layer = get(toggles, project_layer(), "admin").json()
+    assert (layer["version"], layer["values"]) == (1, {"tasks": True})
+    shown = get(toggles, f"/v1/projects/{PROJECT}/plugins/tasks").json()
+    assert shown["enabled"] and shown["builtin"] and shown["granted"] == asked and shown["pending"] == []
+    assert get(toggles, f"/v1/x/tasks/{PROJECT}/settings").status_code == 200
+    assert get(toggles, f"/v1/x/tasks/{SECOND}/settings").status_code == 404
+    again = toggles.client.post(
+        f"/v1/projects/{PROJECT}/plugins/tasks/enable", json={"permissions": asked}, headers=owner
+    )
+    assert again.status_code == 200 and get(toggles, project_layer(), "admin").json()["version"] == 1
+
+    disabled = toggles.client.post(f"/v1/projects/{PROJECT}/plugins/tasks/disable", headers=owner)
+    assert disabled.status_code == 200, disabled.text
+    assert get(toggles, project_layer(), "admin").json()["values"] == {"tasks": False}
+    assert get(toggles, f"/v1/x/tasks/{PROJECT}/settings").status_code == 404
+    set_layer(toggles, "/v1/admin/features", values={"canvas": True})  # the hub's layer turns it on everywhere
+    assert get(toggles, f"/v1/x/canvas/{SECOND}/canvases").status_code == 200
