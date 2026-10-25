@@ -301,7 +301,7 @@ what `--json` prints and the OpenAPI component of the answer, for the CLI's cont
 `client` names a client of the CLI's own that runs the command instead of one call: `browser_post` claims the oldest
 post queued for a browser, posts it with the CLI's deterministic browser script (`evo_agents/hub/browser_post.py`) and
 reports it; `browser_login` opens a visible browser on a channel's login page and seals the session the member makes
-(section Browser adapter of `docs/marketing-plugin.md`). Both need Playwright with Chromium where the CLI runs.
+(section Browser adapter of `docs/marketing-plugin.md` of evo-agents-core-plugins). Both need Playwright with Chromium where the CLI runs.
 
 The core plugins installed with the CLI (entry point group `evo_agents.plugins`) ship their commands in `cli.json`
 beside their package's `__init__`, which their manifest's `contributes.cli` also reads. The CLI reads the file without
@@ -445,7 +445,7 @@ admin in Features or by an admin of the project on its Plugins page, where each 
 on, it may do what its manifest asks for, with no grant of its own to keep. Going back below 0147 puts back the rows of
 `project_plugins` that 0147 kept in `retired_project_plugins`.
 
-telegram and chats are core plugins of another repository,
+telegram, chats, crm, pm and marketing are core plugins of another repository,
 [maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as
 the distribution `evo-agents-core-plugins` (package `evo_core_plugins`). `deploy/hub/core-plugins.txt` pins the release
 of it that matches the API of each commit of evo-agents, by version and wheel hash, and the hub's image installs it
@@ -547,36 +547,18 @@ project's features, or its Plugins page):
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, nor canvas,, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
 
-### PM
+### crm, pm and marketing
 
-**pm** (`evo_agents/core_plugins/pm`, `docs/pm-plugin.md`) answers the daily report of a project that enabled it and
-tasks: what was done on the last working day, the sprint against what it held when it opened, the tasks that are late,
-in review, stale or blocked, what to escalate and the load of each member, counted in working days of the project's
-time zone. It reads the tables of tasks, srs, plans, runs and decisions and writes nothing. It contributes the route
-`GET /v1/x/pm/{project}/daily` and the MCP tools `pm__daily` and `pm__member`, and asks for `notifications:send` and
-`chats:write`. Import-linter keeps it in its own package (contract pm-plugin-own-package): it imports no other core
-plugin.
-
-### CRM
-
-**crm** (`evo_agents/core_plugins/crm`, `docs/crm-plugin.md`) keeps the people who found the project themselves as
-contacts: a GitHub login, its public profile link, the source, a stage (lead, invited, activated, retained) computed from
-hub data and kept with its history, and touchpoints. The job `intake` reads the invites and grants of the hub and the
-issues, pull requests and discussions of the project's `repo`, and pushes the stage counts to Signal as `crm.*`. It
-contributes the routes under `/v1/x/crm/{project}/contacts`, the source `contacts` of the knowledge graph and the five
-`crm_*` tables, asks for no permission, and a contact can be deleted on request with all its touchpoints
-(`evo-agents hub crm delete`). Import-linter keeps it in its own package (contract crm-plugin-own-package).
-
-### Marketing
-
-**marketing** (`evo_agents/core_plugins/marketing`, `docs/marketing-plugin.md`) keeps the channel accounts of a project
-(github, hackernews, reddit, x, linkedin, viblo, facebook_page, facebook_profile, tiktok) and puts every post through a
-gate: deny-list, source rule, caps and gap, a Judge in a fresh context, then the month's budget. A post that passes goes
-out with no human; one that fails is a draft with its reason. Each channel has a breaker, the project a kill switch, and
-every post an audit. The credentials are `x-secret` fields of the plugin's config. It contributes the routes under
-`/v1/x/marketing/{project}`, the job `advance`, the agent type `marketing-judge` and the six `marketing_*` tables, and
-asks for no permission (`evo-agents hub marketing channels|posts|pause|resume|kill|login|browser-post`); channels with no posting API post through a deterministic browser script on a worker (`login` once, `browser-post` on a schedule). Import-linter keeps it in its own
-package (contract marketing-plugin-own-package).
+**pm** (the daily report of a project's delivery), **crm** (the people who found the project themselves, with a stage
+pushed to Signal as `crm.*`) and **marketing** (the posts of a project's channels behind a gate, a breaker per channel
+and a kill switch, with counts pushed as `marketing.*`) are core plugins of the distribution evo-agents-core-plugins
+(repository maycuatroi1/evo-agents-core-plugins, `evo_core_plugins.pm|crm|marketing`), as telegram and chats are. They
+use the core plugin API alone (section The core plugin API): their own tables and Alembic chains (version tables
+`alembic_version_pm`, `alembic_version_crm` and `alembic_version_marketing`), whose first revision adopts the tables
+the hub's migrations 0086 and 0124 to 0129 made (`evo_agents.hub.migrations.owned`), their framed pages, the commands
+of `evo-agents hub pm|crm|marketing` (a `cli.json` each), their MCP tools, jobs, Loop rules and signals. The hub's image
+installs them from `deploy/hub/core-plugins.txt`. Their docs are `docs/pm-plugin.md`, `docs/crm-plugin.md` and
+`docs/marketing-plugin.md` of that repository.
 
 ### Notifications from a plugin
 

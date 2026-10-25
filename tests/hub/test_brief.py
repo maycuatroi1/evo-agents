@@ -336,7 +336,7 @@ def test_the_columns_of_0015_hold_together(night, hub_db):  # noqa: F811
         sql(hub_db, update(BRIEFS).values(night=BRIEFS.c.day + 1))
     n = tables.notifications
     with pytest.raises(psycopg.errors.CheckViolation):
-        sql(hub_db, update(n).values(notice_kind="curator_gossip").where(n.c.notice_kind == "curator_brief"))
+        sql(hub_db, update(n).values(notice_kind="curator-gossip").where(n.c.notice_kind == "curator_brief"))
     links = tables.channel_link_codes  # telegram_links, whose checks 0063 kept
     owner = user_id(hub_db, OWNER)
     for bad in (

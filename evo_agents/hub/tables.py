@@ -39,7 +39,6 @@ from evo_agents.hub import (
     tables_accounts,
     tables_attachments,
     tables_browser,
-    tables_crm,
     tables_curator,
     tables_goals,
     tables_intake,
@@ -47,7 +46,6 @@ from evo_agents.hub import (
     tables_kg,
     tables_loop,
     tables_market,
-    tables_marketing,
     tables_memory_agents,
     tables_merge,
     tables_night,
@@ -56,7 +54,6 @@ from evo_agents.hub import (
     tables_outputs,
     tables_plugin_notices,
     tables_plugins,
-    tables_pm,
     tables_pools,
     tables_problems,
     tables_profiles,
@@ -1008,7 +1005,6 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
-pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
 # the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)
 org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops, worker_shares = tables_org.org_tables(
@@ -1023,17 +1019,3 @@ kg_decisions, kg_decision_events = tables_kg.decision_tables(metadata)  # 0142
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
-# the contacts of the core plugin crm (0124)
-crm_contacts, crm_touchpoints, crm_stage_history, crm_cursors, crm_deletions, crm_invites_sent = tables_crm.crm_tables(
-    metadata
-)
-# the channel accounts, posts and gate of the core plugin marketing (0125)
-(
-    marketing_channels,
-    marketing_posts,
-    marketing_budget,
-    marketing_denylist,
-    marketing_state,
-    marketing_metrics,
-    marketing_replies,
-) = tables_marketing.marketing_tables(metadata)

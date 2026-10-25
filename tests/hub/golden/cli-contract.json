@@ -8243,6 +8243,377 @@
         "schema": "ProjectLoop"
       }
     },
+    "hub market install": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--trust"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "trusted_publisher",
+          "upgraded"
+        ],
+        "schema": "MarketInstalled"
+      }
+    },
+    "hub market list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--search"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--industry"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--category"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugins",
+          "industries",
+          "categories",
+          "markets"
+        ],
+        "schema": "MarketList"
+      }
+    },
+    "hub market request": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plugin",
+          "state",
+          "created"
+        ],
+        "schema": "MarketRequest"
+      }
+    },
+    "hub market show": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "source",
+          "market",
+          "id",
+          "name",
+          "description",
+          "industries",
+          "categories",
+          "repo",
+          "publisher",
+          "tier",
+          "package",
+          "price",
+          "icon",
+          "homepage",
+          "license",
+          "requires",
+          "status",
+          "installed_version",
+          "latest",
+          "trusted",
+          "may_trust"
+        ],
+        "schema": "MarketPluginDetail"
+      }
+    },
+    "hub market source add": {
+      "positionals": [
+        {
+          "name": "repo",
+          "metavar": "OWNER/REPO",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--ref"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "main"
+        },
+        {
+          "flags": [
+            "--path"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "market.json"
+        },
+        {
+          "flags": [
+            "--token-stdin"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "repo",
+          "name",
+          "title",
+          "fetched_at",
+          "error",
+          "ref",
+          "path",
+          "builtin",
+          "private",
+          "added_by",
+          "added_at",
+          "plugins"
+        ],
+        "schema": "MarketSource"
+      }
+    },
+    "hub market source list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "sources",
+          "default_source",
+          "publishers_locked"
+        ],
+        "schema": "MarketSources"
+      }
+    },
+    "hub market source refresh": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "repo",
+          "name",
+          "title",
+          "fetched_at",
+          "error",
+          "ref",
+          "path",
+          "builtin",
+          "private",
+          "added_by",
+          "added_at",
+          "plugins"
+        ],
+        "schema": "MarketSource"
+      }
+    },
+    "hub market source remove": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "sources",
+          "default_source",
+          "publishers_locked"
+        ],
+        "schema": "MarketSources"
+      }
+    },
     "hub marketing add": {
       "positionals": [],
       "options": [
@@ -9359,6 +9730,22 @@
             "--dsn"
           ],
           "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plugin"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": null,
           "required": false,
           "repeatable": false
         }
@@ -11899,7 +12286,7 @@
           "name": "name",
           "metavar": "NAME",
           "value": "string",
-          "required": true,
+          "required": false,
           "repeatable": false
         }
       ],
@@ -11909,6 +12296,30 @@
             "--version"
           ],
           "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--github"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--signer"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--trust"
+          ],
+          "value": null,
           "required": false,
           "repeatable": false
         },
@@ -11939,7 +12350,18 @@
           "description",
           "tier"
         ],
-        "schema": "Plugin"
+        "schema": "Plugin",
+        "with": {
+          "--github": {
+            "kind": "object",
+            "keys": [
+              "plugin",
+              "trusted_publisher",
+              "upgraded"
+            ],
+            "schema": "MarketInstalled"
+          }
+        }
       }
     },
     "hub plugin list": {
@@ -12046,6 +12468,109 @@
           "version"
         ],
         "schema": "PluginPublished"
+      }
+    },
+    "hub plugin publisher add": {
+      "positionals": [
+        {
+          "name": "publisher",
+          "metavar": "PUBLISHER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "signer",
+          "metavar": "SIGNER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "identities",
+          "core",
+          "operator",
+          "trusted"
+        ],
+        "schema": "PluginPublisher"
+      }
+    },
+    "hub plugin publisher list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "identities",
+          "core",
+          "operator",
+          "trusted"
+        ],
+        "schema": "PluginPublisher"
+      }
+    },
+    "hub plugin publisher remove": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "identities",
+          "core",
+          "operator",
+          "trusted"
+        ],
+        "schema": "PluginPublisher"
       }
     },
     "hub plugin remove": {
@@ -20362,7 +20887,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.44.2"
+      "version": "0.46.0"
     },
     "paths": {
       "/v1/health": {
@@ -51508,6 +52033,25 @@
               "description": "only contacts first seen from this source"
             },
             {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer"
+            },
+            {
               "name": "X-Evo-Sink",
               "in": "header",
               "required": false,
@@ -51610,6 +52154,25 @@
               "description": "the contact's GitHub login"
             },
             {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer"
+            },
+            {
               "name": "X-Evo-Sink",
               "in": "header",
               "required": false,
@@ -51708,6 +52271,25 @@
                 "title": "Login"
               },
               "description": "the contact's GitHub login"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -51894,6 +52476,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -51980,6 +52581,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -52084,6 +52704,25 @@
                 "minimum": 1,
                 "title": "Channel Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -52188,6 +52827,25 @@
                 "minimum": 1,
                 "title": "Channel Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -52292,6 +52950,25 @@
                 "minimum": 1,
                 "title": "Channel Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -52556,6 +53233,130 @@
           }
         }
       },
+      "/v1/x/marketing/{project}/check": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Check Channels",
+          "description": "Check the health of one account (``channel_id``) or of every one, as ``POST /channels/{id}/check`` does for\neach; what ``evo-agents hub marketing check`` calls. An admin does.",
+          "operationId": "check_channels_v1_x_marketing__project__check_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MarketingCheckIn"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MarketingChannel"
+                    },
+                    "title": "Response Check Channels V1 X Marketing  Project  Check Post"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/marketing/{project}/kill": {
         "post": {
           "tags": [
@@ -52574,6 +53375,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -52668,6 +53488,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -52948,6 +53787,25 @@
                 "title": "State"
               },
               "description": "only posts in this state"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -53696,6 +54554,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -53782,6 +54659,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -53885,6 +54781,25 @@
                 "minimum": 1,
                 "title": "Deny Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -53988,6 +54903,25 @@
                 "title": "Date"
               },
               "description": "the day of the report; today when left out"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub pm daily` prints, as {text}, instead of the report",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub pm daily` prints, as {text}, instead of the report"
             },
             {
               "name": "X-Evo-Sink",
@@ -67341,6 +68275,108 @@
           }
         }
       },
+      "/v1/plugins/install-github": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Install From Github",
+          "description": "Install a plugin from the release of a GitHub repo, signed by the signer named (or the repo's ci.yml).",
+          "operationId": "install_from_github_v1_plugins_install_github_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubInstallIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketInstalled"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "502": {
+              "description": "Bad Gateway",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/plugins": {
         "get": {
           "tags": [
@@ -68325,7 +69361,7 @@
             "plugins"
           ],
           "summary": "Publishers",
-          "description": "The publishers an operator of this hub trusts, in the order EVO_HUB_PLUGIN_PUBLISHERS names them.",
+          "description": "The publishers this hub trusts: the operator's in the order EVO_HUB_PLUGIN_PUBLISHERS names them, then those\nonly hub admins trusted.",
           "operationId": "publishers_v1_plugin_publishers_get",
           "responses": {
             "200": {
@@ -68358,6 +69394,928 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Publisher",
+          "description": "Trust ``signer`` to sign the plugins of ``publisher``; nothing changes when the hub trusts it already.",
+          "operationId": "add_publisher_v1_plugin_publishers_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublisherTrustIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/PluginPublisher"
+                    },
+                    "type": "array",
+                    "title": "Response Add Publisher V1 Plugin Publishers Post"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugin-publishers/{entry_id}": {
+        "delete": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Remove Publisher",
+          "description": "Stop trusting a signer hub admins trusted; a plugin it signed stays installed, and installing or upgrading\nit again is refused until something the hub trusts signs it.",
+          "operationId": "remove_publisher_v1_plugin_publishers__entry_id__delete",
+          "parameters": [
+            {
+              "name": "entry_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Entry Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PluginPublisher"
+                    },
+                    "title": "Response Remove Publisher V1 Plugin Publishers  Entry Id  Delete"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/market/sources": {
+        "get": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Sources",
+          "description": "The markets this hub reads, the operator's first.",
+          "operationId": "sources_v1_market_sources_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketSources"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Add Source",
+          "description": "Add a market and read it now; a market that does not read is kept with the error, to refresh once fixed.",
+          "operationId": "add_source_v1_market_sources_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSourceIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketSource"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/market/sources/{source_id}": {
+        "delete": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Remove Source",
+          "description": "Stop reading a market; the plugins installed from it stay installed. The operator's market stays.",
+          "operationId": "remove_source_v1_market_sources__source_id__delete",
+          "parameters": [
+            {
+              "name": "source_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the market source's id, as GET /v1/market/sources gives it",
+                "title": "Source Id"
+              },
+              "description": "the market source's id, as GET /v1/market/sources gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketSources"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/market/sources/{source_id}/refresh": {
+        "post": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Refresh Source",
+          "description": "Read a market again now: its index, and the latest release of each of its free plugins.",
+          "operationId": "refresh_source_v1_market_sources__source_id__refresh_post",
+          "parameters": [
+            {
+              "name": "source_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the market source's id, as GET /v1/market/sources gives it",
+                "title": "Source Id"
+              },
+              "description": "the market source's id, as GET /v1/market/sources gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketSource"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/market/{source}/{plugin}/install": {
+        "post": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Install From Market",
+          "description": "Install a free plugin of a market, or upgrade it, from its GitHub release.",
+          "operationId": "install_from_market_v1_market__source___plugin__install_post",
+          "parameters": [
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the market source's id, as GET /v1/market/sources gives it",
+                "title": "Source"
+              },
+              "description": "the market source's id, as GET /v1/market/sources gives it"
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as the market lists it",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id, as the market lists it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketInstallIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketInstalled"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/market/{source}/{plugin}/request": {
+        "post": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Request Install",
+          "description": "Ask the hub admins to install a plugin of a market for project ``project``, of which the caller is an admin.",
+          "operationId": "request_install_v1_market__source___plugin__request_post",
+          "parameters": [
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the market source's id, as GET /v1/market/sources gives it",
+                "title": "Source"
+              },
+              "description": "the market source's id, as GET /v1/market/sources gives it"
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as the market lists it",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id, as the market lists it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketRequestIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketRequest"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/market": {
+        "get": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Market",
+          "description": "The plugins of every market this hub reads, by market then as each lists them; filtered by the words of\n``q`` (in the id, name, description and publisher), an industry, a category and a market.",
+          "operationId": "market_v1_market_get",
+          "parameters": [
+            {
+              "name": "q",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Q"
+              }
+            },
+            {
+              "name": "industry",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Industry"
+              }
+            },
+            {
+              "name": "category",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Category"
+              }
+            },
+            {
+              "name": "source",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Source"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/market/{source}/{plugin}": {
+        "get": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Market Plugin",
+          "description": "One plugin of one market, with the permissions its latest release asks for.",
+          "operationId": "market_plugin_v1_market__source___plugin__get",
+          "parameters": [
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the market source's id, as GET /v1/market/sources gives it",
+                "title": "Source"
+              },
+              "description": "the market source's id, as GET /v1/market/sources gives it"
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as the market lists it",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id, as the market lists it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MarketPluginDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
                   }
                 }
               }
@@ -69459,6 +71417,58 @@
                 }
               },
               "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/cli/plugins": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "The commands plugins add to the CLI",
+          "operationId": "cli_plugins_v1_cli_plugins_get",
+          "parameters": [
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the answer the CLI holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the answer the CLI holds"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "{version, plugins: [{id, version, commands}]}",
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              }
+            },
+            "304": {
+              "description": "unchanged"
             },
             "422": {
               "description": "Validation Error",
@@ -92113,6 +94123,52 @@
           "title": "GatewayLease",
           "description": "The lease of a run on a provider account's model (``evo_agents.hub.gateway_runs``): the hub's gateway route\nand a token of the run for it; never a provider's key nor the gateway's."
         },
+        "GitHubInstallIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$",
+              "title": "Repo",
+              "description": "OWNER/REPO"
+            },
+            "tag": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag",
+              "description": "the release's tag; the latest if left out"
+            },
+            "signer": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(sigstore|ed25519):\\S{1,600}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signer",
+              "description": "what signs the releases; sigstore:OWNER/REPO/.github/workflows/ci.yml when left out"
+            },
+            "trust_publisher": {
+              "type": "boolean",
+              "title": "Trust Publisher",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "GitHubInstallIn"
+        },
         "GitHubLogin": {
           "properties": {
             "github_token": {
@@ -98569,6 +100625,875 @@
           ],
           "title": "MapNode"
         },
+        "MarketBrief": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "fetched_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fetched At"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo"
+          ],
+          "title": "MarketBrief"
+        },
+        "MarketInstallIn": {
+          "properties": {
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]{1,40})?$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "the version to install; the latest release when left out"
+            },
+            "trust_publisher": {
+              "type": "boolean",
+              "title": "Trust Publisher",
+              "description": "trust the signer for the publisher from now on, when the hub does not yet",
+              "default": false
+            }
+          },
+          "type": "object",
+          "title": "MarketInstallIn"
+        },
+        "MarketInstalled": {
+          "properties": {
+            "plugin": {
+              "$ref": "#/components/schemas/Plugin"
+            },
+            "trusted_publisher": {
+              "type": "boolean",
+              "title": "Trusted Publisher",
+              "description": "whether this install made the hub trust the publisher's signer"
+            },
+            "upgraded": {
+              "type": "boolean",
+              "title": "Upgraded"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "trusted_publisher",
+            "upgraded"
+          ],
+          "title": "MarketInstalled"
+        },
+        "MarketList": {
+          "properties": {
+            "plugins": {
+              "items": {
+                "$ref": "#/components/schemas/MarketPlugin"
+              },
+              "type": "array",
+              "title": "Plugins"
+            },
+            "industries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Industries",
+              "description": "every industry the markets list, to filter by"
+            },
+            "categories": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Categories",
+              "description": "every category the markets list, to filter by"
+            },
+            "markets": {
+              "items": {
+                "$ref": "#/components/schemas/MarketBrief"
+              },
+              "type": "array",
+              "title": "Markets"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugins",
+            "industries",
+            "categories",
+            "markets"
+          ],
+          "title": "MarketList"
+        },
+        "MarketPermission": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "what the permission lets the plugin do, as a hub admin grants it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "text"
+          ],
+          "title": "MarketPermission"
+        },
+        "MarketPlugin": {
+          "properties": {
+            "source": {
+              "type": "integer",
+              "title": "Source",
+              "description": "the id of the market source that lists it"
+            },
+            "market": {
+              "type": "string",
+              "title": "Market",
+              "description": "the market's name"
+            },
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "industries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Industries"
+            },
+            "categories": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Categories"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "publisher": {
+              "$ref": "#/components/schemas/MarketPublisher"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "isolated",
+                "core"
+              ],
+              "title": "Tier"
+            },
+            "package": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Package"
+            },
+            "price": {
+              "$ref": "#/components/schemas/MarketPrice"
+            },
+            "icon": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Icon"
+            },
+            "homepage": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Homepage"
+            },
+            "license": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "License"
+            },
+            "requires": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Requires"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "not_installed",
+                "installed",
+                "upgrade",
+                "in_image",
+                "not_in_image",
+                "needs_license",
+                "unavailable"
+              ],
+              "title": "Status"
+            },
+            "installed_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed Version"
+            },
+            "latest": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MarketRelease"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "its latest release, for a free isolated plugin"
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "market",
+            "id",
+            "name",
+            "description",
+            "industries",
+            "categories",
+            "repo",
+            "publisher",
+            "tier",
+            "price",
+            "status"
+          ],
+          "title": "MarketPlugin"
+        },
+        "MarketPluginDetail": {
+          "properties": {
+            "source": {
+              "type": "integer",
+              "title": "Source",
+              "description": "the id of the market source that lists it"
+            },
+            "market": {
+              "type": "string",
+              "title": "Market",
+              "description": "the market's name"
+            },
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "industries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Industries"
+            },
+            "categories": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Categories"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "publisher": {
+              "$ref": "#/components/schemas/MarketPublisher"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "isolated",
+                "core"
+              ],
+              "title": "Tier"
+            },
+            "package": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Package"
+            },
+            "price": {
+              "$ref": "#/components/schemas/MarketPrice"
+            },
+            "icon": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Icon"
+            },
+            "homepage": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Homepage"
+            },
+            "license": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "License"
+            },
+            "requires": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Requires"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "not_installed",
+                "installed",
+                "upgrade",
+                "in_image",
+                "not_in_image",
+                "needs_license",
+                "unavailable"
+              ],
+              "title": "Status"
+            },
+            "installed_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed Version"
+            },
+            "latest": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MarketRelease"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "its latest release, for a free isolated plugin"
+            },
+            "trusted": {
+              "type": "boolean",
+              "title": "Trusted",
+              "description": "whether the hub trusts the signer for the publisher already"
+            },
+            "may_trust": {
+              "type": "boolean",
+              "title": "May Trust",
+              "description": "whether a hub admin may trust it here (not locked, not a core publisher)"
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "market",
+            "id",
+            "name",
+            "description",
+            "industries",
+            "categories",
+            "repo",
+            "publisher",
+            "tier",
+            "price",
+            "status",
+            "trusted",
+            "may_trust"
+          ],
+          "title": "MarketPluginDetail"
+        },
+        "MarketPrice": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "free",
+                "subscription"
+              ],
+              "title": "Kind"
+            },
+            "usd_per_hub_month": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usd Per Hub Month"
+            },
+            "seller": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seller"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "title": "MarketPrice"
+        },
+        "MarketPublisher": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "signer": {
+              "type": "string",
+              "title": "Signer",
+              "description": "what the market says signs its releases: sigstore:<workflow> or ed25519:<key>"
+            },
+            "identity": {
+              "type": "string",
+              "title": "Identity",
+              "description": "how the signer reads among a publisher's identities"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "signer",
+            "identity"
+          ],
+          "title": "MarketPublisher"
+        },
+        "MarketRelease": {
+          "properties": {
+            "tag": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            },
+            "permissions": {
+              "items": {
+                "$ref": "#/components/schemas/MarketPermission"
+              },
+              "type": "array",
+              "title": "Permissions"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the latest release does not read, when it does not"
+            }
+          },
+          "type": "object",
+          "title": "MarketRelease"
+        },
+        "MarketRequest": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "False when the project had asked already and the request is still open"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "plugin",
+            "state",
+            "created"
+          ],
+          "title": "MarketRequest"
+        },
+        "MarketRequestIn": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Project"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project"
+          ],
+          "title": "MarketRequestIn"
+        },
+        "MarketSource": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "fetched_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fetched At"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "path": {
+              "type": "string",
+              "title": "Path"
+            },
+            "builtin": {
+              "type": "boolean",
+              "title": "Builtin",
+              "description": "the operator's market (EVO_HUB_MARKET_DEFAULT_SOURCE), which stays"
+            },
+            "private": {
+              "type": "boolean",
+              "title": "Private",
+              "description": "whether the hub reads it with a token"
+            },
+            "added_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Added By"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            },
+            "plugins": {
+              "type": "integer",
+              "title": "Plugins",
+              "description": "how many plugins its index lists"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "ref",
+            "path",
+            "builtin",
+            "private",
+            "added_at",
+            "plugins"
+          ],
+          "title": "MarketSource"
+        },
+        "MarketSourceIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$",
+              "title": "Repo",
+              "description": "OWNER/REPO"
+            },
+            "ref": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Ref",
+              "default": "main"
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "pattern": "^[^\\s]+$",
+              "title": "Path",
+              "default": "market.json"
+            },
+            "token": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token",
+              "description": "a GitHub token that reads a private repo; sealed, never shown again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "MarketSourceIn"
+        },
+        "MarketSources": {
+          "properties": {
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/MarketSource"
+              },
+              "type": "array",
+              "title": "Sources"
+            },
+            "default_source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Source",
+              "description": "EVO_HUB_MARKET_DEFAULT_SOURCE"
+            },
+            "publishers_locked": {
+              "type": "boolean",
+              "title": "Publishers Locked",
+              "description": "EVO_HUB_PLUGIN_PUBLISHERS_LOCKED: hub admins may trust no publisher"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sources",
+            "default_source",
+            "publishers_locked"
+          ],
+          "title": "MarketSources"
+        },
         "MarketingBrowserClaim": {
           "properties": {
             "job": {
@@ -98952,6 +101877,25 @@
             "account"
           ],
           "title": "MarketingChannelIn"
+        },
+        "MarketingCheckIn": {
+          "properties": {
+            "channel_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Channel Id",
+              "description": "one channel; none checks every one"
+            }
+          },
+          "type": "object",
+          "title": "MarketingCheckIn"
         },
         "MarketingDeny": {
           "properties": {
@@ -101865,42 +104809,14 @@
             "notice_kind": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "enum": [
-                    "push_default_branch",
-                    "merge_default_branch",
-                    "plan_finished",
-                    "run_failed",
-                    "curator_brief",
-                    "curator_paused",
-                    "author_waiting",
-                    "chat_mention",
-                    "chat_added",
-                    "plugin_disabled",
-                    "builder_proposal",
-                    "canvas_baseline",
-                    "merge_paused",
-                    "release",
-                    "pm_daily",
-                    "pm_escalation",
-                    "run_outputs",
-                    "loop_paused",
-                    "goal_review",
-                    "loop_brief",
-                    "plugin_notice",
-                    "autonomy",
-                    "worker_doctor",
-                    "browser_needs_login",
-                    "curator_probe_report",
-                    "opportunity_window"
-                  ]
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Notice Kind",
-              "description": "a notice's kind; null for a decision"
+              "description": "a notice's kind: one of the hub's, or one a core plugin declares (contributes.notice_kinds, its table prefix first); null for a decision"
             },
             "project": {
               "anyOf": [
@@ -106215,6 +109131,18 @@
               ],
               "title": "Url",
               "description": "what the web frames for an isolated plugin's page, a ticket inside it: only in a project that enabled the plugin, null otherwise and for a native page"
+            },
+            "slot": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slot",
+              "description": "where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own"
             }
           },
           "type": "object",
@@ -106332,6 +109260,20 @@
               "type": "boolean",
               "title": "Core",
               "description": "whether its plugins may be core plugins, which run in the hub's processes"
+            },
+            "operator": {
+              "type": "boolean",
+              "title": "Operator",
+              "description": "whether EVO_HUB_PLUGIN_PUBLISHERS lists it",
+              "default": false
+            },
+            "trusted": {
+              "items": {
+                "$ref": "#/components/schemas/TrustedSigner"
+              },
+              "type": "array",
+              "title": "Trusted",
+              "description": "the signers hub admins trusted for it, besides the operator's"
             }
           },
           "type": "object",
@@ -114350,6 +117292,38 @@
             "audience"
           ],
           "title": "Published"
+        },
+        "PublisherTrustIn": {
+          "properties": {
+            "publisher": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Publisher"
+            },
+            "signer": {
+              "type": "string",
+              "pattern": "^(sigstore|ed25519):\\S{1,600}$",
+              "title": "Signer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "publisher",
+            "signer"
+          ],
+          "title": "PublisherTrustIn"
         },
         "Queued": {
           "properties": {
@@ -131788,6 +134762,61 @@
             "link"
           ],
           "title": "TriageThread"
+        },
+        "TrustedSigner": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the row to remove with DELETE /v1/plugin-publishers/{id}"
+            },
+            "signer": {
+              "type": "string",
+              "title": "Signer",
+              "description": "sigstore:OWNER/REPO/.github/workflows/FILE.yml or ed25519:KEY, as it was trusted"
+            },
+            "identity": {
+              "type": "string",
+              "title": "Identity",
+              "description": "how it reads among the publisher's identities"
+            },
+            "added_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Added By"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "signer",
+            "identity",
+            "added_by",
+            "added_at"
+          ],
+          "title": "TrustedSigner"
         },
         "UnitCreate": {
           "properties": {

@@ -122,7 +122,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
 | srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews`, `/items/{ref}/reviews` (one use case) and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
-| pm | `GET /v1/x/pm/{project}/daily?date=`: the daily report of a project (`docs/pm-plugin.md`) |
+| pm | `GET /v1/x/pm/{project}/daily?date=`: the daily report of a project (`docs/pm-plugin.md` of evo-agents-core-plugins) |
 | canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
@@ -1035,7 +1035,7 @@ PROD checks) and `merge_samples`; 0084 `merge_breakers` and the notice `merge_pa
 no plan and the merge_paused notices, and puts back the checks they widened. Schemas 0085 to 0090 belong to the
 plugins tasks and pm, to the run figures and to the outputs of runs: 0085 `tasks_blockers` and
 `tasks_sprints.activated_at`, 0086 `pm_sends` and the notices `pm_daily` and `pm_escalation`, 0087
-`run_tool_stats.skills`, 0088 `tasks_items.outcome_md` (`docs/tasks-plugin.md`, `docs/pm-plugin.md`,
+`run_tool_stats.skills`, 0088 `tasks_items.outcome_md` (`docs/tasks-plugin.md`, `docs/pm-plugin.md` of evo-agents-core-plugins,
 `docs/workers.md`), 0089 `run_outputs` and `run_output_links`, 0090 `notification_mutes` and the notice `run_outputs`
 (section Outputs of runs). Schema 0091 adds `goals` and `goal_revisions` and the @builder proposal kind `goal` (section
 Goals); going back to 0090 deletes the goal proposals and their notices and drops both tables. Schema 0092 adds the

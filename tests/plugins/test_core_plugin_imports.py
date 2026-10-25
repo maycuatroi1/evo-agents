@@ -1,9 +1,8 @@
 """A core plugin built on the API imports nothing of evo_agents but the API module, and writes no raw SQL (criteria a3
 and a8 of the plan external-core-plugins, as API 1.3 of the plan plugin-market changed them): ``python -m pytest tests/plugins/test_core_plugin_imports.py`` reads every ``.py``
-of each package of PACKAGES with ``ast``, without importing it: the sample plugins of tests/fixtures/core_plugins and
-the core plugins crm, pm and marketing, which stay in evo-agents (``evo_agents/core_plugins``) on the API alone.
-telegram and chats, which left evo-agents for the repository evo-agents-core-plugins, run a copy of this check there
-(``plugin_tests/test_api_imports.py``).
+of each package of PACKAGES with ``ast``, without importing it: the sample plugins of tests/fixtures/core_plugins.
+telegram, chats, crm, pm and marketing, which left evo-agents for the repository evo-agents-core-plugins, run a copy
+of this check there (``plugin_tests/test_api_imports.py``).
 
 - ``import`` and ``from ... import`` of ``evo_agents`` or below name ``evo_agents.hub.server.core_plugin_api`` alone
   (``from evo_agents.hub.server import core_plugin_api`` included), or a module of the plugin's own package (a core
@@ -29,13 +28,10 @@ API = "evo_agents.hub.server.core_plugin_api"
 API_INIT = ROOT / "evo_agents" / "hub" / "server" / "core_plugin_api" / "__init__.py"
 FIXTURES = ROOT / "tests" / "fixtures" / "core_plugins"
 CORE = ROOT / "evo_agents" / "core_plugins"
-PACKAGES = (  # the packages built on the API alone: the samples, and the core plugins that stay in evo-agents
+PACKAGES = (  # the packages built on the API alone: the samples
     FIXTURES / "northwind_chat",
     FIXTURES / "lumen_relay",
     FIXTURES / "northwind_ledger",
-    CORE / "crm",
-    CORE / "pm",
-    CORE / "marketing",
 )
 RAW_SQL = {"text", "TextClause"}  # what of sqlalchemy writes SQL by hand
 RAW_CALLS = {"exec_driver_sql"}
@@ -169,14 +165,14 @@ def test_the_check_finds_every_other_import():
 
 def test_a_core_plugin_of_evo_agents_imports_its_own_modules_and_no_other_of_evo_agents():
     names = public_names()
-    own = own_package(CORE / "crm")
-    assert own == "evo_agents.core_plugins.crm" and own_package(FIXTURES / "northwind_ledger") is None
+    own = own_package(CORE / "lumen")  # a core plugin evo-agents would ship on the API
+    assert own == "evo_agents.core_plugins.lumen" and own_package(FIXTURES / "northwind_ledger") is None
     source = "\n".join(
         [
-            "from evo_agents.core_plugins.crm.store import contacts",
-            "import evo_agents.core_plugins.crm.rules",
-            "from evo_agents.core_plugins.marketing import gate",
-            "from evo_agents.core_plugins import crm",
+            "from evo_agents.core_plugins.lumen.store import notes",
+            "import evo_agents.core_plugins.lumen.rules",
+            "from evo_agents.core_plugins.relay import gate",
+            "from evo_agents.core_plugins import lumen",
             "from evo_agents.hub import tables",
         ]
     )

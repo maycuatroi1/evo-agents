@@ -4,11 +4,9 @@ import { createAgentByApi } from "./support/agents";
 import { ceilingOver } from "./support/autonomy";
 import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
-import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { buildsPath, grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
-import { decidePath } from "./support/loop";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { seatByApi, unitByApi } from "./support/org";
@@ -32,7 +30,6 @@ import {
   startRun,
   uploadDiff,
 } from "./support/runs";
-import { pmPath, seedPm } from "./support/pm";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
@@ -59,13 +56,6 @@ type Visit = { path: string; ready: (page: Page) => Promise<void> };
 function shown(testId: string) {
   return async (page: Page) => {
     await expect(page.locator("#main").getByTestId(testId).first()).toBeVisible();
-  };
-}
-
-/** Ready once `testId` shows inside the plugin's page the hub frames in the main column (`frame`, its selector). */
-function framed(testId: string, frame = '[data-testid="plugin-frame"]') {
-  return async (page: Page) => {
-    await expect(page.locator("#main").frameLocator(frame).getByTestId(testId).first()).toBeVisible();
   };
 }
 
@@ -136,31 +126,6 @@ for (const width of WIDTHS) {
   test(`plans, memories and skills pages never scroll sideways at ${width} px`, async ({ page, member }) => {
     const me = await member([{ role: "writer", maxLevel: "customer" }]);
     await noSidewaysScroll(page, [width], await seedProject(me));
-  });
-}
-
-for (const width of WIDTHS) {
-  test(`PM daily never scrolls sideways at ${width} px`, async ({ page, member }) => {
-    const me = await member([{ role: "admin", maxLevel: "internal" }]);
-    const project = me.projects[0];
-    await seedPm(me, project, { long: LONG });
-    await noSidewaysScroll(page, [width], [{ path: pmPath(project), ready: framed("pm-report") }]);
-  });
-}
-
-for (const width of WIDTHS) {
-  test(`Contacts, Marketing and the growth decisions never scroll sideways at ${width} px`, async ({ page, member }) => {
-    const me = await member([{ role: "admin", maxLevel: "internal" }]);
-    const project = me.projects[0];
-    await seedGrowth(me, project, { long: true, spent: 50 });
-    await noSidewaysScroll(page, [width], [
-      { path: contactsPath(project), ready: framed("crm-contacts") },
-      { path: contactPath(project, CONTACTS.longLead), ready: framed("crm-touchpoint") },
-      { path: marketingPath(project), ready: framed("marketing-channels") },
-      { path: marketingPath(project, "posts"), ready: framed("marketing-group-drafts") },
-      { path: marketingPath(project, "weekly"), ready: framed("weekly-report") },
-      { path: decidePath(project), ready: framed("decide-growth", '[data-testid="plugin-frame"][data-panel]') },
-    ]);
   });
 }
 

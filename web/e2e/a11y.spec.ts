@@ -34,7 +34,6 @@ import {
 import { ceilingOver, prefByApi, stopOwnByApi } from "./support/autonomy";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { promotionNight, seedCurator } from "./support/curator";
-import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { buildsPath, explorerReady, graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
@@ -93,7 +92,6 @@ import {
   USE_CASE,
 } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
-import { pmPath, seedPm } from "./support/pm";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -103,10 +101,6 @@ import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUN
  * Pages render in the default language, English, and entries find what they click by role, test id or ARIA
  * state rather than by copy.
  */
-/** The frame of a plugin's page in the main column, and a plugin's panel of a slot there (web/DESIGN.md, Plugins). */
-const PLUGIN_FRAME = '[data-testid="plugin-frame"]';
-const PANEL_FRAME = '[data-testid="plugin-frame"][data-panel]';
-
 type Context = { page: Page; me: Member; hidden: string };
 type Entry = { name: string; open: (context: Context) => Promise<void>; deployed?: boolean };
 
@@ -2038,79 +2032,6 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "Tasks backlog");
       await page.locator("#main").getByTestId("sprint-new").click();
       await expect(page.getByTestId("sprint-new-form")).toBeVisible();
-    },
-  },
-  {
-    name: "the PM daily report with its eight sections, and at 375 px",
-    open: async ({ page, me }) => {
-      const project = me.projects[0];
-      await new HubAdmin().grant(project, me.login, "admin", "customer");
-      await seedPm(me, project);
-      await open(page, pmPath(project));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("pm-report")).toBeVisible();
-      await expectNoSeriousViolations(page, "PM daily");
-      await page.setViewportSize({ width: 375, height: 812 });
-      await expectNoSeriousViolations(page, "PM daily at 375 px");
-    },
-  },
-  {
-    name: "Contacts with the pipeline and a contact's page with its note form and Delete dialog, and at 375 px",
-    open: async ({ page, me }) => {
-      const project = me.projects[0];
-      await new HubAdmin().grant(project, me.login, "admin", "customer");
-      await seedGrowth(me, project, { long: true });
-      await open(page, contactsPath(project));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-contact-row").first()).toBeVisible();
-      await expectNoSeriousViolations(page, "Contacts");
-      await open(page, contactPath(project, CONTACTS.longLead));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-note-form")).toBeVisible();
-      await expectNoSeriousViolations(page, "a contact");
-      await page.setViewportSize({ width: 375, height: 812 });
-      await expectNoSeriousViolations(page, "a contact at 375 px");
-      await page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-delete").click();
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByRole("alertdialog")).toBeVisible();
-    },
-  },
-  {
-    name: "Marketing overview, posts and Growth weekly, the growth decisions, and the kill switch dialog at 375 px",
-    open: async ({ page, me }) => {
-      const project = me.projects[0];
-      await new HubAdmin().grant(project, me.login, "admin", "customer");
-      await seedGrowth(me, project, { spent: 50 });
-      await open(page, marketingPath(project, "posts"));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-group-drafts")).toBeVisible();
-      await expectNoSeriousViolations(page, "Marketing posts");
-      await open(page, marketingPath(project, "weekly"));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("weekly-report")).toBeVisible();
-      await expectNoSeriousViolations(page, "Growth weekly");
-      await open(page, decidePath(project));
-      await expect(page.locator("#main").frameLocator(PANEL_FRAME).getByTestId("decide-growth")).toBeVisible();
-      await expectNoSeriousViolations(page, "growth decisions");
-      await open(page, marketingPath(project));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-channels")).toBeVisible();
-      await expectNoSeriousViolations(page, "Marketing overview");
-      await page.setViewportSize({ width: 375, height: 812 });
-      await expectNoSeriousViolations(page, "Marketing overview at 375 px");
-      await page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-kill").click();
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByRole("alertdialog")).toBeVisible();
-    },
-  },
-  {
-    name: "Contacts and Marketing on a small screen, read as a reader",
-    open: async ({ page, me }) => {
-      const project = me.projects[1];
-      const owner = newAccount("growth-owner");
-      await new HubAdmin().grant(project, owner.login, "admin", "public");
-      await seedGrowth(owner, project);
-      await page.setViewportSize({ width: 375, height: 812 });
-      await open(page, contactsPath(project));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("crm-read-only")).toBeVisible();
-      await expectNoSeriousViolations(page, "Contacts as a reader at 375 px");
-      await open(page, marketingPath(project, "posts"));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-read-only")).toBeVisible();
-      await expectNoSeriousViolations(page, "Marketing posts as a reader at 375 px");
-      await open(page, marketingPath(project));
-      await expect(page.locator("#main").frameLocator(PLUGIN_FRAME).getByTestId("marketing-read-only")).toBeVisible();
     },
   },
   {
