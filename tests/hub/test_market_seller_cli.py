@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import stat
 
 from evo_agents.cli import main
@@ -20,7 +21,8 @@ def test_seller_key_writes_the_seed_and_prints_only_the_public_half(tmp_path, ca
     seed_text = target.read_text().strip()
     seed = base64.b64decode(seed_text, validate=True)
     assert len(seed) == 32
-    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    if os.name != "nt":  # Windows has no owner-only mode bits to read back
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
     assert found == {
         "file": str(target),
         "key_id": key_id(base64.b64decode(public_key_of(seed))),
