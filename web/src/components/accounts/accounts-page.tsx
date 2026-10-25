@@ -1,136 +1,104 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, ChevronRight, UserRoundCog, UserRoundPlus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, TableSkeleton } from "@/components/states/states";
+import { TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { type Actions } from "./account-columns";
-import { AccountGroup } from "./account-group";
-import { AccountSharing } from "./account-sharing";
-import { Day } from "./account-cells";
 import { AccountDialog } from "./account-dialog";
-import { LazyAgentAccountsGroup } from "./agent-accounts-lazy";
+import { LazyAccountSharing, LazyModelsTab, LazyPolicies, LazyServicesTab } from "./account-tabs-lazy";
 import { useChangeAccount, useFailure } from "./hooks";
 import { LazyLoginDialog, preloadLogin } from "./login-lazy";
-import { groupAccounts, isClaudeAccount, policyRows, renewalDue, serviceEntries, sharedVariables } from "./model";
-import { ModelTable } from "./model-table";
-import { type Account, accountListQuery, policiesQuery } from "./queries";
-import { PolicySection } from "./policy-section";
-import { ServiceTable } from "./service-table";
+import { sharedVariables } from "./model";
+import type { ProviderCardData } from "./provider-cards";
+import type { ProviderStart } from "./provider-dialog";
+import { LazyProviderDeleteDialog, LazyProviderDialog, LazyProviderKeyDialog, preloadProvider } from "./provider-lazy";
+import { catalogQuery, providerAccountsQuery } from "./provider-queries";
+import { ProvidersTab } from "./providers-tab";
+import { type Account, accountListQuery } from "./queries";
 
 const SECRETS_HREF = "/secrets" as Route;
 
-/** The groups of the visitor's own accounts, each with its own table: model accounts, then service credentials. */
-function Groups({ accounts, now, ...actions }: { accounts: Account[]; now: number } & Actions) {
-  const groups = useMemo(() => groupAccounts(accounts), [accounts]);
-  const shared = useMemo(() => sharedVariables(accounts), [accounts]);
-  return groups.map(({ id, accounts: members }) => (
-    <AccountGroup key={id} id={id} count={members.length}>
-      {id === "model" ? (
-        <ModelTable accounts={members} shared={shared} now={now} {...actions} />
-      ) : (
-        <ServiceTable entries={serviceEntries(members)} shared={shared} now={now} {...actions} />
-      )}
-    </AccountGroup>
-  ));
+/** The tabs of the page, the first the default; the one shown is `?tab=` of the URL, so a link or a reload keeps it. */
+const TABS = ["providers", "models", "services", "rotation", "sharing"] as const;
+type Tab = (typeof TABS)[number];
+const tabOf = (value: string | null): Tab => (TABS as readonly string[]).includes(value ?? "") ? (value as Tab) : "providers";
+
+/** The tab in the URL, changed through the History API (Next.js syncs useSearchParams with it). */
+function useTab(): [Tab, (next: string) => void] {
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const tab = tabOf(params.get("tab"));
+  const set = (next: string) => {
+    const search = new URLSearchParams(params.toString());
+    if (next === "providers") search.delete("tab");
+    else search.set("tab", next);
+    const query = search.toString();
+    window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+  };
+  return [tab, set];
 }
 
-/** The policies under the accounts, from the projects the accounts are bound to and the policies the visitor set. */
-function Policies({ accounts }: { accounts: Account[] }) {
-  const t = useTranslations("accounts.policies");
-  const policies = useQuery(policiesQuery(browserApi));
-  if (policies.isPending) return <TableSkeleton rows={2} />;
-  if (policies.isError) {
-    return (
-      <p className="text-sm text-danger" role="alert" data-testid="account-policies-error">
-        {t("loadFailed")}
-      </p>
-    );
-  }
-  return <PolicySection rows={policyRows(accounts, policies.data)} />;
-}
-
-/** The accounts whose token ends within 30 days, soonest first, each with its day and a way to renew it. */
-function RenewNotice({ accounts, now, onRenew }: { accounts: Account[]; now: number; onRenew: (account: Account) => void }) {
-  const t = useTranslations("accounts.renewNotice");
-  const due = accounts
-    .flatMap((account) => {
-      const when = isClaudeAccount(account) && account.state !== "expired" ? renewalDue(account, now) : null;
-      return when ? [{ account, when }] : [];
-    })
-    .sort((a, b) => a.when.at.localeCompare(b.when.at));
-  if (due.length === 0) return null;
-  return (
-    <section
-      aria-labelledby="accounts-renew-title"
-      className="flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention"
-      data-testid="accounts-renew-notice"
-    >
-      <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <h2 id="accounts-renew-title" className="font-medium">
-          {t("title", { count: due.length })}
-        </h2>
-        <ul className="flex flex-col gap-1">
-          {due.map(({ account, when }) => (
-            <li key={account.name} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="font-mono text-[13px] [overflow-wrap:anywhere]">{account.name}</span>
-              <span>{t.rich("ends", { day: () => <Day value={when.at} /> })}</span>
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto px-0 text-attention underline underline-offset-4"
-                onClick={() => onRenew(account)}
-                onPointerEnter={preloadLogin}
-                onFocus={preloadLogin}
-                aria-label={t("renewLabel", { name: account.name })}
-                data-testid="accounts-renew-notice-renew"
-              >
-                {t("renew")}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  );
-}
+type Dialog<T> = { open: boolean; value: T } | null;
+const opened = <T,>(value: T): Dialog<T> => ({ open: true, value });
+const toggled = <T,>(current: Dialog<T>, open: boolean): Dialog<T> => (current ? { ...current, open } : current);
 
 /**
- * The visitor's accounts (docs/credentials.md, section "Accounts"): each one's variable, bindings, state, its runs and
- * their estimated cost over 24 hours and 7 days, and the runs holding it now, with its usage limits as bars under its
- * row (a Claude account's, or any a run reported); Renew
- * token (a Claude account's), Pause or Resume and Edit (weight and priority) on each, and a reminder for each token
- * that ends within 30 days; then the rotation policy of each project, then its shares and what the members they went
- * to spent. Add Claude account opens the same dialog as Renew token, empty. Never a value.
+ * The visitor's accounts (docs/credentials.md, section "Accounts"), in tabs: Providers, a card per provider their
+ * model accounts call with its keys, their usage and cost, and its models; Models, every model their runs may ask
+ * for; Service credentials; Rotation, the policy of each project; Sharing, the shares and what they spent. Add
+ * provider opens the catalog: Claude signs in on a worker, any other provider is a key and a base URL. Never a value.
  */
 export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("accounts");
+  const tTabs = useTranslations("accounts.provider.tabs");
   const state = useHubQuery(accountListQuery(browserApi), initialError);
   const accounts = state.status === "success" ? state.data : null;
+  const [tab, setTab] = useTab();
   const [editing, setEditing] = useState<{ open: boolean; account: Account | null }>({ open: false, account: null });
-  // Null until the dialog first opens: it mounts, and loads, only then.
-  const [login, setLogin] = useState<{ open: boolean; account: Account | null } | null>(null);
+  // Each dialog is null until it first opens: it mounts, and loads, only then.
+  const [login, setLogin] = useState<Dialog<Account | null>>(null);
+  const [provider, setProvider] = useState<Dialog<ProviderStart>>(null);
+  const [keyOf, setKeyOf] = useState<Dialog<Account>>(null);
+  const [deleting, setDeleting] = useState<Dialog<Account>>(null);
   const [now] = useState(() => Date.now());
   const failureOf = useFailure();
   const { mutateAsync } = useChangeAccount();
+  const providers = useQuery({ ...providerAccountsQuery(browserApi), enabled: Boolean(accounts?.some((account) => account.gateway)) });
+  const catalog = useQuery({ ...catalogQuery(browserApi), enabled: provider !== null || Boolean(accounts?.some((account) => account.gateway)) });
 
-  const edit = useCallback((account: Account) => setEditing({ open: true, account }), []);
-  const add = () => setLogin({ open: true, account: null });
-  const renew = useCallback((account: Account) => setLogin({ open: true, account }), []);
+  const entryOf = useCallback((id: string) => catalog.data?.providers.find((entry) => entry.id === id) ?? null, [catalog.data]);
+  const openCatalog = useCallback(() => setProvider(opened<ProviderStart>({ kind: "catalog" })), []);
+  const edit = useCallback(
+    (account: Account) => {
+      const held = account.gateway ? providers.data?.find((item) => item.name === account.name) : undefined;
+      if (held) setProvider(opened<ProviderStart>({ kind: "edit", entry: entryOf(held.provider), account: held }));
+      else setEditing({ open: true, account });
+    },
+    [providers.data, entryOf],
+  );
+  const renew = useCallback((account: Account) => setLogin(opened<Account | null>(account)), []);
+  const addTo = useCallback(
+    (card: ProviderCardData) => {
+      if (card.id === "claude") return setLogin(opened<Account | null>(null));
+      const entry = card.entry ?? entryOf(card.id);
+      setProvider(opened<ProviderStart>(entry && entry.via !== "login" ? { kind: "add", entry } : { kind: "catalog" }));
+    },
+    [entryOf],
+  );
   const pause = useCallback(
     async (account: Account) => {
       const paused = account.paused_at === null;
@@ -146,8 +114,10 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
     [mutateAsync, failureOf, t],
   );
   const onPause = useCallback((account: Account) => void pause(account), [pause]);
-
-  const actions = { onEdit: edit, onPause, onRenew: renew };
+  const onKey = useCallback((account: Account) => setKeyOf(opened(account)), []);
+  const onDelete = useCallback((account: Account) => setDeleting(opened(account)), []);
+  const actions = { onEdit: edit, onPause, onRenew: renew, onKey, onDelete };
+  const shared = useMemo(() => sharedVariables(accounts ?? []), [accounts]);
 
   return (
     <>
@@ -162,58 +132,63 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
                 <ChevronRight aria-hidden="true" />
               </Link>
             </Button>
-            <Button onClick={add} onPointerEnter={preloadLogin} onFocus={preloadLogin} data-testid="accounts-add">
-              <UserRoundPlus aria-hidden="true" />
-              {t("add")}
+            <Button onClick={openCatalog} onPointerEnter={preloadProvider} onFocus={preloadProvider} data-testid="accounts-add">
+              <Plus aria-hidden="true" />
+              {t("addProvider")}
             </Button>
           </>
         }
         sub={accounts && accounts.length > 0 ? <span data-testid="accounts-list-summary">{t("listSummary")}</span> : null}
       />
       <QueryView state={state} loading={<TableSkeleton rows={4} />}>
-        {(list) =>
-          list.length === 0 ? (
-            <div className="flex flex-col gap-8">
-              <EmptyState
-                icon={UserRoundCog}
-                title={t("empty.title")}
-                description={t.rich("empty.description", {
-                  code: (chunks) => <code className="rounded-xs bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
-                })}
-              >
-                <Button onClick={add} onPointerEnter={preloadLogin} onFocus={preloadLogin} data-testid="accounts-empty-add">
-                  <UserRoundPlus aria-hidden="true" />
-                  {t("add")}
-                </Button>
-              </EmptyState>
-              <LazyAgentAccountsGroup now={now} onlyIfAny />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-8">
-              <div className="flex flex-col gap-4">
-                <RenewNotice accounts={list} now={now} onRenew={renew} />
-                <Groups accounts={list} now={now} {...actions} />
-                <LazyAgentAccountsGroup now={now} />
-              </div>
-              <Policies accounts={list} />
-              <AccountSharing accounts={list} now={now} />
-            </div>
-          )
-        }
+        {(list) => (
+          <Tabs value={tab} onValueChange={setTab} className="min-w-0">
+            <TabsList aria-label={tTabs("label")}>
+              {TABS.map((item) => (
+                <TabsTrigger key={item} value={item} data-testid={`accounts-tab-${item}`}>
+                  {tTabs(item)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <TabsContent value="providers" data-testid="accounts-panel-providers">
+              <ProvidersTab accounts={list} now={now} onCatalog={openCatalog} onAdd={addTo} {...actions} />
+            </TabsContent>
+            <TabsContent value="models" data-testid="accounts-panel-models">
+              <LazyModelsTab accounts={list} onCatalog={openCatalog} />
+            </TabsContent>
+            <TabsContent value="services" data-testid="accounts-panel-services">
+              <LazyServicesTab accounts={list} shared={shared} now={now} {...actions} />
+            </TabsContent>
+            <TabsContent value="rotation" data-testid="accounts-panel-rotation">
+              <LazyPolicies accounts={list} />
+            </TabsContent>
+            <TabsContent value="sharing" data-testid="accounts-panel-sharing">
+              <LazyAccountSharing accounts={list} now={now} />
+            </TabsContent>
+          </Tabs>
+        )}
       </QueryView>
       {login ? (
-        <LazyLoginDialog
-          open={login.open}
-          onOpenChange={(open) => setLogin((current) => (current ? { ...current, open } : current))}
-          account={login.account}
-          accounts={accounts ?? []}
+        <LazyLoginDialog open={login.open} onOpenChange={(open) => setLogin((current) => toggled(current, open))} account={login.value} accounts={accounts ?? []} />
+      ) : null}
+      {provider ? (
+        <LazyProviderDialog
+          open={provider.open}
+          onOpenChange={(open) => setProvider((current) => toggled(current, open))}
+          start={provider.value}
+          onClaude={() => {
+            preloadLogin();
+            setLogin(opened<Account | null>(null));
+          }}
         />
       ) : null}
-      <AccountDialog
-        account={editing.account}
-        open={editing.open}
-        onOpenChange={(open) => setEditing((current) => ({ ...current, open }))}
-      />
+      {keyOf ? (
+        <LazyProviderKeyDialog key={keyOf.value.name} account={keyOf.value} open={keyOf.open} onOpenChange={(open) => setKeyOf((current) => toggled(current, open))} />
+      ) : null}
+      {deleting ? (
+        <LazyProviderDeleteDialog key={deleting.value.name} account={deleting.value} open={deleting.open} onOpenChange={(open) => setDeleting((current) => toggled(current, open))} />
+      ) : null}
+      <AccountDialog account={editing.account} open={editing.open} onOpenChange={(open) => setEditing((current) => ({ ...current, open }))} />
     </>
   );
 }
