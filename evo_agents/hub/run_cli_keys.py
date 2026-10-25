@@ -39,7 +39,6 @@ RUN_KEYS = (
     "verify",
     "evidence",
     "usage",
-    "plan_progress",
     "budget",
     "error",
     "log_sha256",
