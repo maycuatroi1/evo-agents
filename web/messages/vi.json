@@ -1258,6 +1258,7 @@
         "kg": "Knowledge graph",
         "monitor": "Monitor",
         "market": "Chợ plugin",
+        "seller": "Bán plugin",
         "canvas": "Canvas",
         "srs": "Yêu cầu (SRS)",
         "tasks": "Task"
@@ -1268,6 +1269,7 @@
         "kg": "Knowledge graph của dự án: các trang, API và các tool kg trên MCP của hub.",
         "monitor": "Các run đang chạy ở mọi dự án, theo dõi trực tiếp.",
         "market": "Chợ plugin: duyệt các chợ hub đọc và cài plugin từ đó.",
+        "seller": "Bán plugin cho các hub khác: sản phẩm niêm yết, đơn hàng trả bằng chuyển khoản, giấy phép và doanh thu hằng tháng.",
         "canvas": "Canvas của dự án: các nhận định, bằng chứng và phần chấm của chúng, cùng @strategist.",
         "srs": "Các tài liệu yêu cầu của dự án, phần review và duyệt của chúng, cùng @ba.",
         "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt."
@@ -6639,7 +6641,8 @@
       "curator_probe_report": "Báo cáo probe hằng tuần của Curator",
       "opportunity_window": "Hạn của một cơ hội sắp đóng",
       "today": "Tóm tắt Today",
-      "market_install_request": "Một dự án xin cài plugin từ market"
+      "market_install_request": "Một dự án xin cài plugin từ market",
+      "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -11311,7 +11314,7 @@
     "reason": {
       "inImage": "Plugin lõi có sẵn trong image của hub: quản trị viên dự án bật nó ở mục Plugin của dự án.",
       "core": "Plugin lõi chạy trong chính tiến trình của hub, nên nó đi kèm image của hub và không bao giờ cài từ đây. Hãy nhờ người vận hành hub dùng image có nó.",
-      "paid": "Plugin trả phí cần giấy phép từ người bán. Giấy phép có ở bản phát hành sau; hiện chưa cài được gì từ đây.",
+      "paid": "Plugin trả phí được cài bằng giấy phép từ người bán: quản trị viên hub mua ở đây, và hub cài nó khi người bán đánh dấu đơn đã thanh toán.",
       "unavailable": "Bản phát hành mới nhất của nó không đọc được, nên chưa cài được cho tới khi nhà phát hành sửa."
     },
     "errors": {
@@ -11369,10 +11372,12 @@
       "locked": "Chưa tin, và người vận hành đã khóa danh sách nhà phát hành của hub",
       "repo": "Kho mã",
       "licenseTitle": "Giấy phép",
-      "licenseDescription": "Plugin trả phí cài bằng giấy phép từ người bán, điều hub này chưa hỗ trợ.",
+      "licenseDescription": "Trả cho người bán theo hub mỗi tháng. Giấy phép ghi tên hub này và được kiểm tra ngay tại đây mà không cần hỏi ai.",
       "requestTitle": "Đề nghị cài",
       "missingTitle": "Không có plugin này",
-      "missingDescription": "Địa chỉ không trỏ tới plugin nào của chợ."
+      "missingDescription": "Địa chỉ không trỏ tới plugin nào của chợ.",
+      "licenseAdmin": "Mua cho một số tháng: người bán gửi hóa đơn, và khi họ đánh dấu đơn đã thanh toán, trong vòng một giờ hub nhận giấy phép và cài plugin.",
+      "licenseMember": "Quản trị viên hub mua nó cho cả hub."
     },
     "admin": {
       "title": "Chợ plugin",
@@ -11431,6 +11436,109 @@
         "added": "Đã thêm {repo}",
         "addedCount": "Chỉ mục của nó có {count, plural, other {# plugin}}.",
         "addedWithError": "Chỉ mục của nó chưa đọc được: {error}"
+      },
+      "seller": "Bán"
+    },
+    "buy": {
+      "open": "Mua",
+      "renew": "Gia hạn",
+      "title": "Mua {name}",
+      "description": "Đơn được gửi tới người bán plugin kèm mã hub này và thông tin liên hệ của bạn. Bạn chuyển khoản với số đơn làm nội dung.",
+      "orderedDescription": "Người bán đã nhận đơn. Thanh toán như dưới đây; khi người bán đánh dấu đã thanh toán, hub nhận giấy phép và cài plugin.",
+      "months": "Số tháng",
+      "monthsHint": "Giấy phép có hiệu lực từng ấy tháng kể từ ngày người bán đánh dấu đã thanh toán, hoặc từ khi giấy phép trước hết hạn.",
+      "monthsInvalid": "Một số nguyên từ 1 đến {max}",
+      "name": "Tên hoặc công ty nhận hóa đơn",
+      "email": "Email nhận hóa đơn",
+      "noTotal": "Người bán tính tổng đơn.",
+      "totalLine": "{total} cho {months} tháng",
+      "trusts": "Hub chưa tin cậy {publisher}: đặt mua sẽ tin cậy người ký {identity} từ nay.",
+      "cancel": "Hủy",
+      "confirm": "Đặt mua",
+      "ordering": "Đang đặt",
+      "ordered": "Đã đặt: {number}",
+      "openLicenses": "Xem giấy phép",
+      "number": "Số đơn",
+      "total": "Tổng",
+      "instructions": "Cách thanh toán",
+      "done": "Xong"
+    },
+    "licenses": {
+      "title": "Giấy phép",
+      "description": "Các plugin trả phí hub này đã đặt và tình trạng giấy phép. Hub kiểm tra mỗi giờ; Kiểm tra ngay hỏi người bán lập tức.",
+      "hub": "Mã của hub này:",
+      "none": "Hub chưa mua plugin nào.",
+      "line": "{number} từ {seller}, {months} tháng, {total}",
+      "until": "Hiệu lực đến {day}",
+      "checked": "Kiểm tra lần cuối",
+      "check": "Kiểm tra ngay",
+      "checking": "Đang kiểm tra",
+      "checkedNow": "Đã hỏi về {count} đơn đang mở",
+      "installed": "Đã cài {name}",
+      "lapsed": "Đã tắt {name}: giấy phép hết hạn",
+      "checkFailed": "Không kiểm tra được giấy phép",
+      "state": {
+        "pending": "Chờ thanh toán",
+        "active": "Đang hiệu lực",
+        "grace": "Đã hết hạn, tuần ân hạn",
+        "lapsed": "Hết hiệu lực",
+        "open": "Đang mở",
+        "paid": "Đã thanh toán",
+        "cancelled": "Đã hủy"
+      }
+    },
+    "seller": {
+      "title": "Bán plugin",
+      "sub": "Đơn từ các hub mua, doanh thu hằng tháng và phần chia 80/20, cùng khóa ký giấy phép.",
+      "notSelling": "Hub này chưa bán được: đặt EVO_HUB_SELLER_ID và EVO_HUB_SELLER_KEY (do `evo-agents hub market seller-key` tạo) rồi khởi động lại.",
+      "keyTitle": "Khóa giấy phép",
+      "keyDescription": "Ghi mã khóa và khóa công khai dưới người bán này trong chỉ mục của market. Khóa bí mật không bao giờ rời môi trường của hub.",
+      "sellerId": "Mã người bán",
+      "keyId": "Mã khóa",
+      "publicKey": "Khóa công khai",
+      "signals": "Gửi tín hiệu tới dự án",
+      "unset": "Chưa đặt",
+      "listings": {
+        "title": "Danh sách bán",
+        "description": "Nhà phát hành đăng plugin và tải gói đã ký bằng `evo-agents hub market listing` và `bundle upload`.",
+        "none": "Chưa có gì được đăng bán.",
+        "line": "{publisher}, {price} mỗi hub một tháng, {version}, {count} giấy phép đang hiệu lực",
+        "noBundle": "chưa có gói",
+        "state": {
+          "draft": "Bản nháp",
+          "listed": "Đang bán",
+          "withdrawn": "Đã rút"
+        }
+      },
+      "orders": {
+        "title": "Đơn hàng",
+        "description": "Đánh dấu đơn đã thanh toán kèm số hóa đơn khi tiền về: hub cấp giấy phép, hub mua nhận nó ở lần kiểm tra tiếp theo.",
+        "none": "Chưa có đơn nào.",
+        "line": "{plugin}, {months} tháng, {total}, {buyer} ({email})",
+        "paidLine": "Hóa đơn {invoice}, hiệu lực đến {until}",
+        "markPaid": "Đánh dấu đã thanh toán",
+        "cancel": "Hủy đơn",
+        "back": "Quay lại",
+        "paidTitle": "Đánh dấu {number} đã thanh toán",
+        "paidDescription": "Chỉ khi tiền đã về. Hub ký giấy phép cho hub mua và ghi lại ai đã đánh dấu.",
+        "cancelTitle": "Hủy {number}",
+        "cancelDescription": "Hub mua thấy đơn bị hủy ở lần kiểm tra tiếp theo. Không hủy được đơn đã thanh toán.",
+        "invoice": "Số hóa đơn",
+        "markedPaid": "Đã đánh dấu {number} đã thanh toán",
+        "licensed": "Giấy phép hiệu lực đến {day}",
+        "cancelled": "Đã hủy {number}"
+      },
+      "revenue": {
+        "title": "Doanh thu",
+        "description": "Đơn đã thanh toán theo tháng được đánh dấu: 80% cho từng nhà phát hành, 20% cho nền tảng. Hub không tự trả tiền cho ai; đánh dấu phần đã trả khi bạn đã trả.",
+        "month": "Tháng",
+        "total": "Tổng {gross}: {publishers} cho nhà phát hành, {platform} cho nền tảng",
+        "none": "Tháng này chưa có đơn đã thanh toán.",
+        "line": "{orders} đơn, {gross}: {publisher} cho nhà phát hành, {platform} cho nền tảng",
+        "paidOutBy": "Đã trả bởi {login}",
+        "markPaidOut": "Đánh dấu đã trả",
+        "paidOut": "Đã đánh dấu phần của {publisher} tháng {month} là đã trả",
+        "payoutFailed": "Không đánh dấu được phần của {publisher} là đã trả"
       }
     }
   }

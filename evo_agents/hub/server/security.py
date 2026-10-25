@@ -15,8 +15,10 @@ the path is their credential (``evo_agents.hub.server.plugin_pages``). Another i
 whose credential is a plugin token, ``Authorization: Bearer evp_...`` (``evo_agents.hub.server.task_dispatch``). The
 third, HOOKS_PREFIX, holds the webhooks of core plugins, each under ``/v1/hooks/<its id>/``
 (``evo_agents.hub.server.plugin_routes``): a service outside the hub calls them with a secret of the plugin's, which
-the route compares itself; the request has no principal, so a route there that asks for the caller gets 401. A
-machine token arrives as ``Authorization: Bearer`` and a web session as
+the route compares itself; the request has no principal, so a route there that asks for the caller gets 401. The
+fourth, SELLER_PREFIX, is the API a seller's hub serves the hubs that buy its plugins
+(``evo_agents.hub.server.seller_api``): an order's secret or a licence the seller signed is the credential, which the
+route checks itself, as it checks that the feature seller is on. A machine token arrives as ``Authorization: Bearer`` and a web session as
 the SESSION_COOKIE cookie; each is accepted only through its own channel. A write (POST, PUT, PATCH, DELETE) made
 with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the session secret that GET
 /v1/auth/web/csrf hands out; a Bearer request needs none, since a browser never adds that header by itself.
@@ -109,9 +111,11 @@ PUBLIC_PATHS = frozenset(
     }
 )
 HOOKS_PREFIX = "/v1/hooks/"  # the webhooks of core plugins, /v1/hooks/<plugin id>/... (plugin_routes)
+SELLER_PREFIX = "/v1/seller-api/"  # what a seller's hub serves buying hubs (seller_api)
 # Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugin_pages), a
-# plugin token (evo_agents.hub.server.task_dispatch), or a core plugin's own secret (HOOKS_PREFIX).
-PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/", HOOKS_PREFIX)
+# plugin token (evo_agents.hub.server.task_dispatch), a core plugin's own secret (HOOKS_PREFIX), or an order's secret
+# or a licence (SELLER_PREFIX).
+PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/", HOOKS_PREFIX, SELLER_PREFIX)
 # Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.
 SELF_CHECKED_WEBSOCKETS = (
     re.compile(r"/v1/projects/[^/]+/runs/[^/]+/terminal"),  # the browser's end: the session cookie, Origin, CSRF

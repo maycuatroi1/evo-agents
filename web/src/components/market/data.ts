@@ -12,7 +12,7 @@ import { isApiError } from "@/lib/api/errors";
 import { LOGIN_PATH } from "@/lib/config";
 import { pluginKeys } from "@/lib/plugin-queries";
 
-import { marketKeys } from "./queries";
+import { marketKeys, sellerKeys } from "./queries";
 
 /**
  * The writes of the market pages, each with the session's X-Evo-CSRF header: a hub admin's install or upgrade from a
@@ -99,6 +99,73 @@ export function useRemoveTrust() {
       const api = browserApi();
       const headers = await csrfHeaders(api);
       return call(api.DELETE("/v1/plugin-publishers/{entry_id}", { params: { path: { entry_id: id } }, headers }));
+    },
+    onError: signInAgainOn401,
+    onSettled: refresh,
+  });
+}
+
+export type Buy = { source: number; plugin: string; months: number; name: string; email: string; trust: boolean };
+
+/** A hub admin's order of a paid plugin from its seller; the answer carries the order number and how to pay it. */
+export function useMarketBuy() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: async ({ source, plugin, months, name, email, trust }: Buy) => {
+      const api = browserApi();
+      const headers = await csrfHeaders(api);
+      const params = { path: { source, plugin } };
+      const body = { months, contact: { name, email }, trust_publisher: trust };
+      return call(api.POST("/v1/market/{source}/{plugin}/buy", { params, body, headers }));
+    },
+    onError: signInAgainOn401,
+    onSettled: refresh,
+  });
+}
+
+/** Ask the sellers about the open orders now, as the hourly job does. */
+export function useLicenseCheck() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: async () => {
+      const api = browserApi();
+      const headers = await csrfHeaders(api);
+      return call(api.POST("/v1/market/licenses/check", { headers }));
+    },
+    onError: signInAgainOn401,
+    onSettled: refresh,
+  });
+}
+
+function useSellerRefresh() {
+  const queryClient = useQueryClient();
+  return useCallback(() => void queryClient.invalidateQueries({ queryKey: sellerKeys.all }), [queryClient]);
+}
+
+/** A seller admin marks an order paid with its invoice number, which issues the licence, or cancels an open one. */
+export function useOrderAction() {
+  const refresh = useSellerRefresh();
+  return useMutation({
+    mutationFn: async ({ number, invoice }: { number: string; invoice: string | null }) => {
+      const api = browserApi();
+      const headers = await csrfHeaders(api);
+      const params = { path: { number } };
+      if (invoice === null) return call(api.POST("/v1/seller/orders/{number}/cancel", { params, headers }));
+      return call(api.POST("/v1/seller/orders/{number}/paid", { params, body: { invoice }, headers }));
+    },
+    onError: signInAgainOn401,
+    onSettled: refresh,
+  });
+}
+
+/** Mark a publisher's share of a month paid out, by hand: the hub pays nobody itself. */
+export function usePayout() {
+  const refresh = useSellerRefresh();
+  return useMutation({
+    mutationFn: async ({ month, publisher }: { month: string; publisher: string }) => {
+      const api = browserApi();
+      const headers = await csrfHeaders(api);
+      return call(api.POST("/v1/seller/payouts", { body: { month, publisher, note: null }, headers }));
     },
     onError: signInAgainOn401,
     onSettled: refresh,

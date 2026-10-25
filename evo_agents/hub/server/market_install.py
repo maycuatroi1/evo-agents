@@ -26,15 +26,18 @@ import asyncio
 import hashlib
 import logging
 import re
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
+from evo_agents.hub.blobs import BlobStore
+from evo_agents.hub.config import HubConfig
 from evo_agents.hub.market_refresh import GitHubMarket, MarketUnavailable
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
@@ -181,24 +184,32 @@ def download_github(reader: GitHubMarket, body: GitHubInstallIn, sigstore) -> tu
     return item, check_release(item, assets, data, reader.download(assets.signature), sigstore)
 
 
-async def _download(request: Request, fetch, *args):
-    state = request.app.state
-    reader = GitHubMarket(state.config, transport=getattr(state, "market_transport", None))
+async def _fetched(config: HubConfig, transport, sigstore, fetch, *args):
+    """What ``fetch`` reads of GitHub through ``transport`` (the real GitHub when None); HTTPException when it is
+    refused."""
+    reader = GitHubMarket(config, transport=transport)
     try:
-        return await asyncio.to_thread(fetch, reader, *args, state.plugin_sigstore)
+        return await asyncio.to_thread(fetch, reader, *args, sigstore)
     except (ReleaseError, SignatureError, SignatureUnavailable, MarketUnavailable) as exc:
         raise _refused(exc) from None
     finally:
         reader.close()
 
 
+async def _download(request: Request, fetch, *args):
+    state = request.app.state
+    return await _fetched(state.config, getattr(state, "market_transport", None), state.plugin_sigstore, fetch, *args)
+
+
 # Installing
 
 
-async def _check_trust(request: Request, publisher: str, signer: str, confirmed: bool) -> tuple[tuple, bool]:
-    """The publishers the hub trusts with ``signer`` for ``publisher``, and whether that signer is new to it."""
-    config = request.app.state.config
-    async with request.app.state.engine.begin() as conn:
+async def check_trust(
+    engine: AsyncEngine, config: HubConfig, publisher: str, signer: str, confirmed: bool
+) -> tuple[tuple, bool]:
+    """The publishers the hub trusts with ``signer`` for ``publisher``, and whether that signer is new to it; 409 when
+    it is new and not ``confirmed``."""
+    async with engine.begin() as conn:
         trusted = await trusted_publishers(conn, config)
     if trusts(trusted, publisher, signer):
         return trusted, False
@@ -238,34 +249,49 @@ async def _close_requests(conn: AsyncConnection, user, name: str) -> None:
     )
 
 
-async def install_release(request: Request, user, item: dict, checked: CheckedRelease, confirmed: bool):
+@dataclass(frozen=True)
+class Installing:
+    """What installing a checked release needs, without a request: the hub's engine, config, signature checker,
+    version and blob store (``evo_agents.hub.server.market_licenses`` installs a paid plugin from the worker)."""
+
+    engine: AsyncEngine
+    config: HubConfig
+    sigstore: object
+    hub_version: str
+    store: BlobStore
+
+    @classmethod
+    def of(cls, request: Request) -> Installing:
+        state = request.app.state
+        return cls(state.engine, state.config, state.plugin_sigstore, state.hub_version, blob_store(request))
+
+
+async def install_checked(hub: Installing, user, item: dict, checked: CheckedRelease, confirmed: bool):
     """Trust the entry's signer when confirmed, then publish and install the checked release as the store does."""
-    state = request.app.state
     manifest = checked.manifest
     if manifest.tier != "isolated":
         raise HTTPException(
             422, f"{manifest.id} is a core plugin, which ships in the hub's image and is never installed from a market"
         )
     publisher, signer = item["publisher"]["id"], item["publisher"]["signer"]
-    publishers, new = await _check_trust(request, publisher, signer, confirmed)
+    publishers, new = await check_trust(hub.engine, hub.config, publisher, signer, confirmed)
     data = checked.data
     stored = await asyncio.to_thread(
         check_bundle,
         data,
         checked.signature,
-        state.config,
-        state.plugin_sigstore,
-        state.hub_version,
+        hub.config,
+        hub.sigstore,
+        hub.hub_version,
         NOTHING_INSTALLED,
         publishers,
     )
     sha256 = hashlib.sha256(data).hexdigest()
-    store = blob_store(request)
-    await asyncio.to_thread(put_bytes, store, sha256, data)
+    await asyncio.to_thread(put_bytes, hub.store, sha256, data)
     body = PluginPublishIn(sha256=sha256, size=len(data), signature=checked.signature)
-    async with state.engine.begin() as conn:
+    async with hub.engine.begin() as conn:
         if new:
-            await trust(conn, user, state.config, publisher, signer, f"installing {manifest.id} {manifest.version}")
+            await trust(conn, user, hub.config, publisher, signer, f"installing {manifest.id} {manifest.version}")
         blobs = tables.blobs
         await conn.execute(
             pg_insert(blobs)
@@ -275,9 +301,22 @@ async def install_release(request: Request, user, item: dict, checked: CheckedRe
         await record_version(conn, user, body, stored)
         upgraded = await _place(conn, user, manifest.id, manifest.version)
         await _close_requests(conn, user, manifest.id)
-        result = await stored_plugin(conn, manifest.id, state.hub_version)
+        result = await stored_plugin(conn, manifest.id, hub.hub_version)
     log.info("plugin installed from a release", extra={"plugin": manifest.id, "version": manifest.version})
     return MarketInstalled(plugin=result, trusted_publisher=new, upgraded=upgraded)
+
+
+async def install_github(hub: Installing, transport, user, body: GitHubInstallIn) -> MarketInstalled:
+    """Install the release of a GitHub repo ``body`` names, as ``install_from_github`` does, without a request: what
+    approving a proposal of @builder to install a plugin does (``evo_agents.core_plugins.builder``). ``transport``
+    reads GitHub, the real one when None."""
+    item, checked = await _fetched(hub.config, transport, hub.sigstore, download_github, body)
+    return await install_checked(hub, user, item, checked, body.trust_publisher)
+
+
+async def install_release(request: Request, user, item: dict, checked: CheckedRelease, confirmed: bool):
+    """``install_checked`` with what the request's app holds."""
+    return await install_checked(Installing.of(request), user, item, checked, confirmed)
 
 
 @router.post("/{source}/{plugin}/install", response_model=MarketInstalled, responses=REFUSALS)

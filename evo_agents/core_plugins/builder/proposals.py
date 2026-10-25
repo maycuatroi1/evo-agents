@@ -35,6 +35,11 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
   status, close_reason); its version is the goal's revision, 0 for a new one, whose code the hub picks when it is
   proposed and keeps in the target. An admin of the project decides it, and the hub writes the next revision as the
   goal's route does (``goals.write``); rolling back a new goal closes it (dropped).
+- ``plugin``, ``plugin_install``, ``plugin_listing``: an action, not a setting (plan plugin-market, criterion a8): a
+  plugin a member asked @builder to make for an industry, installing its release on the hub (a hub admin decides it),
+  and listing it on a market. Approving one does it once, as version 1, and it never rolls back: a plugin or a listing
+  hands @builder its task in the proposal's thread for the member who approved it, an install installs the release.
+  The logic is ``builder.plugin_changes``.
 
 Proposing checks the change against the setting as it is now, as its route would, and keeps the setting's version
 (``base_version``): nothing is written to the setting. Approving applies the change as the setting's next version
@@ -59,7 +64,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import ARRAY, Text, any_, func, insert, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.builder import MAX_FIELDS, MAX_SUMMARY_CHARS, opportunity_changes
+from evo_agents.core_plugins.builder import MAX_FIELDS, MAX_SUMMARY_CHARS, opportunity_changes, plugin_changes
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
 from evo_agents.hub import autonomy, branding, chats, features, goals, tables
 from evo_agents.hub import problems as problem_model
@@ -79,9 +84,22 @@ from evo_agents.plugins import config as plugin_config
 
 log = logging.getLogger(__name__)
 
-BRANDING, FEATURES, PLUGIN_CONFIG, AGENT, POLICY, PROBLEM, GOAL, OPPORTUNITY = PROPOSAL_KINDS
+(
+    BRANDING,
+    FEATURES,
+    PLUGIN_CONFIG,
+    AGENT,
+    POLICY,
+    PROBLEM,
+    GOAL,
+    OPPORTUNITY,
+    PLUGIN,
+    PLUGIN_INSTALL,
+    PLUGIN_LISTING,
+) = PROPOSAL_KINDS
 PENDING, APPLIED, REJECTED, FAILED, ROLLED_BACK = PROPOSAL_STATES
-HUB_WIDE = (BRANDING, FEATURES)  # a hub admin decides them; an admin of the project the others
+HUB_WIDE = (BRANDING, FEATURES, PLUGIN_INSTALL)  # a hub admin decides them; an admin of the project the others
+ACTIONS = plugin_changes.ACTIONS  # done once when approved, never rolled back
 BY_WRITERS = (PROBLEM, OPPORTUNITY)  # but these, which a writer of the project decides
 APPROVE, REJECT, ROLLBACK = "approve", "reject", "rollback"
 BRANDING_FIELDS = tuple(name for name in branding.FIELDS if name not in branding.ASSETS)
@@ -96,6 +114,9 @@ TARGET_KEYS = {  # kind -> (the keys its target needs, those it may have)
     PROBLEM: ((), ("problem",)),
     GOAL: ((), ("goal",)),
     OPPORTUNITY: ((), ("opportunity",)),
+    PLUGIN: ((), ()),
+    PLUGIN_INSTALL: ((), ()),
+    PLUGIN_LISTING: ((), ()),
 }
 MAX_ERROR_CHARS = 2000
 MAX_SHOWN_BYTES = 3000  # of the values a proposal sets, in its message in the thread
@@ -152,7 +173,7 @@ class BuilderProposal(BaseModel):
     target: dict[str, str] = Field(
         description="layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, "
         "which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for "
-        "policy"
+        "policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set"
     )
     change: dict[str, Any] = Field(
         description="set: field -> value; unset: the fields it clears; a key of the policy by its dotted path"
@@ -172,6 +193,10 @@ class BuilderProposal(BaseModel):
     rollback_version: int | None = Field(description="the setting's version rolling back made")
     error: str | None = Field(description="why the hub could not apply it, for a failed one")
     run_id: int | None = Field(description="the chat run of @builder, or the Curator's review run, it came from")
+    opened_run_id: int | None = Field(
+        None, description="an approved plugin or plugin_listing: the chat run of @builder that took its task"
+    )
+    outcome: str | None = Field(None, description="an approved action: what approving it did")
     link: str | None = Field(description="the hub's message that shows it in its thread; none for a review run's")
 
 
@@ -214,6 +239,8 @@ def view(row) -> BuilderProposal:
         rollback_version=row.rollback_version,
         error=row.error,
         run_id=row.run_id,
+        opened_run_id=row.opened_run_id,
+        outcome=row.outcome,
         link=link,
     )
 
@@ -327,7 +354,11 @@ def change_of(arguments: Mapping) -> Change:
         problems.extend(opportunity_changes.target_problems(target))
     lines, said = _evidence_of(kind, arguments.get("evidence"))
     problems.extend(said)
-    if lines and not sets and not unset:
+    if kind in ACTIONS:
+        problems.extend(plugin_changes.field_problems(kind, sets, unset))
+        if not problems:
+            sets = plugin_changes.values(sets)
+    elif lines and not sets and not unset:
         if "problem" not in target and kind == PROBLEM:
             problems.append("a proposal of evidence alone names the problem: target.problem")
         if "opportunity" not in target and kind == OPPORTUNITY:
@@ -439,6 +470,8 @@ async def _opportunity_target(conn: AsyncConnection, access: ProjectAccess, chan
 
 async def locate(conn: AsyncConnection, access: ProjectAccess, change: Change, *, lock: bool = False) -> Target:
     """Where ``change`` applies, as it is now; ProposalError when the project has no such place."""
+    if change.kind in ACTIONS:
+        return Target(plugin_changes.title(change.kind, change.sets, access.name), 0)
     if change.kind in HUB_WIDE:
         return await _settings_target(conn, access, change)
     if change.kind == PLUGIN_CONFIG:
@@ -612,6 +645,9 @@ CHECKS: dict[str, Callable[[Change, Target], list[str]]] = {
 
 async def check(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str) -> None:
     """ProposalError (422) naming what is wrong with ``change`` as the next version of ``target``."""
+    if change.kind in ACTIONS:
+        await plugin_changes.check(conn, access, change.kind, change.sets)
+        return
     if change.kind == AGENT:
         await _agent_changes(conn, access, change, target, hub_version)
         return
@@ -959,10 +995,17 @@ async def _record(conn: AsyncConnection, user: Principal, access: ProjectAccess,
 
 
 async def decide(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, proposal_id: int, answer: str, hub_version: str
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    proposal_id: int,
+    answer: str,
+    hub_version: str,
+    install: plugin_changes.Install | None = None,
 ) -> BuilderProposal:
     """Approve or reject pending proposal ``proposal_id``: approved, the hub applies it, or keeps why it could not;
-    ProposalError when ``user`` may not, or it is no longer pending."""
+    ProposalError when ``user`` may not, or it is no longer pending. ``install`` installs a release, for a proposal
+    of kind plugin_install."""
     row = await _locked(conn, access, proposal_id)
     doing = f"{'approving' if answer == APPROVE else 'rejecting'} proposal {proposal_id}"
     refused = refusal(user, access, row.kind, doing)
@@ -971,7 +1014,16 @@ async def decide(
     if row.state != PENDING:
         raise ProposalError(409, f"proposal {proposal_id} is {row.state.replace('_', ' ')} already; {NOTHING}")
     values = {"decided_by": user.user_id, "decided_at": func.now(), "state": REJECTED}
-    if answer == APPROVE:
+    if answer == APPROVE and row.kind in ACTIONS:
+        await plugin_changes.ready(conn, user, row)
+        try:
+            async with conn.begin_nested():
+                done = await plugin_changes.apply(conn, user, access, row, row.change["set"], install)
+            values |= {"state": APPLIED, "applied_version": plugin_changes.DONE}
+            values |= {"opened_run_id": done.run_id, "outcome": done.outcome}
+        except (HTTPException, ProposalError) as exc:
+            values |= {"state": FAILED, "error": _said(exc)}
+    elif answer == APPROVE:
         try:
             async with conn.begin_nested():
                 version = await apply(conn, user, access, change_of_row(row), row.base_version, hub_version, row.id)
@@ -996,6 +1048,12 @@ async def rollback(
     if row.state != APPLIED:
         raise ProposalError(
             409, f"proposal {proposal_id} is {row.state.replace('_', ' ')}: only an applied one rolls back"
+        )
+    if row.kind in ACTIONS:
+        raise ProposalError(
+            409,
+            f"proposal {proposal_id} is an action ({row.kind.replace('_', ' ')}), done once, which never rolls back: "
+            f"undo it by hand; {NOTHING}",
         )
     try:
         async with conn.begin_nested():
@@ -1029,6 +1087,14 @@ def thread_text(proposal_id: int, change: Change, target: Target, approver: str)
     sets = ", ".join(sorted(change.sets)) or "nothing"
     unsets = ", ".join(change.unset) or "nothing"
     lines = f" It adds {len(change.evidence)} lines of evidence." if change.evidence else ""
+    if change.kind in ACTIONS:
+        return (
+            f"Proposal {proposal_id} of @builder: {change.summary}\n\n"
+            f"It changes {target.title}. {ACTION_WORDS[change.kind]}\n\n"
+            f"```json\n{shown_values}\n```\n\n"
+            f"Nothing is done until {approver} approves it: reply `approve {proposal_id}` or `reject {proposal_id}` in "
+            "this thread, or answer it from the Inbox. Approving does it once; it does not roll back."
+        )
     return (
         f"Proposal {proposal_id} of @builder: {change.summary}\n\n"
         f"It changes {target.title}, now at version {target.version}: it sets {sets} and unsets {unsets}.{lines}\n\n"
@@ -1037,6 +1103,17 @@ def thread_text(proposal_id: int, change: Change, target: Target, approver: str)
         f"this thread, or answer it from the Inbox. Once it is applied, `rollback {proposal_id}` brings back the "
         "version before it."
     )
+
+
+ACTION_WORDS = {
+    PLUGIN: "Approving it hands @builder the task in this thread, for the member who approves: create the repo from "
+    "the plugin template, write and test the plugin, push it so the repo's CI signs and releases it, add the repo to "
+    "the project, then propose its install and its listing.",
+    PLUGIN_INSTALL: "Approving it downloads the release, trusts its signer for its publisher if this hub does not yet, "
+    "and installs the plugin on this hub.",
+    PLUGIN_LISTING: "Approving it hands @builder the task in this thread, for the member who approves: a pull request "
+    "that adds a free plugin to the market's index, or a paid plugin's listing and bundle on the seller's hub.",
+}
 
 
 def approver_words(kind: str, project: str) -> str:

@@ -390,6 +390,7 @@ NOTICE_KINDS = (
     PROBE_REPORT_NOTICE,
     "opportunity_window",  # the window of an open opportunity closes or closed (``server.opportunity_deadlines``)
     "market_install_request",  # a project admin asks the hub admins to install a plugin of a market (``server.market``)
+    "market_license_expiring",  # a paid plugin's licence ends in 7 days (``server.market_licenses``)
     "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification

@@ -159,9 +159,18 @@ test("a hub admin adds a market, members browse it, and the admin installs, upgr
   await expect(detail.getByTestId("market-price")).toContainText("per hub a month");
   await expect(detail.getByTestId("market-license")).toBeVisible();
   await expect(detail.getByTestId("market-install")).toHaveCount(0);
+  // A hub admin buys it for some months: the dialog totals the order and says it trusts the new publisher.
+  await detail.getByTestId("market-buy").click();
+  const buying = page.getByTestId("market-buy-dialog");
+  await buying.getByTestId("market-buy-months").fill("3");
+  await expect(buying.getByTestId("market-buy-total")).toContainText("148.50");
+  await expect(buying.getByTestId("market-buy-trust")).toContainText("northwind");
+  await expect(buying.getByTestId("market-buy-confirm")).toBeDisabled();
+  await page.keyboard.press("Escape");
 
-  // Stop trusting lumen's signer, then remove the market.
+  // Stop trusting lumen's signer, then remove the market. The hub has bought no plugin yet.
   await page.goto("/admin/market");
+  await expect(main(page).getByTestId("market-licenses")).toContainText("The hub has bought no plugin.");
   const trusted = main(page).getByTestId("market-trusted").locator('[data-trusted-publisher="lumen"]');
   await expect(trusted).toContainText(LUMEN_IDENTITY);
   await trusted.getByTestId("market-trust-remove").click();
@@ -230,6 +239,11 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(main(page).getByTestId("market-license")).toBeVisible();
       await expectNoSeriousViolations(page, `a paid market plugin in ${scheme} at ${width} px`);
       await shoot(page, info, `paid${suffix}-${scheme}`);
+      await main(page).getByTestId("market-buy").click();
+      await expect(page.getByTestId("market-buy-dialog")).toBeVisible();
+      await expectNoSeriousViolations(page, `the buy dialog in ${scheme} at ${width} px`);
+      await shoot(page, info, `buy${suffix}-${scheme}`);
+      await page.keyboard.press("Escape");
 
       await page.goto("/admin/market");
       await expect(main(page).locator(`[data-source-repo="${seeded.market}"]`).first()).toBeVisible();

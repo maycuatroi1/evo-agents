@@ -1258,6 +1258,7 @@
         "kg": "Knowledge graph",
         "monitor": "Monitor",
         "market": "Market",
+        "seller": "Selling plugins",
         "canvas": "Canvas",
         "srs": "Requirements (SRS)",
         "tasks": "Tasks"
@@ -1268,6 +1269,7 @@
         "kg": "A project's knowledge graph: its pages, its API and the kg tools of the hub's MCP.",
         "monitor": "The runs at work in every project, watched live.",
         "market": "The plugin market: browsing the markets the hub reads and installing from them.",
+        "seller": "Selling plugins to other hubs: listings, orders paid by bank transfer, licences and the monthly revenue.",
         "canvas": "A project's canvas: its claims, their evidence and judging, and @strategist.",
         "srs": "A project's requirement documents, their reviews and approvals, and @ba.",
         "tasks": "A project's tasks and their board, made from approved requirements."
@@ -6639,7 +6641,8 @@
       "curator_probe_report": "Weekly probe report of the Curator",
       "opportunity_window": "The window of an opportunity closes",
       "today": "Today's summary",
-      "market_install_request": "A project asks for a plugin of the market"
+      "market_install_request": "A project asks for a plugin of the market",
+      "market_license_expiring": "The licence of a paid plugin ends soon"
     },
     "item": {
       "unread": "Unread",
@@ -11311,7 +11314,7 @@
     "reason": {
       "inImage": "A core plugin that ships in this hub's image: a project's admin enables it from the project's Plugins.",
       "core": "A core plugin runs in the hub's own processes, so it comes with the hub's image and never installs from here. Ask the hub's operator for an image that carries it.",
-      "paid": "A paid plugin needs a license from its seller. Licenses come in a later release; nothing installs from here yet.",
+      "paid": "A paid plugin installs with a licence from its seller: a hub admin buys it here, and the hub installs it once the seller marks the order paid.",
       "unavailable": "Its latest release does not read, so nothing installs from it until the publisher fixes it."
     },
     "errors": {
@@ -11369,10 +11372,12 @@
       "locked": "Not trusted, and the operator locked the publishers this hub trusts",
       "repo": "Repository",
       "licenseTitle": "License",
-      "licenseDescription": "A paid plugin installs with a license from its seller, which this hub does not take yet.",
+      "licenseDescription": "Paid per hub per month to its seller. The licence names this hub and is checked here without asking anyone.",
       "requestTitle": "Ask for it",
       "missingTitle": "No such plugin",
-      "missingDescription": "The address does not name a plugin of a market."
+      "missingDescription": "The address does not name a plugin of a market.",
+      "licenseAdmin": "Buy it for some months: the seller sends an invoice, and once it marks the order paid the hub receives the licence within the hour and installs the plugin.",
+      "licenseMember": "A hub admin buys it for the whole hub."
     },
     "admin": {
       "title": "Market",
@@ -11431,6 +11436,109 @@
         "added": "Added {repo}",
         "addedCount": "Its index lists {count, plural, one {# plugin} other {# plugins}}.",
         "addedWithError": "Its index does not read yet: {error}"
+      },
+      "seller": "Selling"
+    },
+    "buy": {
+      "open": "Buy",
+      "renew": "Renew",
+      "title": "Buy {name}",
+      "description": "The order goes to the plugin's seller with this hub's id and your contact. You pay by bank transfer with the order number as the reference.",
+      "orderedDescription": "The seller has the order. Pay it as below; once the seller marks it paid, the hub receives the licence and installs the plugin.",
+      "months": "Months",
+      "monthsHint": "The licence covers this many months from the day the seller marks the order paid, or from the end of the last one.",
+      "monthsInvalid": "A whole number from 1 to {max}",
+      "name": "Name or company to invoice",
+      "email": "Email for the invoice",
+      "noTotal": "The seller totals the order.",
+      "totalLine": "{total} for {months, plural, one {# month} other {# months}}",
+      "trusts": "The hub does not trust {publisher} yet: ordering trusts its signer {identity} from now on.",
+      "cancel": "Cancel",
+      "confirm": "Place the order",
+      "ordering": "Ordering",
+      "ordered": "Ordered: {number}",
+      "openLicenses": "See the licences",
+      "number": "Order number",
+      "total": "Total",
+      "instructions": "How to pay it",
+      "done": "Done"
+    },
+    "licenses": {
+      "title": "Licences",
+      "description": "The paid plugins this hub ordered and where each licence stands. The hub checks every hour; Check now asks the sellers at once.",
+      "hub": "This hub's id:",
+      "none": "The hub has bought no plugin.",
+      "line": "{number} from {seller}, {months, plural, one {# month} other {# months}}, {total}",
+      "until": "Covers until {day}",
+      "checked": "Last checked",
+      "check": "Check now",
+      "checking": "Checking",
+      "checkedNow": "Asked about {count, plural, one {# open order} other {# open orders}}",
+      "installed": "Installed {name}",
+      "lapsed": "Turned off {name}: its licence lapsed",
+      "checkFailed": "Could not check the licences",
+      "state": {
+        "pending": "Waiting for payment",
+        "active": "Active",
+        "grace": "Ended, grace week",
+        "lapsed": "Lapsed",
+        "open": "Open",
+        "paid": "Paid",
+        "cancelled": "Cancelled"
+      }
+    },
+    "seller": {
+      "title": "Selling plugins",
+      "sub": "Orders from buying hubs, the monthly revenue and its 80/20 split, and the key that signs licences.",
+      "notSelling": "This hub cannot sell yet: set EVO_HUB_SELLER_ID and EVO_HUB_SELLER_KEY (written by `evo-agents hub market seller-key`) and restart it.",
+      "keyTitle": "Licence key",
+      "keyDescription": "List the key id and public key under this seller in the market's index. The private key never leaves the hub's environment.",
+      "sellerId": "Seller id",
+      "keyId": "Key id",
+      "publicKey": "Public key",
+      "signals": "Signals to project",
+      "unset": "Not set",
+      "listings": {
+        "title": "Listings",
+        "description": "Publishers list plugins and upload signed bundles with `evo-agents hub market listing` and `bundle upload`.",
+        "none": "Nothing is listed.",
+        "line": "{publisher}, {price} per hub a month, {version}, {count, plural, one {# active licence} other {# active licences}}",
+        "noBundle": "no bundle",
+        "state": {
+          "draft": "Draft",
+          "listed": "Listed",
+          "withdrawn": "Withdrawn"
+        }
+      },
+      "orders": {
+        "title": "Orders",
+        "description": "Mark an order paid with its invoice number once the transfer arrives: the hub issues the licence, which the buying hub receives at its next check.",
+        "none": "No order yet.",
+        "line": "{plugin}, {months, plural, one {# month} other {# months}}, {total}, {buyer} ({email})",
+        "paidLine": "Invoice {invoice}, covers until {until}",
+        "markPaid": "Mark paid",
+        "cancel": "Cancel order",
+        "back": "Back",
+        "paidTitle": "Mark {number} paid",
+        "paidDescription": "Only once the money arrived. The hub signs a licence for the buying hub and records who marked it.",
+        "cancelTitle": "Cancel {number}",
+        "cancelDescription": "The buying hub sees it cancelled at its next check. A paid order cannot be cancelled.",
+        "invoice": "Invoice number",
+        "markedPaid": "Marked {number} paid",
+        "licensed": "The licence covers until {day}",
+        "cancelled": "Cancelled {number}"
+      },
+      "revenue": {
+        "title": "Revenue",
+        "description": "Paid orders by the month they were marked paid: 80% to each publisher, 20% to the platform. The hub pays nobody itself; mark a share paid out once you paid it.",
+        "month": "Month",
+        "total": "{gross} in all: {publishers} to publishers, {platform} to the platform",
+        "none": "No paid order this month.",
+        "line": "{orders, plural, one {# order} other {# orders}}, {gross}: {publisher} to the publisher, {platform} to the platform",
+        "paidOutBy": "Paid out by {login}",
+        "markPaidOut": "Mark paid out",
+        "paidOut": "Marked the share of {publisher} for {month} paid out",
+        "payoutFailed": "Could not mark the share of {publisher} paid out"
       }
     }
   }

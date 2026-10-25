@@ -22,19 +22,20 @@ SECOND = "second-project"
 
 
 def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
-    assert features.IDS == ("chats", "curator", "kg", "monitor", "market", "canvas", "srs", "tasks")
+    assert features.IDS == ("chats", "curator", "kg", "monitor", "market", "seller", "canvas", "srs", "tasks")
     assert {f.id: f.layers for f in features.FEATURES} == {
         "chats": ("instance",),
         "curator": ("instance", "project"),
         "kg": ("instance", "project"),
         "monitor": ("instance",),
         "market": ("instance",),
+        "seller": ("instance",),
         "canvas": ("instance", "project"),
         "srs": ("instance", "project"),
         "tasks": ("instance", "project"),
     }
-    # canvas, srs and tasks, plugins once, are off until a project turns them on
-    assert [f.id for f in features.FEATURES if not f.default] == ["canvas", "srs", "tasks"]
+    # the seller is off until a hub admin turns it on; canvas, srs and tasks, plugins once, until a project does
+    assert [f.id for f in features.FEATURES if not f.default] == ["seller", "canvas", "srs", "tasks"]
     owners = {
         "/v1/chats": ("chats", None),
         "/v1/chats/12/messages": ("chats", None),
@@ -54,6 +55,8 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
         "/v1/market": ("market", None),
         "/v1/market/3/lumen-notes": ("market", None),
         "/v1/marketplace": None,
+        "/v1/seller/orders": ("seller", None),
+        "/v1/seller-api/orders": None,
         "/v1/plugins/install-github": None,  # installing from a release stays with the market off
         "/v1/x/crm/demo/contacts": None,  # a plugin of the store, which its own gate turns away
     }
@@ -77,7 +80,7 @@ def test_a_projects_layer_wins_over_the_hubs_and_a_feature_neither_sets_is_on():
     assert not features.enabled(chats, {"chats": False}, {"chats": True})  # the hub's alone: a project's is ignored
     assert features.problems({"kg": False, "curator": True}, "project") == []
     assert features.problems({"wiki": False}, "instance") == [
-        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, market, canvas, srs, tasks"
+        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, market, seller, canvas, srs, tasks"
     ]
     srs = features.BY_ID["srs"]
     assert not features.enabled(srs, {}) and features.enabled(srs, {}, {"srs": True})
@@ -163,6 +166,7 @@ def test_with_nothing_set_every_feature_is_on_and_no_route_is_turned_away(toggle
             {"id": "kg", "layers": ["instance", "project"], "enabled": True},
             {"id": "monitor", "layers": ["instance"], "enabled": True},
             {"id": "market", "layers": ["instance"], "enabled": True},
+            {"id": "seller", "layers": ["instance"], "enabled": False},
             {"id": "canvas", "layers": ["instance", "project"], "enabled": False},
             {"id": "srs", "layers": ["instance", "project"], "enabled": False},
             {"id": "tasks", "layers": ["instance", "project"], "enabled": False},
@@ -195,7 +199,10 @@ def test_a_feature_turned_off_for_a_project_answers_404_there_and_nowhere_else(t
 
     mine = get(toggles, "/v1/features").json()
     assert mine["projects"] == [{"project": PROJECT, "values": {"kg": False}}]
-    assert all(feature["enabled"] == (feature["id"] not in ("canvas", "srs", "tasks")) for feature in mine["features"])
+    assert all(
+        feature["enabled"] == (feature["id"] not in ("seller", "canvas", "srs", "tasks"))
+        for feature in mine["features"]
+    )
     assert get(toggles, "/v1/features", "stranger").json()["projects"] == []  # no grant on it
 
 
@@ -209,6 +216,7 @@ def test_the_hubs_layer_turns_a_feature_off_everywhere_and_a_projects_layer_turn
         "kg": False,
         "monitor": False,
         "market": True,
+        "seller": False,
         "canvas": False,
         "srs": False,
         "tasks": False,

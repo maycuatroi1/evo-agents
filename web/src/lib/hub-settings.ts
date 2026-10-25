@@ -16,7 +16,7 @@ export type BrandingColors = Schemas["BrandingColors"];
 export type Features = Schemas["Features"];
 
 /** The features core declares (evo_agents.hub.features.FEATURES), in its order. */
-export const FEATURE_IDS = ["chats", "curator", "kg", "monitor", "market", "canvas", "srs", "tasks"] as const;
+export const FEATURE_IDS = ["chats", "curator", "kg", "monitor", "market", "seller", "canvas", "srs", "tasks"] as const;
 export type FeatureId = (typeof FEATURE_IDS)[number];
 
 /** The tokens a hub may colour (evo_agents.hub.branding.TOKENS), each for the light and the dark theme. */

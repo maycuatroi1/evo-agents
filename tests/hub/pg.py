@@ -222,6 +222,10 @@ KG_DECISION_TABLES = frozenset({"kg_decisions", "kg_decision_events"})  # migrat
 RETIRED_PLUGIN_TABLES = frozenset({"retired_project_plugins"})
 # migration 0154: the markets a hub reads, the publishers its admins trusted, install requests (plan plugin-market)
 MARKET_TABLES = frozenset({"market_sources", "plugin_publishers", "market_install_requests"})
+# migration 0159: the hub's id, a seller's listings, bundles, orders and payouts, a buyer's purchases (plan plugin-market)
+SELLER_TABLES = frozenset(
+    {"hub_identity", "market_listings", "market_bundles", "market_orders", "market_payouts", "market_purchases"}
+)
 # migration 0148: worker pools, the projects of each and their join tokens (plan worker-pools)
 POOL_TABLES = frozenset({"worker_pools", "worker_pool_projects", "worker_join_tokens"})
 PROVIDER_ACCOUNT_TABLES = frozenset({"provider_accounts"})  # migration 0151 (plan model-providers)

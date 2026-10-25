@@ -116,6 +116,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   curator_probe_report: { icon: FlaskConical },
   opportunity_window: { icon: CalendarClock },
   market_install_request: { icon: Store },
+  market_license_expiring: { icon: CalendarClock },
   today: { icon: CalendarDays },
 };
 
