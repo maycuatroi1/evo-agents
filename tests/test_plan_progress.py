@@ -1,4 +1,8 @@
-from evo_agents.hub.server.runs.service.listing import plan_progress
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="the runs listing needs the hub-server extra, evo-ak[hub-server]")
+
+from evo_agents.hub.server.runs.service.listing import plan_progress  # noqa: E402
 
 
 def test_progress_names_the_step_in_progress():
