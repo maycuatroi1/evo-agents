@@ -259,8 +259,8 @@ async def rerun_in(
     await refuse_curator_plan(conn, access, plan_id)
     pin_to = pinned if worker_id is None else worker_id
     worker = None if pin_to is None else await pinnable(conn, user, access, pin_to)
-    picked = await rerun_picks(conn, user, access, run_id, body, worker)
     placed = await _rerun_placement(conn, run_id, body)
+    picked = await rerun_picks(conn, user, access, run_id, body, worker, placed["selector"])
     asked = Asked(kind, runtime_now, model, worker, tuple(picked), **placed)
     chosen = await rerun_choice(conn, user, access, run_id, asked)
     await lock_plan(conn, access.project_id, plan_id)

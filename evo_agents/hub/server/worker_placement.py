@@ -64,6 +64,20 @@ def pool_name(w=None):
     return _pool_field(w, tables.worker_pools.c.name)
 
 
+def bound_here(b, worker_id):
+    """A row of secret_bindings ``b`` binds its secret to worker ``worker_id``: to it by id, or to its pool, which
+    covers each node of the pool, those that joined after the binding too (plan worker-pools, criterion a4). A binding
+    to any worker of the owner, both columns NULL, is not one of these."""
+    w = tables.workers
+    of_worker = select(w.c.pool_id).where(w.c.id == worker_id).scalar_subquery()
+    return or_(b.c.worker_id == worker_id, and_(b.c.pool_id.is_not(None), b.c.pool_id == of_worker))
+
+
+def bound_on(b, worker_id):
+    """A row of secret_bindings ``b`` reaches worker ``worker_id``: bound to any worker of the owner, or here."""
+    return or_(and_(b.c.worker_id.is_(None), b.c.pool_id.is_(None)), bound_here(b, worker_id))
+
+
 def all_taints(w=None):
     """The taints of a worker row: its own, then its pool's."""
     w = tables.workers if w is None else w

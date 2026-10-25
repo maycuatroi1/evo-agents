@@ -386,9 +386,12 @@ def no_plan_run(activity: Activity, plan_id: str) -> None:
         )
 
 
-async def _picked(conn: AsyncConnection, user: Principal, access: ProjectAccess, name, pinned) -> Picked | None:
-    """The account ``name`` picked by hand for the run, checked (``service.accounts``); None when none is named."""
-    return None if name is None else await pick_account(conn, user, access, name, pinned)
+async def _picked(conn: AsyncConnection, user: Principal, access: ProjectAccess, body, pinned) -> Picked | None:
+    """The account ``body`` picks by hand for the run, checked (``service.accounts``) against where the run goes;
+    None when none is named."""
+    if body.account is None:
+        return None
+    return await pick_account(conn, user, access, body.account, pinned, selector=body.selector())
 
 
 def _account_text(picked: Picked | None) -> str:
@@ -422,7 +425,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
         identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
-        picked = await _picked(conn, user, access, body.account, pinned)
+        picked = await _picked(conn, user, access, body, pinned)
         placed = placement(body)
         asked = Asked("step", body.runtime, body.model, pinned, _picks(picked), **placed)
         chosen = await choose(conn, user, access, body.profile, asked)
@@ -518,7 +521,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
         identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
         browser = body.browser or bool(identities)
-        picked = await _picked(conn, user, access, body.account, pinned)
+        picked = await _picked(conn, user, access, body, pinned)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
         if activity.plan_run is not None:
@@ -641,7 +644,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
             raise HTTPException(422, f"{problem}; nothing was dispatched")
         runtime = author.AUTHOR_RUNTIMES[0] if body.runtime == "any" else body.runtime
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
-        picked = await _picked(conn, user, access, body.account, pinned)
+        picked = await _picked(conn, user, access, body, pinned)
         repos = await _author_repos(conn, access, pinned)
         _fits(pinned, access, "author", [repos[0]["repo"]], runtime)
         placed = placement(body)

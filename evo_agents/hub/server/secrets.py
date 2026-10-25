@@ -76,6 +76,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.runs.models.placement import PoolName
 from evo_agents.hub.server.sealing import Sealer, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_views import CredentialShare, shares_of
@@ -147,6 +148,12 @@ class SecretWrite(BaseModel):
         description="names of the caller's own workers that are not revoked; left out or empty for any of them; "
         "none for kind forge",
     )
+    pools: list[PoolName] = Field(
+        default_factory=list,
+        max_length=MAX_BINDINGS,
+        description="names of the caller's own worker pools: each node of each gets it, the nodes that join later "
+        "too; never with workers, and none for kind forge",
+    )
     expires_at: AwareDatetime | None = Field(
         None,
         description="after this no run gets it, and the hub no longer uses one of kind forge; in the future; "
@@ -176,6 +183,7 @@ class Secret(BaseModel):
     environment: str | None = Field(None, description="kind env: the environment it is labelled for (test)")
     projects: list[str] = Field(description="the projects whose runs get it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
+    pools: list[str] = Field([], description="the worker pools it is bound to, each node of each")
     expires_at: datetime | None
     created_at: datetime
     updated_at: datetime = Field(description="when its value was last written")
@@ -215,6 +223,7 @@ async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None
         s.c.environment,
         bound_names(tables.projects, b.c.project_id).label("projects"),
         bound_names(tables.workers, b.c.worker_id).label("workers"),
+        bound_names(tables.worker_pools, b.c.pool_id).label("pools"),
         s.c.expires_at,
         s.c.created_at,
         s.c.updated_at,
@@ -312,8 +321,8 @@ def _forge_refusal(body: SecretWrite) -> str | None:
         return None
     if body.expires_at is None:
         return "a secret of kind forge needs expires_at: set the end of the GitLab token it holds"
-    if body.workers:
-        return "a secret of kind forge binds to no worker: only the hub uses it, and no run is ever leased it"
+    if body.workers or body.pools:
+        return "a secret of kind forge binds to no worker or pool: only the hub uses it, and no run is ever leased it"
     return None
 
 
@@ -389,6 +398,32 @@ async def _own_workers(conn: AsyncConnection, user: Principal, names: list[str])
     return [found[name.lower()] for name in names]
 
 
+async def own_pools(conn: AsyncConnection, user: Principal, names: list[str]) -> list[int]:
+    """The ids of the caller's worker pools ``names``; 403 for any other name, whoever's it is."""
+    if not names:
+        return []
+    p = tables.worker_pools
+    lower = func.lower(p.c.name)
+    own = select(lower.label("name"), p.c.id).where(
+        p.c.owner_id == user.user_id, lower.in_([name.lower() for name in names])
+    )
+    found = {row.name: row.id for row in await conn.execute(own)}
+    for name in names:
+        if name.lower() not in found:
+            raise HTTPException(
+                403,
+                f"{name} is not a worker pool of yours: a secret binds only to your own pools (GET /v1/worker-pools)",
+            )
+    return [found[name.lower()] for name in names]
+
+
+def both_refusal(workers: list[str], pools: list[str]) -> str | None:
+    """Why a binding cannot name ``workers`` and ``pools`` both, or None."""
+    if workers and pools:
+        return "bind it to workers or to pools, not both: a pool covers each of its nodes already"
+    return None
+
+
 async def _live_secrets(conn: AsyncConnection, owner_id: int, other_than: str) -> int:
     s = tables.secrets
     live = (
@@ -411,14 +446,18 @@ def _upsert(owner_id: int, name: str, **values):
     ).returning(s.c.id, (column("xmax") == 0).label("created"))
 
 
-async def _bind(conn: AsyncConnection, secret_id: int, project_ids: list[int], worker_ids: list[int]) -> None:
-    """The secret's bindings, replaced: each project on each of the workers, or on any worker of its owner."""
+async def _bind(
+    conn: AsyncConnection, secret_id: int, project_ids: list[int], worker_ids: list[int], pool_ids: list[int] = ()
+) -> None:
+    """The secret's bindings, replaced: each project on each of the workers, or on each of the pools, or on any worker
+    of its owner."""
     b = tables.secret_bindings
     await conn.execute(delete(b).where(b.c.secret_id == secret_id))
+    targets = [{"worker_id": worker_id} for worker_id in worker_ids] or [{"pool_id": pool_id} for pool_id in pool_ids]
     rows = [
-        {"secret_id": secret_id, "project_id": project_id, "worker_id": worker_id}
+        {"secret_id": secret_id, "project_id": project_id, "worker_id": None, "pool_id": None, **target}
         for project_id in project_ids
-        for worker_id in worker_ids or [None]
+        for target in targets or [{}]
     ]
     if rows:
         await conn.execute(insert(b), rows)
@@ -443,11 +482,15 @@ async def put_secret(
     refusal = _forge_refusal(body)
     if refusal is not None:
         raise HTTPException(422, refusal)
-    projects, workers = _unique(body.projects), _unique(body.workers)
+    refusal = both_refusal(body.workers, body.pools)
+    if refusal is not None:
+        raise HTTPException(422, refusal)
+    projects, workers, pools = _unique(body.projects), _unique(body.workers), _unique(body.pools)
     sealed = sealer.seal(value, secret_aad(user.user_id, name, body.kind))
     async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects, body.kind)
         worker_ids = await _own_workers(conn, user, workers)
+        pool_ids = await own_pools(conn, user, pools)
         # One write of a member's secrets at a time, so two of them cannot both pass the count.
         users = tables.users
         await conn.execute(select(users.c.id).where(users.c.id == user.user_id).with_for_update())
@@ -475,7 +518,7 @@ async def put_secret(
             if not isinstance(exc.orig, psycopg.errors.CheckViolation):
                 raise
             raise HTTPException(422, "the secrets table refused this secret's kind, target or username") from None
-        await _bind(conn, secret_id, project_ids, worker_ids)
+        await _bind(conn, secret_id, project_ids, worker_ids, pool_ids)
         if oauth is not None:
             await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, value, oauth))
             await clear_relogin(conn, secret_id)  # a new sign-in ends a cooldown for a dead refresh token
