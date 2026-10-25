@@ -98,7 +98,7 @@ from evo_agents.hub.server.protection import (
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId, VerifyResult
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, unfit
+from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -481,7 +481,7 @@ def _run_values(due, gate, *, kind: str, plan_id: str, revision: int, title: str
         "plan_revision": revision,
         "dispatched_by": due.owner_id,
         "dispatched_via": "schedule",
-        "pinned_worker_id": gate.worker.id,
+        **gate.duty.columns(),
         "requested_runtime": runtime,
         "runtime": runtime,
         "model": model,
@@ -572,9 +572,9 @@ async def _build_wait(conn: AsyncConnection, due, gate, change, runtime: str, *,
     elif change.forge == "gitlab":
         why = await _git_secret_wait(conn, due, change)
     why = why or await _run_wait(conn, due.project_id, change, held)
-    problems = [] if why else unfit(gate.worker, due.project, "plan", [change.repo], runtime)
+    problems = [] if why else gate.duty.unfit(due.project, "plan", [change.repo], runtime)
     if problems:
-        why = f"worker {gate.worker.name} on duty cannot build it: {'; '.join(problems)}"
+        why = f"{gate.duty.where} on duty cannot build it: {'; '.join(problems)}"
     return (None, why) if why else (held, None)
 
 
@@ -582,7 +582,7 @@ async def _builder_queued(conn: AsyncConnection, due, gate, change, run_id: int)
     await _set(conn, change.id, builder_run_id=run_id, reason=None)
     text = (
         f"Queued by the night shift of project {due.project} as the Builder of the Curator's change #{change.id} "
-        f"(proposal #{change.proposal_id}, tier {change.tier}), as {due.owner} on worker {gate.worker.name}, on "
+        f"(proposal #{change.proposal_id}, tier {change.tier}), as {due.owner} on {gate.duty.where}, on "
         f"{change.branch} of {change.repo} alone: {_caps(gate.budget)}."
     )
     await write_event(conn, run_id, {"text": text, "change_id": change.id, **gate.budget})
@@ -653,7 +653,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     ).one_or_none()
     if waiting is None:
         return None
-    access, worker, charter = gate.access, gate.worker, due.body
+    access, duty, charter = gate.access, gate.duty, due.body
     held = await plan_routes._held(conn, access, waiting.plan_id)
     if held is None:
         await _set(conn, waiting.id, state="open", reason="its plan is no longer on the hub")
@@ -662,12 +662,12 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     activity = await plan_activity(conn, due.project_id, waiting.plan_id)
     if activity.plan_run is not None or activity.steps:
         return None  # a Builder of the change still runs: never both at once
-    usable = {name for name in runs.RUNTIMES if _available(worker, name)}
+    usable = {name for name in runs.RUNTIMES if duty.runtime(name) is not None}
     cleared = judge.codex_cleared(access.rules, waiting.proposal_label)
     runtime, model, why = judge.judge_runtime(
         charter.get("judge") or {}, charter.get("builder") or {}, codex_allowed=cleared, worker_runtimes=usable
     )
-    problems = unfit(worker, due.project, "judge", [waiting.repo], runtime)
+    problems = duty.unfit(due.project, "judge", [waiting.repo], runtime)
     if problems:
         log.info("no judge run yet", extra={"project": due.project, "why": "; ".join(problems)})
         return None
@@ -707,12 +707,6 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     )
     log.info("curator judge queued", extra={"project": due.project, "run_id": run_id, "change_id": waiting.id})
     return run_id
-
-
-def _available(worker: Pinned, name: str) -> bool:
-    from evo_agents.hub.server.runs.models import available
-
-    return available(worker.runtimes.get(name))
 
 
 # When a run of a change ends

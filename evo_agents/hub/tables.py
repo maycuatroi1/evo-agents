@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Computed,
     Date,
@@ -29,6 +30,7 @@ from sqlalchemy import (
     false,
     func,
     literal,
+    or_,
     true,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
@@ -759,9 +761,14 @@ secret_bindings = Table(
     Column("secret_id", BigInteger, nullable=False),
     Column("project_id", BigInteger, nullable=False),
     Column("worker_id", BigInteger),
+    Column("pool_id", BigInteger),  # bound to each node of the pool, those that join later too (0149)
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="secret_bindings_project_id_fkey"),
     ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="secret_bindings_secret_id_fkey"),
     ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="secret_bindings_worker_id_fkey"),
+    ForeignKeyConstraint(["pool_id"], ["worker_pools.id"], ondelete="CASCADE", name="secret_bindings_pool_id_fkey"),
+    CheckConstraint(
+        or_(column("worker_id").is_(None), column("pool_id").is_(None)), name="secret_bindings_worker_or_pool_check"
+    ),
     Index("secret_bindings_project_idx", "project_id"),
 )
 Index(
@@ -769,7 +776,13 @@ Index(
     secret_bindings.c.secret_id,
     secret_bindings.c.project_id,
     func.coalesce(secret_bindings.c.worker_id, 0),
+    func.coalesce(secret_bindings.c.pool_id, 0),
     unique=True,
+)
+Index(
+    "secret_bindings_pool_idx",
+    secret_bindings.c.pool_id,
+    postgresql_where=secret_bindings.c.pool_id.is_not(None),
 )
 Index(
     "secret_bindings_worker_idx",

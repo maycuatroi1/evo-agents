@@ -4588,7 +4588,9 @@
           "updated_by",
           "updated_at",
           "worker",
-          "worker_id"
+          "worker_id",
+          "pool",
+          "pool_id"
         ],
         "schema": "CharterRevision"
       }
@@ -4627,6 +4629,7 @@
           "goals",
           "window",
           "worker",
+          "pool",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -4653,6 +4656,7 @@
           "updated_by",
           "updated_at",
           "worker_id",
+          "pool_id",
           "schedule_owner"
         ],
         "schema": "Charter"
@@ -4692,6 +4696,7 @@
           "goals",
           "window",
           "worker",
+          "pool",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -4718,6 +4723,7 @@
           "updated_by",
           "updated_at",
           "worker_id",
+          "pool_id",
           "schedule_owner"
         ],
         "schema": "Charter"
@@ -83418,10 +83424,30 @@
               "$ref": "#/components/schemas/Window"
             },
             "worker": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker",
-              "description": "the worker on duty, by name: one of the writer's own"
+              "description": "the worker on duty, by name: one of the writer's own; or name a pool"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker"
             },
             "night_budget_usd": {
               "type": "number",
@@ -83588,21 +83614,39 @@
               "title": "Updated At"
             },
             "worker_id": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id",
-              "description": "the worker on duty"
+              "description": "the worker on duty; null for a pool"
+            },
+            "pool_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id",
+              "description": "the pool on duty; null for a worker"
             },
             "schedule_owner": {
               "type": "string",
               "title": "Schedule Owner",
-              "description": "the member the night shift dispatches its runs as: the worker's owner"
+              "description": "the member the night shift dispatches its runs as: the worker's, or the pool's, owner"
             }
           },
           "additionalProperties": false,
           "type": "object",
           "required": [
             "window",
-            "worker",
             "night_budget_usd",
             "project",
             "revision",
@@ -83629,12 +83673,50 @@
               "title": "Updated At"
             },
             "worker": {
-              "type": "string",
-              "title": "Worker"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "the worker on duty; null for a pool"
             },
             "worker_id": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool on duty; null for a worker"
+            },
+            "pool_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
             }
           },
           "type": "object",
@@ -83662,10 +83744,30 @@
               "$ref": "#/components/schemas/Window"
             },
             "worker": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker",
-              "description": "the worker on duty, by name: one of the writer's own"
+              "description": "the worker on duty, by name: one of the writer's own; or name a pool"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker"
             },
             "night_budget_usd": {
               "type": "number",
@@ -83818,7 +83920,6 @@
           "type": "object",
           "required": [
             "window",
-            "worker",
             "night_budget_usd"
           ],
           "title": "CharterWrite"
@@ -117476,12 +117577,50 @@
               "description": "the member its runs are dispatched as"
             },
             "worker_id": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id"
             },
             "worker": {
-              "type": "string",
-              "title": "Worker"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "the worker its runs go to; null for a pool"
+            },
+            "pool_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            },
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "the pool whose ready nodes take its runs; null for a worker"
             },
             "paused_at": {
               "anyOf": [

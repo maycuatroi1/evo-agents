@@ -1,6 +1,7 @@
 """Run plan on a Curator's plan: POST /v1/projects/{p}/curator/plans/{plan_id}/build (writer) queues the Builder of its
 change now, beside the night shift's other runs, instead of waiting for them to end. It is the night shift's Builder in
-every other way (``changes.queue_builder``, through ``curator.project_gate``): pinned to the worker on duty, as the
+every other way (``changes.queue_builder``, through ``curator.project_gate``): pinned to the worker on duty, or placed
+on a ready node of the pool on duty (a pool with none is refused, naming why each node is not ready), as the
 schedule's owner, on the change's branch alone, with the charter's runtime and the caps of the night that last opened,
 at any hour; never while the night shift is paused or its circuit breaker tripped, past ``max_runs_per_night`` or the
 night's budget, while a run of the plan is active, or before the hub checked the repo's ruleset. Each refusal is 409
@@ -21,6 +22,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.changes import change_of_plan, queue_builder
 from evo_agents.hub.server.curator import project_gate
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.plans import PlanId
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import write_event
@@ -44,6 +46,7 @@ GATE_REFUSALS = {  # why the night shift's gate stays shut, by the word ``gate_o
     "max_runs": "the night had max_runs_per_night runs already: raise it in the charter, or wait for the next night",
     "spent": "the night's budget is spent: raise night_budget_usd in the charter, or wait for the next night",
     "worker": "the worker on duty takes no run now (offline, draining, revoked, or not serving the project)",
+    "pool": "the pool on duty has no node ready for a run now",
 }
 
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
@@ -64,7 +67,10 @@ async def build_now(conn: AsyncConnection, user: Principal, project: str, plan_i
         )
     due, word, gate = await project_gate(conn, access.project_id)
     if gate is None:
-        raise HTTPException(409, f"{GATE_REFUSALS.get(word, word)}; nothing was queued")
+        why = GATE_REFUSALS.get(word, word)
+        if word == "pool":
+            why = (await on_duty(conn, due))[1] or why
+        raise HTTPException(409, f"{why}; nothing was queued")
     run_id = await queue_builder(conn, due, gate, curator_app=curator_app, only=change.id)
     if run_id is None:
         why = (await change_of_plan(conn, access.project_id, plan_id)).reason or "it is not ready to build"
