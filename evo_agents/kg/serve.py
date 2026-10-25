@@ -48,7 +48,7 @@ from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candida
 from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
-from evo_agents.kg.search import with_mentions
+from evo_agents.kg.search import SNIPPET_KINDS, query_words, with_mentions
 from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
@@ -264,12 +264,25 @@ class Session:
         for reached in via.values():
             self._saw(reached["label"])
         shared, label_line = self._labels(results)
+        words = len(query_words(query))
+        direct = [n for n in results if n["id"] not in via]  # a node a hit mentions was not found by its words
+        matched = store.matched(
+            [n["id"] for n in direct], query, {n["id"] for n in direct if n["kind"] in SNIPPET_KINDS}
+        )
         lines = [f"{len(results)} result(s) for {query!r} in project {self.project.name} (build {b})", *label_line]
-        lines += [("  mentions " if n["id"] in via else "") + self._line(n, shared) for n in results]
+        if words > 1 and matched and all(m["words"] < words for m in matched.values()):
+            lines.append(f"no result holds all {words} words of the query")
+        for n in results:
+            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared)
+            m = matched.get(n["id"])
+            lines.append(line + (f" words={m['words']}/{words}" if m and words > 1 else ""))
+            if m and m.get("snippet"):
+                lines.append(f"    > {m['snippet']}")
         return "\n".join(lines), {
             "build": b,
             "results": [self._node_json(n) for n in results],
             "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
+            "matched": matched,
             "summary": f"{len(results)} results",
         }
 
