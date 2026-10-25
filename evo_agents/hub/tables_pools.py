@@ -1,4 +1,4 @@
-"""The tables of worker pools (0147), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
+"""The tables of worker pools (0148), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
 attributes (``tables.worker_pools``, ``tables.worker_pool_projects``, ``tables.worker_join_tokens``): queries name them
 there.
 
@@ -11,7 +11,7 @@ the hex SHA-256 of the ``evj_`` token, never the token, who made it, when it exp
 most and how many joined with it, and when it was revoked.
 
 Their CHECK constraints are the migration's alone. ``pool_tables`` also gives workers ``pool_id``, the pool a node joined, NULL for a worker paired or registered.
-``placement_columns`` gives workers ``taints`` and runs ``selector`` and ``tolerations`` (0148), which place a run.
+``placement_columns`` gives workers ``taints`` and runs ``selector`` and ``tolerations`` (0149), which place a run.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ def pool_tables(metadata: MetaData, workers: Table) -> tuple[Table, Table, Table
 
 
 def placement_columns(workers: Table, runs: Table) -> None:
-    """The taints of ``workers`` and the selector and tolerations of ``runs`` (0148): the labels a run asks of the
+    """The taints of ``workers`` and the selector and tolerations of ``runs`` (0149): the labels a run asks of the
     worker that claims it and the taints it tolerates."""
     workers.append_column(_texts("taints"))
     runs.append_column(_texts("selector"))

@@ -21715,6 +21715,37 @@ export interface components {
              */
             run_id?: number | null;
         };
+        /**
+         * PlanProgress
+         * @description How far a plan run's plan has come, as the plan holds it now.
+         */
+        PlanProgress: {
+            /**
+             * Done
+             * @description steps with status done
+             */
+            done: number;
+            /**
+             * Total
+             * @description steps of the plan
+             */
+            total: number;
+            /**
+             * Percent
+             * @description done of total, rounded down; 0 for a plan without steps
+             */
+            percent: number;
+            /**
+             * Current Step
+             * @description the step in progress, else the first not done: its title, else its key; null once all are done
+             */
+            current_step: string | null;
+            /**
+             * Current Status
+             * @description that step's status as the plan holds it
+             */
+            current_status: string | null;
+        };
         /** PlanPut */
         PlanPut: {
             /**
@@ -24685,6 +24716,12 @@ export interface components {
             /** Enabled */
             enabled: boolean;
             /**
+             * Builtin
+             * @description a feature of the hub (canvas, srs, tasks), not a plugin of the store: the project's features turn it on and off, and it may do what it asks for while on
+             * @default false
+             */
+            builtin: boolean;
+            /**
              * Permissions
              * @description what the installed version asks for, granted or not
              */
@@ -27116,6 +27153,8 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             } | null;
+            /** @description a plan run's plan progress, set in a list of runs; null for any other run */
+            plan_progress?: components["schemas"]["PlanProgress"] | null;
             /** @description the caps of a run the night shift queued; null for any other */
             budget?: components["schemas"]["RunBudget"] | null;
             /** Error */

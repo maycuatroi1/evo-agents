@@ -2,7 +2,7 @@ import type { Role, Sprint, Task, TaskEdit, TaskEvent, TaskGroup, TaskList, Task
 
 /**
  * The pure model of the Tasks pages: which sprint a board opens on, its columns and filters, whose part a task is, how
- * a writer's text of links reads (as the hub takes them, evo_agents.core_plugins.tasks.links), what a change does to a
+ * a writer's text of links reads (as the hub takes them, evo_agents.hub.server.tasks.links), what a change does to a
  * task before the hub answers, and how a row of a task's history reads. Nothing here reads the API.
  */
 
@@ -15,7 +15,7 @@ export function canWrite(viewer: Viewer | null): boolean {
   return viewer?.role === "writer" || viewer?.role === "admin";
 }
 
-/** The groups of a task nobody works on any more (evo_agents.core_plugins.tasks.FINISHED). */
+/** The groups of a task nobody works on any more (evo_agents.hub.server.tasks.FINISHED). */
 const FINISHED: ReadonlySet<TaskGroup> = new Set(["done", "cancelled"]);
 
 export function isFinished(task: Pick<Task, "status_group">): boolean {
@@ -68,7 +68,7 @@ export function statusOf(settings: Pick<TasksSettings, "statuses">, key: string)
   return settings.statuses.find((status) => status.key === key) ?? null;
 }
 
-/** The kinds of SRS item a task links to (evo_agents.core_plugins.srs CODED kinds), whose names the pages know. */
+/** The kinds of SRS item a task links to (evo_agents.hub.server.srs CODED kinds), whose names the pages know. */
 export const ITEM_KINDS = ["use_case", "business_rule", "screen", "nfr", "cbr"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
@@ -230,7 +230,7 @@ function linkOf(value: string): { link: LinkKind; rest: string } {
   return isOne(LINK_KINDS, kind) ? { link: kind, rest: rest.join(" ") } : { link: "other", rest: value };
 }
 
-/** How a row of the history reads (evo_agents.core_plugins.tasks.writes.record and events). */
+/** How a row of the history reads (evo_agents.hub.server.tasks.writes.record and events). */
 export function eventWords(event: Pick<TaskEvent, "field" | "from_value" | "to_value">): EventWords {
   const { field, from_value: from, to_value: to } = event;
   if (field === "created") return { kind: "created" };

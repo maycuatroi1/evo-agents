@@ -27,7 +27,7 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
 import { MAX_QUERY, runsQuery, runsSummaryQuery } from "./queries";
-import { facetCount, filtersSearch, isFiltered, KIND_FILTERS, type KindFilter, listQuery, NO_FILTERS, readFilters, RUN_FACETS, type RunFacet, type RunFilters } from "./run-filters";
+import { DEFAULT_FACET, facetCount, filtersSearch, isFiltered, KIND_FILTERS, type KindFilter, listQuery, NO_FILTERS, readFilters, RUN_FACETS, type RunFacet, type RunFilters } from "./run-filters";
 import { type RunsSummary, summarizeRuns } from "./runs-summary";
 import { RunsTable } from "./runs-table";
 
@@ -110,7 +110,9 @@ function Summary({ summary, onDispatch }: { summary: RunsSummary; onDispatch: ((
 }
 
 const FACET_ICONS: Record<RunFacet, LucideIcon> = {
-  active: STATUS_LOOKS.run.running.icon,
+  running: STATUS_LOOKS.run.running.icon,
+  active: STATUS_LOOKS.run.queued.icon,
+  idle: STATUS_LOOKS.run.idle.icon,
   review: STATUS_LOOKS.run.review.icon,
   done: STATUS_LOOKS.run.done.icon,
   ended: STATUS_LOOKS.run.failed.icon,
@@ -125,7 +127,7 @@ function RunList({ project }: { project: string }) {
   const { state, stale } = usePagedQuery(runsQuery(browserApi, project, listQuery(filters)), null, { live: true });
   const caption = t("caption", { project });
   const inUse: ActiveFilter[] = [
-    ...(filters.facet ? [{ label: t("facets.label"), value: t(`facets.${filters.facet}`) }] : []),
+    ...(filters.facet !== DEFAULT_FACET ? [{ label: t("facets.label"), value: t(`facets.${filters.facet ?? "all"}`) }] : []),
     ...(filters.kind ? [{ label: t("local.kindLabel"), value: t(`local.${filters.kind}`) }] : []),
     ...(filters.account ? [{ label: t("local.accountLabel"), value: filters.account }] : []),
     ...(filters.q ? [{ label: tStates("search"), value: filters.q }] : []),
@@ -150,9 +152,9 @@ function RunList({ project }: { project: string }) {
         testId="runs-search"
       />
       <ToolbarFilters
-        active={(filters.facet ? 1 : 0) + (filters.kind ? 1 : 0) + (filters.account ? 1 : 0)}
+        active={(filters.facet !== DEFAULT_FACET ? 1 : 0) + (filters.kind ? 1 : 0) + (filters.account ? 1 : 0)}
         summary={count}
-        onClear={() => setFilters({ ...filters, facet: null, kind: null, account: "", page: 1 })}
+        onClear={() => setFilters({ ...filters, facet: DEFAULT_FACET, kind: null, account: "", page: 1 })}
         testId="runs-filters"
       >
         <FacetGroup

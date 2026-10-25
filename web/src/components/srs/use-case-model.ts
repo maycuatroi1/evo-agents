@@ -2,7 +2,7 @@ import type { SrsUseCase, SrsUseCaseReview } from "./api";
 import type { ReviewBlock } from "./model";
 
 /**
- * The pure model of the use cases a version in review needs reviewed (evo_agents.core_plugins.srs): how many stand
+ * The pure model of the use cases a version in review needs reviewed (evo_agents.hub.server.srs): how many stand
  * where, what the viewer already said on one, where a use case is read and which role their reviews count for.
  */
 

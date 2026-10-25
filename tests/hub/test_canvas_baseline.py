@@ -1,4 +1,4 @@
-"""Baselines of the core plugin canvas (``evo_agents.core_plugins.canvas``: ``baselines``, ``decisions``, ``schedule``,
+"""Baselines of the core plugin canvas (``evo_agents.hub.server.canvas``: ``baselines``, ``decisions``, ``schedule``,
 ``notices``, ``events``), as criterion a6 of plan living-lean-canvas names them.
 
 The plugin's job ``baseline`` proposes each canvas's baseline once a week at the time of the config's ``baseline``, in
@@ -25,9 +25,9 @@ if not pg.DSN:
 
 from sqlalchemy import insert, select
 
-from evo_agents.core_plugins.canvas import WEEKDAYS, decisions, schedule, server, writes
-from evo_agents.core_plugins.canvas.content import CanvasError
 from evo_agents.hub import plugin_jobs, tables
+from evo_agents.hub.server.canvas import WEEKDAYS, decisions, schedule, server, writes
+from evo_agents.hub.server.canvas.content import CanvasError
 from evo_agents.hub.server.security import Principal, RunScope
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import agent_of, enable, granted, members, mention, running, tool  # noqa: F401

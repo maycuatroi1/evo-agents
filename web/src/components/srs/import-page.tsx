@@ -27,7 +27,7 @@ import { documentHref, documentsHref } from "./links";
 import { canWrite } from "./model";
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,99}$/; // evo_agents.hub.tables_srs.SLUG
-const MAX_BYTES = 4 * 1024 * 1024; // evo_agents.core_plugins.srs.imports.MAX_MARKDOWN_BYTES
+const MAX_BYTES = 4 * 1024 * 1024; // evo_agents.hub.server.srs.imports.MAX_MARKDOWN_BYTES
 
 type Form = { target: string; title: string; slug: string; kind: DocumentKind; summary: string; markdown: string };
 
