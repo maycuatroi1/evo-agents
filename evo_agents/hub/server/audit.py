@@ -124,6 +124,12 @@ SHARE_REVOKE = "share.revoke"
 ACCOUNT_SET = "account.set"  # the owner changed the weight or priority of an account, or paused or resumed it
 ACCOUNT_POLICY_PUT = "account.policy-put"  # the member set their policy for the project
 ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the defaults hold again
+# A provider account (evo_agents.hub.server.provider_accounts), a member's in no project and an agent's in its project:
+# "secret:<id> provider=<catalog id> host=<host of its base URL>", after "<project>/@<handle> " for an agent's, with
+# " fields=<names>" for a change; never its name, its key or the path of its base URL.
+PROVIDER_ACCOUNT_PUT = "provider-account.put"  # created, or replaced whole with a new key
+PROVIDER_ACCOUNT_SET = "provider-account.set"  # its key, endpoint, models, bindings, end, weight, priority or pause
+PROVIDER_ACCOUNT_DELETE = "provider-account.delete"  # deleted: its sealed key and bindings went
 # A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
 # run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
 ACCOUNT_FAILOVER = "account.failover"

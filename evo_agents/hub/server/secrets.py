@@ -22,6 +22,9 @@ softly: the row stays, for the leases and the audit lines that name it, while it
 and the leases and shares of it that are not given back or revoked yet are marked revoked. The name
 is free again at once.
 
+The key of a provider account is a secret of kind provider (``evo_agents.hub.server.provider_accounts``), which these
+routes neither list, write nor delete: a PUT of its name answers 409, a DELETE 404.
+
 An env secret for CLAUDE_CODE_OAUTH_TOKEN may carry ``oauth``, the refresh token and other parts of an account's
 sign-in with OAuth (``evo_agents.hub.server.account_oauth``): the hub seals them with the value in the account's row,
 and a write without ``oauth`` drops what was there.
@@ -57,6 +60,7 @@ from evo_agents.hub.credentials import (
     GITHUB_HOST,
     MAX_SECRET_BYTES,
     MAX_SECRETS_PER_OWNER,
+    PROVIDER_KIND,
     SECRET_ENVIRONMENTS,
     SECRET_KINDS,
     SECRET_NAME,
@@ -95,6 +99,7 @@ NO_KEY = (
     "(docs/credentials.md)"
 )
 NO_SECRET = "you have no secret named {name} on this hub: see GET /v1/secrets"
+PROVIDER_HOLDS = "{name} is one of your provider accounts: change it with /v1/provider-accounts/{name}"
 
 router = APIRouter(
     prefix="/v1/secrets", tags=["secrets"], dependencies=[route_autonomy.K8], responses={401: {"model": ErrorBody}}
@@ -218,7 +223,7 @@ async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None
         s.c.expires_at,
         s.c.created_at,
         s.c.updated_at,
-    ).where(s.c.owner_id == owner_id, s.c.deleted_at.is_(None))
+    ).where(s.c.owner_id == owner_id, s.c.kind != PROVIDER_KIND, s.c.deleted_at.is_(None))
     if name is not None:
         listed = listed.where(s.c.name == name)
     rows = (await conn.execute(listed.order_by(s.c.name))).all()
@@ -238,7 +243,7 @@ async def list_secrets(request: Request, user: CurrentUser, response: Response) 
 # Writing secrets
 
 
-def _sealer(request: Request) -> Sealer:
+def sealer_of(request: Request) -> Sealer:
     sealer: Sealer | None = request.app.state.sealer
     if sealer is None:
         missing = ", ".join(request.app.state.config.credentials_missing()) or "EVO_HUB_SECRETS_KEY"
@@ -344,7 +349,7 @@ def _value(body: SecretWrite) -> str:
     return value
 
 
-def _unique(values: list[str]) -> list[str]:
+def unique_names(values: list[str]) -> list[str]:
     seen, kept = set(), []
     for value in values:
         if value.lower() not in seen:
@@ -353,7 +358,7 @@ def _unique(values: list[str]) -> list[str]:
     return kept
 
 
-async def _writable(conn: AsyncConnection, user: Principal, names: list[str], kind: str) -> list[int]:
+async def writable_projects(conn: AsyncConnection, user: Principal, names: list[str], kind: str) -> list[int]:
     """The ids of the projects ``names``; 404 for one ``user`` cannot see, 403 for one without the writer role, or
     without the admin role for a secret of kind forge, which merges into the project's repos."""
     needed = "admin" if kind == FORGE_KIND else "writer"
@@ -369,7 +374,7 @@ async def _writable(conn: AsyncConnection, user: Principal, names: list[str], ki
     return ids
 
 
-async def _own_workers(conn: AsyncConnection, user: Principal, names: list[str]) -> list[int]:
+async def own_workers(conn: AsyncConnection, user: Principal, names: list[str]) -> list[int]:
     """The ids of the caller's workers ``names`` that are not revoked; 403 for any other name, whoever's it is."""
     if not names:
         return []
@@ -389,7 +394,7 @@ async def _own_workers(conn: AsyncConnection, user: Principal, names: list[str])
     return [found[name.lower()] for name in names]
 
 
-async def _live_secrets(conn: AsyncConnection, owner_id: int, other_than: str) -> int:
+async def live_secrets(conn: AsyncConnection, owner_id: int, other_than: str) -> int:
     s = tables.secrets
     live = (
         select(func.count())
@@ -397,6 +402,15 @@ async def _live_secrets(conn: AsyncConnection, owner_id: int, other_than: str) -
         .where(s.c.owner_id == owner_id, s.c.deleted_at.is_(None), s.c.name != other_than)
     )
     return (await conn.execute(live)).scalar_one()
+
+
+async def provider_holds(conn: AsyncConnection, owner_id: int, name: str) -> bool:
+    """Whether the live secret ``name`` of ``owner_id`` is a provider account's key, which /v1/secrets never writes."""
+    s = tables.secrets
+    held = select(s.c.id).where(
+        s.c.owner_id == owner_id, s.c.name == name, s.c.kind == PROVIDER_KIND, s.c.deleted_at.is_(None)
+    )
+    return (await conn.execute(held)).first() is not None
 
 
 def _upsert(owner_id: int, name: str, **values):
@@ -411,7 +425,7 @@ def _upsert(owner_id: int, name: str, **values):
     ).returning(s.c.id, (column("xmax") == 0).label("created"))
 
 
-async def _bind(conn: AsyncConnection, secret_id: int, project_ids: list[int], worker_ids: list[int]) -> None:
+async def bind_secret(conn: AsyncConnection, secret_id: int, project_ids: list[int], worker_ids: list[int]) -> None:
     """The secret's bindings, replaced: each project on each of the workers, or on any worker of its owner."""
     b = tables.secret_bindings
     await conn.execute(delete(b).where(b.c.secret_id == secret_id))
@@ -433,7 +447,7 @@ async def put_secret(
     request: Request, name: SecretName, body: SecretWrite, user: CurrentUser, response: Response
 ) -> SecretWritten:
     """Create the caller's secret ``name``, or replace it whole; the value is sealed and never shown again."""
-    sealer = _sealer(request)
+    sealer = sealer_of(request)
     env_var, url_prefix, username = _target(body)
     value = _value(body)
     oauth = _oauth(body)
@@ -443,15 +457,17 @@ async def put_secret(
     refusal = _forge_refusal(body)
     if refusal is not None:
         raise HTTPException(422, refusal)
-    projects, workers = _unique(body.projects), _unique(body.workers)
+    projects, workers = unique_names(body.projects), unique_names(body.workers)
     sealed = sealer.seal(value, secret_aad(user.user_id, name, body.kind))
     async with request.app.state.engine.begin() as conn:
-        project_ids = await _writable(conn, user, projects, body.kind)
-        worker_ids = await _own_workers(conn, user, workers)
+        project_ids = await writable_projects(conn, user, projects, body.kind)
+        worker_ids = await own_workers(conn, user, workers)
         # One write of a member's secrets at a time, so two of them cannot both pass the count.
         users = tables.users
         await conn.execute(select(users.c.id).where(users.c.id == user.user_id).with_for_update())
-        live = await _live_secrets(conn, user.user_id, name)
+        if await provider_holds(conn, user.user_id, name):
+            raise HTTPException(409, PROVIDER_HOLDS.format(name=name))
+        live = await live_secrets(conn, user.user_id, name)
         if live >= MAX_SECRETS_PER_OWNER:
             raise HTTPException(
                 409, f"you keep {MAX_SECRETS_PER_OWNER} secrets already: delete one before adding another"
@@ -475,7 +491,7 @@ async def put_secret(
             if not isinstance(exc.orig, psycopg.errors.CheckViolation):
                 raise
             raise HTTPException(422, "the secrets table refused this secret's kind, target or username") from None
-        await _bind(conn, secret_id, project_ids, worker_ids)
+        await bind_secret(conn, secret_id, project_ids, worker_ids)
         if oauth is not None:
             await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, value, oauth))
             await clear_relogin(conn, secret_id)  # a new sign-in ends a cooldown for a dead refresh token
@@ -490,29 +506,36 @@ async def put_secret(
     return SecretWritten(**secret.model_dump(), created=created)
 
 
+async def retire_secret(conn: AsyncConnection, secret_id: int, actor_id: int) -> int:
+    """Delete the secret ``secret_id`` softly: its sealed value, tokens and bindings go, its leases and shares are
+    revoked by ``actor_id``; the number of leases revoked."""
+    s, b, cl, cs = tables.secrets, tables.secret_bindings, tables.credential_leases, tables.credential_shares
+    gone = update(s).values(deleted_at=func.now(), sealed=None, nonce=None, key_id=None)
+    await conn.execute(gone.where(s.c.id == secret_id))
+    await conn.execute(delete(b).where(b.c.secret_id == secret_id))
+    await drop_tokens(conn, secret_id)
+    ended = await conn.execute(
+        update(cl).values(revoked_at=func.now()).where(cl.c.secret_id == secret_id, cl.c.revoked_at.is_(None))
+    )
+    unshared = update(cs).values(revoked_at=func.now(), revoked_by=actor_id)
+    await conn.execute(unshared.where(cs.c.secret_id == secret_id, cs.c.revoked_at.is_(None)))
+    return ended.rowcount
+
+
 @router.delete("/{name}", status_code=204, response_class=Response, responses=REFUSALS)
 async def delete_secret(request: Request, name: SecretName, user: CurrentUser) -> Response:
     """Delete the caller's secret ``name``: its value and bindings go, and its leases are revoked."""
-    s, b, cl = tables.secrets, tables.secret_bindings, tables.credential_leases
-    deleted = (
-        update(s)
-        .values(deleted_at=func.now(), sealed=None, nonce=None, key_id=None)
-        .where(s.c.owner_id == user.user_id, s.c.name == name, s.c.deleted_at.is_(None))
-        .returning(s.c.id)
+    s = tables.secrets
+    found = (
+        select(s.c.id)
+        .where(s.c.owner_id == user.user_id, s.c.name == name, s.c.kind != PROVIDER_KIND, s.c.deleted_at.is_(None))
+        .with_for_update()
     )
     async with request.app.state.engine.begin() as conn:
-        secret_id = (await conn.execute(deleted)).scalar_one_or_none()
+        secret_id = (await conn.execute(found)).scalar_one_or_none()
         if secret_id is None:
             raise HTTPException(404, NO_SECRET.format(name=name))
-        await conn.execute(delete(b).where(b.c.secret_id == secret_id))
-        await drop_tokens(conn, secret_id)
-        ended = await conn.execute(
-            update(cl).values(revoked_at=func.now()).where(cl.c.secret_id == secret_id, cl.c.revoked_at.is_(None))
-        )
-        revoked = ended.rowcount
-        cs = tables.credential_shares
-        unshared = update(cs).values(revoked_at=func.now(), revoked_by=user.user_id)
-        await conn.execute(unshared.where(cs.c.secret_id == secret_id, cs.c.revoked_at.is_(None)))
+        revoked = await retire_secret(conn, secret_id, user.user_id)
         target = audit_target(secret_id)
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_DELETE, target=target

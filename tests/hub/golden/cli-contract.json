@@ -13172,6 +13172,585 @@
         "schema": "Registered"
       }
     },
+    "hub provider-account add": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--provider"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--paused"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--base-url"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--format"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "openai",
+            "anthropic",
+            "openai-responses",
+            "gemini"
+          ]
+        },
+        {
+          "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--models-from"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "endpoint",
+            "catalog"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--from-secret"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--weight"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "provider",
+          "provider_name",
+          "alias",
+          "base_url",
+          "api_format",
+          "models",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "shares",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "ProviderAccount"
+      }
+    },
+    "hub provider-account delete": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
+    },
+    "hub provider-account list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "name",
+          "provider",
+          "provider_name",
+          "alias",
+          "base_url",
+          "api_format",
+          "models",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "shares",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "ProviderAccount"
+      }
+    },
+    "hub provider-account models": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "ok",
+          "status",
+          "count",
+          "models",
+          "error"
+        ],
+        "schema": "ProviderProbe"
+      }
+    },
+    "hub provider-account pause": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "provider",
+          "provider_name",
+          "alias",
+          "base_url",
+          "api_format",
+          "models",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "shares",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "ProviderAccount"
+      }
+    },
+    "hub provider-account resume": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "provider",
+          "provider_name",
+          "alias",
+          "base_url",
+          "api_format",
+          "models",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "shares",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "ProviderAccount"
+      }
+    },
+    "hub provider-account set": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--key"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-expiry"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--base-url"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--format"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "openai",
+            "anthropic",
+            "openai-responses",
+            "gemini"
+          ]
+        },
+        {
+          "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--models-from"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "endpoint",
+            "catalog"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--from-secret"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--weight"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "provider",
+          "provider_name",
+          "alias",
+          "base_url",
+          "api_format",
+          "models",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "shares",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "ProviderAccount"
+      }
+    },
+    "hub provider-account show": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "provider",
+          "provider_name",
+          "alias",
+          "base_url",
+          "api_format",
+          "models",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "shares",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "ProviderAccount"
+      }
+    },
+    "hub provider-account test": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "ok",
+          "status",
+          "count",
+          "models",
+          "error"
+        ],
+        "schema": "ProviderProbe"
+      }
+    },
     "hub registry pull": {
       "positionals": [],
       "options": [
@@ -60262,6 +60841,479 @@
           }
         }
       },
+      "/v1/projects/{project}/agents/{handle}/provider-accounts": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "List Agent Provider Accounts",
+          "description": "The agent's provider accounts, by name, without their keys; any member of the project reads them.",
+          "operationId": "list_agent_provider_accounts_v1_projects__project__agents__handle__provider_accounts_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProviderAccount"
+                    },
+                    "title": "Response List Agent Provider Accounts V1 Projects  Project  Agents  Handle  Provider Accounts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agents/{handle}/provider-accounts/{name}": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Put Agent Provider Account",
+          "description": "Give the agent the provider account ``name``, or replace it whole; the key is sealed and never shown again.",
+          "operationId": "put_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProviderAccountWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderAccountWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Change Agent Provider Account",
+          "description": "Change what ``body`` gives of the agent's provider account ``name``; the rest, the key included, stays.",
+          "operationId": "change_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProviderAccountChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderAccount"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Delete Agent Provider Account",
+          "description": "Delete the agent's provider account ``name``: its key and bindings go, its leases are revoked.",
+          "operationId": "delete_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/agents/{handle}/accounts": {
         "get": {
           "tags": [
@@ -68624,6 +69676,631 @@
           }
         }
       },
+      "/v1/provider-accounts": {
+        "get": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "List Provider Accounts",
+          "description": "The caller's provider accounts, by name, without their keys; a hub admin's own too.",
+          "operationId": "list_provider_accounts_v1_provider_accounts_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/ProviderAccount"
+                    },
+                    "type": "array",
+                    "title": "Response List Provider Accounts V1 Provider Accounts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/provider-accounts/{name}": {
+        "get": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Get Provider Account",
+          "description": "The caller's provider account ``name``, without its key.",
+          "operationId": "get_provider_account_v1_provider_accounts__name__get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets and accounts",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets and accounts"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderAccount"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Put Provider Account",
+          "description": "Create the caller's provider account ``name``, or replace it whole; the key is sealed and never shown again.",
+          "operationId": "put_provider_account_v1_provider_accounts__name__put",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets and accounts",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets and accounts"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAccountWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderAccountWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Change Provider Account",
+          "description": "Change what ``body`` gives of the caller's account ``name``; the rest, the key included, stays.",
+          "operationId": "change_provider_account_v1_provider_accounts__name__patch",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets and accounts",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets and accounts"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAccountChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderAccount"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Delete Provider Account",
+          "description": "Delete the caller's account ``name``: its key and bindings go, its leases and shares are revoked.",
+          "operationId": "delete_provider_account_v1_provider_accounts__name__delete",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets and accounts",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets and accounts"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/provider-accounts/probe": {
+        "post": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Probe Endpoint",
+          "description": "Call an endpoint not saved yet with the key of ``body``: whether it took it, and the models it lists.",
+          "operationId": "probe_endpoint_v1_provider_accounts_probe_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeWrite"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderProbe"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/provider-accounts/{name}/probe": {
+        "post": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Probe Provider Account",
+          "description": "Call the endpoint of the caller's account ``name`` with its key: whether it took it, and the models it lists.",
+          "operationId": "probe_provider_account_v1_provider_accounts__name__probe_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets and accounts",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets and accounts"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredProbe"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderProbe"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/signals/{project}": {
         "post": {
           "tags": [
@@ -76064,6 +77741,302 @@
           "type": "object",
           "title": "AgentPermissions",
           "description": "What the runs of a profile may use, on eight axes; an axis left out allows all."
+        },
+        "AgentProviderAccountChange": {
+          "properties": {
+            "base_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Url"
+            },
+            "api_format": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "anthropic",
+                    "openai-responses",
+                    "gemini"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Format"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "format": "password",
+                  "writeOnly": true
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "a new API key"
+            },
+            "models": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1
+                  },
+                  "type": "array",
+                  "maxItems": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models"
+            },
+            "models_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "endpoint",
+                    "catalog"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models From"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "null drops the end"
+            },
+            "weight": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            },
+            "paused": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused",
+              "description": "true pauses it, false resumes it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "AgentProviderAccountChange"
+        },
+        "AgentProviderAccountWrite": {
+          "properties": {
+            "provider": {
+              "type": "string",
+              "pattern": "[a-z0-9][a-z0-9._-]{0,63}",
+              "title": "Provider",
+              "description": "the id of an entry of the catalog"
+            },
+            "base_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Url",
+              "description": "the https root of its API; the catalog's when left out"
+            },
+            "api_format": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "anthropic",
+                    "openai-responses",
+                    "gemini"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Format",
+              "description": "the catalog's when left out"
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "format": "password",
+              "title": "Value",
+              "description": "the API key; never shown again",
+              "writeOnly": true
+            },
+            "models": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 500,
+              "title": "Models",
+              "description": "model names, as typed"
+            },
+            "models_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "endpoint",
+                    "catalog"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models From",
+              "description": "add the catalog's default model, or the endpoint's"
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Workers",
+              "description": "workers serving the agent's project"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "after this no run takes it; in the future"
+            },
+            "weight": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            },
+            "paused": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "provider",
+            "value",
+            "workers"
+          ],
+          "title": "AgentProviderAccountWrite"
         },
         "AgentReactionIn": {
           "properties": {
@@ -105317,6 +107290,92 @@
           ],
           "title": "ProbeWeekly"
         },
+        "ProbeWrite": {
+          "properties": {
+            "provider": {
+              "type": "string",
+              "pattern": "[a-z0-9][a-z0-9._-]{0,63}",
+              "title": "Provider",
+              "description": "the id of an entry of the catalog"
+            },
+            "base_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Url",
+              "description": "the https root of its API; the catalog's when left out"
+            },
+            "api_format": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "anthropic",
+                    "openai-responses",
+                    "gemini"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Format",
+              "description": "the catalog's when left out"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "format": "password",
+                  "writeOnly": true
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "the API key"
+            },
+            "from_secret": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Secret",
+              "description": "or the name of one of your env secrets that holds it"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "a model to ask, when the endpoint lists none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "provider"
+          ],
+          "title": "ProbeWrite",
+          "description": "An endpoint to try before an account is saved: the same fields as the write, the key included."
+        },
         "Problem": {
           "properties": {
             "path": {
@@ -109274,6 +111333,805 @@
           ],
           "title": "Provenance",
           "description": "Where a revision came from, when the agent of a run wrote it or an accepted proposal promoted agents' memories\ninto it."
+        },
+        "ProviderAccount": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "provider": {
+              "type": "string",
+              "title": "Provider",
+              "description": "the id of its entry in the catalog (GET /v1/model-catalog)"
+            },
+            "provider_name": {
+              "type": "string",
+              "title": "Provider Name",
+              "description": "the catalog's name of that provider"
+            },
+            "alias": {
+              "type": "string",
+              "title": "Alias",
+              "description": "what the gateway reads before the slash of a model name: <alias>/<model>"
+            },
+            "base_url": {
+              "type": "string",
+              "title": "Base Url",
+              "description": "the https root of its API; every address it resolves to is public"
+            },
+            "api_format": {
+              "type": "string",
+              "enum": [
+                "openai",
+                "anthropic",
+                "openai-responses",
+                "gemini"
+              ],
+              "title": "Api Format"
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Models",
+              "description": "the models it serves, by the endpoint's names"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs may take it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "0 to 1000: its share in a weighted-round-robin pool; 0 leaves it"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "0 to 1000: the lower, the sooner a fill-first pool takes it"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At",
+              "description": "when its owner paused it; null while it may be taken"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until",
+              "description": "until when it cools down after a usage limit"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason",
+              "description": "why it cools down"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At",
+              "description": "when a run last took it"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired",
+                "needs-relogin"
+              ],
+              "title": "State",
+              "description": "ready, cooling, paused or expired, now"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "provider",
+            "provider_name",
+            "alias",
+            "base_url",
+            "api_format",
+            "models",
+            "projects",
+            "workers",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "ProviderAccount",
+          "description": "A provider account as its owner sees it: everything but its key."
+        },
+        "ProviderAccountChange": {
+          "properties": {
+            "base_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Url",
+              "description": "the https root of its API"
+            },
+            "api_format": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "anthropic",
+                    "openai-responses",
+                    "gemini"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Format"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "format": "password",
+                  "writeOnly": true
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "a new API key"
+            },
+            "from_secret": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Secret",
+              "description": "or an env secret's value"
+            },
+            "models": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1
+                  },
+                  "type": "array",
+                  "maxItems": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models",
+              "description": "the model names, replaced"
+            },
+            "models_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "endpoint",
+                    "catalog"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models From",
+              "description": "add the catalog's default model, or the endpoint's"
+            },
+            "projects": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Projects"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "null drops the end"
+            },
+            "weight": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            },
+            "paused": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused",
+              "description": "true pauses it, false resumes it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ProviderAccountChange"
+        },
+        "ProviderAccountWrite": {
+          "properties": {
+            "provider": {
+              "type": "string",
+              "pattern": "[a-z0-9][a-z0-9._-]{0,63}",
+              "title": "Provider",
+              "description": "the id of an entry of the catalog"
+            },
+            "base_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Url",
+              "description": "the https root of its API; the catalog's when left out"
+            },
+            "api_format": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "anthropic",
+                    "openai-responses",
+                    "gemini"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Format",
+              "description": "the catalog's when left out"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "format": "password",
+                  "writeOnly": true
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "the API key; written once, never shown again"
+            },
+            "from_secret": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Secret",
+              "description": "or one of your env secrets whose value is the key"
+            },
+            "models": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 500,
+              "title": "Models",
+              "description": "model names, as typed"
+            },
+            "models_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "endpoint",
+                    "catalog"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models From",
+              "description": "add the catalog's default model, or the endpoint's"
+            },
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "the writer role on each"
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Workers",
+              "description": "your own; empty for any"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "after this no run takes it; in the future"
+            },
+            "weight": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight",
+              "description": "its share in a weighted pool; 0 leaves it"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority",
+              "description": "the lower, the sooner in a fill-first pool"
+            },
+            "paused": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused",
+              "description": "true: no new run takes it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "provider",
+            "projects"
+          ],
+          "title": "ProviderAccountWrite"
+        },
+        "ProviderAccountWritten": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "provider": {
+              "type": "string",
+              "title": "Provider",
+              "description": "the id of its entry in the catalog (GET /v1/model-catalog)"
+            },
+            "provider_name": {
+              "type": "string",
+              "title": "Provider Name",
+              "description": "the catalog's name of that provider"
+            },
+            "alias": {
+              "type": "string",
+              "title": "Alias",
+              "description": "what the gateway reads before the slash of a model name: <alias>/<model>"
+            },
+            "base_url": {
+              "type": "string",
+              "title": "Base Url",
+              "description": "the https root of its API; every address it resolves to is public"
+            },
+            "api_format": {
+              "type": "string",
+              "enum": [
+                "openai",
+                "anthropic",
+                "openai-responses",
+                "gemini"
+              ],
+              "title": "Api Format"
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Models",
+              "description": "the models it serves, by the endpoint's names"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs may take it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "0 to 1000: its share in a weighted-round-robin pool; 0 leaves it"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "0 to 1000: the lower, the sooner a fill-first pool takes it"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At",
+              "description": "when its owner paused it; null while it may be taken"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until",
+              "description": "until when it cools down after a usage limit"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason",
+              "description": "why it cools down"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At",
+              "description": "when a run last took it"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired",
+                "needs-relogin"
+              ],
+              "title": "State",
+              "description": "ready, cooling, paused or expired, now"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "true when this write created it, false when it replaced one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "provider",
+            "provider_name",
+            "alias",
+            "base_url",
+            "api_format",
+            "models",
+            "projects",
+            "workers",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state",
+            "created_at",
+            "updated_at",
+            "created"
+          ],
+          "title": "ProviderAccountWritten"
+        },
+        "ProviderProbe": {
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "title": "Ok",
+              "description": "whether the endpoint took the key"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the HTTP status of its answer; null when none came"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count",
+              "description": "how many models it listed"
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Models",
+              "description": "the models it listed, by its names"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why not, sanitized: no key, at most one short line of what it said"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ok",
+            "status",
+            "count",
+            "models",
+            "error"
+          ],
+          "title": "ProviderProbe",
+          "description": "What the endpoint answered a call with the key: never the key, nor more than a line of its words."
         },
         "PruneRequest": {
           "properties": {
@@ -122574,6 +125432,24 @@
             "pending_bytes"
           ],
           "title": "StorageCounts"
+        },
+        "StoredProbe": {
+          "properties": {
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "a model to ask, when the endpoint lists none; its first otherwise"
+            }
+          },
+          "type": "object",
+          "title": "StoredProbe"
         },
         "Task": {
           "properties": {

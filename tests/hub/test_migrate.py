@@ -143,6 +143,7 @@ TABLES |= pg.INTAKE_TABLES  # migration 0138
 TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
+TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0147
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -224,8 +225,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_seventy_nine_tables(hub_db):
-    assert len(TABLES) == 179  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eighty_tables(hub_db):
+    assert len(TABLES) == 180  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3588,3 +3589,32 @@ def test_0146_adds_the_browser_install_of_a_worker_and_going_back_drops_it(hub_d
     move_to(hub_db, "0145", down=True)
     assert not added & columns(hub_db, "workers")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0146") :]
+
+
+def test_0147_keeps_provider_accounts_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0146")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0147")
+    s, p = hub_tables.secrets, hub_tables.provider_accounts
+    key = {"sealed": b"x" * 32, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    made = insert(s).values(owner_id=ids["user"], name="openrouter-main", kind="provider", **key).returning(s.c.id)
+    endpoint = {"provider": "openrouter", "base_url": "https://openrouter.ai/api/v1", "api_format": "openai"}
+    with live.connect(hub_db) as conn:
+        secret_id = one(conn, made)
+        conn.execute(insert(p).values(secret_id=secret_id, **endpoint, models=["a/b"]))
+    bad_rows = (
+        endpoint | {"api_format": "soap"},
+        endpoint | {"base_url": "http://openrouter.ai/api/v1"},
+        endpoint | {"models": {"a": 1}},
+    )
+    for number, bad in enumerate(bad_rows):
+        other = insert(s).values(owner_id=ids["user"], name=f"bad-{number}", kind="provider", **key)
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            new_id = one(conn, other.returning(s.c.id))
+            conn.execute(insert(p).values(secret_id=new_id, **bad))
+    assert query(hub_db, select(p.c.provider, p.c.models)) == [("openrouter", ["a/b"])]
+    move_to(hub_db, "0146", down=True)
+    assert "provider_accounts" not in tables(hub_db)
+    assert query(hub_db, select(func.count()).select_from(s).where(s.c.kind == "provider")) == [(0,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]

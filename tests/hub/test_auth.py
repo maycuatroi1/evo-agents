@@ -120,6 +120,7 @@ HUB_TABLES |= pg.INTAKE_TABLES  # migration 0138
 HUB_TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 HUB_TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 HUB_TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
+HUB_TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0147
 
 
 @pytest.fixture
