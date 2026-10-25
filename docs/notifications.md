@@ -75,7 +75,7 @@ recommends; at most one is. The owner answers with an option, with text of their
 ### Why the agent recommends, how to undo, what it rests on
 
 So that the person asked can answer on a phone in one tap, a decision may also say why the agent recommends its
-option, whether the act it asks about can be undone and how, and what the question rests on (schema 0148,
+option, whether the act it asks about can be undone and how, and what the question rests on (schema 0155,
 `evo_agents/hub/decision_asks.py`). Each field is optional, and a decision without them reads and answers as before.
 
 | Field | What it holds |
@@ -322,7 +322,7 @@ open, and a hub that stops between the two loses nothing.
 | --- | --- |
 | `notifications` | user, kind (`decision`, `notice` or `proposal`), the decision, the notice's kind and details (repo, branch, commits), or the proposal, project, run, title, body, link (a path of the hub's site), `created_at`, `read_at` |
 | `notification_channels` | user, kind (not `web`, at most one of a kind per member), `config` (JSON the channel's class reads), `enabled`, `created_at` |
-| `notification_deliveries` | notification, channel (none for the web) or push device (`device_id`, schema 0149; never both, by a CHECK), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at` |
+| `notification_deliveries` | notification, channel (none for the web) or push device (`device_id`, schema 0156; never both, by a CHECK), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at` |
 
 A notification of kind `proposal` (schema 0014) is a tier 2 proposal of the Curator's review run in its owner's Inbox:
 when a review run ends, its open tier 2 proposals with the most evidence become such notifications, as many as the
@@ -434,7 +434,7 @@ writes what a push says. Deliveries to devices go through the outbox above, with
 
 ### Devices
 
-A member has push devices of three kinds (`push_devices`, schema 0149):
+A member has push devices of three kinds (`push_devices`, schema 0156):
 
 | Kind | What the device is | Its address, and what its sender needs besides |
 | --- | --- | --- |
@@ -475,7 +475,7 @@ a tier for a kind, the hub's default holds:
 A tier the member chooses holds for every notification of that kind, without the default's conditions: `decision` set
 to `interrupt` pushes every decision of theirs, not only those asked of them. `PUT /v1/me/notification-settings` with
 `{"tiers": [{"kind": "decision", "tier": null}]}` goes back to the default, and `GET` shows each kind with its tier and
-whether the member chose it (`chosen`). `notification_preferences` (schemas 0149 and 0150) keeps what a member chose;
+whether the member chose it (`chosen`). `notification_preferences` (schemas 0156 and 0157) keeps what a member chose;
 a member without a row has the defaults.
 
 ### Quiet hours
@@ -554,7 +554,7 @@ neither listed nor counted. It answers:
   every item listed was shown: the moment of the answer when caught up, else the moment of the last item;
 - `summary`, one sentence made from English templates, no model, and `since` and `seen_at`.
 
-The window starts at the caller's seen mark (`today_marks.seen_at`, schema 0151). Without a mark it is the last 24
+The window starts at the caller's seen mark (`today_marks.seen_at`, schema 0158). Without a mark it is the last 24
 hours, and a mark older than seven days counts from seven days ago. `POST /v1/me/today/seen` moves the mark forward to
 its `seen_at` (now when left out, never past now); a later mark stays where it is. Home on the web opens with Today
 and posts `seen_until` once the end of the list has been on screen.

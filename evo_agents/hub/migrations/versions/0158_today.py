@@ -1,7 +1,7 @@
 """What Today keeps of a member, and the notice of their summary push (plan hub-mobile-phase-0, criterion a7).
 
-Revision ID: 0151
-Revises: 0150
+Revision ID: 0158
+Revises: 0157
 Create Date: 2026-10-25
 
 The names below are copies of ``evo_agents.hub.runs`` as of this revision, never imports, so a later change to them
@@ -13,22 +13,23 @@ the member's last summary push, so the job ``hub.today_digest`` sends at most on
 member, and a member without one saw nothing yet.
 
 notifications.notice_kind takes ``today``, the summary push itself: a notice of no project that goes to the member's
-push devices alone.
+push devices alone. The check keeps what 0153 made of it, one of the hub's kinds as of 0144 or a name of a core
+plugin's kind (NAME), and adds ``today``, which has no ``_`` and so is no plugin's name.
 
-Going back deletes the notices of the kind, puts the check of 0144 back and drops the table.
+Going back deletes the notices of the kind, puts the check of 0153 back and drops the table.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0151"
-down_revision = "0150"
+revision = "0158"
+down_revision = "0157"
 branch_labels = None
 depends_on = None
 
 TABLE = "today_marks"
 NOTICE = "today"  # evo_agents.hub.runs.NOTICE_KINDS
-NOTICE_KINDS_0144 = (  # notifications_notice_kind_check as 0144 set it, and no migration since changed it
+NOTICE_KINDS_0144 = (  # the hub's kinds as 0144 set them, which the check of 0153 keeps beside NAME
     "push_default_branch",
     "merge_default_branch",
     "plan_finished",
@@ -57,14 +58,17 @@ NOTICE_KINDS_0144 = (  # notifications_notice_kind_check as 0144 set it, and no 
     "opportunity_window",
 )
 NOTICE_KINDS = (*NOTICE_KINDS_0144, NOTICE)
+NAME = "^[a-z][a-z0-9]*_[a-z0-9_]+$"  # a core plugin's kind of notification, its table prefix first (0153)
 CHECK = "notifications_notice_kind_check"
 
 col = sa.column
 
 
 def _check(kinds) -> None:
+    """notifications_notice_kind_check as 0153 shaped it: one of ``kinds`` or a name of a core plugin's kind."""
     op.drop_constraint(CHECK, "notifications", type_="check")
-    op.create_check_constraint(CHECK, "notifications", col("notice_kind").in_(kinds))
+    kind = col("notice_kind")
+    op.create_check_constraint(CHECK, "notifications", sa.or_(kind.in_(kinds), kind.regexp_match(NAME)))
 
 
 def upgrade() -> None:
