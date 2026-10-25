@@ -16,9 +16,8 @@ project's repos under ``--url-prefix``: it needs ``--expires`` and the admin rol
 in ``run_cli``, lists the leases one run got of them.
 
 ``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
-variable. ``account list`` prints them, never a value (GET /v1/accounts), with the provider accounts, their provider,
-host, API format and count of models (``account show`` adds what the gateway last said of one); ``account set``
-changes the weight or priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them take it again (PATCH
+variable. ``account list`` prints them and the provider accounts, never a value (GET /v1/accounts); ``account set``
+changes the weight or priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them back (PATCH
 /v1/accounts/{name}). ``account policy PROJECT`` prints the caller's policy for a project (GET
 /v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
 ``--reset`` drops it, so the defaults hold again (DELETE). ``account list`` and ``account show`` remind the member to
@@ -66,8 +65,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.cli_bindings import BOTH, add_pool_flag, bound_to, where_cell, where_text
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
-from evo_agents.hub.cli_model_catalog import register_model_catalog
-from evo_agents.hub.cli_provider_accounts import register_provider_accounts
+from evo_agents.hub.cli_provider_accounts import print_gateway, provider_text, register_provider_accounts
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import (
     FORGE_KIND,
@@ -346,8 +344,7 @@ def register_secrets(hsub) -> None:
     cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
-    register_model_catalog(hsub)  # the providers an account is added for
-    register_provider_accounts(hsub)
+    register_provider_accounts(hsub)  # and `hub model-catalog`, the providers an account is added for
 
 
 # `hub account`: the env secrets as accounts (docs/credentials.md, section Accounts)
@@ -445,7 +442,7 @@ def cmd_account_list(args) -> int:
         (
             a["name"],
             a["env_var"],
-            _provider_text(a),
+            provider_text(a),
             "key" if a.get("gateway") else a["auth"],
             a["state"],
             a["weight"],
@@ -483,14 +480,6 @@ def cmd_account_list(args) -> int:
     if reminders:
         print("\n" + "\n".join(reminders))
     return 0
-
-
-def _provider_text(a: dict) -> str:
-    """Who an account signs in to; for a provider account, its provider, host, API format and count of models."""
-    g = a.get("gateway")
-    return (
-        a["provider"] if not g else f"{g['provider']} ({g['base_url_host']}, {g['api_format']}, {g['models']} models)"
-    )
 
 
 def _renew_command(account: dict) -> str:
@@ -568,9 +557,7 @@ def _print_account(a: dict) -> None:
     usage = _usage_text(a["last_usage"])
     reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
     print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
-    if g := a.get("gateway"):
-        print(f"  Provider account: {_provider_text(a)}; the gateway: {g['status']}", end="")
-        print(f" ({g['reason']})." if g["reason"] else ".")
+    print_gateway(a)
     if a.get("auth") == "oauth":
         print("  Signed in with OAuth: the hub keeps its tokens sealed; renew with `account oauth-login`.")
     where = (

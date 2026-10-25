@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
+from evo_agents.hub.cli_model_catalog import register_model_catalog
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.provider_accounts import API_FORMATS
 
@@ -249,7 +250,24 @@ def _write_flags(parser, *, add: bool) -> None:
     json_option(parser, returns_object(*ACCOUNT_KEYS, schema="ProviderAccount"))
 
 
+def provider_text(a: dict) -> str:
+    """Who an account of `hub account list` signs in to; for a provider account, its provider, host, API format and
+    count of models."""
+    g = a.get("gateway")
+    return (
+        a["provider"] if not g else f"{g['provider']} ({g['base_url_host']}, {g['api_format']}, {g['models']} models)"
+    )
+
+
+def print_gateway(a: dict) -> None:
+    """The line `hub account show` prints of a provider account: what it is, and what the gateway last said of it."""
+    if g := a.get("gateway"):
+        print(f"  Provider account: {provider_text(a)}; the gateway: {g['status']}", end="")
+        print(f" ({g['reason']})." if g["reason"] else ".")
+
+
 def register_provider_accounts(hsub) -> None:
+    register_model_catalog(hsub)
     parser = hsub.add_parser("provider-account", help="your API keys of model providers, reached through the gateway")
     psub = parser.add_subparsers(dest="provider_account_command", required=True)
     add = psub.add_parser("add", help="add a provider account, or replace it whole; the key from stdin or a prompt")
