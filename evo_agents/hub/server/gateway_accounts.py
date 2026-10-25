@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import gateway_runs, profiles, runs, tables
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.gateway_runs import GATEWAY_RUNTIMES, PICK_PREFIX
-from evo_agents.hub.server.share_leases import shared_secrets
+from evo_agents.hub.server import share_leases  # a module: it imports worker_placement, which reaches this one
 
 NOTHING = "nothing was dispatched"
 
@@ -132,7 +132,7 @@ async def usable_accounts(
     any_worker = or_(b.c.worker_id.is_(None), true() if worker_id is None else b.c.worker_id == worker_id)
     own = (await conn.execute(_rows(s.c.owner_id == asker.owner_id, asker.project_id, any_worker, prefix))).all()
     _sort(asker, own, usable, picked, agent=False)
-    shared, refused = await shared_secrets(conn, asker, worker_id or 0, lock=False, kinds=(PROVIDER_KIND,))
+    shared, refused = await share_leases.shared_secrets(conn, asker, worker_id or 0, lock=False, kinds=(PROVIDER_KIND,))
     ids = [row.id for row in shared if picked is None or row.id == picked]
     p = tables.provider_accounts
     mine = set((await conn.execute(select(p.c.secret_id).where(p.c.secret_id.in_(ids), _of_prefix(prefix)))).scalars())
