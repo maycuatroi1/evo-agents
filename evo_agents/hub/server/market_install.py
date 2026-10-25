@@ -347,7 +347,8 @@ async def request_install(
                 title=f"{user.login} asks for {item['name']} in {body.project}",
                 body=f"{item['name']} ({plugin}) of market {row.repo}, by {item['publisher']['id']}",
                 notice_kind=NOTICE,
-                project_id=access.project_id,
+                # Of no project: a hub admin need hold no grant on it to read it (the Inbox shows a project's notices
+                # to its members only); the project is in the title and the details.
                 details={"source": source, "plugin": plugin, "project": body.project},
                 link=f"/market/{source}/{plugin}",
             )

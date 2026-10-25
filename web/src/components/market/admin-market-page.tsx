@@ -122,7 +122,7 @@ function SourceActions({ source, onRemove }: { source: MarketSource; onRemove: (
     <div className="flex justify-end gap-1.5">
       <Button size="sm" variant="outline" busy={busy} onClick={() => void onRefresh()} data-testid="market-source-refresh">
         <RefreshCw aria-hidden="true" />
-        {busy ? t("refreshing") : t("refresh")}
+        <span className="max-sm:sr-only">{busy ? t("refreshing") : t("refresh")}</span>
       </Button>
       {source.builtin ? null : (
         <Button size="sm" variant="quiet-danger" onClick={() => onRemove(source)} aria-label={t("removeLabel", { repo: source.repo })} data-testid="market-source-remove">
