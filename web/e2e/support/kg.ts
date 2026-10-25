@@ -115,6 +115,37 @@ export async function explorerReady(page: Page, scope?: "overview" | "cluster" |
   await expect(canvas).toHaveAttribute("data-ready", "true");
 }
 
+type Box = { x1: number; y1: number; x2: number; y2: number };
+type LabelledNode = {
+  hasClass(name: string): boolean;
+  visible(): boolean;
+  data(key: string): unknown;
+  boundingBox(options: Record<string, boolean>): Box;
+};
+
+/**
+ * How many labels the explorer's canvas shows, and how many pairs of them cover each other, read from Cytoscape's
+ * instance on the canvas (`_cyreg`): a label the explorer shows (not `crowded`) never covers another.
+ */
+export async function explorerLabels(page: Page): Promise<{ shown: number; overlapping: number }> {
+  return page.getByTestId("kg-explorer-canvas").evaluate((element) => {
+    const cy = (element as unknown as { _cyreg?: { cy?: { nodes(): { toArray(): LabelledNode[] } } } })._cyreg?.cy;
+    if (!cy) return { shown: 0, overlapping: -1 };
+    const boxes = cy
+      .nodes()
+      .toArray()
+      .filter((node) => node.visible() && !node.hasClass("crowded") && !node.hasClass("dim") && String(node.data("label") ?? ""))
+      .map((node) => node.boundingBox({ includeNodes: false, includeEdges: false, includeLabels: true, includeOverlays: false }));
+    let overlapping = 0;
+    boxes.forEach((a, i) =>
+      boxes.slice(i + 1).forEach((b) => {
+        if (a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2) overlapping += 1;
+      }),
+    );
+    return { shown: boxes.length, overlapping };
+  });
+}
+
 export function nodePath(project: string, id: string, hops?: 1 | 2): string {
   const params = new URLSearchParams({ id });
   if (hops === 1) params.set("hops", "1");

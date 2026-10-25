@@ -685,16 +685,20 @@ Shared pieces built on them:
   dashed "+N kind" node for the rest) and each node the reader expands adds its own beside it while the others keep
   their places (`lib/kg/explorer.ts` merges the neighbourhoods, up to 400 nodes). Cytoscape.js with the fcose layout
   draws it (`explorer-canvas.tsx`, loaded once the canvas mounts; `explorer-layout.ts` and `explorer-style.ts` hold
-  its layouts and stylesheet, colours read from the tokens of the theme in use). The 16 largest circles and the 24
-  most linked nodes keep their labels from a small zoom on, the others once zoomed past 2 (Cytoscape rounds the zoom
-  up to a power of two when it hides labels) or when looked at; the node a URL names by an alias reads as its own id
-  once read. A click selects, a double click opens a cluster or expands a node, hovering lights a node's
-  neighbourhood, dims the rest and names it in a tooltip; on the focused canvas the arrows step through the nodes,
-  Enter opens or expands, Backspace goes up a scope, Delete hides a node, Escape clears, + and - zoom and 0 fits. The
-  canvas is a labelled `role="application"` described by the keys; the rail's lists and the inspector (a cluster's
-  kinds, parts and linked clusters; a node's facts and relations, each relation selecting its node or opening its
-  group on the canvas) carry the same data, and selections are said in a polite live region. The legend sits bottom
-  left as a `details`: the figures of the view, then what the marks mean.
+  its layouts and stylesheet, colours read from the tokens of the theme in use). Labels keep their size on screen (13
+  px for a circle, 11 px for a node) whatever the zoom, and never cover each other: the node selected or under the
+  pointer shows its label first, then its neighbours, then the largest or most linked; a label that would cover one
+  already shown, or a node already shown with its label, waits for a zoom (which makes room) or a pointer, and a node
+  whose label shows is drawn above the rest (`declutter` of explorer-layout.ts, run again after each zoom, pan, layout
+  or change of what is lit). A file is named by its file name, with its folder when that name is generic
+  (`kg/page.tsx`); the node a URL names by an alias reads as its own id once read. A click selects, a double click
+  opens a cluster or expands a node, hovering lights a node's neighbourhood, dims the rest and names it in a tooltip;
+  on the focused canvas the arrows step through the nodes, Enter opens or expands, Backspace goes up a scope, Delete
+  hides a node, Escape clears, + and - zoom and 0 fits. The canvas is a labelled `role="application"` described by the
+  keys; the rail's lists and the inspector (a cluster's kinds, parts and linked clusters; a node's facts and
+  relations, each relation selecting its node or opening its group on the canvas) carry the same data, and selections
+  are said in a polite live region. The legend sits bottom left as a `details`: the figures of the view, then what the
+  marks mean.
 - `components/feedback/toast.tsx` and `ui/sonner.tsx`: the kit's Toast through Sonner, mounted once in `providers.tsx`.
   Bottom right, 24 px from the edges (16 on phones), 380 px wide, z-index 60, on `surface-raised` inside a `border` edge
   with `shadow-popover` and 8 px corners: the tone's Lucide icon, a past-tense title in `body-strong` ("Run #13

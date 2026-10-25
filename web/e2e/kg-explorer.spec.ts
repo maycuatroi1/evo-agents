@@ -1,6 +1,6 @@
 import { expect, test } from "./support/fixtures";
 import { newAccount } from "./support/hub";
-import { CONTRACT, explorerReady, grantOn, kgPath, open, SHARED_NODE, sharedKg } from "./support/kg";
+import { CONTRACT, explorerLabels, explorerReady, grantOn, kgPath, open, SHARED_NODE, sharedKg } from "./support/kg";
 
 test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
@@ -27,6 +27,9 @@ test.describe("knowledge graph explorer", () => {
     await explorerReady(page, "overview");
     const canvas = page.getByTestId("kg-explorer-canvas");
     await expect(page.getByTestId("kg-stat-nodes")).not.toBeEmpty();
+    // Labels never cover each other: those without room wait for a zoom or a pointer.
+    await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
+    expect((await explorerLabels(page)).shown).toBeGreaterThan(0);
 
     // A cluster of the list: selected on the canvas, described in the inspector, then opened.
     const row = page.getByTestId("kg-cluster-row").first();
@@ -39,6 +42,7 @@ test.describe("knowledge graph explorer", () => {
     await inspector.getByTestId("kg-inspector-explore").click();
     await page.waitForURL((url) => url.searchParams.get("cluster") === cluster);
     await explorerReady(page, "cluster");
+    await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
     await expect(page.getByTestId("kg-trail")).toContainText("Tổng quan");
     await page.goBack();
     await explorerReady(page, "overview");
@@ -55,6 +59,13 @@ test.describe("knowledge graph explorer", () => {
     await expect(canvas).toHaveAttribute("data-selected", SHARED_NODE);
     const drawn = Number(await canvas.getAttribute("data-nodes"));
     expect(drawn).toBeGreaterThan(1);
+    await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
+    // Zooming in makes room: labels keep their size on screen, so no fewer show.
+    const before = (await explorerLabels(page)).shown;
+    await page.getByRole("button", { name: "Phóng to" }).click();
+    await page.getByRole("button", { name: "Phóng to" }).click();
+    await expect.poll(async () => (await explorerLabels(page)).shown).toBeGreaterThanOrEqual(before);
+    await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
 
     // A relation selects its node; expanding it adds its own neighbours.
     const relation = page.getByTestId("kg-relation").first();

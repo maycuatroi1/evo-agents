@@ -4,8 +4,8 @@ import type { ExplorerElement, Scope } from "@/lib/kg/explorer";
 
 /**
  * What the explorer's canvas does to Cytoscape, apart from React: the layouts of each scope, fitting the view, making
- * the canvas hold the elements a scope draws (in place, so nodes keep their places), and lighting what the reader
- * looks at.
+ * the canvas hold the elements a scope draws (in place, so nodes keep their places), lighting what the reader looks
+ * at, and choosing which labels show.
  */
 export type ExplorerLayout = "force" | "radial" | "tree";
 
@@ -73,8 +73,8 @@ export function layoutOptions(
   if (layout === "tree") {
     return { name: "breadthfirst", ...common, roots: root ? [root] : undefined, directed: false, spacingFactor: 1.15 };
   }
-  // Tight enough that the view fits at a zoom where labels read (about 0.75 for the 37 clusters of evo-agents), with
-  // labels counted in each node's size so they do not cover each other.
+  // Labels count in each node's size; they keep their size on screen whatever the zoom (labelScale), and declutter
+  // chooses which show.
   return {
     name: "fcose",
     ...common,
@@ -83,7 +83,13 @@ export function layoutOptions(
     nodeDimensionsIncludeLabels: true,
     packComponents: true,
     nodeRepulsion: () => 4500,
-    idealEdgeLength: (edge: cytoscape.EdgeSingular) => (edge.hasClass("link") ? 70 : edge.hasClass("pair") ? 45 : 80),
+    // Two circles joined by a link sit their radii apart plus a gap, so large clusters do not pile on each other.
+    idealEdgeLength: (edge: cytoscape.EdgeSingular) =>
+      edge.hasClass("link")
+        ? (Number(edge.source().data("diameter") ?? 0) + Number(edge.target().data("diameter") ?? 0)) / 2 + 30
+        : edge.hasClass("pair")
+          ? 45
+          : 80,
     edgeElasticity: () => 0.45,
     nodeSeparation: 75,
     gravity: bySize ? 1 : 0.4,
@@ -162,4 +168,54 @@ export function inView(cy: cytoscape.Core, id: string): boolean {
   const { x, y } = node.position();
   const box = cy.extent();
   return x >= box.x1 && x <= box.x2 && y >= box.y1 && y <= box.y2;
+}
+
+/** What the labels' sizes are multiplied by so they keep their size on screen at `zoom` (within 0.25 and 4). */
+export function labelScale(zoom: number): number {
+  return Math.min(4, Math.max(0.25, 1 / zoom));
+}
+
+
+type Box = { x1: number; y1: number; x2: number; y2: number };
+
+function overlaps(a: Box, b: Box, pad: number): boolean {
+  return !(a.x2 + pad < b.x1 || a.x1 - pad > b.x2 || a.y2 + pad < b.y1 || a.y1 - pad > b.y2);
+}
+
+/**
+ * Chooses which labels show, the more important first: the labels of `forced` (the node selected or under the
+ * pointer) always, then those `light` lit (its neighbours) and the node a view started from, then the largest or most
+ * linked. A label shows when it covers no label already shown and no node already shown with its label; such a node
+ * is then drawn above the others (`z`, highest first), so neither its label nor its circle hides under a node drawn
+ * after it. The others are `crowded`. Labels keep their size on screen (labelScale), so zooming in makes room and more
+ * of them show. A label off the screen takes no room; a dimmed one shows nothing and takes none either. Returns how
+ * many are crowded; call it again after a zoom, a pan, a new layout or a change of what is lit.
+ */
+export function declutter(cy: cytoscape.Core, forced: readonly (string | null)[]): number {
+  const pinned = new Set(forced.filter((id): id is string => Boolean(id)));
+  const pad = 3 / cy.zoom();
+  const view = cy.extent();
+  const nodes = cy.nodes(":visible").filter((node) => !node.hasClass("dim"));
+  const rank = (node: cytoscape.NodeSingular) =>
+    pinned.has(node.id()) ? 2 : node.hasClass("labelled") || node.hasClass("seed") ? 1 : 0;
+  const weight = (node: cytoscape.NodeSingular) => Number(node.data("size") ?? node.data("degree") ?? 0);
+  const ordered = (nodes.toArray() as cytoscape.NodeSingular[]).sort(
+    (a, b) => rank(b) - rank(a) || weight(b) - weight(a) || (a.id() < b.id() ? -1 : 1),
+  );
+  const shown: { node: cytoscape.NodeSingular; label: Box; body: Box }[] = [];
+  const crowded: cytoscape.NodeSingular[] = [];
+  for (const node of ordered) {
+    if (!String(node.data("label") ?? "")) continue;
+    const label = node.boundingBox({ includeNodes: false, includeEdges: false, includeLabels: true, includeOverlays: false });
+    if (!overlaps(label, view, 0)) continue;
+    const covers = shown.some((other) => overlaps(label, other.label, pad) || overlaps(label, other.body, pad));
+    if (covers && !pinned.has(node.id())) crowded.push(node);
+    else shown.push({ node, label, body: node.boundingBox({ includeLabels: false, includeOverlays: false }) });
+  }
+  cy.batch(() => {
+    cy.nodes().removeClass("crowded").removeData("z");
+    for (const node of crowded) node.addClass("crowded");
+    shown.forEach(({ node }, i) => node.data("z", shown.length - i));
+  });
+  return crowded.length;
 }
