@@ -2855,7 +2855,7 @@
         "notFoundDescription": "This pool does not exist, or it belongs to another member.",
         "facts": "Owner {owner}, created {date}",
         "addNode": "Add node",
-        "notReadyNote": "{count, plural, one {# node takes} other {# nodes take}} no run: {count, plural, one {its doctor found} other {their doctor found}} something the pool does not accept. Open a node to see why.",
+        "notReadyNote": "{count, plural, one {# node takes no run: its doctor found} other {# nodes take no run: their doctor found}} something the pool does not accept. Open a node to see why.",
         "offlineNote": "{count, plural, one {# node is} other {# nodes are}} offline. The hub revokes a node offline for {days, plural, one {# day} other {# days}}.",
         "never": "Never",
         "nodeLine": "{hostname}, version {version}",
