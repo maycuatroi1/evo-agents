@@ -4240,3 +4240,51 @@ def test_0160_takes_proposals_of_a_plugin_its_install_and_its_listing_and_going_
         conn.execute(delete(p))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0160") :]
+
+
+def test_0161_takes_probes_of_a_plugins_rule_with_no_change_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0160")
+    t = hub_tables
+    label = {"level": "internal"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="northwind", publisher="acme").returning(t.plugins.c.id))
+    probe = {"project_id": ids["project"], "repo": "demo", "task": "Write the post", "label": label}
+    probe |= {"verify": "test -s posts/new.md", "source": "plugin"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0130 knows no plugin source
+        conn.execute(insert(t.curator_probes).values(probe))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0161")
+    assert {"plugin_id", "ref", "arms"} <= columns(hub_db, "curator_probes")
+    arms = {"on": {"AGENTS.md": "Cite a source."}, "off": {"AGENTS.md": ""}}
+    plugin_probe = {**probe, "plugin_id": plugin_id, "ref": "cite-sources", "arms": arms}
+    with live.connect(hub_db) as conn:
+        probe_id = one(conn, insert(t.curator_probes).values(plugin_probe).returning(t.curator_probes.c.id))
+        for bad in (
+            probe,  # a plugin probe names its plugin, its ref and its arms
+            {**plugin_probe, "ref": ""},
+            {**plugin_probe, "ref": "r" * 201},
+            {**plugin_probe, "arms": []},
+            {**plugin_probe, "source": "admin"},  # another source names a proposal or a change, and no plugin
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.curator_probes).values(bad))
+        with pytest.raises(errors.UniqueViolation):  # one active probe per project, plugin and ref
+            conn.execute(insert(t.curator_probes).values(plugin_probe))
+        conn.execute(update(t.curator_probes).values(state="retired").where(t.curator_probes.c.id == probe_id))
+        conn.execute(insert(t.curator_probes).values(plugin_probe))
+        week = {"project_id": ids["project"], "probe_id": probe_id, "week": date(2026, 10, 26), "runtime": "codex"}
+        conn.execute(insert(t.curator_probe_runs).values({**week, "k": 3}))  # the week of a plugin probe: no change
+        plan_check = select(func.pg_get_constraintdef(PG_CONSTRAINT.c.oid, type_=Text)).where(
+            PG_CONSTRAINT.c.conname == "runs_kind_plan_check"
+        )
+        assert "'probe'" in one(conn, plan_check)  # a probe run may name no plan
+    # Going back deletes the plugin probes and their weeks and drops the three columns.
+    move_to(hub_db, "0160", down=True)
+    assert not {"plugin_id", "ref", "arms"} & columns(hub_db, "curator_probes")
+    assert query(hub_db, select(func.count()).select_from(t.curator_probe_runs)) == [(0,)]
+    assert query(hub_db, select(func.count()).select_from(t.curator_probes)) == [(0,)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.plugins).where(t.plugins.c.id == plugin_id))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0161") :]

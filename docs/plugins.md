@@ -649,11 +649,11 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.3, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.4, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
 `tests/plugins/test_core_plugin_api.py` drives through a fake chat service; `tests/fixtures/core_plugins/northwind_ledger`
-is a plugin of the market built on 1.3 alone, with its tables and chain, a framed page, CLI commands and a notice kind,
+is a plugin of the market built on 1.4 alone, with its tables and chain, a framed page, CLI commands and a notice kind,
 which `tests/plugins/test_core_plugin_ledger.py` and `tests/hub/test_plugin_migrations.py` drive on a live hub.
 
 The API is no sandbox. A core plugin runs in the api and the job worker, holds the hub's connection and reads every
@@ -662,7 +662,7 @@ easy to write and keeps it working from one release to the next.
 
 **Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
 point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
-("northwind_chat needs core plugin API 1.4; this hub serves 1.3"), and `core_plugins()` leaves the plugin out with that
+("northwind_chat needs core plugin API 1.5; this hub serves 1.4"), and `core_plugins()` leaves the plugin out with that
 reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
 for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
 
@@ -685,6 +685,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | 1.1 | the pull request of branch `feat/core-plugins-on-api`: `Caller`, `linked_channel`, `unlink_by_login`, `audit`, `Clearance.below`, `NOT_YOURS`, `RESTRICTED_ANSWER` | the release after 0.23.1 | 1.0.0 |
 | 1.2 | the pull request of branch `feat/core-plugin-agent-questions`: `ask_agent_type`, `read_agent_answer`, `AgentQuestion`, `AgentAnswer`, `ANSWER_EVENT`, `MAX_QUESTION_BYTES`, `MAX_ASKER_CHARS`, `MAX_REF_CHARS`, `MAX_ANSWER_CHARS` | the release after 0.35.1 | 1.2.0 |
 | 1.3 | the pull request of branch `feat/lean-core-features` (plan plugin-market): a plugin's own tables (`plugin_metadata`, `adopt_tables`, `own_tables`, `HUB_KEYS`, `PluginSchemaError`), a caller's access (`project_access`, `has_role`, `ROLES`, `ProjectRef`), the hub's reads (`read_*`, `step_key` and their refs), writes (`emit_event`, `push_signal`, `create_invite`, `queue_kg_build`, `notify`), agents and chat runs (`enabled_agent_type`, `hand_task`, `chat_run_of`, `run_session`, `reply_in_chat`), `project_configs`, `Session.machine` | the release after 0.44.2 | none yet: 1.2.0 does not load on 1.3 |
+| 1.4 | the pull request of branch `feat/editorial-api` (plan editorial-on-hub): a task's branch and agent time (`hand_task(repo=, branch=, minutes=)`, `MAX_TASK_MINUTES`), the probes of a plugin's own rules (`add_probe`, `remove_probe`, `MAX_PROBE_REF_CHARS`) | the release after the one that carries 1.3 | none yet: a plugin of 1.3 does not load on 1.4 |
 
 **A plugin of the market (1.3).** Each function takes the connection of the caller's transaction and the plugin's
 handle (`plugin(__name__)`), and works only in a project that enables the plugin: another project, or one that does not
@@ -701,7 +702,8 @@ caller's role and highest level).
 | `create_invite(conn, plugin, config, project, created_by=, for_login=, role=, days=)` | a join link of the project at the lowest level of its ladder, valid 1 to 30 days, audited as `invite.create` of member `created_by`, whom the plugin checked may (an admin of the project). An `Invite` whose token is shown once |
 | `queue_kg_build(conn, plugin, project)` | a build of the project's knowledge graph, in the caller's transaction, when the project has a knowledge config |
 | `notify(conn, plugin, project, notice_kind, users=, title=, body=, link=)` | a notice of a kind the manifest contributes (`notice_kinds`) to each of `users` (500 at most) who holds a grant on the project, on each channel of theirs that is on; `link` a path of the hub's web. The ids of the notices |
-| `enabled_agent_type(conn, plugin, project, name)`, `hand_task(conn, plugin, project, agent_type, task, title=, for_user=)` | the plugin's agent type as the project enabled it (`AgentTypeRef`), or None; a task run of it queued in the caller's transaction, for a member when given, or why none was (`TaskHanded`) |
+| `enabled_agent_type(conn, plugin, project, name)`, `hand_task(conn, plugin, project, agent_type, task, title=, for_user=, repo=, branch=, minutes=)` | the plugin's agent type as the project enabled it (`AgentTypeRef`), or None; a task run of it queued in the caller's transaction, for a member when given, or why none was (`TaskHanded`). (1.4) `repo` and `branch` together name a branch of one repo that is no default branch (`post/<slug>`), which the run checks out and pushes back to, never forced; `minutes`, its agent time, 1 to `MAX_TASK_MINUTES` (120), within the type's `daily_usd` (section Agent types) |
+| `add_probe(conn, plugin, project, ref, repo=, task=, verify=, on=, off=, commit=)`, `remove_probe(conn, plugin, project, ref, note=)` | (1.4) the probe of a rule the plugin renders into a repo's harness files, keyed by `ref`, in place of the active one of the same `ref`: its id; `on` and `off` map a path to the text each arm places, with and without the rule. Retiring it: False when there is none. Source `plugin`, no proposal or change (`docs/curator.md`, Probes) |
 | `chat_run_of(conn, plugin, run_id)`, `run_session(conn, plugin, run_id)`, `reply_in_chat(conn, plugin, run, text)` | the chat run a tool of the plugin was called in (`Context.run_id`); the member it acts for as a `Session` (`machine`, no token) that `project_access` checks; a message of the hub in the thread it answers in |
 | `project_configs(conn, plugin, config)` | the plugin's effective config in each project that enables it (`ProjectConfig`: project, values with secrets unsealed, version of the project's layer) |
 | `plugin_metadata()`, `adopt_tables(connection, metadata, names)`, `own_tables(plugin)`, `HUB_KEYS`, `PluginSchemaError` | the plugin's own tables (section Core plugins) |
@@ -1059,6 +1061,13 @@ Content-Type: application/json
 {"task": "Issue #212: the export drops the last row. Reproduce it and fix it.", "title": "Fix #212"}
 ```
 
+The body may also name `repo` and `branch` together (API 1.4): a branch of one repo of the project, such as
+`post/lumen-launch`, that the run checks out (made from the default branch when it does not exist yet) and pushes back
+to, never forced. A default branch, or a branch of another kind of run (`task/`, `curator/`, ...), is refused (422), as
+is a repo the project lacks; a branch another task run of the project works on while it is not over is refused (409).
+`minutes` asks for 1 to 120 minutes of agent time in place of 30; the run's cost cap stays what is left of the type's
+`daily_usd`, and the worker stops the run 30 minutes after its agent time.
+
 `task` is at most 16 KiB in UTF-8 and `title` at most 200 characters (when left out, the task's text on one line, cut short). The hub
 refuses the dispatch with:
 
@@ -1070,7 +1079,8 @@ refuses the dispatch with:
 - 429 once the type's task runs cost its cap in the last 24 hours, as their usage says.
 
 Otherwise it answers 201 with the task: `task_id`, the id of the run it queued, and `budget`, what is left of the cap
-as the run's cost cap with 30 minutes of agent time, as a chat run has. A runtime that reports no cost stops at the
+as the run's cost cap with 30 minutes of agent time, as a chat run has, or the `minutes` the body asks for, at most
+120. A runtime that reports no cost stops at the
 time. The run goes under the type's profile, dispatched by `run_as` with the credential kind `machine`, and waits for
 a worker of `run_as` that:
 
@@ -1081,7 +1091,7 @@ a worker of `run_as` that:
 
 The audit log keeps `task.dispatch`, with `run_as` as its actor.
 
-**A task run changes code on the branch `task/<task_id>` of each repo** of the project its worker has a checkout of, in
+**A task run changes code on the branch `task/<task_id>` of each repo** (or the branch its task names, for that repo) of the project its worker has a checkout of, in
 one headless turn of the agent, which asks nobody anything (`docs/workers.md`, Task runs). At its end the worker:
 
 - commits what the agent left;
