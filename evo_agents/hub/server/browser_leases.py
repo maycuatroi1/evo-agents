@@ -150,7 +150,7 @@ class _Found:
         return self.login and self.identity.worker_id != self.worker_id
 
 
-def _sealer(request: Request) -> Sealer:
+def browser_sealer(request: Request) -> Sealer:
     sealer: Sealer | None = request.app.state.sealer
     if sealer is None:
         missing = ", ".join(request.app.state.config.credentials_missing()) or "EVO_HUB_SECRETS_KEY"
@@ -237,7 +237,7 @@ async def lease_browser_profile(
     async with engine.begin() as conn:
         found = await usable_identity(conn, user, run_id, body.identity_id)
         identity = found.identity
-        keys = None if identity.sha256 is None or found.moves else (blob_store(request), _sealer(request))
+        keys = None if identity.sha256 is None or found.moves else (blob_store(request), browser_sealer(request))
         await _record(conn, user, found, audit.BROWSER_IDENTITY_LEASE, f" version={identity.version}")
     status, version, profile = identity.status, identity.version, None
     if keys is not None:
@@ -291,7 +291,7 @@ async def save_browser_profile(
     archive = await request.body()
     async with state.engine.begin() as conn:
         found = await usable_identity(conn, user, run_id, identity_id)
-        store, sealer = blob_store(request), _sealer(request)
+        store, sealer = blob_store(request), browser_sealer(request)
     try:
         await asyncio.to_thread(browser_archive.check, archive)
     except browser_archive.ProfileArchiveError as exc:

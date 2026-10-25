@@ -39,7 +39,7 @@ A work item waits for a person (``waiting_human``), and fails nothing, while its
 author's question, a plan run's decision), while the version a use_case drafted waits for its review or for the settle
 chat of an open finding of level decide, and while a merge request of its plan is held. A failure (a run failed or lost
 for good, a run that ended without what it was for, a revert) queues it again the first time, puts it in triage the
-second and asks a person from the third (``_failure``; the tick's ``stall`` opens the thread and asks the decision);
+second and asks a person from the third (``failure_move``; the tick's ``stall`` opens the thread and asks the decision);
 changes asked of a use_case's version queue it again with no failure.
 """
 
@@ -238,7 +238,7 @@ def _brainstorm(view: View, goal) -> WorkSpec | None:
 # Where a work item moves
 
 
-def _cancel(item: ItemView, reason: str, **detail) -> Transition:
+def cancel_item(item: ItemView, reason: str, **detail) -> Transition:
     return Transition(item.id, CANCELLED, CANCELLED_EVENT, reason=reason, detail=detail)
 
 
@@ -247,14 +247,14 @@ def _stale(item: ItemView, view: View) -> Transition | None:
     run was handed out for it."""
     goal = view.goals.get(item.goal_id) if item.goal_id is not None else None
     if goal is None or goal.status != ACTIVE:
-        return _cancel(item, "goal_paused" if goal is not None and goal.status == PAUSED else "goal_closed")
+        return cancel_item(item, "goal_paused" if goal is not None and goal.status == PAUSED else "goal_closed")
     claim = view.claims.get(item.claim_id) if item.claim_id is not None else None
     if claim is not None and claim.status in ENDED_CLAIMS:
-        return _cancel(item, f"claim_{claim.status}")
+        return cancel_item(item, f"claim_{claim.status}")
     if item.kind in (BUILD, DELIVER) and item.task_id is not None and item.state in (QUEUED, WATCHING):
         task = view.tasks.get(item.task_id)
         if task is None or not task.open:
-            return _cancel(item, "task_closed", group=None if task is None else task.group)
+            return cancel_item(item, "task_closed", group=None if task is None else task.group)
     return None
 
 
@@ -262,17 +262,17 @@ def run_of(item: ItemView, view: View) -> RunView | None:
     return view.runs.get(item.run_id) if item.run_id is not None else None
 
 
-def _run_end(item: ItemView, view: View) -> Transition | None:
+def ended_run_move(item: ItemView, view: View) -> Transition | None:
     """A run of the work item that ended other than done: cancelled by a person, or a failure."""
     run = run_of(item, view)
     if run is None or not run.ended or run.state == "done":
         return None
     if run.state == "cancelled":
-        return _cancel(item, "person", run_id=run.id)
-    return _failure(item, run_id=run.id, run_state=run.state)
+        return cancel_item(item, "person", run_id=run.id)
+    return failure_move(item, run_id=run.id, run_state=run.state)
 
 
-def _failure(item: ItemView, **detail) -> Transition:
+def failure_move(item: ItemView, **detail) -> Transition:
     """A failure of the work item (the report's section Triage): queued again at the first, triage at the second
     (watching until the chat run of its triage thread ends, TRIAGE_WAIT_MINUTES at most), and a decision of a person
     from the third on (waiting_human, ``loop_decision``)."""
@@ -285,7 +285,7 @@ def _failure(item: ItemView, **detail) -> Transition:
     return Transition(item.id, QUEUED, FAILED, detail=detail, failed=True)
 
 
-def _triaged(item: ItemView, view: View) -> Transition | None:
+def triaged_move(item: ItemView, view: View) -> Transition | None:
     """A work item in triage queued again once the tick opened its thread and the thread's chat run ended, or
     TRIAGE_WAIT_MINUTES passed, or no agent was asked."""
     triage = item.detail.get("triage")
@@ -302,7 +302,7 @@ def _triaged(item: ItemView, view: View) -> Transition | None:
     return None
 
 
-def _asks(item: ItemView, run: RunView, reason: str) -> Transition | None:
+def asks_move(item: ItemView, run: RunView, reason: str) -> Transition | None:
     """A work item whose run's agent waits for its owner (a question, a decision) waits for a person with
     ``reason``; back to running once the agent goes on."""
     if item.state == RUNNING and run.asks:
@@ -326,7 +326,7 @@ def _in_review(item: ItemView, version: VersionView) -> Transition | None:
     cancelled when a person withdrew it. None of these is a failure; approved is row 6's."""
     where = {"document": version.document, "version": version.number}
     if version.state == WITHDRAWN:
-        return _cancel(item, "person", **where)
+        return cancel_item(item, "person", **where)
     if version.state == DRAFT and version.changes:
         return Transition(item.id, QUEUED, READY, detail={"srs_changes": {**where, "version_id": version.id}})
     if version.state != IN_REVIEW:
@@ -356,7 +356,9 @@ def _drafted(item: ItemView, view: View) -> Transition | None:
     again = isinstance(asked, dict) and version is not None and asked.get("version_id") == version.id
     if item.state == RUNNING and (version is None or (again and version.changes)):
         if run is not None and run.state == "done":
-            return _failure(item, run_id=run.id, why="the task run sent no new version of an SRS document to review")
+            return failure_move(
+                item, run_id=run.id, why="the task run sent no new version of an SRS document to review"
+            )
         return None
     return None if version is None else _in_review(item, version)
 
@@ -368,7 +370,7 @@ def _frame(item: ItemView, view: View) -> Transition | None:
         return None  # the plugin srs has not handled the approval yet
     task = view.tasks.get(item.task_id) if item.task_id is not None else view.frames.get(item.detail.get("frame"))
     if task is None:
-        return _cancel(item, "no_frame_task", frame=item.detail.get("frame"))
+        return cancel_item(item, "no_frame_task", frame=item.detail.get("frame"))
     sprint = not view.policy.get("require_sprint") or task.sprint_active
     if task.group == TODO and approval.split_ended and sprint:
         return Transition(item.id, QUEUED, READY, task_id=task.id, detail={"task": task.number})
@@ -385,11 +387,11 @@ def move_build(item: ItemView, view: View) -> Transition | None:
     run = run_of(item, view) if item.state in (RUNNING, WAITING_HUMAN) else None
     if run is None:
         return None
-    asking = _asks(item, run, "author_question")
+    asking = asks_move(item, run, "author_question")
     if asking is not None or run.state != "done":
         return asking
     if run.plan_id is None:
-        return _failure(item, run_id=run.id, why="the author run ended without a plan")
+        return failure_move(item, run_id=run.id, why="the author run ended without a plan")
     deliver = WorkSpec(
         DELIVER,
         f"deliver:{run.plan_id}",
@@ -434,7 +436,7 @@ def _merged(item: ItemView, view: View) -> Transition | None:
     merges = view.merges.get(item.plan_id or "", ())
     reverted = [merge.id for merge in merges if merge.state == REVERTED]
     if reverted:
-        return _failure(item, reverted=reverted)
+        return failure_move(item, reverted=reverted)
     repos = [repo for repo in item.detail.get("repos") or [] if isinstance(repo, str)]
     by_hand = [repo for repo in repos if repo in view.manual]
     queued = [repo for repo in repos if repo not in view.manual]
@@ -459,11 +461,11 @@ def _deliver(item: ItemView, view: View) -> Transition | None:
     """A deliver's plan run, its decisions included, then the merge requests of its plan."""
     run = run_of(item, view)
     if run is not None and (item.state == RUNNING or item.reason == "run_decision"):
-        asking = _asks(item, run, "run_decision")
+        asking = asks_move(item, run, "run_decision")
         if asking is not None or run.state != "done":
             return asking
         if run.steps_done is False:
-            return _failure(item, run_id=run.id, why="the plan run ended with steps not done")
+            return failure_move(item, run_id=run.id, why="the plan run ended with steps not done")
         return _merging(item, view, run)
     if item.reason in ("merge_queue", "merge_blocked", "merge_manual"):
         return _merged(item, view)
@@ -496,11 +498,11 @@ class Rules:
     def reconcile(self, item: ItemView, view: View) -> Transition | None:
         if item.finished:
             return None
-        stale = _stale(item, view) or _run_end(item, view)
+        stale = _stale(item, view) or ended_run_move(item, view)
         if stale is not None:
             return stale
         if item.state == WATCHING and item.reason == "triage":
-            return _triaged(item, view)
+            return triaged_move(item, view)
         if item.state == WAITING_HUMAN and item.reason == "loop_decision":
             return None  # the person's answer moves it (``stall.answer``)
         return self.move(item, view)

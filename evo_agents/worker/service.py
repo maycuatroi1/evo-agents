@@ -584,7 +584,7 @@ def _logs(service: Manager, home: Path) -> str:
 
 @_command
 def cmd_install(args) -> int:
-    from evo_agents.worker.cli import EXTRA_HINT
+    from evo_agents.worker.command import EXTRA_HINT
 
     home = WorkerHome()
     service = manager()

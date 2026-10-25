@@ -1,7 +1,7 @@
 """Triage and the person, when a work item of the Loop does not get on (plan loop-engine, criterion a7; the report's
 section Triage).
 
-The engine counts a failure of a work item (``rules._failure``): its run failed or was lost for good, stopped on its
+The engine counts a failure of a work item (``rules.failure_move``): its run failed or was lost for good, stopped on its
 caps, ended without what it was for (an author run with no plan, a plan run with steps not done, a task run with no
 version in review), or a merge request of its plan was reverted. A person cancelling the run cancels the work item. A
 work item that waits for a person for another reason (a review of its SRS version, the settle chat of an open finding
@@ -12,7 +12,7 @@ failure. The first failure queues it again; this module does the rest, in a step
   author or a plan run that failed has one, ``triage.tell_thread``) about the work item, its failed runs and its chain;
   a run without one (a task run, a run done without what it was for) gets a thread in the project's triage chat with
   the project's default agent asked (``triage.asking_thread``). The third hand-out waits for that thread's chat run to
-  end, at most ``model.TRIAGE_WAIT_MINUTES`` (``rules._triaged``); a project whose triage is off has none to wait for.
+  end, at most ``model.TRIAGE_WAIT_MINUTES`` (``rules.triaged_move``); a project whose triage is off has none to wait for.
 - from the third failure on (``waiting_human``, ``loop_decision``): a decision of category loop on the work item's last
   run, asked of the person that run stands for (the run_as of a task run's agent type, the owner of loop.worker for an
   author or a plan run), with three options. The hub does the one chosen (``answer_loop``), as it does a release's:

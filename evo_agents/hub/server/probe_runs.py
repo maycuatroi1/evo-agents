@@ -136,7 +136,7 @@ def _key_digest(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def _models(body: dict) -> list[tuple[str, str | None]]:
+def probe_models(body: dict) -> list[tuple[str, str | None]]:
     """The runtimes and models of the charter's probes: ``probes.models``, else the builder's."""
     found = [
         (item.get("runtime") or curator.DEFAULT_RUNTIME, item.get("model"))
@@ -278,7 +278,7 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
         return None
     week = probes.week_of(gate.night)
     k = int(settings.get("k") or probes.DEFAULT_K)
-    pairs = await _pairs(conn, due.project_id, week, _models(due.body))
+    pairs = await _pairs(conn, due.project_id, week, probe_models(due.body))
     if not pairs:
         return None
     spent = await week_cost(conn, due.id, week)
