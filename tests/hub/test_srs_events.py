@@ -1,4 +1,4 @@
-"""The event srs.version.approved (``evo_agents.core_plugins.srs.events``) and the tasks the plugin srs makes from it,
+"""The event srs.version.approved (``evo_agents.hub.server.srs.events``) and the tasks the plugin srs makes from it,
 as criterion a3 of plan loop-engine names it.
 
 Approving a version emits srs.version.approved in the approval's transaction: the document, the version, the version
@@ -24,9 +24,9 @@ if not pg.DSN:
 
 from sqlalchemy import func, select, update
 
-from evo_agents.core_plugins.srs.events import on_version_approved
 from evo_agents.hub import plugin_events, tables
 from evo_agents.hub.plugin_calls import CoreContext
+from evo_agents.hub.server.srs.events import on_version_approved
 from evo_agents.plugins import protocol
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, members and srs_core are fixtures)

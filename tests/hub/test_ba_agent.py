@@ -1,4 +1,4 @@
-"""@ba, the agent type ba of the core plugin srs, on the hub (``evo_agents.core_plugins.srs.agent``,
+"""@ba, the agent type ba of the core plugin srs, on the hub (``evo_agents.hub.server.srs.agent``,
 ``auto_review``, ``evo_agents.hub.server.chat_route``), as criterion a7 of the plan srs-tasks-plugins names it.
 
 An admin of a project that enabled srs enables the type under a member (``run_as``): the profile @ba with the pack
@@ -31,10 +31,10 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from evo_agents.core_plugins.srs import BA_INSTRUCTIONS
-from evo_agents.core_plugins.srs import MANIFEST as SRS_MANIFEST
 from evo_agents.hub import plugin_calls, plugin_events, tables
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.srs import BA_INSTRUCTIONS
+from evo_agents.hub.server.srs import MANIFEST as SRS_MANIFEST
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
@@ -53,8 +53,8 @@ ADMIN_GRANT = {"role": "admin", "max_level": "internal"}
 WRITER = credentials_api.WRITER
 READ_ONLY = {"role": "reader", "max_level": "internal"}
 CORE = {
-    "srs": EntryPoint("srs", "evo_agents.core_plugins.srs:MANIFEST", ENTRY_POINT_GROUP),
-    "tasks": EntryPoint("tasks", "evo_agents.core_plugins.tasks:MANIFEST", ENTRY_POINT_GROUP),
+    "srs": EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP),
+    "tasks": EntryPoint("tasks", "evo_agents.hub.server.tasks:MANIFEST", ENTRY_POINT_GROUP),
 }
 SAMPLE = Path(__file__).parent / "fixtures" / "srs" / "demo-shop-srs.md"
 SRS = f"/v1/x/srs/{PROJECT}"
@@ -169,7 +169,7 @@ def review(client, headers, number: int, decision: str = "approve", **body):
 def delivered(client) -> dict:
     """One pass of the job hub.deliver_plugin_events, as the hub runs it every minute, none of whose deliveries fails:
     the event srs.version.approved of an approval reaches the plugin srs, whose handler keeps the tasks in step
-    (``evo_agents.core_plugins.srs.events``)."""
+    (``evo_agents.hub.server.srs.events``)."""
     report = client.portal.call(lambda: plugin_events.deliver(client.app.state.engine))
     assert (report["retried"], report["failed"]) == (0, 0), report
     return report

@@ -1,7 +1,7 @@
 """The tables of the night shift (0012), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.charters``
 and ``tables.schedules``.
 
-charters keeps each revision of a project's charter, the worker or pool its night runs go to (pool_id, 0149) and who
+charters keeps each revision of a project's charter, the worker or pool its night runs go to (pool_id, 0150) and who
 wrote it; schedules holds one row per project and kind of night job, who owns it, the worker or pool it runs on, and when and why it was paused (by a
 member, or by the hub's circuit breaker: ``pause_reason``, 0018).
 """
@@ -33,7 +33,7 @@ def _stamp(name: str) -> Column:
 
 
 def _one_of(table: str) -> CheckConstraint:
-    """A worker or a pool, exactly one (0149)."""
+    """A worker or a pool, exactly one (0150)."""
     return CheckConstraint(
         column("worker_id").is_(None) != column("pool_id").is_(None), name=f"{table}_worker_or_pool_check"
     )
@@ -47,8 +47,8 @@ def night_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("project_id", BigInteger, nullable=False),
         Column("revision", Integer, nullable=False),
         Column("body", JSONB, nullable=False),
-        Column("worker_id", BigInteger),  # the worker its night runs go to, or NULL for a pool (0149)
-        Column("pool_id", BigInteger),  # the pool whose ready nodes take them, or NULL for a worker (0149)
+        Column("worker_id", BigInteger),  # the worker its night runs go to, or NULL for a pool (0150)
+        Column("pool_id", BigInteger),  # the pool whose ready nodes take them, or NULL for a worker (0150)
         Column("created_by", BigInteger, nullable=False),
         _stamp("created_at"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="charters_created_by_fkey"),
@@ -65,8 +65,8 @@ def night_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("project_id", BigInteger, nullable=False),
         Column("kind", Text, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
-        Column("worker_id", BigInteger),  # NULL for a pool (0149)
-        Column("pool_id", BigInteger),  # NULL for a worker (0149)
+        Column("worker_id", BigInteger),  # NULL for a pool (0150)
+        Column("pool_id", BigInteger),  # NULL for a worker (0150)
         _stamp("created_at"),
         _stamp("updated_at"),
         Column("paused_at", DateTime(timezone=True)),

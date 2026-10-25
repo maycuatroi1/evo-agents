@@ -58,6 +58,7 @@ from evo_agents.hub.plugin_calls import (
     asked_for,
     call,
     enabled_plugins,
+    enablements,
 )
 from evo_agents.hub.question_runs import ANSWER_EVENT as ANSWER
 from evo_agents.hub.telegram import what_waits
@@ -82,7 +83,7 @@ PERMISSION = {
     NOTIFICATION: "notifications:send",
 }
 # the core plugin each of these kinds belongs to, which takes it ungranted: srs keeps the tasks of an approved version
-# in step from its own event (``evo_agents.core_plugins.srs.auto_tasks``)
+# in step from its own event (``evo_agents.hub.server.srs.auto_tasks``)
 OWN = {hub_events.SRS_APPROVED: "srs", hub_events.TASK_STATUS: "tasks"}
 MAX_ATTEMPTS = 8
 BACKOFF_SECONDS = 60
@@ -220,7 +221,7 @@ def _lock_due(delivery_id: int):
         tables.plugin_deliveries,
         tables.plugins,
         tables.plugin_versions,
-        tables.project_plugins,
+        enablements(),  # project_plugins, and the features of the hub that are on (canvas, srs, tasks)
         tables.projects,
     )
     return (

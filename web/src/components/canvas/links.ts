@@ -19,7 +19,7 @@ export function claimHref(project: string, slug: string, code: string): Route {
   return `${canvasHref(project, slug)}/claims/${encodeURIComponent(code)}` as Route;
 }
 
-/** A baseline's review, the page the notice canvas_baseline links (evo_agents.core_plugins.canvas.notices.link). */
+/** A baseline's review, the page the notice canvas_baseline links (evo_agents.hub.server.canvas.notices.link). */
 export function baselineHref(project: string, slug: string, number: number): Route {
   return `${canvasHref(project, slug)}/baselines/${number}` as Route;
 }

@@ -40,11 +40,12 @@ def include_name(name, type_, parent_names) -> bool:
     return not (type_ == "table" and name.startswith("procrastinate_"))
 
 
-def test_the_metadata_holds_the_one_hundred_and_seventy_eight_hub_tables():
+def test_the_metadata_holds_the_one_hundred_and_seventy_nine_hub_tables():
     assert set(tables.metadata.tables) == TABLES - pg.QUEUE_TABLES
     # the last added: problems, problem_revisions, problem_evidence, intakes, kg_review_dismissals, kg_decisions,
-    # kg_decision_events, opportunities (4), worker_pools, worker_pool_projects, worker_join_tokens
-    assert len(tables.metadata.tables) == 178
+    # kg_decision_events, opportunities (4), retired_project_plugins, worker_pools, worker_pool_projects,
+    # worker_join_tokens
+    assert len(tables.metadata.tables) == 179
 
 
 def test_the_metadata_matches_the_schema_at_head(hub_db):

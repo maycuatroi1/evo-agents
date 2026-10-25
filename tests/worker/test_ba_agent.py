@@ -1,4 +1,4 @@
-"""@ba on the worker (``evo_agents.core_plugins.srs``), as criterion a7 of the plan srs-tasks-plugins names it: the
+"""@ba on the worker (``evo_agents.hub.server.srs``), as criterion a7 of the plan srs-tasks-plugins names it: the
 manifest of the core plugin srs declares the agent type ba, mentioned by the project's writers, whose chat runs go to
 the workers of its run_as, with the pack srs/ba and the plugin's tools; the bundle the hub builds from the package
 (``plugins.core.image_bundle``) is a pack the worker builds as any other, srs/ba with its instructions and the skills
@@ -19,8 +19,8 @@ from evo_agents.plugins.bundle import Bundle
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from evo_agents.worker import packs
 
-SRS = EntryPoint("srs", "evo_agents.core_plugins.srs:MANIFEST", ENTRY_POINT_GROUP)
-TASKS = EntryPoint("tasks", "evo_agents.core_plugins.tasks:MANIFEST", ENTRY_POINT_GROUP)
+SRS = EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP)
+TASKS = EntryPoint("tasks", "evo_agents.hub.server.tasks:MANIFEST", ENTRY_POINT_GROUP)
 PACK = "packs/ba"
 
 
@@ -70,16 +70,14 @@ def test_ba_agent_type_of_srs_is_mentioned_by_writers_and_runs_on_the_workers_of
     assert [item["name"] for item in manifest.contributions("agent_packs")] == ["ba"]
     tools = manifest.python_refs("mcp_tools")
     assert tools == {
-        name: f"evo_agents.core_plugins.srs.agent:{name}"
+        name: f"evo_agents.hub.server.srs.agent:{name}"
         for name in ("read", "search", "diff", "propose", "comment", "finding")
     }
     propose = next(item for item in manifest.contributions("mcp_tools") if item["name"] == "propose")
     change = propose["input_schema"]["properties"]["changes"]["items"]
     assert "retire" not in change["properties"] and change["additionalProperties"] is False, "no change drops an item"
     assert "code" not in change["properties"], "a change of an item never names its code"
-    assert plugins["tasks"].manifest.python_refs("mcp_tools") == {
-        "create": "evo_agents.core_plugins.tasks.agent:create"
-    }
+    assert plugins["tasks"].manifest.python_refs("mcp_tools") == {"create": "evo_agents.hub.server.tasks.agent:create"}
 
 
 def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_four_skills(plugins, tmp_path):

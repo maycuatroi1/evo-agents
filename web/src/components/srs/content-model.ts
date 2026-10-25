@@ -3,11 +3,11 @@ import { childrenOf, codeKey, isRow } from "./model";
 
 /**
  * What an item of a version holds, as the SRS pages show it: a use case's fields and Activity Flow (read by the hub
- * from its body, evo_agents.core_plugins.srs.markdown.use_case_fields), the business rules and screens around it, a
+ * from its body, evo_agents.hub.server.srs.markdown.use_case_fields), the business rules and screens around it, a
  * section's text with its table rows, the codes inside a line of text, and a unified diff of an item as hunks.
  */
 
-/** A use case's fields in the template's order, by the key the hub reads them into (evo_agents.core_plugins.srs.
+/** A use case's fields in the template's order, by the key the hub reads them into (evo_agents.hub.server.srs.
  * USE_CASE_FIELDS): the classic ones, those of intent, context and expectation, or both. */
 export const USE_CASE_FIELDS = [
   "id",
@@ -165,7 +165,7 @@ export type DiffHunk = { oldStart: number; newStart: number; lines: DiffLine[] }
 
 const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
-/** The hunks of a diff the hub wrote without its file header (evo_agents.core_plugins.srs.diff.lines_between). */
+/** The hunks of a diff the hub wrote without its file header (evo_agents.hub.server.srs.diff.lines_between). */
 export function parseHunks(lines: readonly string[]): DiffHunk[] {
   const hunks: DiffHunk[] = [];
   let hunk: DiffHunk | null = null;

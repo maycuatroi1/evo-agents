@@ -1215,13 +1215,19 @@
         "chats": "Chat",
         "curator": "Curator",
         "kg": "Knowledge graph",
-        "monitor": "Monitor"
+        "monitor": "Monitor",
+        "canvas": "Canvas",
+        "srs": "Yêu cầu (SRS)",
+        "tasks": "Task"
       },
       "descriptions": {
         "chats": "Group chat giữa người và agent.",
         "curator": "Ca đêm của Curator, các đề xuất và bản tin sáng của nó.",
         "kg": "Knowledge graph của dự án: các trang, API và các tool kg trên MCP của hub.",
-        "monitor": "Các run đang chạy ở mọi dự án, theo dõi trực tiếp."
+        "monitor": "Các run đang chạy ở mọi dự án, theo dõi trực tiếp.",
+        "canvas": "Canvas của dự án: các nhận định, bằng chứng và phần chấm của chúng, cùng @strategist.",
+        "srs": "Các tài liệu yêu cầu của dự án, phần review và duyệt của chúng, cùng @ba.",
+        "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt."
       },
       "scopeHub": "Cả hub",
       "scopeProject": "Hub hoặc dự án",
@@ -3764,6 +3770,13 @@
       "latest": "Tới tin mới nhất",
       "directEmptyBody": "Hãy nói điều bạn cần: mọi tin đều tới {name}, và câu trả lời hiện ngay dưới tin của bạn."
     },
+    "bind": {
+      "lead": "Nhận run của {project} trên:",
+      "button": "Worker {name}",
+      "none": "Bạn chưa có worker nào: ghép một worker ở trang Workers rồi gửi lại tin nhắn.",
+      "done": "Worker {name} đã nhận run của {project}. Hãy gửi lại tin nhắn.",
+      "failed": "Không thêm được {project} vào worker {name}"
+    },
     "message": {
       "hub": "Hub",
       "hubTag": "Tự động",
@@ -3772,9 +3785,7 @@
       "reply": "Trả lời trong thread",
       "replies": "{count, plural, other {# trả lời}}",
       "lastReply": "lần cuối lúc {time}",
-      "run": "Run #{id}",
       "ownRunLabel": "Run #{id} của @{handle}",
-      "handed": "@{handle}: run #{id}",
       "handedLabel": "@{handle}: run #{id}, nơi agent nhận việc",
       "refused": "@{handle} không nhận việc:",
       "pull": "PR #{number} trong {repo}",
@@ -4406,10 +4417,12 @@
     "facets": {
       "label": "Trạng thái",
       "all": "Tất cả",
+      "running": "Đang chạy",
       "active": "Đang hoạt động",
       "review": "Chờ duyệt",
       "done": "Xong",
-      "ended": "Thất bại hoặc đã huỷ"
+      "ended": "Thất bại hoặc đã huỷ",
+      "idle": "Đang chờ"
     },
     "search": {
       "label": "Tìm run",
@@ -4429,7 +4442,8 @@
       "runtime": "Runtime",
       "started": "Bắt đầu",
       "duration": "Thời lượng",
-      "attempt": "Lần chạy"
+      "attempt": "Lần chạy",
+      "cost": "Chi phí"
     },
     "stepLine": "{plan}, bước {step}",
     "stepLineProject": "{project}, {plan}, bước {step}",
@@ -5740,6 +5754,12 @@
         "needs_login": "cần đăng nhập",
         "disabled": "đã tắt"
       }
+    },
+    "progress": {
+      "label": "Tiến độ plan",
+      "count": "{done}/{total}",
+      "at": "{step}: {status}",
+      "complete": "Đã xong mọi bước"
     }
   },
   "insights": {

@@ -64,7 +64,7 @@ REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 WRITE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 IntakeRef = Annotated[str, Path(pattern=intakes.REF, description="I-<number>")]
 Said = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-TASKS = "tasks"  # the plugin whose tasks a promise becomes (evo_agents.core_plugins.tasks)
+TASKS = "tasks"  # the plugin whose tasks a promise becomes (evo_agents.hub.server.tasks)
 MAX_SUMMARY_CHARS = 500  # of a proposal's summary (evo_agents.core_plugins.builder.MAX_SUMMARY_CHARS)
 CLOSED_GROUPS = ("done", "cancelled")
 RACE = "another write of the project's tasks or problems took the number first; put the result again"

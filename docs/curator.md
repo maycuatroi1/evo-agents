@@ -157,7 +157,7 @@ runs holds as it is. Give that worker `--slots 1` and no credential of its owner
 
 **A pool on duty.** `pool` names one of the writer's own worker pools that lists the project (`docs/workers.md`,
 Pools), in place of `worker`; a charter names exactly one of the two, and the schedules follow it (`charters.pool_id`
-and `schedules.pool_id`, schema 0149, with a CHECK that exactly one of `worker_id` and `pool_id` is set). The pool's
+and `schedules.pool_id`, schema 0150, with a CHECK that exactly one of `worker_id` and `pool_id` is set). The pool's
 owner owns the schedules and the night shift dispatches as that member. A run of a pool's schedule is not pinned: it
 goes out with the selector `pool=<name>`, tolerating the pool's taints, and any ready node of the pool that serves the
 project claims it. A node is ready for the night when it is live and online, serves the project, is not draining,

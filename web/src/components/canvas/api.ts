@@ -6,7 +6,7 @@ import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
 /**
- * The reads and writes of the core plugin canvas (evo_agents.core_plugins.canvas.server, under /v1/x/canvas/{project}/),
+ * The reads and writes of the core plugin canvas (evo_agents.hub.server.canvas.server, under /v1/x/canvas/{project}/),
  * as TanStack Query options the server (prefetch) and the browser share, and the writes the browser makes with the
  * session's X-Evo-CSRF header. Every key sits under the project's plugin keys, so one invalidation of a canvas reloads
  * its claims, proposals and baselines.

@@ -2778,7 +2778,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -11776,6 +11777,7 @@
           "state",
           "disabled_reason",
           "enabled",
+          "builtin",
           "permissions",
           "granted",
           "pending",
@@ -11837,6 +11839,7 @@
           "state",
           "disabled_reason",
           "enabled",
+          "builtin",
           "permissions",
           "granted",
           "pending",
@@ -11951,6 +11954,7 @@
               "state",
               "disabled_reason",
               "enabled",
+              "builtin",
               "permissions",
               "granted",
               "pending",
@@ -13556,7 +13560,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -13757,7 +13762,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -13867,7 +13873,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14234,7 +14241,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14344,7 +14352,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14454,7 +14463,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -14962,7 +14972,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -15120,7 +15131,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -15288,7 +15300,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -15398,7 +15411,8 @@
           "principal",
           "autonomy",
           "selector",
-          "tolerations"
+          "tolerations",
+          "plan_progress"
         ],
         "schema": "Run"
       }
@@ -102412,6 +102426,59 @@
           ],
           "title": "PlanPatch"
         },
+        "PlanProgress": {
+          "properties": {
+            "done": {
+              "type": "integer",
+              "title": "Done",
+              "description": "steps with status done"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "steps of the plan"
+            },
+            "percent": {
+              "type": "integer",
+              "title": "Percent",
+              "description": "done of total, rounded down; 0 for a plan without steps"
+            },
+            "current_step": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Step",
+              "description": "the step in progress, else the first not done: its title, else its key; null once all are done"
+            },
+            "current_status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current Status",
+              "description": "that step's status as the plan holds it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "done",
+            "total",
+            "percent",
+            "current_step",
+            "current_status"
+          ],
+          "title": "PlanProgress",
+          "description": "How far a plan run's plan has come, as the plan holds it now."
+        },
         "PlanPut": {
           "properties": {
             "body": {
@@ -108963,6 +109030,12 @@
               "type": "boolean",
               "title": "Enabled"
             },
+            "builtin": {
+              "type": "boolean",
+              "title": "Builtin",
+              "description": "a feature of the hub (canvas, srs, tasks), not a plugin of the store: the project's features turn it on and off, and it may do what it asks for while on",
+              "default": false
+            },
             "permissions": {
               "items": {
                 "$ref": "#/components/schemas/PluginPermission"
@@ -114741,6 +114814,17 @@
                 }
               ],
               "title": "Usage"
+            },
+            "plan_progress": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanProgress"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a plan run's plan progress, set in a list of runs; null for any other run"
             },
             "budget": {
               "anyOf": [

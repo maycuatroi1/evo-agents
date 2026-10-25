@@ -413,7 +413,7 @@ Index(
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
 workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0119
-worker_pools, worker_pool_projects, worker_join_tokens = tables_pools.pool_tables(metadata, workers)  # 0147
+worker_pools, worker_pool_projects, worker_join_tokens = tables_pools.pool_tables(metadata, workers)  # 0148
 
 runs = Table(
     "runs",
@@ -537,7 +537,7 @@ Index(  # the reaper finds the local runs that went silent (0033)
     runs.c.last_activity_at,
     postgresql_where=(runs.c.kind == "local") & (runs.c.state != "ended"),
 )
-tables_pools.placement_columns(workers, runs)  # 0148
+tables_pools.placement_columns(workers, runs)  # 0149
 Index("runs_claim_idx", runs.c.project_id, runs.c.dispatched_by, runs.c.id, postgresql_where=runs.c.state == "queued")
 Index("runs_lease_idx", runs.c.lease_expires_at, postgresql_where=runs.c.state.in_(RUN_HELD))
 Index("runs_worker_idx", runs.c.worker_id, runs.c.id.desc(), postgresql_where=runs.c.worker_id.is_not(None))
@@ -761,7 +761,7 @@ secret_bindings = Table(
     Column("secret_id", BigInteger, nullable=False),
     Column("project_id", BigInteger, nullable=False),
     Column("worker_id", BigInteger),
-    Column("pool_id", BigInteger),  # bound to each node of the pool, those that join later too (0149)
+    Column("pool_id", BigInteger),  # bound to each node of the pool, those that join later too (0150)
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="secret_bindings_project_id_fkey"),
     ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="secret_bindings_secret_id_fkey"),
     ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="secret_bindings_worker_id_fkey"),
@@ -979,6 +979,7 @@ agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
+retired_project_plugins = tables_plugins.retired_table(metadata)  # canvas, srs and tasks before 0147
 hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)

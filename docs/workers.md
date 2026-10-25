@@ -203,8 +203,8 @@ A project added still needs its checkouts on the machine, as at registration ([R
 A pool is a set of machines a member adds with one join token instead of a pairing code each: servers made for runs,
 which take a name, labels and settings from the pool and need no one at the keyboard. Laptops and desktops keep
 joining with a pairing code or registering with `hub login`, as above; a worker of no pool behaves as it always did.
-Schema 0147 adds `worker_pools`, `worker_join_tokens` and `workers.pool_id`; 0148 `workers.taints`, `runs.selector`
-and `runs.tolerations`; 0149 the pool of a charter, a schedule and a secret binding (`pool_id`). The hub's side is
+Schema 0148 adds `worker_pools`, `worker_join_tokens` and `workers.pool_id`; 0149 `workers.taints`, `runs.selector`
+and `runs.tolerations`; 0150 the pool of a charter, a schedule and a secret binding (`pool_id`). The hub's side is
 `evo_agents/hub/server/worker_pools.py` (pools and tokens), `worker_join.py` (the join), `worker_placement.py`
 (labels, taints, readiness) and `worker_reaper.py`; the command line is `evo-agents worker pool`
 (`evo_agents/worker/pool_cli.py`), and the web shows the pools at `/workers/pools`, reached from the Pools button of

@@ -105,7 +105,7 @@ The body of a PUT:
   project on each named worker.
 - `pools`: optional names of the caller's own worker pools (`docs/workers.md`, Pools), in any case; another member's
   pool, or a name the caller has no pool of, is 403. The bindings are each project on each pool
-  (`secret_bindings.pool_id`, schema 0149), and a pool covers each of its nodes, those that join after the binding
+  (`secret_bindings.pool_id`, schema 0150), and a pool covers each of its nodes, those that join after the binding
   too. A body naming both `workers` and `pools` is 422: a pool covers its nodes already. A `forge` secret takes
   neither.
 - `expires_at`: optional, with a time zone, in the future.

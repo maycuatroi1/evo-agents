@@ -67,7 +67,7 @@ export const signalsQuery = (api: ApiSource, project: string, filter: SignalsFil
 
 /**
  * The project's Signals page, on one key and one tenant when given: the page the value check links from the evidence
- * it writes (evo_agents.core_plugins.canvas.checks.link), `/p/<project>/signals?key=...&tenant=...`.
+ * it writes (evo_agents.hub.server.canvas.checks.link), `/p/<project>/signals?key=...&tenant=...`.
  */
 export function signalsHref(project: string, key: string | null = null, tenant: string | null = null): Route {
   const search = new URLSearchParams();

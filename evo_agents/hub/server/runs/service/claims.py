@@ -642,9 +642,10 @@ OWN_PROMPTS = (
 )  # whose prompt their module builds
 
 
-async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...] = ()) -> str:
+async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...] = (), ships: bool = False) -> str:
     """The prompt of run ``view`` of one of OWN_PROMPTS, as the module of its kind builds it for a worker whose daemon
-    says it does ``features``; each module queues runs through this package, so it is imported here."""
+    says it does ``features``, a chat run's with merging left to its agent when ``ships``; each module queues runs
+    through this package, so it is imported here."""
     if view.kind == "review":
         from evo_agents.hub.server.collect import review_prompt
 
@@ -653,7 +654,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.server.chat_runs import chat_prompt
 
         repos = [repo.model_dump() for repo in view.repos or []]
-        return await chat_prompt(conn, view.id, view.branch, repos, features)
+        return await chat_prompt(conn, view.id, view.branch, repos, features, ships=ships)
     if view.kind == "task":
         from evo_agents.hub.server.task_dispatch import task_prompt
 
@@ -705,7 +706,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     plan = body if body is not None else {"id": view.plan_id, "steps": []}
     copy, verify = None, None
     if view.kind in OWN_PROMPTS:
-        prompt = await _own_prompt(conn, view, features)
+        prompt = await _own_prompt(conn, view, features, card is not None and card.ships)
         title = view.title
     elif view.kind == "browser":  # a person drives its Chromium: no agent, so no prompt
         prompt, title = "", view.title

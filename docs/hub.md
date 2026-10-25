@@ -672,7 +672,7 @@ within the snapshot's 12 KiB, the oldest left out first. Opening one is audited 
 
 **Settle chats.** A settle chat (`kind` settle) is a chat the hub opens, never a person, for something members settle
 with one agent: today the conflicts @ba found in a version of a BA document of the core plugin srs, whose review left
-findings of level decide open (`docs/srs-plugin.md`, `evo_agents/core_plugins/srs/settle.py`). It is a group chat in
+findings of level decide open (`docs/srs-plugin.md`, `evo_agents/hub/server/srs/settle.py`). It is a group chat in
 all but two things. It names its agent on its row (`chats.direct_profile_id`, no person), and each message of a person
 whose mentions do not reach that agent goes to it as if it mentioned it (`via` settle), in the sender's session of the
 message's thread, within the chat's hops: an `@` of it makes the same one run, and a mention of another
@@ -2888,8 +2888,11 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 | `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
 | `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` and the worker's `/v1/worker/kg/{project}...` answer 404, the `kg_*` tools of `/mcp` return that error, and the heartbeat names the project to no worker for its graph |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
+| `canvas`, `srs`, `tasks` | the hub or a project | off by default; off means no page of it in the project's menu, its routes under `/v1/x/<name>/{project}...` answer 404, its `<name>__*` tools of `/mcp` return that error, and its events, jobs and sources of the knowledge graph skip the project (`docs/plugins.md`, Core plugins) |
 
-A feature is on until a layer turns it off. A project's layer, where it sets a feature, wins over the hub's, so a hub
+A feature is on until a layer turns it off, but for canvas, srs and tasks, plugins until migration 0147: each is off
+until a layer turns it on, and 0147 turned it on for every project that had enabled the plugin. An admin of the
+project turns one on or off for the project with `hub plugin enable` or `disable`, as for a plugin. A project's layer, where it sets a feature, wins over the hub's, so a hub
 admin may turn a feature off for the whole hub and back on for one project. The 404 comes after authentication, so a
 request without a credential still gets 401, and a caller who cannot see the project gets the 404 of a project that
 does not exist. The web leaves out of its menus what is off for the project it shows, and answers 404 to its pages.

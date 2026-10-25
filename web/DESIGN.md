@@ -998,18 +998,19 @@ Shared pieces built on them:
   name: who, then when) and gives its full time as the bubble's tooltip. A bubble is `radius-lg`, at most 42 rem wide
   and on phones the line less the face (the visitor's 85 %), its text through SafeMarkdown
   (`components/data/markdown.tsx`: Markdown, never HTML) with inline code and code blocks on `card`, a code block or a
-  table scrolling inside it. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: an
-  agent's message's run, each mention's run as `@handle: run #N`, a mention the hub refused in `attention` with the
+  table scrolling inside it. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: a
+  mention the hub refused in `attention` with the
   hub's reason, each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
   that run is on its way (`message-progress.tsx`, by the hub's rule, for a visitor who may read the run: one polite
   status line per run, "@handle got it, waiting for worker X" or "in the inbox of the running turn" with a still
   neutral dot, then each step of its setup and working with the running dot, each in place of the one before; gone
   once the agent answers or the run ends, so a message nobody works on shows nothing), what the page puts under it (a
   decision), its reactions, and in a group chat, for a message that starts a thread, the faces of who replied, "3
-  replies" in `brand` and when the last came, which opens the thread. React and Reply sit beside the bubble at its
+  replies" in `brand` and when the last came, which opens the thread. React, the message's runs and Reply sit beside the bubble at its
   top, on the side away from the face, from 768 px (a `popover` box shown while the pointer is
   over the message, a key is in it or its picker is open; the line leaves it room), and in a row of their own under it
-  on phones, 44 px each. A group chat's line holds the messages that are no reply: Reply in thread
+  on phones, 44 px each. The runs (`MessageRuns`: an agent's message's own run, the run each mention handed work to)
+  are `Activity` icon links named "Run #N of @handle" or "@handle: run #N", so a run shows only when asked for. A group chat's line holds the messages that are no reply: Reply in thread
   (`MessageSquareReply`) opens the thread, where the replies live. A direct chat's line holds every message: the agent's
   answers, which the hub posts in the thread of the message they answer, sit right under it, and no thread needs
   opening; when another message came between (two tasks at once, an answer after the next question), the answer quotes

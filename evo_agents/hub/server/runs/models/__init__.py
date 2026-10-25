@@ -238,6 +238,18 @@ class SteadyWait(BaseModel):
     )
 
 
+class PlanProgress(BaseModel):
+    """How far a plan run's plan has come, as the plan holds it now."""
+
+    done: int = Field(description="steps with status done")
+    total: int = Field(description="steps of the plan")
+    percent: int = Field(description="done of total, rounded down; 0 for a plan without steps")
+    current_step: str | None = Field(
+        description="the step in progress, else the first not done: its title, else its key; null once all are done"
+    )
+    current_status: str | None = Field(description="that step's status as the plan holds it")
+
+
 class Run(RunPlacement):
     id: int
     kind: Literal[runs.SHOWN_KINDS] = Field(
@@ -292,6 +304,9 @@ class Run(RunPlacement):
     verify: list | None
     evidence: str | None
     usage: dict | None
+    plan_progress: PlanProgress | None = Field(
+        None, description="a plan run's plan progress, set in a list of runs; null for any other run"
+    )
     budget: RunBudget | None = Field(None, description="the caps of a run the night shift queued; null for any other")
     error: str | None
     log_sha256: str | None = Field(description="the blob of kind run-log its worker uploaded")

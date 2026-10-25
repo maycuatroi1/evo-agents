@@ -17,8 +17,10 @@ import { cn } from "@/lib/utils";
 import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadge } from "./badges";
 import { hasOtherTurns, isSessionTurn } from "./chat-session";
 import { SessionTurns, TurnsToggle } from "./chat-session-turns";
+import { PlanProgressLine } from "./plan-progress-line";
+import { CostCell, useDuration } from "./run-cost-duration";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
-import { durationParts, runTiming, taskBranch } from "./model";
+import { runTiming, taskBranch } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
 /** Who reads the table: a worker links to its page only for the member who owns it (or a hub admin). */
@@ -53,19 +55,10 @@ const NARROW_HIDDEN: Record<RunsTableVariant, Record<string, string>> = {
 
 /** Which columns each variant shows, in order. */
 const COLUMNS: Record<RunsTableVariant, string[]> = {
-  project: ["run", "step", "state", "worker", "runtime", "started", "duration", "attempt"],
-  step: ["run", "state", "worker", "dispatcher", "runtime", "started", "duration", "attempt"],
-  worker: ["run", "step", "state", "runtime", "started", "duration", "attempt"],
+  project: ["run", "step", "state", "cost", "worker", "runtime", "started", "duration", "attempt"],
+  step: ["run", "state", "cost", "worker", "dispatcher", "runtime", "started", "duration", "attempt"],
+  worker: ["run", "step", "state", "cost", "runtime", "started", "duration", "attempt"],
 };
-
-export function useDuration() {
-  const t = useTranslations("runs.duration");
-  return (ms: number) => {
-    const { hours, minutes } = durationParts(ms);
-    if (hours > 0) return t("hours", { hours, minutes });
-    return minutes > 0 ? t("minutes", { minutes }) : t("lessThanMinute");
-  };
-}
 
 function Timing({ run, part }: { run: Run; part: "started" | "duration" }) {
   const t = useTranslations("runs");
@@ -305,7 +298,21 @@ export function RunsTable({
     const state = helper.display({
       id: "state",
       header: () => t("columns.state"),
-      cell: (info) => <StatusBadge kind="run" status={info.row.original.state} />,
+      cell: (info) => {
+        const run = info.row.original;
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <StatusBadge kind="run" status={run.state} />
+            <PlanProgressLine run={run} />
+          </div>
+        );
+      },
+    });
+    const cost = helper.display({
+      id: "cost",
+      header: () => t("columns.cost"),
+      meta: { numeric: true },
+      cell: (info) => <CostCell run={info.row.original} />,
     });
     const worker = helper.display({
       id: "worker",
@@ -350,7 +357,7 @@ export function RunsTable({
         );
       },
     });
-    const all = { run, step, state, worker, dispatcher, runtime, started, duration, attempt };
+    const all = { run, step, state, cost, worker, dispatcher, runtime, started, duration, attempt };
     return helper.columns(COLUMNS[variant].map((id) => all[id as keyof typeof all]));
   }, [t, tRuntime, variant, viewer]);
 

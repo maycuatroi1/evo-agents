@@ -1,5 +1,5 @@
 """The models of the pool API of ``evo_agents.hub.server.worker_pools``: what creating and changing a pool take, what a
-pool and its nodes show, and the join tokens of a pool, with the bounds schema 0147 holds them to."""
+pool and its nodes show, and the join tokens of a pool, with the bounds schema 0148 holds them to."""
 
 from __future__ import annotations
 

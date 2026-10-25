@@ -1,5 +1,5 @@
 """The tables of the core plugin srs (0046, 0064, 0069, 0070, 0071, 0098), which ``evo_agents.hub.tables`` adds to its
-metadata as ``tables.srs``: queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
+metadata as ``tables.srs``: queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.hub.server.srs``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
 - srs_documents: a BA document of a project, an SRS of a template or a free specification (``kind``), with its slug,
