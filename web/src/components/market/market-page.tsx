@@ -95,7 +95,6 @@ function PluginsTable({ plugins }: { plugins: MarketPlugin[] }) {
         titleText: plugin.name,
         href: marketPluginHref(plugin.source, plugin.id),
         status: <MarketStatusBadge status={plugin.status} />,
-        tags: <PriceTag price={plugin.price} />,
         meta: plugin.description,
         metaText: plugin.description,
         data: { "market-plugin": plugin.id },

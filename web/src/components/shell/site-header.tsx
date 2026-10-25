@@ -117,7 +117,9 @@ function useCrumbs(): Crumb[] {
   if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
   const hub = [...HOME_NAV, ...HUB_NAV].find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
   if (hub && parts.length > 1) {
-    return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? chatTitle ?? itemLabel(parts[1]) }];
+    // A plugin of the market, /market/{source}/{plugin}, goes by its id rather than its market's number.
+    const item = parts[0] === "market" && parts[2] ? parts[2] : parts[1];
+    return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? chatTitle ?? itemLabel(item) }];
   }
   if (hub) return [{ label: t(hub.label) }];
   return [{ label: t("home") }];

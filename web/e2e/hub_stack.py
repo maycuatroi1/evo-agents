@@ -87,7 +87,8 @@ Ed25519 key of the Python tests (``tests.plugins.samples``), and POST /plugins/b
 plugin of tests/fixtures/plugins/sample under that id and version and signs it with that key, answering the bundle as
 base64 with its SHA-256 and the signature, which a spec publishes and installs through the real API. The hub runs
 through e2e/hub_serve.py, which puts the core plugin notes (tests/hub/core_notes.py) in its image: its table in the
-chain of migrations and its native page, which the web's end-to-end build carries.
+chain of migrations and its native page, which the web's end-to-end build carries. The market spec seeds a market
+repo and a plugin's releases on the fake GitHub with POST /market/seed and /market/release (``market_seed.py``).
 
 ``pnpm screenshots`` seeds its demo through the API and three routes of ``demo/stack.py``: POST /demo/kg writes the
 demo's repos and harness and pushes and builds their graph, POST /demo/retime sets the times the hub stamped to the
@@ -130,6 +131,7 @@ from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from growth_seed import seed as seed_growth  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
 from loop_seed import seed as seed_loop  # noqa: E402
+from market_seed import MarketRepos  # noqa: E402
 from merge_seed import seed as seed_merge_queue  # noqa: E402
 from plugin_notice_seed import seed as seed_plugin_notice  # noqa: E402
 from probe_seed import seed as seed_probes  # noqa: E402
@@ -149,9 +151,18 @@ _AUTHORIZE_LOCK = threading.Lock()  # _authorize reads the shared browser_accoun
 
 
 class BrowserGitHub(FakeGitHub):
-    """The fake GitHub, with the browser's signed-in account read from a cookie instead of one shared field."""
+    """The fake GitHub, with the browser's signed-in account read from a cookie instead of one shared field, and the
+    market repos and plugin releases of ``market_seed``."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.market = MarketRepos()
 
     def answer(self, method: str, path: str, query: dict, headers: dict, body: str):
+        market = self.market.answer(method, path, query, headers, self.url)
+        if market is not None:
+            self.requests.append(Recorded(method, path, query, headers, body))
+            return market
         if method == "GET" and path == "/login/oauth/authorize":
             self.requests.append(Recorded(method, path, query, headers, body))
             return self._authorize_as(query, _cookie_account(headers.get("cookie", "")))
@@ -758,6 +769,12 @@ def control_server(
             elif self.path == "/plugins/bundle":
                 try:
                     self._reply(200, plugin_bundle(body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path in ("/market/seed", "/market/release"):
+                try:
+                    seed = github.market.seed if self.path == "/market/seed" else github.market.release
+                    self._reply(200, seed(body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/workers/heartbeat":

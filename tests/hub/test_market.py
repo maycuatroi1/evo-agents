@@ -475,6 +475,9 @@ def test_market_request_of_a_project_admin_notifies_the_hub_admins(hub):
     assert notice[2] == f"/market/{source}/lumen-notes"
     assert notice[3] == {"source": source, "plugin": "lumen-notes", "project": PROJECT}
     assert f"market.request {PROJECT}/market:{source}/lumen-notes" in actions(hub.db)
+    # The hub admin holds no grant on the project, and reads the notice in the Inbox all the same.
+    inbox = hub.client.get("/v1/me/notifications", headers=hub.who[live.ADMIN]).json()["notifications"]
+    assert [item["title"] for item in inbox if item["notice_kind"] == "market_install_request"] == [notice[1]]
 
     install(hub, source, trust_publisher=True)
     r = tables.market_install_requests
