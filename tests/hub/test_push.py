@@ -451,7 +451,7 @@ def test_a_decision_asked_of_a_member_goes_to_each_of_their_devices_encrypted_an
     assert sent_at["webpush"] is not None and sent_at["apns"] is None
 
 
-def test_a_notice_is_not_pushed_until_the_tiers_say_so(client, hub, hub_db, service):
+def test_a_notice_of_the_brief_tier_is_not_pushed(client, hub, hub_db, service):
     added(client, hub["owner"], browser("laptop").body())
     worker, run = started(client, hub)
     assert notice(client, worker, run["id"], **PUSHED).status_code == 201

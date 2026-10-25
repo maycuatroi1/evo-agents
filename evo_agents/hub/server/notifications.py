@@ -6,8 +6,9 @@ channel of the member's that is on: the web, which every member has without a ro
 delivery without a channel), and each enabled row. The table is the outbox: nothing is sent while the transaction is
 open, and a hub that stops between the commit and the send loses nothing. A notification of a project also goes to
 the channels of the isolated plugins the project enabled and granted notifications:send, through the plugins' own
-outbox (``evo_agents.hub.plugin_events``). A notification of the interrupt tier also gets one delivery on each push
-device of its member that reaches them (a delivery with a ``device_id``, ``evo_agents.hub.server.push_store``).
+outbox (``evo_agents.hub.plugin_events``). A notification of the interrupt tier for its member
+(``evo_agents.hub.server.push_tiers``) also gets one delivery on each push device of its member that reaches them (a
+delivery with a ``device_id``, ``evo_agents.hub.server.push_store``).
 
 ``deliver_notifications`` is the job hub.deliver_notifications, every minute. It takes the pending deliveries whose
 ``next_at`` has passed, each in a transaction of its own with ``FOR UPDATE SKIP LOCKED``, and hands each to an
@@ -37,7 +38,9 @@ A delivery to a push device goes to the class CHANNELS names for the device's ki
 params as the channel's config, after the same check of the grant. A device lives no longer than the token that added
 it: once that token is revoked or expired, the delivery fails and the device is removed. ChannelGone from a device's
 class (the push service no longer knows it) removes that device alone, with its deliveries; a delivery that went out
-marks when the device last got a push.
+marks when the device last got a push. The member's quiet hours may hold a push (``push_tiers.held_until``): its
+``next_at`` moves to when it may go, without counting a try, and the pass counts it nowhere. A push of a decision that
+is no longer open fails with DECISION_CLOSED instead of asking what nobody asks any more.
 
 POST /v1/worker/runs/{id}/notices takes a notice (``runs.NOTICE_KINDS``) from the worker holding a plan run: a title,
 a body, and the repo, branch and commits of a push or merge. It notifies the run's owner, links to the run's page and
@@ -85,7 +88,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import plugin_events, review, runs, tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import core_registry, load
-from evo_agents.hub.server import audit, output_views, push_store
+from evo_agents.hub.server import audit, output_views, push_store, push_tiers
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.output_views import RunOutput
@@ -115,6 +118,7 @@ NO_GRANT = "the member holds no grant on the notification's project any more"
 # (``output_notices.channel_outputs``); None outside a pass, or on a hub without one.
 PASS_BLOBS: ContextVar[BlobStore | None] = ContextVar("notification_pass_blobs", default=None)
 SESSION_ENDED = "the web session that linked this channel ended (signed out, revoked or expired): link it again"
+DECISION_CLOSED = "the decision was answered or closed before its push went out"
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 router = APIRouter(prefix="/v1/me", tags=["notifications"], responses={401: {"model": ErrorBody}})
@@ -201,7 +205,8 @@ async def notify(
     )
     notification_id = inserted.scalar_one()
     await conn.execute(_deliveries(notification_id, user_id))
-    if await push_store.interrupts(conn, kind=kind, user_id=user_id, decision_id=decision_id):
+    tier = {"notice_kind": notice_kind, "run_id": run_id, "decision_id": decision_id, "details": details}
+    if await push_tiers.interrupts(conn, user_id=user_id, kind=kind, **tier):
         await conn.execute(push_store.device_deliveries(notification_id, user_id))
     await plugin_events.emit_notification(conn, notification_id, project_id)  # the channels of isolated plugins
     return notification_id
@@ -413,6 +418,12 @@ def _later(delivery_id: int, wait: timedelta, error: str):
     return update(deliveries).values(next_at=func.now() + wait, last_error=error).where(deliveries.c.id == delivery_id)
 
 
+def _held(delivery_id: int, until: datetime):
+    """Delivery ``delivery_id`` held until ``until`` by its member's quiet hours, without counting a try."""
+    deliveries = tables.notification_deliveries
+    return update(deliveries).values(next_at=until).where(deliveries.c.id == delivery_id)
+
+
 def _turn_off(channel_id: int, reason: str):
     """Channel ``channel_id`` off, with ``reason`` and the time in its config, as the member's settings show it."""
     channels = tables.notification_channels
@@ -532,7 +543,7 @@ async def _not_sent(conn: AsyncConnection, delivery_id: int, row, kind: str, exc
 
 async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict, config) -> str | None:
     """Try delivery ``delivery_id`` once, in the caller's transaction; delivered, retried or failed, or None when it
-    is no longer due (taken by another pass, or done meanwhile)."""
+    is no longer due (taken by another pass, or done meanwhile) or quiet hours hold it."""
     row = (await conn.execute(_lock_due(delivery_id))).one_or_none()
     if row is None:
         return None
@@ -541,12 +552,20 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     kind, target = _target(row)
     cls, missing = _channel_class(kind)
     refused = _refused(row, cls, missing)
+    if refused is None and row.device_id is not None and await push_tiers.closed(conn, row.decision_id):
+        refused = DECISION_CLOSED
     if refused is not None:
         await conn.execute(_failed(delivery_id, refused))
         if refused in (SESSION_ENDED, push_store.SIGN_IN_ENDED):
             await _gone(conn, row, refused)
         log.info("notification not delivered", extra={"delivery_id": delivery_id, "channel": kind, "why": refused})
         return "failed"
+    if row.device_id is not None:
+        held = await push_tiers.held_until(conn, user_id=row.user_id, decision_id=row.decision_id, config=config)
+        if held is not None:
+            await conn.execute(_held(delivery_id, held))
+            log.info("push held for quiet hours", extra={"delivery_id": delivery_id, "until": held.isoformat()})
+            return None
     channel = await _instance(conn, delivery_id, kind, cls, instances, config)
     if channel is None:
         return "failed"
