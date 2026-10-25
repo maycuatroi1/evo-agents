@@ -37,7 +37,8 @@ hub-server = [
     # 2.12: Field(exclude_if=...) leaves an absent key of the heartbeat answer out (nightly, update_now).
     "pydantic>=2.12",
     "sentry-sdk>=2.20",
-    "httpx>=0.27",
+    # http2: APNs takes pushes over HTTP/2 alone (evo_agents.hub.server.push_native).
+    "httpx[http2]>=0.27",
     "boto3==1.42.91",
     # AES-256-GCM of the credentials the hub keeps for runs (evo_agents.hub.server.sealing).
     "cryptography>=44",

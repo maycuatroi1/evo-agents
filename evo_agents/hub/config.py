@@ -67,6 +67,13 @@ private scalar of a P-256 key in base64url (32 bytes, 43 characters), registered
 subscribe with is derived from it. EVO_HUB_VAPID_SUBJECT is where a push service may reach the hub's operator, a
 mailto: or https: URL, EVO_HUB_PUBLIC_URL when unset. Without the key, or without a subject and a public URL, Web Push
 is off: GET /v1/push/config says so, a delivery to a browser fails at once, and the rest of the outbox runs as before.
+Pushes to the hub's apps (``evo_agents.hub.server.push_native``) are optional the same way, each sender on its own.
+APNs takes EVO_HUB_APNS_KEY_ID and EVO_HUB_APNS_TEAM_ID (10 characters of A-Z and 0-9 each, as Apple shows them) and
+EVO_HUB_APNS_PRIVATE_KEY, the .p8 file of that key (a P-256 key in PEM, where ``\\n`` may stand for each line break),
+registered as a secret; a device names its app's topic and its environment itself. FCM takes
+EVO_HUB_FCM_SERVICE_ACCOUNT, the JSON key file of a Google service account that may send Firebase Cloud Messaging, on
+one line or in base64, registered as a secret with its private key. Without all of a sender's variables that sender
+is off, as Web Push is without its key; a malformed one is a ConfigError naming it, never showing it.
 
 Plugins (``evo_agents.plugins``) are optional too. EVO_HUB_PLUGIN_PUBLISHERS lists the publishers whose signed bundles
 the hub accepts, comma-separated ``ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml`` (a GitHub Actions workflow that
@@ -87,6 +94,7 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import json
 import os
 import re
 from collections.abc import Mapping
@@ -158,6 +166,14 @@ VAPID_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # the private scalar of a P-256 
 # The order of P-256's group: a private scalar lies in [1, n - 1] (SEC 2, section 2.4.2).
 P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 VAPID_SUBJECT = re.compile(r"mailto:[^\s@]+@[^\s@]+|https://[^\s]+")  # what RFC 8292's "sub" may be
+APNS_VARIABLES = ("EVO_HUB_APNS_KEY_ID", "EVO_HUB_APNS_TEAM_ID", "EVO_HUB_APNS_PRIVATE_KEY")
+APPLE_ID = re.compile(r"[A-Z0-9]{10}")  # a key ID or a team ID, as the Apple Developer account shows it
+# The DER of an elliptic-curve key on P-256 names both: id-ecPublicKey and prime256v1 (RFC 5480, section 2.1.1).
+EC_KEY_OID, P256_OID = bytes.fromhex("06072a8648ce3d0201"), bytes.fromhex("06082a8648ce3d030107")
+RSA_KEY_OID = bytes.fromhex("06092a864886f70d010101")  # rsaEncryption (RFC 8017, appendix C)
+FCM_VARIABLE = "EVO_HUB_FCM_SERVICE_ACCOUNT"
+GOOGLE_PROJECT_ID = re.compile(r"[a-z][a-z0-9-]{4,28}[a-z0-9]")
+SERVICE_ACCOUNT_EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 # The PEM GitHub gives an App (PKCS#1), or the same key as PKCS#8; the second group is its base64.
 PRIVATE_KEY_PEM = re.compile(
     r"-----BEGIN ((?:RSA )?)PRIVATE KEY-----\n([A-Za-z0-9+/=\n]+)\n-----END \1PRIVATE KEY-----"
@@ -213,6 +229,12 @@ class HubConfig:
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
     vapid_private_key: str | None = None  # the hub's VAPID key in base64url; never logged or returned
     vapid_subject: str | None = None  # where push services may reach the operator; None: the public URL
+    apns_key_id: str | None = None  # the APNs key the hub signs its provider tokens with
+    apns_team_id: str | None = None  # the Apple Developer team that key belongs to
+    apns_private_key: str | None = None  # that key's .p8, PEM with real line breaks; never logged or returned
+    fcm_project_id: str | None = None  # the Firebase project of the hub's service account
+    fcm_client_email: str | None = None  # the service account
+    fcm_private_key: str | None = None  # its private key, PEM; never logged or returned
     plugin_publishers: tuple[Publisher, ...] = ()  # whose signed plugin bundles the hub accepts
     plugin_core_publishers: frozenset[str] = frozenset()  # the ids among them whose plugins may be core plugins
     plugin_host_url: str | None = None  # where the api reaches the plugin host
@@ -262,6 +284,15 @@ class HubConfig:
         """The variables Web Push still needs, the key and a subject (or the public URL); empty when it is on."""
         missing = [] if self.vapid_private_key else [VAPID_VARIABLES[0]]
         return missing + ([] if self.push_subject else [VAPID_VARIABLES[1]])
+
+    def apns_missing(self) -> list[str]:
+        """The EVO_HUB_APNS_* variables APNs still needs; empty when the hub sends to iPhones."""
+        values = (self.apns_key_id, self.apns_team_id, self.apns_private_key)
+        return [name for name, value in zip(APNS_VARIABLES, values, strict=True) if not value]
+
+    def fcm_missing(self) -> list[str]:
+        """The variable FCM still needs; empty when the hub sends to Android phones."""
+        return [] if self.fcm_private_key else [FCM_VARIABLE]
 
     def github_app_missing(self) -> list[str]:
         """The EVO_HUB_GITHUB_APP_* variables the runs' GitHub tokens still need; empty when the App is configured."""
@@ -539,6 +570,93 @@ def _vapid(env: Mapping[str, str]) -> dict:
     return {"vapid_private_key": key, "vapid_subject": subject}
 
 
+def _pkcs8(pem: str) -> tuple[bytes, str] | None:
+    """The DER of the PKCS#8 key ``pem`` (with real line breaks), as Apple's .p8 file and a Google service account's
+    private_key hold one, with the key's canonical PEM; each are registered as secrets, the lines of its base64 too.
+    None when ``pem`` is no such key."""
+    match = PRIVATE_KEY_PEM.fullmatch(pem.replace("\r\n", "\n").strip())
+    if not match or match.group(1):  # PKCS#1 names its algorithm in the label; PKCS#8 names none
+        return None
+    lines = match.group(2).split("\n")
+    try:
+        der = base64.b64decode("".join(lines), validate=True)
+    except ValueError:
+        return None
+    canonical = match.group(0) + "\n"
+    for value in (pem, canonical, *[line for line in lines if len(line) >= 16]):
+        register_secret(value)  # a line of base64 shows up alone in a repr or a partial dump
+    return der, canonical
+
+
+def _apns(env: Mapping[str, str]) -> dict:
+    """The APNs key's ID, its team and its .p8, the key registered as a secret before anything can fail; any of them
+    missing turns APNs off. No error shows the key."""
+    id_name, team_name, key_name = APNS_VARIABLES
+    raw = _secret(env, key_name)
+    pem = None
+    if raw is not None:
+        found = _pkcs8(raw.replace("\\n", "\n"))
+        if found is None or EC_KEY_OID not in found[0] or P256_OID not in found[0]:
+            raise ConfigError(
+                key_name,
+                f"{key_name} must be the .p8 file of an APNs key, a P-256 key in PEM, with line breaks or \\n between "
+                "its lines",
+            )
+        pem = found[1]
+    found_ids = {name: _text(env, name) for name in (id_name, team_name)}
+    for name, value in found_ids.items():
+        if value is not None and not APPLE_ID.fullmatch(value):
+            raise ConfigError(
+                name, f"{name} must be 10 characters of A-Z and 0-9, as the Apple Developer account shows it"
+            )
+    return {"apns_key_id": found_ids[id_name], "apns_team_id": found_ids[team_name], "apns_private_key": pem}
+
+
+def _service_account(raw: str) -> dict | None:
+    """The JSON object of a service account's key file, given as JSON or as base64 of it; None for anything else."""
+    text = raw
+    if not raw.startswith("{"):
+        try:
+            text = base64.b64decode(raw, validate=True).decode()
+        except ValueError:  # not base64, or not UTF-8 underneath
+            return None
+        register_secret(text)
+    try:
+        account = json.loads(text)
+    except ValueError:
+        return None
+    return account if isinstance(account, dict) else None
+
+
+def _fcm(env: Mapping[str, str]) -> dict:
+    """The project, the email and the private key of the service account in EVO_HUB_FCM_SERVICE_ACCOUNT, registered
+    as secrets with the key before anything can fail; unset turns FCM off. No error shows the key."""
+    name = FCM_VARIABLE
+    raw = _secret(env, name)
+    if raw is None:
+        return {"fcm_project_id": None, "fcm_client_email": None, "fcm_private_key": None}
+    account = _service_account(raw)
+    if account is None:
+        raise ConfigError(
+            name, f"{name} must be the JSON key file of a Google service account, on one line or in base64"
+        )
+    key = account.get("private_key")
+    found = _pkcs8(key) if isinstance(key, str) else None
+    project, email = account.get("project_id"), account.get("client_email")
+    for field, good in (
+        ("type", account.get("type") == "service_account"),
+        ("private_key", found is not None and RSA_KEY_OID in found[0]),
+        ("project_id", isinstance(project, str) and GOOGLE_PROJECT_ID.fullmatch(project) is not None),
+        ("client_email", isinstance(email, str) and SERVICE_ACCOUNT_EMAIL.fullmatch(email) is not None),
+    ):
+        if not good:
+            raise ConfigError(
+                name,
+                f"{name} must be the JSON key file of a Google service account: its {field} is missing or not one",
+            )
+    return {"fcm_project_id": project, "fcm_client_email": email, "fcm_private_key": found[1]}
+
+
 def _plugins(env: Mapping[str, str]) -> dict:
     """The publishers of plugins the hub trusts, and the ids among them whose plugins may be core plugins."""
     name, core_name = "EVO_HUB_PLUGIN_PUBLISHERS", "EVO_HUB_PLUGIN_CORE_PUBLISHERS"
@@ -649,5 +767,7 @@ def load_config(
         **_apps(env),
         **_telegram(env),
         **_vapid(env),
+        **_apns(env),
+        **_fcm(env),
         **_plugins(env),
     )
