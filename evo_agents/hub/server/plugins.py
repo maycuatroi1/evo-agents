@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.market_licenses import licence_problem
 from evo_agents.hub.server.plugin_configs import (
     Place,
     PluginConfigLayer,
@@ -142,6 +143,9 @@ async def _install(request: Request, user, name: str, wanted: str | None, *, upg
         if from_image(rows):
             raise HTTPException(409, FROM_IMAGE.format(name=name))
         check_state(row, upgrade=upgrade, target=wanted)
+        problem = await licence_problem(conn, name)
+        if problem is not None:
+            raise HTTPException(409, problem)
         target = pick_version(name, rows, wanted, row.installed_version if upgrade else None, state.hub_version)
         check_placeable(row, target)
         trusted = await trusted_publishers(conn, state.config)

@@ -6641,7 +6641,8 @@
       "curator_probe_report": "Weekly probe report of the Curator",
       "opportunity_window": "The window of an opportunity closes",
       "today": "Today's summary",
-      "market_install_request": "A project asks for a plugin of the market"
+      "market_install_request": "A project asks for a plugin of the market",
+      "market_license_expiring": "The licence of a paid plugin ends soon"
     },
     "item": {
       "unread": "Unread",

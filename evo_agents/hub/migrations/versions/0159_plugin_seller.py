@@ -261,7 +261,7 @@ def _purchases() -> None:
         *_licence_columns(),
         _when("received_at"),
         _when("reminded_at"),
-        _key("market_purchases", "source_id", "market_sources", "SET NULL"),
+        _key("market_purchases", "source_id", "market_sources", ondelete="SET NULL"),
         _key("market_purchases", "placed_by", "users", "RESTRICT"),
         sa.PrimaryKeyConstraint("id", name="market_purchases_pkey"),
         sa.UniqueConstraint("seller_url", "number", name="market_purchases_number_key"),

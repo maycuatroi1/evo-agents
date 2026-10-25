@@ -6641,7 +6641,8 @@
       "curator_probe_report": "Báo cáo probe hằng tuần của Curator",
       "opportunity_window": "Hạn của một cơ hội sắp đóng",
       "today": "Tóm tắt Today",
-      "market_install_request": "Một dự án xin cài plugin từ market"
+      "market_install_request": "Một dự án xin cài plugin từ market",
+      "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn"
     },
     "item": {
       "unread": "Chưa đọc",
