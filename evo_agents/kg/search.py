@@ -32,7 +32,10 @@ import unicodedata
 from collections.abc import Callable, Iterable, Iterator
 
 MAX_TEXT_CHARS = 100_000  # a node's body past this is cut and counted in the build's coverage
-MAX_TERMS = 12  # words of a query read; the rest are dropped
+# Words of a query read; the rest are dropped. A question often names its subject late ("does the weekly review
+# suggest, as the newsletter does, that the northwind founder ..."): cut at 12, 300 news questions of some 30 words
+# lost a fifth of their recall@10 against reading every word.
+MAX_TERMS = 64
 WEIGHTS = (0.0, 0.0, 6.0, 2.0, 1.0)  # bm25 weights of node_fts's columns: node_id, kind, name, path, body
 # A light prior on the BM25 score by kind: at the same text score, a node that is code or a document comes before one
 # that describes work on it (a plan, a step, a commit, a pull request) or only groups it (a directory). The best
@@ -53,6 +56,11 @@ PRIOR = {
 }
 RERANK_POOL = 300
 STAGE_WEIGHTS = (2.0, 1.5, 1.0)  # a match of all words whole, of all words as prefixes, of any word
+# A document is named by its path, which seldom says what it holds: kg_search shows the passage of its body where the
+# query's words gather, about SNIPPET_TOKENS words, so the reader can tell whether to open it. A section is named by
+# its heading; its passage too cost a third more tokens a call on the harness's question set and found nothing more.
+SNIPPET_KINDS = frozenset({"Document"})
+SNIPPET_TOKENS = 16
 
 _FOLD = str.maketrans({"đ": "d", "Đ": "D"})
 _WORD = re.compile(r"[^\W_]+")

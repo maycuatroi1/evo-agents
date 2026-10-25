@@ -252,7 +252,9 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - Then the full-text index (`node_fts`, SQLite FTS5, `unicode61 remove_diacritics 2`), read three ways, each while the
   ones before found fewer nodes than asked: every word whole (AND), every word as a prefix (AND), then any word (OR).
   Words that only ask (`where`, `does`, `the`, `của`, ...) are dropped from a query that has others, so a question
-  whose words no single node holds still gets ranked results. The any-word way also leaves out a word the index cannot
+  whose words no single node holds still gets ranked results. Up to 64 words of a query are read (`MAX_TERMS`): a
+  question often names its subject late, and reading only its first 12 words cost a set of 300 news questions of
+  some 30 words a fifth of their recall@10. The any-word way also leaves out a word the index cannot
   tell from one of them once it folds accents (`án` is `an` there, `cua` is `của`), which would match every one of
   them: `Phương án` and `phuong an` find the same messages.
 - Each way ranks by BM25 over the node's name (weight 6), path (2) and body (1), times a light prior by kind: a plan,
@@ -272,6 +274,14 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
   may see: a search that finds a step or a page of the docs also names the code they point at.
+- Each result `kg_search` found by its words says how many of the query's words its name, path or body holds whole
+  (` words=2/3` on its line, `matched` in the structured result), and a query of two words or more whose results hold
+  none of them all says so under the header (`no result holds all N words of the query`): the reader can tell a
+  question the graph does not answer from one it does, instead of opening one file after another. A node listed
+  because a hit mentions it gets no count. A document, named by its path, is also quoted: the passage of its body
+  where the query's words gather, about 16 words, on the line below it (`    > ...`). A section is named by its
+  heading and is not quoted. The count and the passage come from the same index rows the search read
+  (`Store.matched`), so a node with an audience is counted and quoted only for a reader within it.
 
 What the index holds for a node: its name, with the parts of a camelCase word added (`HubSession` also holds `hub` and
 `session`; snake_case and paths come apart in the tokenizer); its path, a section's being its document's; and a body:

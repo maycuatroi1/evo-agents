@@ -287,6 +287,35 @@ def test_search_ranks_the_three_ways_together_by_score(tmp_path, kg_env):
     assert any(h.startswith("app:file:docs/tour.md") for h in hits)  # still found, ranked by its own score
 
 
+def with_quarry_note(tmp_path, kg_env):
+    """The searchable project plus a note with no heading, whose text is its document's body."""
+    project = make_searchable(tmp_path, kg_env)
+    write(tmp_path / "demo-app" / "docs/quarry.md", "The zephyr quarry closed after the flood of March.\n")
+    commit(tmp_path / "demo-app", "a note without a heading")
+    sync_build(project)
+    return project
+
+
+def test_a_long_question_is_read_past_its_twelfth_word(tmp_path, kg_env):
+    # A question names its subject late: its first twelve words hold nothing the graph has.
+    store = Store.for_project(with_quarry_note(tmp_path, kg_env))
+    question = " ".join(f"qq{i}" for i in range(14)) + " zephyr quarry"
+    assert len(text_search.query_words(question)) == 16
+    assert found(store, question)[0] == "app:file:docs/quarry.md"
+    assert len(text_search.query_words(" ".join(f"w{i}" for i in range(100)))) == text_search.MAX_TERMS
+
+
+def test_matched_counts_the_query_words_a_node_holds_and_quotes_the_nodes_asked(tmp_path, kg_env):
+    store = Store.for_project(with_quarry_note(tmp_path, kg_env))
+    doc, builder = "app:file:docs/quarry.md", "symbol:app:app/hub_build.py::GraphBuilder"
+    matched = store.matched([doc, builder, "app:file:nowhere.md"], "zephyr quarry flood tuesday", {doc})
+    assert matched[doc]["words"] == 3 and matched[doc]["of"] == 4
+    assert "zephyr quarry closed after the flood" in matched[doc]["snippet"]
+    assert matched[builder] == {"words": 0, "of": 4}  # held by the index, not quoted: it was not asked for
+    assert "app:file:nowhere.md" not in matched  # no row in the index
+    assert store.matched([doc], "") == {} and store.matched([], "zephyr") == {}
+
+
 def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
     # The tokenizer folds accents: "án" is "an" in the index and "cua" is "của", so either would match all of them.
     assert text_search.query_words("Phương án A") == ["Phương", "án"]
