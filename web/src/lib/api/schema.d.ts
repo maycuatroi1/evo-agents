@@ -1074,6 +1074,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Skills
+         * @description The global skills the owner of the pool node whose token made the request reads, each with its latest
+         *     version: what ``hub skills sync`` writes on a machine without a project.
+         */
+        get: operations["worker_skills_v1_worker_skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/skills/global/{name}/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Bundle
+         * @description A short-lived presigned GET of a global skill's bundle for a pool node, as GET /v1/skills/global/{name}/bundle
+         *     answers its owner.
+         */
+        get: operations["worker_bundle_v1_worker_skills_global__name__bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/config": {
         parameters: {
             query?: never;
@@ -1648,8 +1690,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner
-         *     only, from a web session or with their machine token.
+         * @description Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its
+         *     owner only, from a web session or with their machine token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -1817,6 +1859,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker-pools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pools
+         * @description The caller's pools, by name, each with its nodes that are not revoked.
+         */
+        get: operations["list_pools_v1_worker_pools_get"];
+        put?: never;
+        /**
+         * Create Pool
+         * @description A new pool of the caller's, without nodes until a machine joins with one of its join tokens.
+         */
+        post: operations["create_pool_v1_worker_pools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker-pools/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Pool
+         * @description One of the caller's pools with its nodes that are not revoked.
+         */
+        get: operations["show_pool_v1_worker_pools__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Pool
+         * @description Change the pool's settings; its nodes take them, and their daemons learn them from their next heartbeat.
+         */
+        patch: operations["update_pool_v1_worker_pools__name__patch"];
+        trace?: never;
+    };
+    "/v1/worker-pools/{name}/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Join Tokens
+         * @description The join tokens of the pool, newest first, without the tokens themselves.
+         */
+        get: operations["list_join_tokens_v1_worker_pools__name__tokens_get"];
+        put?: never;
+        /**
+         * Create Join Token
+         * @description A join token of the pool, which machines join it with (`evo-agents worker join --token`); shown once.
+         */
+        post: operations["create_join_token_v1_worker_pools__name__tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker-pools/{name}/tokens/{token_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Join Token
+         * @description Revoke a join token of the pool: no machine joins with it any more; the nodes that joined with it stay.
+         */
+        post: operations["revoke_join_token_v1_worker_pools__name__tokens__token_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/join": {
         parameters: {
             query?: never;
@@ -1828,7 +1962,7 @@ export interface paths {
         put?: never;
         /**
          * Join
-         * @description Trade a pairing code for the token of a new worker; the token is shown once.
+         * @description Trade a pairing code, or a pool's join token, for the token of a new worker; the token is shown once.
          */
         post: operations["join_v1_worker_join_post"];
         delete?: never;
@@ -9659,6 +9793,12 @@ export interface components {
              */
             workers: string[];
             /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
+            /**
              * Auth
              * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
              * @enum {string}
@@ -10802,15 +10942,30 @@ export interface components {
         /** AuthorRunDispatch */
         AuthorRunDispatch: {
             /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
+            /**
              * Request
              * @description what the plan should achieve, in the member's words: at most 16384 bytes of UTF-8
              */
             request: string;
             /**
              * Worker Id
-             * @description the worker of yours, or one shared with you in the project, the run goes to; an author run is pinned
+             * @description pin the run to this worker of yours, or one shared with you in the project; null: a worker its labels and tolerations fit takes it
              */
-            worker_id: number;
+            worker_id?: number | null;
             /**
              * Plan Id
              * @description the plan the run revises, one you can read; null: the run writes a new plan
@@ -13348,9 +13503,14 @@ export interface components {
             window: components["schemas"]["Window"];
             /**
              * Worker
-             * @description the worker on duty, by name: one of the writer's own
+             * @description the worker on duty, by name: one of the writer's own; or name a pool
              */
-            worker: string;
+            worker?: string | null;
+            /**
+             * Pool
+             * @description the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker
+             */
+            pool?: string | null;
             /**
              * Night Budget Usd
              * @description the most a night may cost
@@ -13444,12 +13604,17 @@ export interface components {
             updated_at: string;
             /**
              * Worker Id
-             * @description the worker on duty
+             * @description the worker on duty; null for a pool
              */
-            worker_id: number;
+            worker_id: number | null;
+            /**
+             * Pool Id
+             * @description the pool on duty; null for a worker
+             */
+            pool_id?: number | null;
             /**
              * Schedule Owner
-             * @description the member the night shift dispatches its runs as: the worker's owner
+             * @description the member the night shift dispatches its runs as: the worker's, or the pool's, owner
              */
             schedule_owner: string;
         };
@@ -13464,10 +13629,20 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
-            /** Worker */
-            worker: string;
+            /**
+             * Worker
+             * @description the worker on duty; null for a pool
+             */
+            worker: string | null;
             /** Worker Id */
-            worker_id: number;
+            worker_id: number | null;
+            /**
+             * Pool
+             * @description the pool on duty; null for a worker
+             */
+            pool?: string | null;
+            /** Pool Id */
+            pool_id?: number | null;
         };
         /** CharterWrite */
         CharterWrite: {
@@ -13479,9 +13654,14 @@ export interface components {
             window: components["schemas"]["Window"];
             /**
              * Worker
-             * @description the worker on duty, by name: one of the writer's own
+             * @description the worker on duty, by name: one of the writer's own; or name a pool
              */
-            worker: string;
+            worker?: string | null;
+            /**
+             * Pool
+             * @description the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker
+             */
+            pool?: string | null;
             /**
              * Night Budget Usd
              * @description the most a night may cost
@@ -15301,6 +15481,21 @@ export interface components {
         };
         /** Dispatch */
         Dispatch: {
+            /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
             /** Plan Id */
             plan_id: string;
             /**
@@ -17349,6 +17544,46 @@ export interface components {
              */
             used_at: string | null;
         };
+        /** IssuedJoinToken */
+        IssuedJoinToken: {
+            /** Id */
+            id: number;
+            /** Pool */
+            pool: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "expired" | "revoked" | "used";
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Max Uses */
+            max_uses: number;
+            /**
+             * Uses
+             * @description machines that joined with it
+             */
+            uses: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * Token
+             * @description evj_...; shown once, the hub keeps only its SHA-256
+             */
+            token: string;
+        };
         /** Job */
         Job: {
             /** Job Id */
@@ -17378,7 +17613,62 @@ export interface components {
              * Code
              * @description the pairing code, XXXX-XXXX
              */
-            code: string;
+            code?: string | null;
+            /**
+             * Token
+             * @description instead of a code: the join token of a pool, evj_...
+             */
+            token?: string | null;
+        };
+        /** JoinToken */
+        JoinToken: {
+            /** Id */
+            id: number;
+            /** Pool */
+            pool: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "expired" | "revoked" | "used";
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Max Uses */
+            max_uses: number;
+            /**
+             * Uses
+             * @description machines that joined with it
+             */
+            uses: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /** JoinTokenRequest */
+        JoinTokenRequest: {
+            /**
+             * Hours
+             * @description how long it works: 1 hour to 30 days
+             * @default 24
+             */
+            hours: number;
+            /**
+             * Max Uses
+             * @description machines that may join with it, 1 to 100
+             * @default 1
+             */
+            max_uses: number;
         };
         /** Judge */
         Judge: {
@@ -21464,6 +21754,21 @@ export interface components {
         };
         /** PlanRunDispatch */
         PlanRunDispatch: {
+            /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
             /** Plan Id */
             plan_id: string;
             /**
@@ -22569,6 +22874,147 @@ export interface components {
              * @description false when the newest revision is this policy already: nothing was written
              */
             changed: boolean;
+        };
+        /** Pool */
+        Pool: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Owner
+             * @description the login of the member who made it
+             */
+            owner: string;
+            /** Projects */
+            projects: string[];
+            /** Slots */
+            slots: number;
+            /** Labels */
+            labels: string[];
+            /** Taints */
+            taints: string[];
+            /** Accepted Findings */
+            accepted_findings: string[];
+            /** Reap After Days */
+            reap_after_days: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Nodes
+             * @description its nodes that are not revoked, newest first
+             */
+            nodes: components["schemas"]["PoolNode"][];
+        };
+        /** PoolNode */
+        PoolNode: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Hostname */
+            hostname: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "online" | "offline" | "draining" | "revoked";
+            /** Agent Version */
+            agent_version: string;
+            /**
+             * Labels
+             * @description its own labels, its pool's, and pool=<name>
+             */
+            labels: string[];
+            /**
+             * Ready
+             * @description whether it takes runs: its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Ready Reason
+             * @description why it takes no run, while ready is false; null when ready
+             */
+            ready_reason?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Heartbeat At */
+            last_heartbeat_at: string | null;
+        };
+        /** PoolRequest */
+        PoolRequest: {
+            /**
+             * Projects
+             * @description the projects its nodes take runs of; the writer role on each
+             */
+            projects: string[];
+            /**
+             * Slots
+             * @description runs each node holds at once
+             * @default 1
+             */
+            slots: number;
+            /** Labels */
+            labels?: string[];
+            /** Taints */
+            taints?: string[];
+            /** Accepted Findings */
+            accepted_findings?: string[];
+            /**
+             * Reap After Days
+             * @default 7
+             */
+            reap_after_days: number;
+            /**
+             * Name
+             * @description unique among the owner's pools; it starts its nodes' names
+             */
+            name: string;
+        };
+        /** PoolUpdate */
+        PoolUpdate: {
+            /**
+             * Projects
+             * @description the projects its nodes take runs of; the writer role on each
+             */
+            projects?: string[] | null;
+            /**
+             * Slots
+             * @description runs each node holds at once
+             */
+            slots?: number | null;
+            /**
+             * Labels
+             * @description labels every node has, a word or key=value; the hub adds pool=<name> itself
+             */
+            labels?: string[] | null;
+            /**
+             * Taints
+             * @description taints every node has: a node takes only the runs that tolerate each of them
+             */
+            taints?: string[] | null;
+            /**
+             * Accepted Findings
+             * @description codes of high doctor findings a node may have and still be ready (`evo-agents worker doctor`)
+             */
+            accepted_findings?: string[] | null;
+            /**
+             * Reap After Days
+             * @description days a node stays offline before the hub revokes it
+             */
+            reap_after_days?: number | null;
         };
         /**
          * PrefSet
@@ -26144,9 +26590,25 @@ export interface components {
         };
         /**
          * Rerun
-         * @description What a rerun may change of the run it reruns; no body keeps everything.
+         * @description What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations
+         *     keep the run's own selector and tolerations.
          */
         Rerun: {
+            /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
             /**
              * Account
              * @description one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
@@ -26508,6 +26970,18 @@ export interface components {
         };
         /** Run */
         Run: {
+            /**
+             * Selector
+             * @description the labels the worker that takes it must have, every one (pool=<name> for a pool); [] for any
+             * @default []
+             */
+            selector: string[];
+            /**
+             * Tolerations
+             * @description the taints of a worker it tolerates
+             * @default []
+             */
+            tolerations: string[];
             /** Id */
             id: number;
             /**
@@ -28172,9 +28646,19 @@ export interface components {
              */
             owner: string;
             /** Worker Id */
-            worker_id: number;
-            /** Worker */
-            worker: string;
+            worker_id: number | null;
+            /**
+             * Worker
+             * @description the worker its runs go to; null for a pool
+             */
+            worker: string | null;
+            /** Pool Id */
+            pool_id?: number | null;
+            /**
+             * Pool
+             * @description the pool whose ready nodes take its runs; null for a worker
+             */
+            pool?: string | null;
             /** Paused At */
             paused_at: string | null;
             /**
@@ -28431,6 +28915,12 @@ export interface components {
              * @description the workers it is bound to; empty for any worker of its owner
              */
             workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
             /** Expires At */
             expires_at: string | null;
             /**
@@ -28489,6 +28979,11 @@ export interface components {
              */
             workers?: string[];
             /**
+             * Pools
+             * @description names of the caller's own worker pools: each node of each gets it, the nodes that join later too; never with workers, and none for kind forge
+             */
+            pools?: string[];
+            /**
              * Expires At
              * @description after this no run gets it, and the hub no longer uses one of kind forge; in the future; required for kind forge
              */
@@ -28541,6 +29036,12 @@ export interface components {
              * @description the workers it is bound to; empty for any worker of its owner
              */
             workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
             /** Expires At */
             expires_at: string | null;
             /**
@@ -32926,8 +33427,39 @@ export interface components {
             agent_commit: string | null;
             /** Slots */
             slots: number;
-            /** Labels */
+            /**
+             * Labels
+             * @description its own labels, then for a node of a pool the pool's labels and pool=<name>, which the pool sets
+             */
             labels: string[];
+            /**
+             * Pool
+             * @description the pool it joined with a join token; null for one paired or registered
+             */
+            pool?: string | null;
+            /**
+             * Auto Labels
+             * @description the labels the hub gives it from its heartbeat, which a run's selector may ask too: os=, arch=, runtime=<name> for each runtime it has, feature=browser when it has one
+             * @default []
+             */
+            auto_labels: string[];
+            /**
+             * Taints
+             * @description its own taints, then its pool's: it takes only the runs that tolerate each, or those pinned to it
+             * @default []
+             */
+            taints: string[];
+            /**
+             * Ready
+             * @description whether it takes runs: a worker of no pool always does; a node of a pool while its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Ready Reason
+             * @description why it takes no run, while ready is false; null when ready
+             */
+            ready_reason?: string | null;
             /**
              * Plugins
              * @description the plugins whose runtimes and environments it takes, as its owner set them
@@ -33287,6 +33819,11 @@ export interface components {
             slots?: number | null;
             /** Labels */
             labels?: string[] | null;
+            /**
+             * Taints
+             * @description its own taints, a word or key=value, the whole list ([] for none): it takes only the runs that tolerate each, or those pinned to it
+             */
+            taints?: string[] | null;
             /**
              * Name
              * @description unique among the owner's workers not revoked
@@ -37166,6 +37703,131 @@ export interface operations {
             };
         };
     };
+    worker_skills_v1_worker_skills_get: {
+        parameters: {
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Skill"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_bundle_v1_worker_skills_global__name__bundle_get: {
+        parameters: {
+            query?: {
+                /** @description default: the latest */
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleTicket"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     put_config_v1_kg__project__config_put: {
         parameters: {
             query?: never;
@@ -40023,6 +40685,417 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pools_v1_worker_pools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_pool_v1_worker_pools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_pool_v1_worker_pools__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pool_v1_worker_pools__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_join_tokens_v1_worker_pools__name__tokens_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinToken"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_join_token_v1_worker_pools__name__tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedJoinToken"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_join_token_v1_worker_pools__name__tokens__token_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinToken"];
                 };
             };
             /** @description Unauthorized */

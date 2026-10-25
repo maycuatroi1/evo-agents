@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, CircleCheck, Layers, Plus, Server, WifiOff } from "lucide-react";
+import { Activity, Boxes, CircleCheck, Layers, Plus, Server, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -40,7 +40,8 @@ import {
   type WorkerSummary,
   workerView,
 } from "./model";
-import { type Worker, workerHref, workerKeys, workersQuery } from "./queries";
+import { NotReadyBadge } from "./pool-badges";
+import { POOLS_HREF, type Worker, workerHref, workerKeys, workersQuery } from "./queries";
 import { Ago } from "./ago";
 import { RegisterDialog } from "./register-dialog";
 import { UpdateBadge } from "./update-badge";
@@ -105,6 +106,13 @@ function Summary({ summary }: { summary: WorkerSummary }) {
   );
 }
 
+/** "Not ready" for a worker that is up but takes no run, because its doctor found something; nothing otherwise. */
+function WorkerReady({ worker, compact }: { worker: Worker; compact?: boolean }) {
+  const view = workerView(worker);
+  const up = view === "idle" || view === "busy" || view === "draining";
+  return <NotReadyBadge ready={!up || worker.ready} reason={worker.ready_reason} compact={compact} />;
+}
+
 function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string }) {
   const t = useTranslations("workers");
   const columns = useMemo(() => {
@@ -139,6 +147,7 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
         cell: (info) => (
           <span className="flex flex-wrap items-center gap-1.5 xl:flex-nowrap">
             <StatusBadge kind="worker" status={workerView(info.row.original)} />
+            <WorkerReady worker={info.row.original} />
             <UpdateBadge worker={info.row.original} />
           </span>
         ),
@@ -220,7 +229,12 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
           titleText: worker.name,
           titleClassName: "font-mono text-[13px]",
           href: workerHref(worker.id),
-          tags: <UpdateBadge worker={worker} compact />,
+          tags: (
+            <>
+              <WorkerReady worker={worker} compact />
+              <UpdateBadge worker={worker} compact />
+            </>
+          ),
           status: <StatusBadge kind="worker" status={workerView(worker)} />,
           meta,
           metaText: meta,
@@ -337,10 +351,18 @@ export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | nul
         title={t("title")}
         tags={live !== null ? <Badge variant="secondary">{t("count", { count: live })}</Badge> : null}
         actions={
-          <Button onClick={() => setRegistering(true)} data-testid="workers-register">
-            <Plus aria-hidden="true" />
-            {t("registerButton")}
-          </Button>
+          <>
+            <Button variant="outline" asChild data-testid="workers-pools">
+              <Link href={POOLS_HREF}>
+                <Boxes aria-hidden="true" />
+                {t("poolsButton")}
+              </Link>
+            </Button>
+            <Button onClick={() => setRegistering(true)} data-testid="workers-register">
+              <Plus aria-hidden="true" />
+              {t("registerButton")}
+            </Button>
+          </>
         }
       />
       <QueryView state={state} loading={<ListSkeleton metrics={4} />}>

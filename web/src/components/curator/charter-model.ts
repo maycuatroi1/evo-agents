@@ -1,7 +1,7 @@
 import { PLAN_ID } from "@/lib/plans";
 
 import type { Charter, CharterWrite, Runtime } from "./queries";
-import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, TIME_OF_DAY, TIME_ZONE, WORKER_NAME } from "./vocab";
+import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, POOL_DUTY, POOL_NAME, TIME_OF_DAY, TIME_ZONE, WORKER_NAME } from "./vocab";
 
 /**
  * The charter as a form and back (curator.CharterBody): every number as typed, every list one entry a line, checked
@@ -154,7 +154,7 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
     windowStart: charter.window.start,
     windowEnd: charter.window.end,
     timezone: charter.window.timezone,
-    worker: charter.worker,
+    worker: charter.pool ? `${POOL_DUTY}${charter.pool}` : (charter.worker ?? ""),
     nightBudget: money(charter.night_budget_usd),
     runBudget: money(charter.run_budget_usd),
     runMaxTurns: String(charter.run_max_turns ?? 300),
@@ -262,8 +262,11 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
   if (!errors.windowStart && !errors.windowEnd && form.windowStart.trim() === form.windowEnd.trim()) errors.windowEnd = { code: "sameTime" };
   const timezone = form.timezone.trim();
   if (!TIME_ZONE.test(timezone) || timezone.length > LIMITS.timeZoneChars) errors.timezone = { code: "timezone" };
-  const worker = form.worker.trim();
-  if (!WORKER_NAME.test(worker)) errors.worker = worker === "" ? { code: "required" } : { code: "worker" };
+  // The duty is a worker by its name, or a pool as pool:<name>; the body names the one it is.
+  const duty = form.worker.trim();
+  const pool = duty.startsWith(POOL_DUTY) ? duty.slice(POOL_DUTY.length) : null;
+  if (duty === "") errors.worker = { code: "required" };
+  else if (pool !== null ? !POOL_NAME.test(pool) : !WORKER_NAME.test(duty)) errors.worker = { code: "worker" };
 
   const nightBudget = note<number | null>("nightBudget", dollars(form.nightBudget, false));
   const caps = {
@@ -306,7 +309,7 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
     body: {
       goals: form.goals.map((goal) => ({ id: goal.id.trim(), what: goal.what.trim() })),
       window: { start: form.windowStart.trim(), end: form.windowEnd.trim(), timezone },
-      worker,
+      ...(pool !== null ? { pool } : { worker: duty }),
       night_budget_usd: nightBudget as number,
       run_budget_usd: caps.runBudget,
       run_max_turns: runMaxTurns as number,

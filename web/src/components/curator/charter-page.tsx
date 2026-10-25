@@ -82,7 +82,7 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
             {t("windowValue", { start: charter.window.start, end: charter.window.end, timezone: charter.window.timezone })}
           </Fact>
           <Fact label={t("fields.worker")}>
-            <Identifier value={charter.worker} testId="charter-worker-name" />
+            <Identifier value={charter.worker ?? `pool=${charter.pool}`} testId="charter-worker-name" />
           </Fact>
           <Fact label={t("fields.owner")}>
             <span className="font-mono text-xs">{charter.schedule_owner}</span>
@@ -207,7 +207,7 @@ function Revisions({ project, shown }: { project: string; shown: number }) {
                   <span className="text-xs text-fg-subtle">
                     <When value={revision.updated_at} short />
                   </span>
-                  <span className="ml-auto text-xs text-fg-subtle">{t("revisions.worker", { worker: revision.worker })}</span>
+                  <span className="ml-auto text-xs text-fg-subtle">{t("revisions.worker", { worker: revision.worker ?? `pool=${revision.pool}` })}</span>
                 </Link>
               </li>
             );
