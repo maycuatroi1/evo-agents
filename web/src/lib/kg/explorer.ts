@@ -1,4 +1,4 @@
-import { displayName, kindStyle, shortLabel, type Shape, type Tone } from "./graph";
+import { displayName, kindStyle, nodeLabel, type Shape, type Tone } from "./graph";
 import { clusterColour, clusterIndex } from "./map";
 import type { ClusterDetail, ClusterLink, ClusterSummary, MapNode } from "./types";
 
@@ -103,7 +103,6 @@ export function overviewElements(
   const largest = Math.max(0, ...clusters.map((cluster) => cluster.size));
   const heaviest = Math.max(0, ...links.map((link) => link.weight));
   const strong = strongLinks(links);
-  const major = majorIds(clusters.map((cluster) => ({ id: cluster.id, degree: cluster.size })), MAJOR_CLUSTERS, MAJOR_CLUSTERS);
   const nodes: ExplorerElement[] = clusters.map((cluster) => {
     const shown = shownSize(cluster, hidden);
     return {
@@ -115,7 +114,7 @@ export function overviewElements(
         diameter: clusterDiameter(cluster.size, largest),
         colour: clusterColour(index.get(cluster.id) ?? 0),
       },
-      classes: ["cluster", ...(major.has(cluster.id) ? ["major"] : []), ...(shown === 0 ? ["filtered"] : [])],
+      classes: ["cluster", ...(shown === 0 ? ["filtered"] : [])],
     };
   });
   const edges: ExplorerElement[] = links
@@ -148,27 +147,6 @@ export function linkedClusters(
       return cluster ? [{ cluster, weight: link.weight }] : [];
     })
     .sort((x, y) => y.weight - x.weight);
-}
-
-// -- Labels -------------------------------------------------------------------------------------------------------
-
-/**
- * The nodes of a view that keep their label from a small zoom on: the most linked (the largest, for clusters), or all
- * of a small view; the others show theirs once zoomed in, or when looked at.
- */
-export const MAJOR_LABELS = 24;
-export const MAJOR_CLUSTERS = 16;
-export const SMALL_VIEW = 40;
-
-/** The ids of the `limit` highest of `degrees`, or all of them in a view of `small` or fewer. */
-export function majorIds(degrees: readonly { id: string; degree: number }[], limit = MAJOR_LABELS, small = SMALL_VIEW): Set<string> {
-  if (degrees.length <= small) return new Set(degrees.map((entry) => entry.id));
-  return new Set(
-    [...degrees]
-      .sort((a, b) => b.degree - a.degree || a.id.localeCompare(b.id))
-      .slice(0, limit)
-      .map((entry) => entry.id),
-  );
 }
 
 // -- Cluster ------------------------------------------------------------------------------------------------------
@@ -206,13 +184,13 @@ export function clusterElements(detail: ClusterDetail, hidden: ReadonlySet<strin
   return detail.subclusters.length > 0 ? partElements(detail, hidden) : memberElements(detail, hidden);
 }
 
-function memberNode(member: MapNode, degree: number, highest: number, major: ReadonlySet<string>, hidden: ReadonlySet<string>): ExplorerElement {
+function memberNode(member: MapNode, degree: number, highest: number, hidden: ReadonlySet<string>): ExplorerElement {
   const { tone, shape } = kindStyle(member.kind);
   return {
     group: "nodes",
     data: {
       id: member.id,
-      label: shortLabel(displayName(member)),
+      label: nodeLabel(displayName(member)),
       name: displayName(member),
       kind: member.kind,
       tone,
@@ -220,7 +198,7 @@ function memberNode(member: MapNode, degree: number, highest: number, major: Rea
       degree,
       diameter: nodeDiameter(degree, highest),
     },
-    classes: ["member", ...(major.has(member.id) ? ["major"] : []), ...(hidden.has(member.kind) ? ["kind-hidden"] : [])],
+    classes: ["member", ...(hidden.has(member.kind) ? ["kind-hidden"] : [])],
   };
 }
 
@@ -232,8 +210,7 @@ function memberElements(detail: ClusterDetail, hidden: ReadonlySet<string>): Clu
   const drawn = order.slice(0, CLUSTER_DRAWN);
   const drawnIndex = new Set(drawn.map((entry) => entry.index));
   const highest = Math.max(0, ...drawn.map((entry) => entry.degree));
-  const major = majorIds(drawn.map(({ member, degree: d }) => ({ id: member.id, degree: d })));
-  const nodes = drawn.map(({ member, degree: d }) => memberNode(member, d, highest, major, hidden));
+  const nodes = drawn.map(({ member, degree: d }) => memberNode(member, d, highest, hidden));
   const edges: ExplorerElement[] = detail.edges.flatMap(([a, b, weight], i) => {
     if (a === undefined || b === undefined || !drawnIndex.has(a) || !drawnIndex.has(b)) return [];
     const source = detail.members[a];
@@ -267,7 +244,6 @@ function partElements(detail: ClusterDetail, hidden: ReadonlySet<string>): Clust
   const largest = Math.max(0, ...parts.map((part) => part.size));
   const heaviest = Math.max(0, ...links.map((link) => link.weight));
   const strong = strongLinks(links);
-  const major = majorIds(parts.map((part) => ({ id: part.id, degree: part.size })), MAJOR_CLUSTERS, MAJOR_CLUSTERS);
   const partNodes: ExplorerElement[] = parts.map((part, i) => ({
     group: "nodes",
     data: {
@@ -277,9 +253,9 @@ function partElements(detail: ClusterDetail, hidden: ReadonlySet<string>): Clust
       diameter: clusterDiameter(part.size, largest),
       colour: clusterColour(i),
     },
-    classes: ["cluster", ...(major.has(part.id) ? ["major"] : []), ...(shownSize(part, hidden) === 0 ? ["filtered"] : [])],
+    classes: ["cluster", ...(shownSize(part, hidden) === 0 ? ["filtered"] : [])],
   }));
-  const looseNodes = loose.map((member) => memberNode(member, 0, 0, new Set(), hidden));
+  const looseNodes = loose.map((member) => memberNode(member, 0, 0, hidden));
   const edges: ExplorerElement[] = links.map((link) => ({
     group: "edges",
     data: { id: `link:${linkKey(link)}`, source: link.a, target: link.b, weight: link.weight, width: linkWidth(link.weight, heaviest) },

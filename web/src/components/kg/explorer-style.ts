@@ -7,11 +7,15 @@ import type { Theme } from "./graph-theme";
 /**
  * How the explorer's canvas draws each scope, from the design tokens of the theme in use. Clusters of the overview are
  * filled circles in their cluster's colour, sized by members; members and nodes take their kind's tone and shape, so
- * colour is never the only signal; a cluster's parts are circles too. At rest edges are faint; the node under the pointer or
- * selected keeps its neighbourhood lit, names its edges' types and dims the rest. The most linked nodes of a view keep
- * their label from a small zoom on, the others once zoomed in, and the nodes the reader looks at always.
+ * colour is never the only signal; a cluster's parts are circles too. At rest edges are faint; the node under the
+ * pointer or selected keeps its neighbourhood lit, names its edges' types and dims the rest.
+ *
+ * Labels keep their size on screen: `scale` (labelScale of explorer-layout.ts, the inverse of the zoom) multiplies
+ * every text size, so zooming in makes room between labels rather than larger labels. Which labels show is the
+ * canvas's call (declutter): a label that would cover another, or another node, is `crowded`.
  */
-export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscape.StylesheetJson {
+export function explorerStylesheet(theme: Theme, scope: Scope["kind"], scale = 1): cytoscape.StylesheetJson {
+  const px = (size: number) => size * scale;
   const tones = ([1, 2, 3, 4, 5] as const).map((tone) => ({
     selector: `node[tone = ${tone}]`,
     style: { "background-color": theme.tones[tone] },
@@ -22,16 +26,15 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
       style: {
         label: "data(label)",
         "font-family": theme.font,
-        "font-size": 11,
+        "font-size": px(11),
         color: theme.foreground,
         "text-valign": "bottom",
         "text-halign": "center",
-        "text-margin-y": 4,
+        "text-margin-y": px(4),
         "text-background-color": theme.surface,
-        "text-background-opacity": 0.85,
-        "text-background-padding": "2px",
+        "text-background-opacity": 0.92,
+        "text-background-padding": `${px(2)}px`,
         "text-background-shape": "roundrectangle",
-        "min-zoomed-font-size": 9,
         "border-width": 1.5,
         "border-color": theme.surface,
         "overlay-opacity": 0,
@@ -45,14 +48,12 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
         height: "data(diameter)",
         "background-color": "data(colour)",
         "background-opacity": 0.92,
-        "font-size": 14,
+        "font-size": px(13),
         "font-weight": 500,
         "text-wrap": "wrap",
-        "text-max-width": "140px",
-        "min-zoomed-font-size": 15,
+        "text-max-width": `${px(130)}px`,
       },
     },
-    { selector: "node.cluster.major", style: { "min-zoomed-font-size": 6 } },
     { selector: "node.cluster.filtered", style: { "background-opacity": 0.18, color: theme.subtle } },
     {
       selector: "node.member",
@@ -60,13 +61,9 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
         shape: (node: cytoscape.NodeSingular) => node.data("shape") as cytoscape.Css.NodeShape,
         width: "data(diameter)",
         height: "data(diameter)",
-        "font-size": 10,
-        // Cytoscape compares the font size times the zoom rounded up to a power of two (1.03 counts as 2): a minor
-        // label shows once the zoom passes 2, a major one (below) from 0.5 on.
-        "min-zoomed-font-size": 24,
+        "font-size": px(11),
       },
     },
-    { selector: "node.member.major", style: { "min-zoomed-font-size": 8 } },
     ...tones,
     {
       selector: "node.seed",
@@ -76,8 +73,7 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
         "border-width": 3,
         "border-color": theme.brand,
         "font-weight": 600,
-        "font-size": 12,
-        "min-zoomed-font-size": 0,
+        "font-size": px(12),
       },
     },
     { selector: "node.expanded", style: { "border-width": 2.5, "border-color": theme.foreground } },
@@ -93,8 +89,7 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
         "border-style": "dashed",
         "border-color": theme.subtle,
         color: theme.muted,
-        "font-size": 10,
-        "min-zoomed-font-size": 7,
+        "font-size": px(10),
       },
     },
     { selector: "node.kind-hidden", style: { display: "none" } },
@@ -129,7 +124,9 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
     { selector: "edge.more-edge", style: { "line-style": "dashed" } },
     // What the reader looks at: the node selected or under the pointer, its edges and its neighbours.
     { selector: ".dim", style: { opacity: 0.12, "text-opacity": 0 } },
-    { selector: "node.labelled", style: { "min-zoomed-font-size": 0, "z-index": 10 } },
+    { selector: "node.crowded", style: { "text-opacity": 0, "text-background-opacity": 0 } },
+    // A node whose label shows is drawn above the others, the more important higher (declutter of explorer-layout.ts).
+    { selector: "node[z]", style: { "z-index": (node: cytoscape.NodeSingular) => Number(node.data("z")) } },
     {
       selector: "edge.hl",
       style: {
@@ -144,13 +141,12 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
       style: {
         label: "data(rel)",
         "font-family": theme.font,
-        "font-size": 9,
+        "font-size": px(10),
         color: theme.foreground,
         "text-rotation": "autorotate",
         "text-background-color": theme.surface,
         "text-background-opacity": 1,
-        "text-background-padding": "1px",
-        "min-zoomed-font-size": 7,
+        "text-background-padding": `${px(1)}px`,
       },
     },
     {
@@ -161,8 +157,6 @@ export function explorerStylesheet(theme: Theme, scope: Scope["kind"]): cytoscap
         "underlay-padding": 6,
         "underlay-shape": "ellipse",
         "font-weight": 600,
-        "min-zoomed-font-size": 0,
-        "z-index": 11,
       },
     },
   ];
