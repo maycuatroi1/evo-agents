@@ -86,6 +86,13 @@ EVO_HUB_PLUGIN_PUBLISHERS_LOCKED is true. EVO_HUB_MARKET_DEFAULT_SOURCE is the G
 hub lists unless its admins remove it, maycuatroi1/evo-agents-market when unset, none when set to
 ``none`` or empty.
 
+A hub sells paid plugins when a hub admin turns its feature seller on (docs/market.md, section Selling plugins).
+EVO_HUB_SELLER_ID is its id in the markets that list it (``sellers[].id`` of their index), EVO_HUB_SELLER_KEY the
+Ed25519 key that signs its licences, the 32-byte seed in base64 that ``evo-agents hub market seller-key`` writes,
+registered as a secret and never printed. EVO_HUB_SELLER_PAYMENT_INSTRUCTIONS is what a buyer is told to pay by (the
+seller's bank account), and EVO_HUB_SELLER_SIGNAL_PROJECT the project the hub writes its signals
+market.active_licenses and market.revenue_usd_month into, none when unset.
+
 The backends of isolated plugins run in the plugin host, ``evo-agents hub plugin-host``, a service of its own that
 holds none of the hub's variables (docs/plugins.md). EVO_HUB_PLUGIN_HOST_URL is where the api reaches it (on the
 compose network, http://evo-agents-hub-plugins:8090) and EVO_HUB_PLUGIN_HOST_TOKEN the secret the two share, at least
@@ -169,6 +176,8 @@ S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_K
 S3_INTERNAL_ENDPOINT = "EVO_HUB_S3_INTERNAL_ENDPOINT"  # optional: where the hub itself reaches the store
 BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")  # an S3 bucket name, as R2 accepts it
 SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
+SELLER_KEY_BYTES = 32  # the seed of an Ed25519 key
+SELLER_PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # evo_agents.hub.server.admin.PROJECT_NAME
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
 GITHUB_APP_VARIABLES = ("EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY")
 GITHUB_APP_ID = re.compile(r"[0-9]{1,20}|Iv[0-9A-Za-z.]{1,40}")  # the App's ID, or its client ID; JWT's iss takes both
@@ -258,6 +267,10 @@ class HubConfig:
     plugin_host_url: str | None = None  # where the api reaches the plugin host
     plugin_host_token: str | None = None  # the secret the api and the plugin host share; never logged or returned
     gateway_url: str | None = None  # where the api reaches the model gateway; None while it is off
+    seller_id: str | None = None  # the hub's id as a seller in the markets' indexes
+    seller_key: bytes | None = None  # the seed of the Ed25519 key that signs its licences; never logged or returned
+    seller_payment_instructions: str | None = None  # how a buyer pays an order
+    seller_signal_project: str | None = None  # the project of the signals of its sales
     gateway_secret: str | None = None  # the root secret the api and the gateway share; never logged or returned
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
@@ -720,6 +733,38 @@ def _plugins(env: Mapping[str, str]) -> dict:
     }
 
 
+def _seller(env: Mapping[str, str]) -> dict:
+    """What a seller's hub needs: its id, the key of its licences (registered as a secret before anything can fail; no
+    error shows it), how buyers pay, and the project of its signals."""
+    id_name, key_name, project_name = "EVO_HUB_SELLER_ID", "EVO_HUB_SELLER_KEY", "EVO_HUB_SELLER_SIGNAL_PROJECT"
+    seller_id = _text(env, id_name)
+    if seller_id is not None and not PUBLISHER_ID.fullmatch(seller_id):
+        raise ConfigError(id_name, f"{id_name} is an id such as northwind: lower-case letters, digits and -")
+    raw = _secret(env, key_name)
+    key = None
+    if raw is not None:
+        try:
+            key = base64.b64decode(raw, validate=True)
+        except ValueError:
+            key = b""
+        if len(key) != SELLER_KEY_BYTES:
+            raise ConfigError(
+                key_name,
+                f"{key_name} must be an Ed25519 seed, {SELLER_KEY_BYTES} bytes in base64, as `evo-agents hub market "
+                "seller-key` writes it",
+            )
+    project = _text(env, project_name)
+    if project is not None and not SELLER_PROJECT.fullmatch(project):
+        raise ConfigError(project_name, f"{project_name} is the name of a project of the hub, not {project!r}")
+    instructions = (env.get("EVO_HUB_SELLER_PAYMENT_INSTRUCTIONS") or "").replace("\\n", "\n").strip() or None
+    return {
+        "seller_id": seller_id,
+        "seller_key": key,
+        "seller_payment_instructions": instructions,
+        "seller_signal_project": project,
+    }
+
+
 def _gateway(env: Mapping[str, str]) -> dict:
     """The model gateway's root secret, and where the api reaches it: the default address while the secret is set."""
     url_name, secret_name = GATEWAY_VARIABLES
@@ -813,4 +858,5 @@ def load_config(
         **_fcm(env),
         **_plugins(env),
         **_gateway(env),
+        **_seller(env),
     )

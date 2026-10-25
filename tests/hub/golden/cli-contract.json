@@ -8251,6 +8251,195 @@
         "schema": "ProjectLoop"
       }
     },
+    "hub market bundle upload": {
+      "positionals": [
+        {
+          "name": "plugin",
+          "metavar": "PLUGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--signature"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "publisher",
+          "signer",
+          "owner",
+          "usd_per_hub_month",
+          "state",
+          "bundles",
+          "active_licenses",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Listing"
+      }
+    },
+    "hub market buy": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--months"
+          ],
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--name"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--email"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--trust"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "purchase",
+          "instructions",
+          "trusted_publisher"
+        ],
+        "schema": "Bought"
+      }
+    },
+    "hub market cancel": {
+      "positionals": [
+        {
+          "name": "number",
+          "metavar": "NUMBER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "plugin",
+          "publisher",
+          "buyer_hub",
+          "buyer_url",
+          "buyer_name",
+          "buyer_email",
+          "months",
+          "usd_per_month",
+          "usd_total",
+          "state",
+          "payment",
+          "created_at",
+          "invoice",
+          "closed_by",
+          "closed_at",
+          "license_id",
+          "valid_from",
+          "valid_until"
+        ],
+        "schema": "Order"
+      }
+    },
+    "hub market hub-id": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "hub",
+          "url"
+        ],
+        "schema": "HubIdentity"
+      }
+    },
     "hub market install": {
       "positionals": [
         {
@@ -8303,6 +8492,49 @@
           "upgraded"
         ],
         "schema": "MarketInstalled"
+      }
+    },
+    "hub market licenses": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--check"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "hub",
+          "purchases"
+        ],
+        "schema": "Purchases",
+        "with": {
+          "--check": {
+            "kind": "object",
+            "keys": [
+              "checked",
+              "received",
+              "installed",
+              "reminded",
+              "lapsed",
+              "errors"
+            ],
+            "schema": "Checked"
+          }
+        }
       }
     },
     "hub market list": {
@@ -8360,6 +8592,287 @@
         "schema": "MarketList"
       }
     },
+    "hub market listing add": {
+      "positionals": [
+        {
+          "name": "plugin",
+          "metavar": "PLUGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--publisher"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--signer"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--usd"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "publisher",
+          "signer",
+          "owner",
+          "usd_per_hub_month",
+          "state",
+          "bundles",
+          "active_licenses",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Listing"
+      }
+    },
+    "hub market listing list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "listings"
+        ],
+        "schema": "Listings"
+      }
+    },
+    "hub market listing set": {
+      "positionals": [
+        {
+          "name": "plugin",
+          "metavar": "PLUGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--usd"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--signer"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "listed",
+            "withdrawn"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "publisher",
+          "signer",
+          "owner",
+          "usd_per_hub_month",
+          "state",
+          "bundles",
+          "active_licenses",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Listing"
+      }
+    },
+    "hub market orders": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "paid",
+            "cancelled"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "orders"
+        ],
+        "schema": "Orders"
+      }
+    },
+    "hub market paid": {
+      "positionals": [
+        {
+          "name": "number",
+          "metavar": "NUMBER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--invoice"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "plugin",
+          "publisher",
+          "buyer_hub",
+          "buyer_url",
+          "buyer_name",
+          "buyer_email",
+          "months",
+          "usd_per_month",
+          "usd_total",
+          "state",
+          "payment",
+          "created_at",
+          "invoice",
+          "closed_by",
+          "closed_at",
+          "license_id",
+          "valid_from",
+          "valid_until"
+        ],
+        "schema": "Order"
+      }
+    },
+    "hub market payout": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--month"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--publisher"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "month",
+          "publishers",
+          "gross_usd",
+          "publisher_usd",
+          "platform_usd"
+        ],
+        "schema": "Revenue"
+      }
+    },
     "hub market request": {
       "positionals": [
         {
@@ -8406,6 +8919,92 @@
           "created"
         ],
         "schema": "MarketRequest"
+      }
+    },
+    "hub market revenue": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--month"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "month",
+          "publishers",
+          "gross_usd",
+          "publisher_usd",
+          "platform_usd"
+        ],
+        "schema": "Revenue"
+      }
+    },
+    "hub market seller": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "seller",
+          "key_id",
+          "public_key",
+          "selling",
+          "payment_instructions",
+          "signal_project"
+        ],
+        "schema": "SellerInfo"
+      }
+    },
+    "hub market seller-key": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "file",
+          "key_id",
+          "public_key"
+        ]
       }
     },
     "hub market show": {
@@ -49046,7 +49645,7 @@
             "plugins"
           ],
           "summary": "Answer Proposal",
-          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why\nit could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one\nof a problem, an admin of the project the others.",
+          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or does its\naction once (plugin, plugin_install, plugin_listing), or keeps why it could not (state failed). A hub admin\ndecides one of the branding, the features or an install, a writer of the project one of a problem or an\nopportunity, an admin of the project the others.",
           "operationId": "answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post",
           "parameters": [
             {
@@ -49150,7 +49749,7 @@
             "plugins"
           ],
           "summary": "Roll Back Proposal",
-          "description": "Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is\nstill at the version the proposal made.",
+          "description": "Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is\nstill at the version the proposal made. An action never rolls back (409).",
           "operationId": "roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post",
           "parameters": [
             {
@@ -70278,6 +70877,290 @@
           }
         }
       },
+      "/v1/market/hub": {
+        "get": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Hub Identity",
+          "description": "The hub's stable id, which a seller's licence names.",
+          "operationId": "hub_identity_v1_market_hub_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HubIdentity"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/market/{source}/{plugin}/buy": {
+        "post": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Buy",
+          "description": "Order a paid plugin of a market from its seller; the hub shows the order's number and how to pay it.",
+          "operationId": "buy_v1_market__source___plugin__buy_post",
+          "parameters": [
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the market source's id, as GET /v1/market/sources gives it",
+                "title": "Source"
+              },
+              "description": "the market source's id, as GET /v1/market/sources gives it"
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as the market lists it",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id, as the market lists it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuyIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Bought"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/market/licenses": {
+        "get": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Purchases",
+          "description": "The hub's orders of paid plugins and their licences, the newest first.",
+          "operationId": "purchases_v1_market_licenses_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Purchases"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/market/licenses/check": {
+        "post": {
+          "tags": [
+            "market"
+          ],
+          "summary": "Check Now",
+          "description": "Ask the sellers about the open orders now, install what a licence covers, and turn off what lapsed.",
+          "operationId": "check_now_v1_market_licenses_check_post",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Checked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "502": {
+              "description": "Bad Gateway",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/market/{source}/{plugin}/install": {
         "post": {
           "tags": [
@@ -70720,6 +71603,1370 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/seller": {
+        "get": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Seller Info",
+          "description": "The seller's id and public key, as a market's index lists them, and whether the hub can sell.",
+          "operationId": "seller_info_v1_seller_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SellerInfo"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/seller/listings": {
+        "get": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Listings",
+          "description": "What this hub sells, with each listing's versions and the licences of it that cover today.",
+          "operationId": "listings_v1_seller_listings_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Listings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Add Listing",
+          "description": "List plugin ``plugin`` of publisher ``publisher`` for sale, owned by the caller, as a draft until its first\nbundle.",
+          "operationId": "add_listing_v1_seller_listings_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Listing"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/seller/listings/{plugin}": {
+        "patch": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Change Listing",
+          "description": "Change a listing's price (for orders placed from now on), its signer, or list or withdraw it.",
+          "operationId": "change_listing_v1_seller_listings__plugin__patch",
+          "parameters": [
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the listed plugin's id",
+                "title": "Plugin"
+              },
+              "description": "the listed plugin's id"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Listing"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/seller/listings/{plugin}/bundles": {
+        "post": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Upload Bundle",
+          "description": "Upload a signed version of a listed plugin; its first lists the plugin. A version never changes.",
+          "operationId": "upload_bundle_v1_seller_listings__plugin__bundles_post",
+          "parameters": [
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the listed plugin's id",
+                "title": "Plugin"
+              },
+              "description": "the listed plugin's id"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Listing"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/seller/orders": {
+        "get": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Orders",
+          "description": "The orders buying hubs placed, the newest first; ``state`` keeps those in it.",
+          "operationId": "orders_v1_seller_orders_get",
+          "parameters": [
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "paid",
+                      "cancelled"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "State"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Orders"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/seller/orders/{number}/paid": {
+        "post": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Mark Paid",
+          "description": "Mark an open order paid, with the invoice number, and issue its licence; the buying hub gets it at its next\ncheck.",
+          "operationId": "mark_paid_v1_seller_orders__number__paid_post",
+          "parameters": [
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^ORD-[0-9]{4}-[0-9]{4,}$",
+                "description": "ORD-YYYY-NNNN",
+                "title": "Number"
+              },
+              "description": "ORD-YYYY-NNNN"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPaidIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/seller/orders/{number}/cancel": {
+        "post": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Cancel Order",
+          "description": "Cancel an open order, which was never paid.",
+          "operationId": "cancel_order_v1_seller_orders__number__cancel_post",
+          "parameters": [
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^ORD-[0-9]{4}-[0-9]{4,}$",
+                "description": "ORD-YYYY-NNNN",
+                "title": "Number"
+              },
+              "description": "ORD-YYYY-NNNN"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/seller/revenue": {
+        "get": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Revenue",
+          "description": "The revenue of ``month`` (YYYY-MM, this month in UTC when left out) by publisher, split 80/20.",
+          "operationId": "revenue_v1_seller_revenue_get",
+          "parameters": [
+            {
+              "name": "month",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Month"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Revenue"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/seller/payouts": {
+        "post": {
+          "tags": [
+            "seller"
+          ],
+          "summary": "Mark Paid Out",
+          "description": "Mark a publisher's share of a month paid out; once per publisher and month, after the month is over.",
+          "operationId": "mark_paid_out_v1_seller_payouts_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Revenue"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/seller-api/info": {
+        "get": {
+          "tags": [
+            "seller-api"
+          ],
+          "summary": "Info",
+          "description": "The seller's id and key, and what it sells.",
+          "operationId": "info_v1_seller_api_info_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SellerApiInfo"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "429": {
+              "description": "Too Many Requests",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/seller-api/orders": {
+        "post": {
+          "tags": [
+            "seller-api"
+          ],
+          "summary": "Place Order",
+          "description": "Order a listed plugin for ``months`` months; pay it as ``instructions`` say, then a seller admin marks it paid.",
+          "operationId": "place_order_v1_seller_api_orders_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrderPlaced"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "429": {
+              "description": "Too Many Requests",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/seller-api/orders/{number}": {
+        "get": {
+          "tags": [
+            "seller-api"
+          ],
+          "summary": "Order State",
+          "description": "An order's state, read with its secret, and its licence once paid.",
+          "operationId": "order_state_v1_seller_api_orders__number__get",
+          "parameters": [
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^ORD-[0-9]{4}-[0-9]{4,}$",
+                "title": "Number"
+              }
+            },
+            {
+              "name": "X-Evo-Order-Secret",
+              "in": "header",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "maxLength": 200,
+                "title": "X-Evo-Order-Secret"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrderState"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/seller-api/bundles/{plugin}": {
+        "get": {
+          "tags": [
+            "seller-api"
+          ],
+          "summary": "Latest Bundle",
+          "description": "The newest version of a plugin, for a licence of the hub that asks.",
+          "operationId": "latest_bundle_v1_seller_api_bundles__plugin__get",
+          "parameters": [
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "title": "Plugin"
+              }
+            },
+            {
+              "name": "X-Evo-Hub-Id",
+              "in": "header",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^hub_[0-9a-f]{32}$",
+                "title": "X-Evo-Hub-Id"
+              }
+            },
+            {
+              "name": "Authorization",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SellerBundle"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/seller-api/bundles/{plugin}/{version}": {
+        "get": {
+          "tags": [
+            "seller-api"
+          ],
+          "summary": "Bundle",
+          "description": "A version of a plugin, for a licence of the hub that asks.",
+          "operationId": "bundle_v1_seller_api_bundles__plugin___version__get",
+          "parameters": [
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "title": "Plugin"
+              }
+            },
+            {
+              "name": "version",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[0-9A-Za-z.+-]{1,64}$",
+                "title": "Version"
+              }
+            },
+            {
+              "name": "X-Evo-Hub-Id",
+              "in": "header",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^hub_[0-9a-f]{32}$",
+                "title": "X-Evo-Hub-Id"
+              }
+            },
+            {
+              "name": "Authorization",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SellerBundle"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
             }
           }
         }
@@ -83154,6 +85401,29 @@
           "title": "BoardItem",
           "description": "One thing of the project that waits for a person."
         },
+        "Bought": {
+          "properties": {
+            "purchase": {
+              "$ref": "#/components/schemas/Purchase"
+            },
+            "instructions": {
+              "type": "string",
+              "title": "Instructions",
+              "description": "how to pay the order, as the seller says"
+            },
+            "trusted_publisher": {
+              "type": "boolean",
+              "title": "Trusted Publisher"
+            }
+          },
+          "type": "object",
+          "required": [
+            "purchase",
+            "instructions",
+            "trusted_publisher"
+          ],
+          "title": "Bought"
+        },
         "Branding": {
           "properties": {
             "name": {
@@ -84280,7 +86550,10 @@
                 "policy",
                 "problem",
                 "goal",
-                "opportunity"
+                "opportunity",
+                "plugin",
+                "plugin_install",
+                "plugin_listing"
               ],
               "title": "Kind"
             },
@@ -84290,7 +86563,7 @@
               },
               "type": "object",
               "title": "Target",
-              "description": "layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy"
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set"
             },
             "change": {
               "additionalProperties": true,
@@ -84409,6 +86682,30 @@
               "title": "Run Id",
               "description": "the chat run of @builder, or the Curator's review run, it came from"
             },
+            "opened_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opened Run Id",
+              "description": "an approved plugin or plugin_listing: the chat run of @builder that took its task"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "an approved action: what approving it did"
+            },
             "link": {
               "anyOf": [
                 {
@@ -84489,6 +86786,29 @@
           ],
           "title": "Builds"
         },
+        "BundleIn": {
+          "properties": {
+            "bundle": {
+              "type": "string",
+              "maxLength": 44739246,
+              "minLength": 1,
+              "title": "Bundle",
+              "description": "the bundle's bytes (tar.gz), in base64"
+            },
+            "signature": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Signature",
+              "description": "its signature envelope, as `evo-agents plugin sign` writes it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "bundle",
+            "signature"
+          ],
+          "title": "BundleIn"
+        },
         "BundleTicket": {
           "properties": {
             "scope": {
@@ -84550,6 +86870,31 @@
             "expires_at"
           ],
           "title": "BundleTicket"
+        },
+        "BuyIn": {
+          "properties": {
+            "months": {
+              "type": "integer",
+              "maximum": 36.0,
+              "minimum": 1.0,
+              "title": "Months"
+            },
+            "contact": {
+              "$ref": "#/components/schemas/Contact"
+            },
+            "trust_publisher": {
+              "type": "boolean",
+              "title": "Trust Publisher",
+              "description": "trust the signer for the publisher from now on, when the hub does not yet",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "months",
+            "contact"
+          ],
+          "title": "BuyIn"
         },
         "CanvasBaseline": {
           "properties": {
@@ -90302,6 +92647,63 @@
           ],
           "title": "ChatSummary"
         },
+        "Checked": {
+          "properties": {
+            "checked": {
+              "type": "integer",
+              "title": "Checked",
+              "description": "the open orders the hub asked their sellers about"
+            },
+            "received": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Received",
+              "description": "the licences received"
+            },
+            "installed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Installed",
+              "description": "the plugins installed or turned on again"
+            },
+            "reminded": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Reminded"
+            },
+            "lapsed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Lapsed",
+              "description": "the plugins turned off"
+            },
+            "errors": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Errors"
+            }
+          },
+          "type": "object",
+          "required": [
+            "checked",
+            "received",
+            "installed",
+            "reminded",
+            "lapsed",
+            "errors"
+          ],
+          "title": "Checked"
+        },
         "CheckoutReport": {
           "properties": {
             "path": {
@@ -90961,6 +93363,30 @@
             "changed"
           ],
           "title": "ConfigSaved"
+        },
+        "Contact": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Name"
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 3,
+              "pattern": "^[^@\\s\\x00-\\x1f\\x7f]+@[^@\\s\\x00-\\x1f\\x7f]+$",
+              "title": "Email"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "email"
+          ],
+          "title": "Contact"
         },
         "CredentialLease": {
           "properties": {
@@ -96871,6 +99297,32 @@
           ],
           "title": "HoldPass"
         },
+        "HubIdentity": {
+          "properties": {
+            "hub": {
+              "type": "string",
+              "title": "Hub",
+              "description": "the hub's stable id, which a seller's licence names"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "EVO_HUB_PUBLIC_URL, which an order carries"
+            }
+          },
+          "type": "object",
+          "required": [
+            "hub"
+          ],
+          "title": "HubIdentity"
+        },
         "Inbox": {
           "properties": {
             "messages": {
@@ -99680,6 +102132,234 @@
           ],
           "title": "ListedAgentAccount",
           "description": "An account of an agent, with the project and the agent it belongs to."
+        },
+        "Listing": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "signer": {
+              "type": "string",
+              "title": "Signer"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            },
+            "usd_per_hub_month": {
+              "type": "number",
+              "title": "Usd Per Hub Month"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "listed",
+                "withdrawn"
+              ],
+              "title": "State"
+            },
+            "bundles": {
+              "items": {
+                "$ref": "#/components/schemas/ListingBundle"
+              },
+              "type": "array",
+              "title": "Bundles",
+              "description": "its versions for sale, the newest first"
+            },
+            "active_licenses": {
+              "type": "integer",
+              "title": "Active Licenses",
+              "description": "the licences of it that cover today"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "publisher",
+            "signer",
+            "usd_per_hub_month",
+            "state",
+            "bundles",
+            "active_licenses",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "Listing"
+        },
+        "ListingBundle": {
+          "properties": {
+            "version": {
+              "type": "string",
+              "title": "Version"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "signed_by": {
+              "type": "string",
+              "title": "Signed By"
+            },
+            "uploaded_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Uploaded By"
+            },
+            "uploaded_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Uploaded At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "version",
+            "sha256",
+            "size",
+            "signed_by",
+            "uploaded_at"
+          ],
+          "title": "ListingBundle"
+        },
+        "ListingChange": {
+          "properties": {
+            "usd_per_hub_month": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 99999999.99,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usd Per Hub Month"
+            },
+            "signer": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(sigstore|ed25519):\\S{1,600}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signer"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "listed",
+                    "withdrawn"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "listed needs a bundle"
+            }
+          },
+          "type": "object",
+          "title": "ListingChange"
+        },
+        "ListingIn": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "title": "Plugin"
+            },
+            "publisher": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Publisher"
+            },
+            "signer": {
+              "type": "string",
+              "pattern": "^(sigstore|ed25519):\\S{1,600}$",
+              "title": "Signer",
+              "description": "sigstore:OWNER/REPO/.github/workflows/FILE.yml or ..."
+            },
+            "usd_per_hub_month": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 99999999.99,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "title": "Usd Per Hub Month"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "publisher",
+            "signer",
+            "usd_per_hub_month"
+          ],
+          "title": "ListingIn"
+        },
+        "Listings": {
+          "properties": {
+            "listings": {
+              "items": {
+                "$ref": "#/components/schemas/Listing"
+              },
+              "type": "array",
+              "title": "Listings"
+            }
+          },
+          "type": "object",
+          "required": [
+            "listings"
+          ],
+          "title": "Listings"
         },
         "Live": {
           "properties": {
@@ -105769,7 +108449,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 30,
+              "maxItems": 31,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -106187,6 +108867,369 @@
             "label"
           ],
           "title": "OptionIn"
+        },
+        "Order": {
+          "properties": {
+            "number": {
+              "type": "string",
+              "title": "Number"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "buyer_hub": {
+              "type": "string",
+              "title": "Buyer Hub"
+            },
+            "buyer_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Buyer Url"
+            },
+            "buyer_name": {
+              "type": "string",
+              "title": "Buyer Name"
+            },
+            "buyer_email": {
+              "type": "string",
+              "title": "Buyer Email"
+            },
+            "months": {
+              "type": "integer",
+              "title": "Months"
+            },
+            "usd_per_month": {
+              "type": "number",
+              "title": "Usd Per Month"
+            },
+            "usd_total": {
+              "type": "number",
+              "title": "Usd Total"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "paid",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "payment": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Payment",
+              "description": "what the payment provider keeps of it: provider and reference"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "invoice": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Invoice"
+            },
+            "closed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Closed By"
+            },
+            "closed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Closed At"
+            },
+            "license_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "License Id"
+            },
+            "valid_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid From"
+            },
+            "valid_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid Until",
+              "description": "the first day the licence no longer covers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "plugin",
+            "publisher",
+            "buyer_hub",
+            "buyer_name",
+            "buyer_email",
+            "months",
+            "usd_per_month",
+            "usd_total",
+            "state",
+            "payment",
+            "created_at"
+          ],
+          "title": "Order"
+        },
+        "OrderIn": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "title": "Plugin"
+            },
+            "hub": {
+              "type": "string",
+              "pattern": "^hub_[0-9a-f]{32}$",
+              "title": "Hub",
+              "description": "the buying hub's stable id"
+            },
+            "hub_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hub Url"
+            },
+            "months": {
+              "type": "integer",
+              "maximum": 36.0,
+              "minimum": 1.0,
+              "title": "Months"
+            },
+            "contact": {
+              "$ref": "#/components/schemas/Contact"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "hub",
+            "months",
+            "contact"
+          ],
+          "title": "OrderIn"
+        },
+        "OrderPaidIn": {
+          "properties": {
+            "invoice": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Invoice"
+            }
+          },
+          "type": "object",
+          "required": [
+            "invoice"
+          ],
+          "title": "OrderPaidIn"
+        },
+        "OrderPlaced": {
+          "properties": {
+            "number": {
+              "type": "string",
+              "title": "Number"
+            },
+            "secret": {
+              "type": "string",
+              "title": "Secret",
+              "description": "what the buying hub reads the order with; shown once, kept only hashed here"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "months": {
+              "type": "integer",
+              "title": "Months"
+            },
+            "usd_per_month": {
+              "type": "number",
+              "title": "Usd Per Month"
+            },
+            "usd_total": {
+              "type": "number",
+              "title": "Usd Total"
+            },
+            "instructions": {
+              "type": "string",
+              "title": "Instructions",
+              "description": "how to pay it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "secret",
+            "plugin",
+            "publisher",
+            "months",
+            "usd_per_month",
+            "usd_total",
+            "instructions"
+          ],
+          "title": "OrderPlaced"
+        },
+        "OrderState": {
+          "properties": {
+            "number": {
+              "type": "string",
+              "title": "Number"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "months": {
+              "type": "integer",
+              "title": "Months"
+            },
+            "usd_total": {
+              "type": "number",
+              "title": "Usd Total"
+            },
+            "instructions": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instructions",
+              "description": "how to pay it, while it is open"
+            },
+            "license": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "License",
+              "description": "the licence's token, once paid"
+            },
+            "valid_from": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid From"
+            },
+            "valid_until": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid Until"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "plugin",
+            "state",
+            "months",
+            "usd_total"
+          ],
+          "title": "OrderState"
+        },
+        "Orders": {
+          "properties": {
+            "orders": {
+              "items": {
+                "$ref": "#/components/schemas/Order"
+              },
+              "type": "array",
+              "title": "Orders"
+            }
+          },
+          "type": "object",
+          "required": [
+            "orders"
+          ],
+          "title": "Orders"
         },
         "OrgAutonomy": {
           "properties": {
@@ -108145,6 +111188,80 @@
             "path"
           ],
           "title": "PathIn"
+        },
+        "Payout": {
+          "properties": {
+            "publisher_usd": {
+              "type": "number",
+              "title": "Publisher Usd"
+            },
+            "paid_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paid By"
+            },
+            "paid_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Paid At"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "publisher_usd",
+            "paid_at"
+          ],
+          "title": "Payout"
+        },
+        "PayoutIn": {
+          "properties": {
+            "month": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+              "title": "Month"
+            },
+            "publisher": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Publisher"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "month",
+            "publisher"
+          ],
+          "title": "PayoutIn"
         },
         "PinnedPack": {
           "properties": {
@@ -118067,6 +121184,169 @@
           ],
           "title": "PublisherTrustIn"
         },
+        "Purchase": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "seller": {
+              "type": "string",
+              "title": "Seller"
+            },
+            "seller_url": {
+              "type": "string",
+              "title": "Seller Url"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "number": {
+              "type": "string",
+              "title": "Number"
+            },
+            "months": {
+              "type": "integer",
+              "title": "Months"
+            },
+            "usd_total": {
+              "type": "number",
+              "title": "Usd Total"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "open until the seller marks it paid, paid, or cancelled"
+            },
+            "placed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Placed By"
+            },
+            "placed_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Placed At"
+            },
+            "checked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Checked At"
+            },
+            "last_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Error"
+            },
+            "license_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "License Id"
+            },
+            "valid_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid From"
+            },
+            "valid_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid Until",
+              "description": "the first day the licence no longer covers"
+            },
+            "license_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "License State",
+              "description": "pending, active, grace or lapsed, today"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "seller",
+            "seller_url",
+            "plugin",
+            "publisher",
+            "number",
+            "months",
+            "usd_total",
+            "state",
+            "placed_at"
+          ],
+          "title": "Purchase"
+        },
+        "Purchases": {
+          "properties": {
+            "hub": {
+              "type": "string",
+              "title": "Hub"
+            },
+            "purchases": {
+              "items": {
+                "$ref": "#/components/schemas/Purchase"
+              },
+              "type": "array",
+              "title": "Purchases"
+            }
+          },
+          "type": "object",
+          "required": [
+            "hub",
+            "purchases"
+          ],
+          "title": "Purchases"
+        },
         "PushConfig": {
           "properties": {
             "vapid_public_key": {
@@ -121105,6 +124385,87 @@
             "items"
           ],
           "title": "Results"
+        },
+        "Revenue": {
+          "properties": {
+            "month": {
+              "type": "string",
+              "title": "Month"
+            },
+            "publishers": {
+              "items": {
+                "$ref": "#/components/schemas/RevenueLine"
+              },
+              "type": "array",
+              "title": "Publishers"
+            },
+            "gross_usd": {
+              "type": "number",
+              "title": "Gross Usd"
+            },
+            "publisher_usd": {
+              "type": "number",
+              "title": "Publisher Usd"
+            },
+            "platform_usd": {
+              "type": "number",
+              "title": "Platform Usd"
+            }
+          },
+          "type": "object",
+          "required": [
+            "month",
+            "publishers",
+            "gross_usd",
+            "publisher_usd",
+            "platform_usd"
+          ],
+          "title": "Revenue"
+        },
+        "RevenueLine": {
+          "properties": {
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "orders": {
+              "type": "integer",
+              "title": "Orders"
+            },
+            "gross_usd": {
+              "type": "number",
+              "title": "Gross Usd"
+            },
+            "publisher_usd": {
+              "type": "number",
+              "title": "Publisher Usd",
+              "description": "the publisher's 80%, rounded down to the cent"
+            },
+            "platform_usd": {
+              "type": "number",
+              "title": "Platform Usd"
+            },
+            "paid_out": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Payout"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "when a hub admin marked the publisher's share paid out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "publisher",
+            "orders",
+            "gross_usd",
+            "publisher_usd",
+            "platform_usd"
+          ],
+          "title": "RevenueLine"
         },
         "ReviewItem": {
           "properties": {
@@ -126352,6 +129713,184 @@
           ],
           "title": "SelfUpdateReport",
           "description": "What the daemon last found of updating itself to the tag nightly of evo-agents."
+        },
+        "SellerApiInfo": {
+          "properties": {
+            "seller": {
+              "type": "string",
+              "title": "Seller"
+            },
+            "key_id": {
+              "type": "string",
+              "title": "Key Id"
+            },
+            "public_key": {
+              "type": "string",
+              "title": "Public Key"
+            },
+            "listings": {
+              "items": {
+                "$ref": "#/components/schemas/SellerListing"
+              },
+              "type": "array",
+              "title": "Listings"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seller",
+            "key_id",
+            "public_key",
+            "listings"
+          ],
+          "title": "SellerApiInfo"
+        },
+        "SellerBundle": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "signature": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Signature"
+            },
+            "bundle": {
+              "type": "string",
+              "title": "Bundle",
+              "description": "the bundle's bytes, in base64"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "version",
+            "sha256",
+            "size",
+            "signature",
+            "bundle"
+          ],
+          "title": "SellerBundle"
+        },
+        "SellerInfo": {
+          "properties": {
+            "seller": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seller",
+              "description": "EVO_HUB_SELLER_ID: the seller's id in the markets that list it"
+            },
+            "key_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Key Id",
+              "description": "the id of the key that signs the licences, as the market's index lists it"
+            },
+            "public_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Public Key",
+              "description": "its public key, 32 bytes in base64; the private one is never shown"
+            },
+            "selling": {
+              "type": "boolean",
+              "title": "Selling",
+              "description": "whether the hub can sell: the id and the key are both set"
+            },
+            "payment_instructions": {
+              "type": "string",
+              "title": "Payment Instructions",
+              "description": "what a buying hub is told to pay an order by"
+            },
+            "signal_project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signal Project",
+              "description": "EVO_HUB_SELLER_SIGNAL_PROJECT"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seller",
+            "key_id",
+            "public_key",
+            "selling",
+            "payment_instructions",
+            "signal_project"
+          ],
+          "title": "SellerInfo"
+        },
+        "SellerListing": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "usd_per_hub_month": {
+              "type": "number",
+              "title": "Usd Per Hub Month"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "its newest version for sale"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "publisher",
+            "usd_per_hub_month"
+          ],
+          "title": "SellerListing"
         },
         "SentFile": {
           "properties": {
@@ -134401,6 +137940,7 @@
                 "curator_probe_report",
                 "opportunity_window",
                 "market_install_request",
+                "market_license_expiring",
                 "today"
               ],
               "title": "Kind",
@@ -134465,6 +138005,7 @@
                 "curator_probe_report",
                 "opportunity_window",
                 "market_install_request",
+                "market_license_expiring",
                 "today"
               ],
               "title": "Kind",

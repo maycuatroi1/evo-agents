@@ -7,7 +7,8 @@ member browses what they list. A hub admin installs a free isolated plugin from 
 the release against the publisher the market names before anything runs. The bundles themselves stay in the plugins'
 own repositories, as release assets: the market holds no code.
 
-The market adds no payment, no install counts or telemetry, and no reviews or ratings. A core plugin is never
+The market takes no payment itself: a paid plugin is bought from its seller, another hub, by bank transfer (section
+Selling plugins). It adds no install counts or telemetry, and no reviews or ratings. A core plugin is never
 installed from a market: it ships in the hub's image (`docs/plugins.md`, section Core plugins).
 
 ## The index
@@ -45,8 +46,9 @@ installed from a market: it ships in the hub's image (`docs/plugins.md`, section
 - `tier` is `isolated` or `core`. A core plugin names `package`, the Python package that ships it in an image, and is
   never sold by subscription.
 - `price` is `{"kind": "free"}` or `{"kind": "subscription", "usd_per_hub_month": 49.5, "seller": "northwind"}`, the
-  seller one of `sellers`, whose keys will sign its licenses. A paid plugin shows on the hub as needing a license and
-  installs from nowhere yet.
+  seller one of `sellers`. A seller's `url` is the address of the hub that sells the plugin, and `keys` the key id and
+  public key of each key that signs its licences. A paid plugin shows on the hub as needing a licence until a hub
+  admin buys it; it then installs from its seller, not from a GitHub release (section Selling plugins).
 - An index holds at most 2000 plugins and 50 sellers, in at most 1 MiB.
 
 A release of a plugin is tagged `vX.Y.Z` and carries the bundle `evo-agents plugin pack` writes, `ID-X.Y.Z.tar.gz`,
@@ -151,3 +153,84 @@ admin then enables the plugin in the project, granting what it asks for (`docs/p
 ```sh
 evo-agents hub market request lumen-notes --project atlas
 ```
+
+## Selling plugins
+
+A hub sells plugins with the feature `seller`, off by default (`docs/hub.md`, section Branding and features). It needs a seller
+id, `EVO_HUB_SELLER_ID`, the `sellers[].id` the markets list it under, and the Ed25519 key that signs its licences,
+`EVO_HUB_SELLER_KEY`. `hub market seller-key` writes a new key to a file only its owner reads and prints the key id
+and public key to put in the market's index; the private key is a secret, which the hub never prints or returns.
+`EVO_HUB_SELLER_PAYMENT_INSTRUCTIONS` is what a buyer is told to pay by, such as the seller's bank account.
+
+```sh
+evo-agents hub market seller-key ./seller.key
+```
+
+The index lists the seller with the address of its hub and its keys:
+
+```json
+"sellers": [
+  {"id": "northwind", "url": "https://hub.northwind.example", "keys": [{"key_id": "ed25519:...", "public_key": "..."}]}
+]
+```
+
+### Listing a plugin
+
+A publisher signed in with GitHub lists a plugin at a price in USD per hub per month, then uploads its signed bundle,
+which the hub checks against the signer the listing names. Unlike a free plugin, a paid bundle is not a public release:
+the seller's hub keeps it and serves it only to a hub that holds a licence of it.
+
+```sh
+evo-agents hub market listing add northwind-ledger --publisher northwind --signer ed25519:KEY --usd 49.50
+evo-agents hub market bundle upload northwind-ledger northwind-ledger-1.0.0.tar.gz --signature northwind-ledger-1.0.0.tar.gz.sig.json
+evo-agents hub market listing set northwind-ledger --usd 59
+```
+
+### Buying
+
+A hub admin clicks Buy on the plugin's page, or runs `hub market buy`, and gives the months the licence covers and a
+name and email to invoice. The order goes to the seller's hub with this hub's stable id (`hub market hub-id`) and
+its address; the hub shows the order number and how to pay it, by bank transfer with the order number as the
+reference. Buying needs `EVO_HUB_SECRETS_KEY`, which seals the order's secret. Buying from a publisher the hub does
+not trust yet trusts its signer, as installing does.
+
+```sh
+evo-agents hub market buy northwind-ledger --months 12 --name "Atlas Ltd" --email ops@atlas.example
+evo-agents hub market licenses
+```
+
+Once the money arrives, a hub admin of the seller marks the order paid with the invoice number. That issues the
+licence, an Ed25519 signature over the plugin, the buying hub's id and the days it covers.
+
+```sh
+evo-agents hub market orders --state open
+evo-agents hub market paid ORD-2026-0001 --invoice INV-0042
+```
+
+Every hour, and at once with Check now on `/admin/market` or `hub market licenses --check`, the buying hub asks its
+sellers about the open orders. It checks a licence it receives offline, with the keys the market's index lists for the
+seller, then downloads the bundle, which the seller serves only for a valid licence of that exact hub, checks its
+signature and installs it.
+
+### Expiry and renewal
+
+Seven days before a licence ends, the hub admins get a notice in the Inbox, `market_license_expiring`. Seven days
+after it ends, the hub turns the plugin off everywhere, with its config kept, and says so in the Inbox. Buying it
+again renews it: the new licence starts where the last one ends, or today when it lapsed, and the next check turns the
+plugin on again. A plugin whose licence does not cover today cannot be installed from the store either.
+
+### Revenue and payouts
+
+`hub market revenue --month YYYY-MM`, and the Selling page under `/admin/market/seller`, total the orders marked paid
+in a month by publisher: 80% to the publisher, 20% to the platform, to the cent. The hub pays nobody itself. Once a
+month is over and a publisher's share is paid, a hub admin marks it paid out, once per publisher and month.
+
+```sh
+evo-agents hub market revenue --month 2026-09
+evo-agents hub market payout --month 2026-09 --publisher northwind --note "bank transfer 2026-10-02"
+```
+
+When `EVO_HUB_SELLER_SIGNAL_PROJECT` names a project, the seller writes the signals `market.active_licenses` and
+`market.revenue_usd_month` into it after each payment and every day. Every order, payment, cancellation, licence and
+payout is in the audit log. Payment goes through a payment-provider interface whose only provider is the bank
+transfer; there is no payment gateway, no automatic payout and no tax.

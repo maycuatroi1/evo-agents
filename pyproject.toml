@@ -200,11 +200,14 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.curator",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
+    "evo_agents.hub.worker -> evo_agents.hub.server.market_install",
+    "evo_agents.hub.worker -> evo_agents.hub.server.market_licenses",
     "evo_agents.hub.worker -> evo_agents.hub.server.opportunity_deadlines",
     "evo_agents.hub.worker -> evo_agents.hub.server.notifications",
     "evo_agents.hub.worker -> evo_agents.hub.server.outcomes",
     "evo_agents.hub.worker -> evo_agents.hub.server.run_state",
     "evo_agents.hub.worker -> evo_agents.hub.server.sealing",
+    "evo_agents.hub.worker -> evo_agents.hub.server.seller",
 ]
 broken_contract_guidance = """\
 The client side of evo_agents.hub (CLI commands, client, MCP proxy, plugin hooks) installs without the hub-server \

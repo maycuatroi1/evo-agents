@@ -980,3 +980,191 @@ def test_builder_proposal_of_an_opportunity_carries_evidence_made_with_it_or_alo
     assert [e["code"] for e in client.get(url, headers=hub["reader"]).json()] == ["E-1"]
     alone = proposed(client, run["agent"], kind="opportunity", summary="Alone", evidence=[line])
     assert alone.startswith("error:") and "target.opportunity" in alone, alone
+
+
+# Proposals of an action (plan plugin-market, criterion a8): a new plugin, its install, its listing
+
+
+NEW_PLUGIN = {
+    "name": "northwind-stock",
+    "industry": "retail",
+    "need": "Count the stock of each\n shop every night",
+    "owner": "northwind",
+    "visibility": "private",
+    "price": 49.5,
+    "categories": ["inventory"],
+}
+
+
+def run_inbox(client, run: dict) -> list[str]:
+    """The texts the hub put in the inbox of the run of @builder, taken and acknowledged."""
+    path, headers = f"/v1/worker/runs/{run['spec']['id']}/inbox", run["worker"]["headers"]
+    held = client.post(path, json={}, headers=headers).json()["messages"]
+    if held:
+        client.post(path, json={"ack": held[-1]["id"]}, headers=headers)
+    return [item["text"] for item in held]
+
+
+def test_builder_plugin_proposal_hands_the_run_its_task_once_an_admin_approves_and_installs_nothing(
+    client, hub, hub_db
+):
+    run = started(client, hub, "@builder our shops need a stock count plugin")
+    wrong = proposed(client, run["agent"], kind="plugin", summary="A stock plugin", set={**NEW_PLUGIN, "price": 0})
+    assert "price: 0.01 to 100000 USD" in wrong and "nothing proposed" in wrong
+    unknown = proposed(client, run["agent"], kind="plugin", summary="A stock plugin", set={"name": "Stock"})
+    assert "industry: a plugin proposal needs it" in unknown and "name: a plugin's id" in unknown
+    taken = proposed(client, run["agent"], kind="plugin", summary="Again", set={**NEW_PLUGIN, "name": "builder"})
+    assert "this hub has a plugin builder already" in taken
+    before = len(thread(client, hub["owner"], run["chat"]["id"], run["mention"]["id"]))
+    proposal_id = made_proposal(
+        client, run["agent"], kind="plugin", summary="Make a stock count plugin for the shops", set=NEW_PLUGIN
+    )
+    pending = shown(client, hub["reader"], proposal_id)
+    assert (pending["state"], pending["kind"], pending["base_version"], pending["approver"]) == (
+        "pending",
+        "plugin",
+        0,
+        "project_admin",
+    )
+    assert pending["target"] == {} and pending["change"]["set"]["need"] == "Count the stock of each shop every night"
+    assert (pending["opened_run_id"], pending["outcome"]) == (None, None)
+    (shown_in_thread,) = said_after(client, hub["owner"], run, before)
+    assert "It changes a new plugin northwind-stock for project" in shown_in_thread
+    assert "in the repo northwind/northwind-stock. Approving it hands @builder the task" in shown_in_thread
+    assert shown_in_thread.endswith("Approving does it once; it does not roll back.")
+    assert notices(hub_db) == [(OWNER, proposal_id, "plugin")]
+    assert run_inbox(client, run) == [], "nothing is handed before an approval"
+    # a writer decides none
+    assert "needs the admin role on project" in message(answer(client, hub["other"], proposal_id, "approve"), 403)
+    # owner approves it in the thread: the hub hands the running session of @builder the task
+    deliver(client)
+    sent(client, hub["owner"], run["chat"]["id"], f"approve {proposal_id}", reply_to=run["mention"]["id"])
+    deliver(client)
+    done = shown(client, hub["reader"], proposal_id)
+    assert (done["state"], done["applied_version"], done["decided_by"]) == ("applied", 1, OWNER)
+    assert done["opened_run_id"] == run["spec"]["id"]
+    assert done["outcome"] == f"@builder took the task to make the plugin in the thread, as run #{run['spec']['id']}"
+    task, said = said_after(client, hub["owner"], run, before)[1:]
+    assert task.startswith(f"@builder {OWNER} approved proposal {proposal_id}. Make the plugin northwind-stock")
+    assert (
+        "`gh repo create northwind/northwind-stock --template maycuatroi1/evo-plugin-template --private --clone`"
+    ) in task
+    assert "EVO_SELLER_PUBLISH=true" in task and "You set no secret yourself." in task
+    assert "kind plugin_install (repo northwind/northwind-stock, tag v0.1.0)" in task
+    assert said == f"Proposal {proposal_id} is approved by {OWNER}: {done['outcome']}."
+    approval, handed = run_inbox(client, run)  # the session reads the thread: owner's reply, then the hub's task
+    assert approval.endswith(f"approve {proposal_id}") and handed.startswith("the hub wrote in the thread")
+    assert "gh repo create northwind/northwind-stock --template maycuatroi1/evo-plugin-template" in handed
+    # the hub installed nothing, added no repo, and the action never rolls back
+    plugins, repos = tables.plugins, tables.project_repos
+    assert sql(hub_db, select(plugins.c.name).where(plugins.c.name == "northwind-stock")) == []
+    assert sql(hub_db, select(repos.c.name).where(repos.c.name == "northwind-stock")) == []
+    assert "is an action (plugin), done once, which never rolls back" in message(
+        rollback(client, hub["owner"], proposal_id), 409
+    )
+    assert "is applied already" in message(answer(client, hub["owner"], proposal_id, "approve"), 409)
+    # rejected, another hands nothing
+    other = made_proposal(
+        client, run["agent"], kind="plugin", summary="A second one", set={**NEW_PLUGIN, "name": "northwind-till"}
+    )
+    assert answer(client, hub["owner"], other, "reject").json()["state"] == "rejected"
+    assert run_inbox(client, run) == []
+
+
+def test_builder_plugin_proposal_stays_pending_when_its_approver_is_not_in_the_chat(client, hub, hub_db):
+    run = started(client, hub, "@builder our shops need a stock count plugin")
+    proposal_id = made_proposal(client, run["agent"], kind="plugin", summary="A stock plugin", set=NEW_PLUGIN)
+    project_id = sql(hub_db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    hub_admin = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == ADMIN))[0][0]
+    grants = tables.grants
+    sql(
+        hub_db,
+        update(grants).where(grants.c.project_id == project_id, grants.c.user_id == hub_admin).values(role="admin"),
+    )
+    members = tables.chat_members
+    gone = update(members).where(members.c.chat_id == run["chat"]["id"], members.c.user_id == hub_admin)
+    sql(hub_db, gone.values(removed_at=func.now()))
+    refused = message(answer(client, hub["admin"], proposal_id, "approve"), 409)
+    assert "who is not in that chat" in refused
+    assert shown(client, hub["reader"], proposal_id)["state"] == "pending"
+    assert run_inbox(client, run) == []
+
+
+def test_builder_plugin_install_proposal_is_for_a_hub_admin_and_installs_the_release_once(
+    client, hub, hub_db, tmp_path
+):
+    from tests.hub.test_market import MarketGitHub
+    from tests.plugins.market_samples import LUMEN_REPO, LUMEN_SIGNER, lumen_release
+    from tests.plugins.samples import FakeSigstore
+
+    github = MarketGitHub()
+    github.releases[LUMEN_REPO] = [lumen_release(tmp_path / "v1", "1.0.0")]
+    client.app.state.market_transport = github.transport()
+    client.app.state.plugin_sigstore = FakeSigstore()
+    run = started(client, hub, "@builder install the lumen notes plugin")
+    wrong = proposed(client, run["agent"], kind="plugin_install", summary="Install lumen", set={"repo": "lumen"})
+    assert "repo: OWNER/REPO on GitHub" in wrong
+    proposal_id = made_proposal(
+        client,
+        run["agent"],
+        kind="plugin_install",
+        summary="Install lumen notes",
+        set={"repo": LUMEN_REPO, "tag": "v1.0.0"},
+    )
+    missing = made_proposal(
+        client, run["agent"], kind="plugin_install", summary="Install none", set={"repo": "lumen-labs/none"}
+    )
+    assert shown(client, hub["owner"], proposal_id)["approver"] == "hub_admin"
+    assert notices(hub_db) == [(ADMIN, proposal_id, "plugin_install"), (ADMIN, missing, "plugin_install")]
+    plugins = tables.plugins
+    installed = select(plugins.c.name, plugins.c.installed_version).where(plugins.c.name == "lumen-notes")
+    assert sql(hub_db, installed) == [], "nothing is installed before an approval"
+    assert "needs a hub admin" in message(answer(client, hub["owner"], proposal_id, "approve"), 403)
+    done = answer(client, hub["admin"], proposal_id, "approve")
+    assert done.status_code == 200, done.text
+    assert (done.json()["state"], done.json()["applied_version"], done.json()["opened_run_id"]) == ("applied", 1, None)
+    assert done.json()["outcome"] == (
+        "the hub installed plugin lumen-notes 1.0.0 and trusts its signer for its publisher from now on"
+    )
+    assert sql(hub_db, installed) == [("lumen-notes", "1.0.0")]
+    p = tables.plugin_publishers
+    assert sql(hub_db, select(p.c.publisher, p.c.signer)) == [("lumen", LUMEN_SIGNER)]
+    assert "never rolls back" in message(rollback(client, hub["admin"], proposal_id), 409)
+    failed = answer(client, hub["admin"], missing, "approve").json()
+    assert failed["state"] == "failed" and "has no release" in failed["error"]
+    assert run_inbox(client, run) == [], "an install hands @builder nothing"
+
+
+def test_builder_plugin_listing_proposal_hands_the_run_a_pull_request_or_a_paid_listing(client, hub, hub_db):
+    run = started(client, hub, "@builder list our stock plugin")
+    listing = {"repo": "northwind/northwind-stock", "tag": "v0.1.0", "industries": ["retail"]}
+    wrong = proposed(
+        client, run["agent"], kind="plugin_listing", summary="List it", set={**listing, "price": "free", "seller": "nw"}
+    )
+    assert "seller: a free plugin is sold by no seller" in wrong
+    free = made_proposal(
+        client, run["agent"], kind="plugin_listing", summary="List it free", set={**listing, "price": "free"}
+    )
+    paid = made_proposal(
+        client,
+        run["agent"],
+        kind="plugin_listing",
+        summary="Sell it",
+        set={**listing, "price": 49.5, "seller": "northwind", "categories": ["inventory"]},
+    )
+    assert shown(client, hub["owner"], free)["approver"] == "project_admin"
+    assert run_inbox(client, run) == []
+    for proposal_id in (free, paid):
+        done = answer(client, hub["owner"], proposal_id, "approve")
+        assert done.status_code == 200, done.text
+        assert (done.json()["state"], done.json()["opened_run_id"]) == ("applied", run["spec"]["id"])
+        assert done.json()["outcome"].startswith("@builder took the task to list the plugin in the thread")
+    pull_request, sale = run_inbox(client, run)
+    assert f"@builder {OWNER} approved proposal {free}. List the free plugin of northwind/northwind-stock" in (
+        pull_request
+    )
+    assert "on the market maycuatroi1/evo-agents-market: fork it and open a pull request" in pull_request
+    assert "`evo-agents plugin market-check market.json --releases`" in pull_request
+    assert "for sale at 49.5 USD per hub per month for the seller northwind" in sale
+    assert "`evo-agents hub market listing add PLUGIN --publisher PUBLISHER --signer SIGNER --usd 49.5`" in sale
+    assert "`evo-agents hub market bundle upload PLUGIN FILE --signature FILE`" in sale

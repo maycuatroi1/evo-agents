@@ -5181,9 +5181,10 @@ export interface paths {
         put?: never;
         /**
          * Answer Proposal
-         * @description Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
-         *     it could not (state failed). A hub admin decides one of the branding or the features, a writer of the project one
-         *     of a problem, an admin of the project the others.
+         * @description Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or does its
+         *     action once (plugin, plugin_install, plugin_listing), or keeps why it could not (state failed). A hub admin
+         *     decides one of the branding, the features or an install, a writer of the project one of a problem or an
+         *     opportunity, an admin of the project the others.
          */
         post: operations["answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post"];
         delete?: never;
@@ -5204,7 +5205,7 @@ export interface paths {
         /**
          * Roll Back Proposal
          * @description Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is
-         *     still at the version the proposal made.
+         *     still at the version the proposal made. An action never rolls back (409).
          */
         post: operations["roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post"];
         delete?: never;
@@ -8681,6 +8682,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/market/hub": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hub Identity
+         * @description The hub's stable id, which a seller's licence names.
+         */
+        get: operations["hub_identity_v1_market_hub_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/{source}/{plugin}/buy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Buy
+         * @description Order a paid plugin of a market from its seller; the hub shows the order's number and how to pay it.
+         */
+        post: operations["buy_v1_market__source___plugin__buy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/licenses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Purchases
+         * @description The hub's orders of paid plugins and their licences, the newest first.
+         */
+        get: operations["purchases_v1_market_licenses_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/licenses/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Now
+         * @description Ask the sellers about the open orders now, install what a licence covers, and turn off what lapsed.
+         */
+        post: operations["check_now_v1_market_licenses_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/market/{source}/{plugin}/install": {
         parameters: {
             query?: never;
@@ -8754,6 +8835,292 @@ export interface paths {
          * @description One plugin of one market, with the permissions its latest release asks for.
          */
         get: operations["market_plugin_v1_market__source___plugin__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Seller Info
+         * @description The seller's id and public key, as a market's index lists them, and whether the hub can sell.
+         */
+        get: operations["seller_info_v1_seller_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller/listings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listings
+         * @description What this hub sells, with each listing's versions and the licences of it that cover today.
+         */
+        get: operations["listings_v1_seller_listings_get"];
+        put?: never;
+        /**
+         * Add Listing
+         * @description List plugin ``plugin`` of publisher ``publisher`` for sale, owned by the caller, as a draft until its first
+         *     bundle.
+         */
+        post: operations["add_listing_v1_seller_listings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller/listings/{plugin}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Listing
+         * @description Change a listing's price (for orders placed from now on), its signer, or list or withdraw it.
+         */
+        patch: operations["change_listing_v1_seller_listings__plugin__patch"];
+        trace?: never;
+    };
+    "/v1/seller/listings/{plugin}/bundles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Bundle
+         * @description Upload a signed version of a listed plugin; its first lists the plugin. A version never changes.
+         */
+        post: operations["upload_bundle_v1_seller_listings__plugin__bundles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Orders
+         * @description The orders buying hubs placed, the newest first; ``state`` keeps those in it.
+         */
+        get: operations["orders_v1_seller_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller/orders/{number}/paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Paid
+         * @description Mark an open order paid, with the invoice number, and issue its licence; the buying hub gets it at its next
+         *     check.
+         */
+        post: operations["mark_paid_v1_seller_orders__number__paid_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller/orders/{number}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Order
+         * @description Cancel an open order, which was never paid.
+         */
+        post: operations["cancel_order_v1_seller_orders__number__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller/revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Revenue
+         * @description The revenue of ``month`` (YYYY-MM, this month in UTC when left out) by publisher, split 80/20.
+         */
+        get: operations["revenue_v1_seller_revenue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller/payouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Paid Out
+         * @description Mark a publisher's share of a month paid out; once per publisher and month, after the month is over.
+         */
+        post: operations["mark_paid_out_v1_seller_payouts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller-api/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Info
+         * @description The seller's id and key, and what it sells.
+         */
+        get: operations["info_v1_seller_api_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller-api/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place Order
+         * @description Order a listed plugin for ``months`` months; pay it as ``instructions`` say, then a seller admin marks it paid.
+         */
+        post: operations["place_order_v1_seller_api_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller-api/orders/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Order State
+         * @description An order's state, read with its secret, and its licence once paid.
+         */
+        get: operations["order_state_v1_seller_api_orders__number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller-api/bundles/{plugin}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest Bundle
+         * @description The newest version of a plugin, for a licence of the hub that asks.
+         */
+        get: operations["latest_bundle_v1_seller_api_bundles__plugin__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/seller-api/bundles/{plugin}/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bundle
+         * @description A version of a plugin, for a licence of the hub that asks.
+         */
+        get: operations["bundle_v1_seller_api_bundles__plugin___version__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11995,6 +12362,17 @@ export interface components {
                 [key: string]: number | string;
             };
         };
+        /** Bought */
+        Bought: {
+            purchase: components["schemas"]["Purchase"];
+            /**
+             * Instructions
+             * @description how to pay the order, as the seller says
+             */
+            instructions: string;
+            /** Trusted Publisher */
+            trusted_publisher: boolean;
+        };
         /**
          * Branding
          * @description The branding as the web applies it; what is unset is null or empty, and the web keeps its own there.
@@ -12512,10 +12890,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity" | "plugin" | "plugin_install" | "plugin_listing";
             /**
              * Target
-             * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy
+             * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set
              */
             target: {
                 [key: string]: string;
@@ -12580,6 +12958,16 @@ export interface components {
              */
             run_id: number | null;
             /**
+             * Opened Run Id
+             * @description an approved plugin or plugin_listing: the chat run of @builder that took its task
+             */
+            opened_run_id?: number | null;
+            /**
+             * Outcome
+             * @description an approved action: what approving it did
+             */
+            outcome?: string | null;
+            /**
              * Link
              * @description the hub's message that shows it in its thread; none for a review run's
              */
@@ -12602,6 +12990,21 @@ export interface components {
              * @description the project's build jobs still in the queue, waiting (todo) or running
              */
             jobs: components["schemas"]["Job"][];
+        };
+        /** BundleIn */
+        BundleIn: {
+            /**
+             * Bundle
+             * @description the bundle's bytes (tar.gz), in base64
+             */
+            bundle: string;
+            /**
+             * Signature
+             * @description its signature envelope, as `evo-agents plugin sign` writes it
+             */
+            signature: {
+                [key: string]: unknown;
+            };
         };
         /** BundleTicket */
         BundleTicket: {
@@ -12633,6 +13036,18 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+        };
+        /** BuyIn */
+        BuyIn: {
+            /** Months */
+            months: number;
+            contact: components["schemas"]["Contact"];
+            /**
+             * Trust Publisher
+             * @description trust the signer for the publisher from now on, when the hub does not yet
+             * @default false
+             */
+            trust_publisher: boolean;
         };
         /**
          * CanvasBaseline
@@ -15078,6 +15493,33 @@ export interface components {
             /** @description the latest message of its main line; null for none */
             last_message: components["schemas"]["ChatLastMessage"] | null;
         };
+        /** Checked */
+        Checked: {
+            /**
+             * Checked
+             * @description the open orders the hub asked their sellers about
+             */
+            checked: number;
+            /**
+             * Received
+             * @description the licences received
+             */
+            received: string[];
+            /**
+             * Installed
+             * @description the plugins installed or turned on again
+             */
+            installed: string[];
+            /** Reminded */
+            reminded: string[];
+            /**
+             * Lapsed
+             * @description the plugins turned off
+             */
+            lapsed: string[];
+            /** Errors */
+            errors: string[];
+        };
         /**
          * CheckoutReport
          * @description One checkout of a project's repo on the machine, which the daemon makes worktrees from.
@@ -15397,6 +15839,13 @@ export interface components {
              * @description false when the hub held exactly this config
              */
             changed: boolean;
+        };
+        /** Contact */
+        Contact: {
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
         };
         /**
          * CredentialLease
@@ -17986,6 +18435,19 @@ export interface components {
              */
             reason: string;
         };
+        /** HubIdentity */
+        HubIdentity: {
+            /**
+             * Hub
+             * @description the hub's stable id, which a seller's licence names
+             */
+            hub: string;
+            /**
+             * Url
+             * @description EVO_HUB_PUBLIC_URL, which an order carries
+             */
+            url?: string | null;
+        };
         /** Inbox */
         Inbox: {
             /**
@@ -19240,6 +19702,93 @@ export interface components {
              * @description GET of the agent's avatar on this hub; null: draw the initial
              */
             icon_url: string | null;
+        };
+        /** Listing */
+        Listing: {
+            /** Plugin */
+            plugin: string;
+            /** Publisher */
+            publisher: string;
+            /** Signer */
+            signer: string;
+            /** Owner */
+            owner?: string | null;
+            /** Usd Per Hub Month */
+            usd_per_hub_month: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "listed" | "withdrawn";
+            /**
+             * Bundles
+             * @description its versions for sale, the newest first
+             */
+            bundles: components["schemas"]["ListingBundle"][];
+            /**
+             * Active Licenses
+             * @description the licences of it that cover today
+             */
+            active_licenses: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ListingBundle */
+        ListingBundle: {
+            /** Version */
+            version: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Signed By */
+            signed_by: string;
+            /** Uploaded By */
+            uploaded_by?: string | null;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /** ListingChange */
+        ListingChange: {
+            /** Usd Per Hub Month */
+            usd_per_hub_month?: number | string | null;
+            /** Signer */
+            signer?: string | null;
+            /**
+             * State
+             * @description listed needs a bundle
+             */
+            state?: ("listed" | "withdrawn") | null;
+        };
+        /** ListingIn */
+        ListingIn: {
+            /** Plugin */
+            plugin: string;
+            /** Publisher */
+            publisher: string;
+            /**
+             * Signer
+             * @description sigstore:OWNER/REPO/.github/workflows/FILE.yml or ...
+             */
+            signer: string;
+            /** Usd Per Hub Month */
+            usd_per_hub_month: number | string;
+        };
+        /** Listings */
+        Listings: {
+            /** Listings */
+            listings: components["schemas"]["Listing"][];
         };
         /** Live */
         Live: {
@@ -21930,6 +22479,138 @@ export interface components {
              */
             waits?: boolean | null;
         };
+        /** Order */
+        Order: {
+            /** Number */
+            number: string;
+            /** Plugin */
+            plugin: string;
+            /** Publisher */
+            publisher: string;
+            /** Buyer Hub */
+            buyer_hub: string;
+            /** Buyer Url */
+            buyer_url?: string | null;
+            /** Buyer Name */
+            buyer_name: string;
+            /** Buyer Email */
+            buyer_email: string;
+            /** Months */
+            months: number;
+            /** Usd Per Month */
+            usd_per_month: number;
+            /** Usd Total */
+            usd_total: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "paid" | "cancelled";
+            /**
+             * Payment
+             * @description what the payment provider keeps of it: provider and reference
+             */
+            payment: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Invoice */
+            invoice?: string | null;
+            /** Closed By */
+            closed_by?: string | null;
+            /** Closed At */
+            closed_at?: string | null;
+            /** License Id */
+            license_id?: string | null;
+            /** Valid From */
+            valid_from?: string | null;
+            /**
+             * Valid Until
+             * @description the first day the licence no longer covers
+             */
+            valid_until?: string | null;
+        };
+        /** OrderIn */
+        OrderIn: {
+            /** Plugin */
+            plugin: string;
+            /**
+             * Hub
+             * @description the buying hub's stable id
+             */
+            hub: string;
+            /** Hub Url */
+            hub_url?: string | null;
+            /** Months */
+            months: number;
+            contact: components["schemas"]["Contact"];
+        };
+        /** OrderPaidIn */
+        OrderPaidIn: {
+            /** Invoice */
+            invoice: string;
+        };
+        /** OrderPlaced */
+        OrderPlaced: {
+            /** Number */
+            number: string;
+            /**
+             * Secret
+             * @description what the buying hub reads the order with; shown once, kept only hashed here
+             */
+            secret: string;
+            /** Plugin */
+            plugin: string;
+            /** Publisher */
+            publisher: string;
+            /** Months */
+            months: number;
+            /** Usd Per Month */
+            usd_per_month: number;
+            /** Usd Total */
+            usd_total: number;
+            /**
+             * Instructions
+             * @description how to pay it
+             */
+            instructions: string;
+        };
+        /** OrderState */
+        OrderState: {
+            /** Number */
+            number: string;
+            /** Plugin */
+            plugin: string;
+            /** State */
+            state: string;
+            /** Months */
+            months: number;
+            /** Usd Total */
+            usd_total: number;
+            /**
+             * Instructions
+             * @description how to pay it, while it is open
+             */
+            instructions?: string | null;
+            /**
+             * License
+             * @description the licence's token, once paid
+             */
+            license?: string | null;
+            /** Valid From */
+            valid_from?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
+        };
+        /** Orders */
+        Orders: {
+            /** Orders */
+            orders: components["schemas"]["Order"][];
+        };
         /**
          * OrgAutonomy
          * @description Every seat's effective mode of each class (its ceiling, its units' and the instance's) and the stops that
@@ -22812,6 +23493,29 @@ export interface components {
             repo: string;
             /** Path */
             path: string;
+        };
+        /** Payout */
+        Payout: {
+            /** Publisher Usd */
+            publisher_usd: number;
+            /** Paid By */
+            paid_by?: string | null;
+            /**
+             * Paid At
+             * Format: date-time
+             */
+            paid_at: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** PayoutIn */
+        PayoutIn: {
+            /** Month */
+            month: string;
+            /** Publisher */
+            publisher: string;
+            /** Note */
+            note?: string | null;
         };
         /**
          * PinnedPack
@@ -27294,6 +27998,62 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** Purchase */
+        Purchase: {
+            /** Id */
+            id: number;
+            /** Seller */
+            seller: string;
+            /** Seller Url */
+            seller_url: string;
+            /** Plugin */
+            plugin: string;
+            /** Publisher */
+            publisher: string;
+            /** Number */
+            number: string;
+            /** Months */
+            months: number;
+            /** Usd Total */
+            usd_total: number;
+            /**
+             * State
+             * @description open until the seller marks it paid, paid, or cancelled
+             */
+            state: string;
+            /** Placed By */
+            placed_by?: string | null;
+            /**
+             * Placed At
+             * Format: date-time
+             */
+            placed_at: string;
+            /** Checked At */
+            checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** License Id */
+            license_id?: string | null;
+            /** Valid From */
+            valid_from?: string | null;
+            /**
+             * Valid Until
+             * @description the first day the licence no longer covers
+             */
+            valid_until?: string | null;
+            /**
+             * License State
+             * @description pending, active, grace or lapsed, today
+             */
+            license_state?: string | null;
+        };
+        /** Purchases */
+        Purchases: {
+            /** Hub */
+            hub: string;
+            /** Purchases */
+            purchases: components["schemas"]["Purchase"][];
+        };
         /** PushConfig */
         PushConfig: {
             /**
@@ -28514,6 +29274,37 @@ export interface components {
         Results: {
             /** Items */
             items: components["schemas"]["Found"][];
+        };
+        /** Revenue */
+        Revenue: {
+            /** Month */
+            month: string;
+            /** Publishers */
+            publishers: components["schemas"]["RevenueLine"][];
+            /** Gross Usd */
+            gross_usd: number;
+            /** Publisher Usd */
+            publisher_usd: number;
+            /** Platform Usd */
+            platform_usd: number;
+        };
+        /** RevenueLine */
+        RevenueLine: {
+            /** Publisher */
+            publisher: string;
+            /** Orders */
+            orders: number;
+            /** Gross Usd */
+            gross_usd: number;
+            /**
+             * Publisher Usd
+             * @description the publisher's 80%, rounded down to the cent
+             */
+            publisher_usd: number;
+            /** Platform Usd */
+            platform_usd: number;
+            /** @description when a hub admin marked the publisher's share paid out */
+            paid_out?: components["schemas"]["Payout"] | null;
         };
         /** ReviewItem */
         ReviewItem: {
@@ -30980,6 +31771,84 @@ export interface components {
             error_at?: string | null;
             /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
             update_now?: components["schemas"]["UpdateNowReport"] | null;
+        };
+        /** SellerApiInfo */
+        SellerApiInfo: {
+            /** Seller */
+            seller: string;
+            /** Key Id */
+            key_id: string;
+            /** Public Key */
+            public_key: string;
+            /** Listings */
+            listings: components["schemas"]["SellerListing"][];
+        };
+        /** SellerBundle */
+        SellerBundle: {
+            /** Plugin */
+            plugin: string;
+            /** Version */
+            version: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Signature */
+            signature: {
+                [key: string]: unknown;
+            };
+            /**
+             * Bundle
+             * @description the bundle's bytes, in base64
+             */
+            bundle: string;
+        };
+        /** SellerInfo */
+        SellerInfo: {
+            /**
+             * Seller
+             * @description EVO_HUB_SELLER_ID: the seller's id in the markets that list it
+             */
+            seller: string | null;
+            /**
+             * Key Id
+             * @description the id of the key that signs the licences, as the market's index lists it
+             */
+            key_id: string | null;
+            /**
+             * Public Key
+             * @description its public key, 32 bytes in base64; the private one is never shown
+             */
+            public_key: string | null;
+            /**
+             * Selling
+             * @description whether the hub can sell: the id and the key are both set
+             */
+            selling: boolean;
+            /**
+             * Payment Instructions
+             * @description what a buying hub is told to pay an order by
+             */
+            payment_instructions: string;
+            /**
+             * Signal Project
+             * @description EVO_HUB_SELLER_SIGNAL_PROJECT
+             */
+            signal_project: string | null;
+        };
+        /** SellerListing */
+        SellerListing: {
+            /** Plugin */
+            plugin: string;
+            /** Publisher */
+            publisher: string;
+            /** Usd Per Hub Month */
+            usd_per_hub_month: number;
+            /**
+             * Version
+             * @description its newest version for sale
+             */
+            version?: string | null;
         };
         /**
          * SentFile
@@ -34245,7 +35114,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "today";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -34259,7 +35128,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "today";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -69112,6 +69981,239 @@ export interface operations {
             };
         };
     };
+    hub_identity_v1_market_hub_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HubIdentity"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    buy_v1_market__source___plugin__buy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the market source's id, as GET /v1/market/sources gives it */
+                source: number;
+                /** @description the plugin's id, as the market lists it */
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bought"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    purchases_v1_market_licenses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Purchases"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_now_v1_market_licenses_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Checked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     install_from_market_v1_market__source___plugin__install_post: {
         parameters: {
             query?: never;
@@ -69387,6 +70489,1054 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seller_info_v1_seller_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerInfo"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    listings_v1_seller_listings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Listings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_listing_v1_seller_listings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Listing"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_listing_v1_seller_listings__plugin__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the listed plugin's id */
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListingChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Listing"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_bundle_v1_seller_listings__plugin__bundles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the listed plugin's id */
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Listing"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    orders_v1_seller_orders_get: {
+        parameters: {
+            query?: {
+                state?: ("open" | "paid" | "cancelled") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Orders"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_paid_v1_seller_orders__number__paid_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ORD-YYYY-NNNN */
+                number: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderPaidIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_order_v1_seller_orders__number__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ORD-YYYY-NNNN */
+                number: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revenue_v1_seller_revenue_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revenue"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_paid_out_v1_seller_payouts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayoutIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revenue"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    info_v1_seller_api_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerApiInfo"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    place_order_v1_seller_api_orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderPlaced"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    order_state_v1_seller_api_orders__number__get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Evo-Order-Secret": string;
+            };
+            path: {
+                number: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    latest_bundle_v1_seller_api_bundles__plugin__get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Evo-Hub-Id": string;
+                Authorization?: string | null;
+            };
+            path: {
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerBundle"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    bundle_v1_seller_api_bundles__plugin___version__get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Evo-Hub-Id": string;
+                Authorization?: string | null;
+            };
+            path: {
+                plugin: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerBundle"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

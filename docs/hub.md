@@ -2916,6 +2916,7 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 | `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
 | `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` and the worker's `/v1/worker/kg/{project}...` answer 404, the `kg_*` tools of `/mcp` return that error, and the heartbeat names the project to no worker for its graph |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
+| `seller` | the hub | off by default; off means no Selling page, `/v1/seller...` and the public `/v1/seller-api/...` answer 404, and the hub sells no plugin (`docs/market.md`, section Selling plugins) |
 | `canvas`, `srs`, `tasks` | the hub or a project | off by default; off means no page of it in the project's menu, its routes under `/v1/x/<name>/{project}...` answer 404, its `<name>__*` tools of `/mcp` return that error, and its events, jobs and sources of the knowledge graph skip the project (`docs/plugins.md`, Core plugins) |
 
 A feature is on until a layer turns it off, but for canvas, srs and tasks, plugins until migration 0147: each is off
@@ -3220,6 +3221,10 @@ environment, never in a committed file.
 | `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
 | `EVO_HUB_PLUGIN_PUBLISHERS_LOCKED` | api | `true` refuses every publisher signer a hub admin would trust from the market or a GitHub release, so the hub trusts only `EVO_HUB_PLUGIN_PUBLISHERS`; `false` by default (`docs/market.md`) |
 | `EVO_HUB_MARKET_DEFAULT_SOURCE` | api | the operator's market, a GitHub `OWNER/REPO` whose `market.json` the hub lists and its admins cannot remove: `maycuatroi1/evo-agents-market` when unset, none when `none` (`docs/market.md`) |
+| `EVO_HUB_SELLER_ID` | api, worker | the hub's id as a seller of plugins, the `sellers[].id` of the markets that list it (`docs/market.md`, Selling plugins); with the key below, the feature `seller` can issue licences |
+| `EVO_HUB_SELLER_KEY` | api, worker | the Ed25519 key the seller signs licences with, 32 bytes in base64, which `evo-agents hub market seller-key` writes to a file; a secret, never printed. The market's index lists its public key and key id |
+| `EVO_HUB_SELLER_PAYMENT_INSTRUCTIONS` | api, worker | what a buying hub is told to pay an order by, such as the seller's bank account, `\n` for a new line; the order number is the reference. Unset, a generic line |
+| `EVO_HUB_SELLER_SIGNAL_PROJECT` | api, worker | the project the seller writes its signals `market.active_licenses` and `market.revenue_usd_month` to; unset, none |
 | `EVO_HUB_PLUGIN_HOST_URL` | api, worker | where the api reaches the plugin host, such as `http://evo-agents-hub-plugins:8090`; with the token below, both or the api runs no isolated backend (section Isolated backends) |
 | `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
 | `EVO_HUB_GATEWAY_SECRET` | api, gateway | the root secret of the model gateway, at least 32 random characters: the `gateway` service derives OmniRoute's secrets and dashboard password from it and the api signs in with the same password; unset, the gateway is off and the hub runs without it (section Model gateway). The worker does not get it |

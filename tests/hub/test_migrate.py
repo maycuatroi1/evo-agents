@@ -151,6 +151,7 @@ TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0151
 TABLES |= pg.MARKET_TABLES  # migration 0154
 TABLES |= pg.PUSH_TABLES  # migration 0156
 TABLES |= pg.TODAY_TABLES  # migration 0158
+TABLES |= pg.SELLER_TABLES  # migration 0159
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -241,8 +242,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_ninety_tables(hub_db):
-    assert len(TABLES) == 190  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_ninety_six_tables(hub_db):
+    assert len(TABLES) == 196  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4097,3 +4098,145 @@ def test_0158_keeps_the_seen_mark_and_summary_day_of_a_member_takes_the_notice_t
         with pytest.raises(errors.CheckViolation):
             conn.execute(insert(n).values({**notice, "notice_kind": "today"}))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0158") :]
+
+
+def test_0159_adds_the_hub_identity_and_the_tables_of_paid_plugins_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0158")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0159")
+    assert pg.SELLER_TABLES <= tables(hub_db)
+    t = hub_tables
+    identity, listings, bundles, orders = t.hub_identity, t.market_listings, t.market_bundles, t.market_orders
+    payouts, purchases = t.market_payouts, t.market_purchases
+    hub = "hub_" + "a" * 32
+    signer = "sigstore:northwind/ledger/.github/workflows/ci.yml"
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(identity).values(hub_id=hub))
+        listing = {"plugin": "northwind-ledger", "publisher": "northwind", "signer": signer, "owner_id": ids["user"]}
+        listing_id = one(conn, insert(listings).values({**listing, "usd_per_hub_month": 49.5}).returning(listings.c.id))
+        assert query(hub_db, select(listings.c.state)) == [("draft",)]
+        bundle = {
+            "listing_id": listing_id,
+            "version": "1.0.0",
+            "sha256": "b" * 64,
+            "size": 10,
+            "signature": {"kind": "sigstore"},
+            "signed_by": "x",
+            "uploaded_by": ids["user"],
+        }
+        conn.execute(insert(bundles).values(bundle))
+        order = {
+            "number": "ORD-2026-0001",
+            "listing_id": listing_id,
+            "buyer_hub": hub,
+            "buyer_name": "Ada",
+            "buyer_email": "ada@example.com",
+            "months": 2,
+            "usd_per_month": 49.5,
+            "usd_total": 99,
+            "secret_hash": "c" * 64,
+        }
+        conn.execute(insert(orders).values(order))
+        licence = {
+            "license_id": "lic_" + "d" * 16,
+            "valid_from": date(2026, 10, 25),
+            "valid_until": date(2026, 12, 25),
+            "key_id": "ed25519:" + "e" * 16,
+            "token": "x.y",
+        }
+        paid = {"state": "paid", "invoice": "INV-1", "closed_by": ids["user"], "closed_at": func.now()}
+        conn.execute(update(orders).values(**paid, **licence, issued_at=func.now()))
+        payout = {"month": date(2026, 10, 1), "publisher": "northwind", "paid_by": ids["user"]}
+        conn.execute(insert(payouts).values({**payout, "gross_usd": 99, "publisher_usd": 79.2, "platform_usd": 19.8}))
+        purchase = {
+            "seller": "northwind",
+            "seller_url": "https://licenses.northwind.test",
+            "plugin": "northwind-ledger",
+            "publisher": "northwind",
+            "signer": signer,
+            "number": "ORD-2026-0001",
+            "months": 2,
+            "usd_total": 99,
+            "secret": {"ciphertext": "x"},
+            "placed_by": ids["user"],
+        }
+        conn.execute(insert(purchases).values(purchase))
+    bad = (
+        (identity, {"hub_id": hub}),  # a second identity
+        (identity, {"singleton": False, "hub_id": hub}),
+        (listings, {**listing, "plugin": "other", "usd_per_hub_month": 0}),
+        (listings, {**listing, "usd_per_hub_month": 5}),  # listed twice
+        (listings, {**listing, "plugin": "other", "usd_per_hub_month": 5, "state": "sold"}),
+        (bundles, bundle),  # the same version twice
+        (bundles, {**bundle, "version": "2.0", "sha256": "b" * 64}),
+        (orders, {**order, "number": "ORD-2026-0002", "months": 37}),
+        (orders, {**order, "number": "ORD-2026-0002", "buyer_hub": "hub_1"}),
+        (orders, {**order, "number": "2026-0002"}),
+        (orders, order),  # the same number twice
+        (orders, {**order, "number": "ORD-2026-0002", **paid}),  # paid without a licence
+        (orders, {**order, "number": "ORD-2026-0002", "state": "cancelled"}),  # closed by nobody
+        (orders, {**order, "number": "ORD-2026-0002", "license_id": "lic_" + "f" * 16}),  # a licence in part
+        (payouts, {**payout, "month": date(2026, 10, 2), "gross_usd": 1, "publisher_usd": 1, "platform_usd": 0}),
+        (payouts, {**payout, "month": date(2026, 9, 1), "gross_usd": 2, "publisher_usd": 1, "platform_usd": 0}),
+        (payouts, {**payout, "gross_usd": 1, "publisher_usd": 1, "platform_usd": 0}),  # the month paid out already
+        (purchases, purchase),  # the same order twice
+        (purchases, {**purchase, "number": "ORD-2026-0002", "state": "paid"}),  # paid without a licence
+    )
+    for target, values in bad:
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+            conn.execute(insert(target).values(values))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(delete(listings))  # a listing with orders stays
+    move_to(hub_db, "0158", down=True)
+    assert not pg.SELLER_TABLES & tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0159") :]
+
+
+def test_0160_takes_proposals_of_a_plugin_its_install_and_its_listing_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0159")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    p, n = t.builder_proposals, t.notifications
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0143 knows no plugin proposal
+        conn.execute(insert(p).values({**proposal, "kind": "plugin"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0160")
+    assert {"opened_run_id", "outcome"} <= columns(hub_db, "builder_proposals")
+    decided = {"decided_by": ids["user"], "decided_at": func.now(), "state": "applied", "applied_version": 1}
+    notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "Plugin"}
+    with live.connect(hub_db) as conn:
+        for bad in (
+            {"kind": "secrets"},
+            {"kind": "plugin", **decided, "outcome": ""},
+            {"kind": "plugin", "outcome": "x" * 2001},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(p).values({**proposal, **bad}))
+        conn.execute(insert(p).values({**proposal, "kind": "plugin", **decided, "outcome": "@builder took the task"}))
+        conn.execute(insert(p).values({**proposal, "kind": "plugin_install"}))
+        conn.execute(insert(p).values({**proposal, "kind": "plugin_listing"}))
+        conn.execute(insert(p).values({**proposal, "kind": "policy"}))
+        for number, kind in enumerate(("plugin", "plugin_install", "plugin_listing", "policy"), 1):
+            conn.execute(insert(n).values({**notice, "details": {"proposal": number, "kind": kind}}))
+    assert query(hub_db, select(p.c.kind).order_by(p.c.id)) == [
+        ("plugin",),
+        ("plugin_install",),
+        ("plugin_listing",),
+        ("policy",),
+    ]
+    # Going back drops the proposals of the three kinds with their notices, and the two columns.
+    move_to(hub_db, "0159", down=True)
+    assert not {"opened_run_id", "outcome"} & columns(hub_db, "builder_proposals")
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("policy",)]
+    assert query(hub_db, select(p.c.kind)) == [("policy",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+        conn.execute(delete(p))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0160") :]

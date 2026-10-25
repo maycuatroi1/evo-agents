@@ -5,6 +5,8 @@ import {
   Ban,
   CircleCheck,
   CircleDashed,
+  CircleX,
+  Clock,
   Cpu,
   KeyRound,
   PackageCheck,
@@ -18,6 +20,7 @@ import { useMoney } from "@/components/data/facts";
 import { Tag } from "@/components/data/identifier";
 import { type StatusLook, StatusPill, type StatusPillProps } from "@/components/status/status-badge";
 
+import { licenseTone } from "./model";
 import type { MarketPlugin, MarketStatus } from "./queries";
 
 /**
@@ -86,5 +89,22 @@ export function NoInstallReason({ plugin }: { plugin: MarketPlugin }) {
       )}
       <span className="min-w-0 [overflow-wrap:anywhere]">{reason}</span>
     </p>
+  );
+}
+
+const LICENSE_ICONS = { success: CircleCheck, attention: TriangleAlert, danger: CircleX, neutral: Clock } as const;
+
+/** A purchase's licence as a pill: pending until paid, active, in its grace week, lapsed, or the order cancelled. */
+export function LicenseBadge({ state }: { state: string }) {
+  const t = useTranslations("market.licenses.state");
+  const tone = licenseTone(state);
+  const known = ["pending", "active", "grace", "lapsed", "open", "paid", "cancelled"].includes(state);
+  return (
+    <StatusPill
+      look={{ tone, icon: LICENSE_ICONS[tone] }}
+      label={known ? t(state as "pending") : state}
+      data-license-state={state}
+      data-testid="market-license-state"
+    />
   );
 }
