@@ -25172,6 +25172,213 @@
           }
         }
       },
+      "/v1/worker/skills": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Worker Skills",
+          "description": "The global skills the owner of the pool node whose token made the request reads, each with its latest\nversion: what ``hub skills sync`` writes on a machine without a project.",
+          "operationId": "worker_skills_v1_worker_skills_get",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Skill"
+                    },
+                    "title": "Response Worker Skills V1 Worker Skills Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/skills/global/{name}/bundle": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Worker Bundle",
+          "description": "A short-lived presigned GET of a global skill's bundle for a pool node, as GET /v1/skills/global/{name}/bundle\nanswers its owner.",
+          "operationId": "worker_bundle_v1_worker_skills_global__name__bundle_get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                "description": "the skill's name, its directory in every runtime",
+                "title": "Name"
+              },
+              "description": "the skill's name, its directory in every runtime"
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "default: the latest",
+                "title": "Version"
+              },
+              "description": "default: the latest"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BundleTicket"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/config": {
         "put": {
           "tags": [
