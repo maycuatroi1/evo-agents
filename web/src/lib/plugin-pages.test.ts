@@ -18,6 +18,7 @@ function plugin(name: string, extra: Partial<ProjectPlugin> = {}): ProjectPlugin
     state: "installed",
     disabled_reason: null,
     enabled: true,
+    builtin: false,
     permissions: [],
     granted: [],
     pending: [],

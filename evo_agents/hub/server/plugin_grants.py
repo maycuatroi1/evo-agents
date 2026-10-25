@@ -14,6 +14,10 @@ rows and gets nothing. ``granted`` of the API says the same (``plugin_calls.effe
 bridge go by what the hub checks: an upgrade that asks for less leaves the rest of the row in the table, not in the
 grant.
 
+canvas, srs and tasks are features of the hub (``plugins.builtin``), listed here as before with ``builtin`` true: the
+project's layer of its features turns each on (``evo_agents.hub.feature_rule``), and while on it may do what it asks
+for. Enabling or disabling one here writes that layer, for a project admin, as enabling the plugin did.
+
 A core plugin of the hub's image that runs hub-wide (``evo_agents.plugins.manifest.is_per_project``: Telegram) is
 installed in the store and is no project's plugin: a project's list leaves it out, and reading, enabling, disabling or
 configuring it in a project is a 404 that says so.
@@ -34,15 +38,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import features, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.feature_rule import FEATURES
 from evo_agents.hub.plugin_calls import (  # noqa: F401 (where the routes and the tokens read them, as before)
     asked_for,
     effective_grant,
     enabled_plugins,
     enabled_query,
+    enablements,
 )
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server.plugin_pages import PluginPage, pages_of
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
@@ -72,6 +78,11 @@ class ProjectPlugin(BaseModel):
     state: Literal[PROJECT_STATES] = Field(description="disabled: the hub turned it off, and it does nothing anywhere")
     disabled_reason: str | None
     enabled: bool
+    builtin: bool = Field(
+        False,
+        description="a feature of the hub (canvas, srs, tasks), not a plugin of the store: the project's features turn "
+        "it on and off, and it may do what it asks for while on",
+    )
     permissions: list[PluginPermission] = Field(description="what the installed version asks for, granted or not")
     granted: list[str] = Field(
         description="what it may do in the project: what an admin of the project granted it that the installed version "
@@ -116,7 +127,7 @@ def check_admin(access: ProjectAccess, doing: str) -> None:
 
 def _query(project_id: int):
     """The installed plugins, by name, with what project ``project_id`` enabled and granted."""
-    p, v, pp = tables.plugins, tables.plugin_versions, tables.project_plugins
+    p, v, pp, e = tables.plugins, tables.plugin_versions, tables.project_plugins, enablements()
     enabler, granter = tables.users.alias("enabler"), tables.users.alias("granter")
     return (
         select(
@@ -125,16 +136,18 @@ def _query(project_id: int):
             p.c.publisher,
             p.c.installed_version,
             p.c.disabled_reason,
+            p.c.builtin,
             v.c.manifest,
             v.c.sha256,
-            pp.c.plugin_id.label("enabled_id"),
-            pp.c.permissions,
+            e.c.plugin_id.label("enabled_id"),
+            e.c.permissions,
             enabler.c.login.label("enabled_by"),
             pp.c.enabled_at,
             granter.c.login.label("granted_by"),
             pp.c.granted_at,
         )
         .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
+        .outerjoin(e, (e.c.plugin_id == p.c.id) & (e.c.project_id == project_id))
         .outerjoin(pp, (pp.c.plugin_id == p.c.id) & (pp.c.project_id == project_id))
         .outerjoin(enabler, enabler.c.id == pp.c.enabled_by)
         .outerjoin(granter, granter.c.id == pp.c.granted_by)
@@ -157,6 +170,7 @@ def view(row, project: str, secret: str | None) -> ProjectPlugin:
         state="disabled" if row.disabled_reason else "installed",
         disabled_reason=row.disabled_reason,
         enabled=enabled,
+        builtin=row.builtin,
         permissions=[
             PluginPermission(name=name, text=PERMISSION_TEXT.get(name, name), granted=name in granted) for name in asked
         ],
@@ -245,6 +259,8 @@ async def enable(conn: AsyncConnection, user: Principal, access: ProjectAccess, 
             409, f"plugin {name} is turned off on this hub ({row.disabled_reason}); a hub admin upgrades it first"
         )
     asked = check_grant(row, wanted)
+    if row.builtin:
+        return await _turn_feature(conn, user, access, row, on=True)
     pp = tables.project_plugins
     grant = {"permissions": asked, "granted_by": user.user_id, "granted_at": func.now()}
     granted = f"{_target(access, row)} permissions={','.join(asked) or '-'}"
@@ -267,10 +283,31 @@ async def disable(conn: AsyncConnection, user: Principal, access: ProjectAccess,
     row = await installed_row(conn, access, name, lock=True)
     if row.enabled_id is None:
         raise HTTPException(409, f"plugin {name} is not enabled for project {access.name}")
+    if row.builtin:
+        await _turn_feature(conn, user, access, row, on=False)
+        return
     pp = tables.project_plugins
     await conn.execute(delete(pp).where((pp.c.project_id == access.project_id) & (pp.c.plugin_id == row.id)))
     await _record(conn, user, access, audit.PLUGIN_PROJECT_DISABLE, _target(access, row))
     log.info("plugin disabled", extra={"project": access.name, "plugin": name})
+
+
+async def _turn_feature(conn: AsyncConnection, user: Principal, access: ProjectAccess, row, *, on: bool) -> bool:
+    """Turn the feature of the hub ``row`` names (canvas, srs, tasks) on or off in the project's layer of its features,
+    as enabling or disabling it as a plugin did before it became one; False when it is on already. It may do what it
+    asks for while on, with no grant of its own to keep."""
+    if on and row.enabled_id is not None:
+        return False
+    place = hub_settings.Place(FEATURES, access.project_id, access.name)
+    await hub_settings.apply(
+        conn, user, place, {row.name: on}, [], None, lambda sets, after: features.problems(sets, features.PROJECT)
+    )
+    if on:
+        await _record(conn, user, access, audit.PLUGIN_PROJECT_ENABLE, _target(access, row))
+    else:
+        await _record(conn, user, access, audit.PLUGIN_PROJECT_DISABLE, _target(access, row))
+    log.info("feature turned %s", "on" if on else "off", extra={"project": access.name, "feature": row.name})
+    return True
 
 
 # What a plugin may do

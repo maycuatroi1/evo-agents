@@ -10,7 +10,7 @@ tokens (0066: oauth_sealed, oauth_nonce, oauth_key_id, all null for any other ac
 has the defaults. account_policies holds a member's policy for a project; none means DEFAULT_POLICY. run_accounts
 holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
 
-provider_accounts (0147) holds what a provider account calls, for its secret of kind provider, whose sealed value is
+provider_accounts (0148) holds what a provider account calls, for its secret of kind provider, whose sealed value is
 its API key (``evo_agents.hub.server.provider_accounts``): the catalog id of its provider, its base URL, its API
 format and the names of its models. Its weight, priority, pause and cooldown are its ``accounts`` row, as for any
 account.
@@ -78,7 +78,7 @@ def email_table(metadata: MetaData) -> Table:
 
 def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table]:
     """(accounts, account_policies, run_accounts, user_emails, provider_accounts), added to ``metadata`` (0027, 0066,
-    0068, 0147)."""
+    0068, 0148)."""
     accounts = Table(
         "accounts",
         metadata,

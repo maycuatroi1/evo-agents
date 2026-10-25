@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { PROJECT_NAME } from "@/lib/queries";
 
-/** A task's ref as the hub takes it in a path: `T-42` (a prefix of the config, evo_agents.core_plugins.tasks.PREFIX), or `42`. */
+/** A task's ref as the hub takes it in a path: `T-42` (a prefix of the config, evo_agents.hub.server.tasks.PREFIX), or `42`. */
 const REF = /^(?:[A-Z][A-Z0-9]{0,9}-)?\d{1,9}$/;
 
 /** The project a route of the plugin tasks names, decoded; a 404 for a name the hub would refuse. */

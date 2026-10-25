@@ -9,7 +9,7 @@ keeps it apart from any plugin's. It answers two items, each a Document of the g
   with its number and never its code, whose text is its statement, who is hurt, when it happens, how they cope today,
   its status (with the reason of a closed one), its rank and its metric, so search finds a problem by what it says.
   The fragment ``defines`` the Problem node ``problem:P-3``, which holds the code alone, as a claim's node does
-  (``evo_agents.core_plugins.canvas.kg``).
+  (``evo_agents.hub.server.canvas.kg``).
 - ``plugin.hub_problems:doc:goals``, titled Goals: a fragment per goal whose newest revision answers a problem, keyed by
   its code (``G-1``), with its statement and status. The fragment ``defines`` the Goal node ``goal:G-1``, which
   ``addresses`` the problem.
@@ -20,7 +20,7 @@ keeps it apart from any plugin's. It answers two items, each a Document of the g
   the other items it carries the project's default label.
 
 A plan whose body names a problem ``addresses`` it (``evo_agents.kg.pipeline.stages``), and so does a claim that links
-one (``evo_agents.core_plugins.canvas.kg``). The identifier PROBLEM_PATTERN links a mention of a problem's code in any
+one (``evo_agents.hub.server.canvas.kg``). The identifier PROBLEM_PATTERN links a mention of a problem's code in any
 source of the project to its node. A project without a problem gets no item, so its graph builds as before.
 """
 

@@ -1,4 +1,4 @@
-"""What a version needs reviewed and which reviews carry to a later version (``evo_agents.core_plugins.srs.
+"""What a version needs reviewed and which reviews carry to a later version (``evo_agents.hub.server.srs.
 use_case_reviews``), on ``tests/hub/fixtures/srs/demo-shop-srs.md``: the use cases a version adds, changes (itself or a
 business rule under it) or drops since the version approved last, and the reviews that stay while a use case reads the
 same."""
@@ -14,9 +14,9 @@ if not pg.DSN:
 
 from sqlalchemy import func, select
 
-from evo_agents.core_plugins.srs.doc import Document, Item
-from evo_agents.core_plugins.srs.use_case_reviews import needed
 from evo_agents.hub import tables
+from evo_agents.hub.server.srs.doc import Document, Item
+from evo_agents.hub.server.srs.use_case_reviews import needed
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import client, hub, imported, item, members, saved, srs_core, submitted, version  # noqa: F401
 from tests.hub.test_ba_agent import review as whole

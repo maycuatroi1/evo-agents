@@ -53,7 +53,7 @@ async def hand_task(
     in the caller's transaction, for the person ``for_id`` (the owner of the item's goal): the task run, or
     ``type_refused`` with why the hub handed none."""
     # Imported here: task_dispatch's own imports go round a cycle when it is the first module of the server a process
-    # loads (evo_agents.core_plugins.srs.auto_tasks says the same).
+    # loads (evo_agents.hub.server.srs.auto_tasks says the same).
     from evo_agents.hub.server.task_dispatch import hand_own_task
 
     plugin, name = AGENT_OF[kind]

@@ -1,4 +1,4 @@
-"""The tasks of an approved version (``evo_agents.core_plugins.srs.auto_tasks``), as criterion a8 of plan
+"""The tasks of an approved version (``evo_agents.hub.server.srs.auto_tasks``), as criterion a8 of plan
 srs-conflicts-and-tasks names it.
 
 When a version is approved in a project that enables the plugin tasks, the hub compares it with the version approved
@@ -27,8 +27,8 @@ if not pg.DSN:
 
 from sqlalchemy import select
 
-from evo_agents.core_plugins.srs import auto_tasks
 from evo_agents.hub import tables
+from evo_agents.hub.server.srs import auto_tasks
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, members and srs_core are fixtures)
     CHI,

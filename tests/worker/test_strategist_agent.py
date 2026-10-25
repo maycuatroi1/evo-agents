@@ -1,4 +1,4 @@
-"""@strategist on the worker (``evo_agents.core_plugins.canvas``), as criterion a5 of the plan living-lean-canvas names
+"""@strategist on the worker (``evo_agents.hub.server.canvas``), as criterion a5 of the plan living-lean-canvas names
 it: the manifest of the core plugin canvas declares the agent type strategist, mentioned by the project's writers,
 whose chat runs go to the workers of its run_as, with the pack canvas/strategist and the plugin's tools; the bundle the
 hub builds from the package (``plugins.core.image_bundle``) is a pack the worker builds as any other, canvas/strategist
@@ -20,7 +20,7 @@ from evo_agents.plugins.bundle import Bundle
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from evo_agents.worker import packs
 
-CANVAS = EntryPoint("canvas", "evo_agents.core_plugins.canvas:MANIFEST", ENTRY_POINT_GROUP)
+CANVAS = EntryPoint("canvas", "evo_agents.hub.server.canvas:MANIFEST", ENTRY_POINT_GROUP)
 PACK = "packs/strategist"
 TOOLS = ("read", "signals", "edit", "undo", "propose", "evidence", "judge")
 
@@ -62,7 +62,7 @@ def test_strategist_agent_type_of_canvas_is_mentioned_by_writers_and_runs_on_the
     assert [item["name"] for item in manifest.contributions("agent_packs")] == ["strategist"]
     refs = manifest.python_refs("mcp_tools")
     assert refs == {
-        name: f"evo_agents.core_plugins.canvas.agent:{'find_signals' if name == 'signals' else name}" for name in TOOLS
+        name: f"evo_agents.hub.server.canvas.agent:{'find_signals' if name == 'signals' else name}" for name in TOOLS
     }
     schemas = {item["name"]: item["input_schema"] for item in manifest.contributions("mcp_tools")}
     change = schemas["edit"]["properties"]["changes"]["items"]["properties"]
@@ -75,8 +75,8 @@ def test_strategist_agent_type_of_canvas_is_mentioned_by_writers_and_runs_on_the
     assert verdict["enum"] == ["supports", "contradicts", "irrelevant"]
     jobs = [(job["name"], job["cron"], job["python"]) for job in manifest.contributions("jobs")]
     assert jobs == [
-        ("value_check", "11 * * * *", "evo_agents.core_plugins.canvas.value_check:run"),
-        ("baseline", "*/15 * * * *", "evo_agents.core_plugins.canvas.schedule:run"),
+        ("value_check", "11 * * * *", "evo_agents.hub.server.canvas.value_check:run"),
+        ("baseline", "*/15 * * * *", "evo_agents.hub.server.canvas.schedule:run"),
     ]
     assert "canvas_baselines" in [item["name"] for item in manifest.contributions("tables")]
 
