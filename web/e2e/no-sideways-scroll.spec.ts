@@ -284,7 +284,7 @@ for (const width of WIDTHS) {
     await runToReview(live, run.id);
     await uploadDiff(live, run.id, `diff --git a/${LONG}/${LONG}.ts b/${LONG}/${LONG}.ts\n--- a/${LONG}/${LONG}.ts\n+++ b/${LONG}/${LONG}.ts\n@@ -1 +1 @@\n-${LONG}${LONG}\n+${LONG}${LONG}${LONG}\n`);
     await noSidewaysScroll(page, [width], [
-      { path: `/p/${project}/runs`, ready: shown("runs-table") },
+      { path: `/p/${project}/runs?state=all`, ready: shown("runs-table") },
       { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
       { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
       {
