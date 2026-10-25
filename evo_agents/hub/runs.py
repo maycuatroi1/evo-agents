@@ -75,7 +75,7 @@ from datetime import datetime, timedelta
 from evo_agents.hub.autonomy_card import DECISION_CATEGORIES as DECISION_CATEGORIES
 from evo_agents.hub.autonomy_card import DECISION_CATEGORY_TEXT as DECISION_CATEGORY_TEXT
 from evo_agents.hub.autonomy_card import PROMPTED_DECISION_CATEGORIES as PROMPTED_DECISION_CATEGORIES
-from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, with_card
+from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, ships, with_card
 from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.record_rule import record_rule
@@ -850,13 +850,33 @@ def build_prompt(plan: dict, step: dict, repo: dict | None) -> str:
 # The prompt of a plan run
 
 
-_PUSH_RULE = (
-    "- Commit in each repo's worktree, on the branch it is on. You may push, and merge into, the branch the plan "
-    "names for a repo, even when it is the repo's default branch; never push or merge into a branch the plan does "
-    "not name for that repo, never force-push, and never rewrite history you pushed. After each push or merge "
-    "into a repo's default branch that you make yourself (the pushes of `evo-agents worker step` send their own "
-    "notice), run `evo-agents worker notify --kind push_default_branch --title TEXT --body TEXT`, or "
-    "`--kind merge_default_branch`, naming the repo, the branch and the commits."
+def _push_rule(autonomy) -> str:
+    """The rule of a plan run on its pushes and merges. The merge of a pull request the run opened into a repo's
+    default branch is K5: the agent's with no question when merging is its own (``autonomy_card.ships``), and as its
+    card says when it is not; run #820 asked its owner twice whether it might merge its own pull request, at A5."""
+    if ships((autonomy or {}).get("modes")):
+        merge = (
+            ", and merge a pull request you opened into that repo's default branch with no question to the owner: "
+            "merging is yours."
+        )
+    else:
+        merge = "; a pull request you opened merges into that repo's default branch only as your autonomy card says."
+    return (
+        "- Commit in each repo's worktree, on the branch it is on. You may push, and merge into, the branch the plan "
+        f"names for a repo, even when it is the repo's default branch{merge} Never push to a branch the plan does not "
+        "name for that repo, never merge into any other branch, never force-push, and never rewrite history you "
+        "pushed. After each push or merge into a repo's default branch that you make yourself (the pushes of "
+        "`evo-agents worker step` send their own notice), run `evo-agents worker notify --kind push_default_branch "
+        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits."
+    )
+
+
+# A decision the agent of a plan run must not ask: one that only asks the owner to answer another (run #820 asked its
+# owner to answer the hub's release decision #462, which the owner had in the Inbox already).
+RELAY_RULE = (
+    "- Never ask the owner to answer another open decision (one the hub asked, such as a stopped release cycle's, or "
+    "one of another run): they have it already. Wait for what it brings instead, with `evo-agents worker wait "
+    "--until +30m`, then look again."
 )
 
 
@@ -890,12 +910,13 @@ def _plan_rules(autonomy) -> list[str]:
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
         WAIT_RULE.format(step="KEY"),
+        RELAY_RULE,
         ATTACH_RULE,
         "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
         "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
         "what the owner must do, with a way around the block among the options when there is one, and end your "
         "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
-        _PUSH_RULE,
+        _push_rule(autonomy),
         OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
         "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
@@ -1026,8 +1047,9 @@ def _step_session_rules(key: str, autonomy) -> list[str]:
         "left, end your turn. The answer comes back in this session as a message naming the decision's id, and the "
         "time you wait does not count toward the run's timeout.",
         WAIT_RULE.format(step=key),
+        RELAY_RULE,
         ATTACH_RULE,
-        _PUSH_RULE,
+        _push_rule(autonomy),
         OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because the step is done or because you cannot go "
         f'on, write {RESULT_FILE} as a JSON object whose "summary" says what you did of step {key}, what you decided '
