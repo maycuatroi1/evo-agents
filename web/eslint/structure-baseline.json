@@ -354,7 +354,6 @@
       "src/components/monitor/model.ts"
     ],
     "src/components/runs/runs-table.tsx": [
-      "src/components/kg/use-now.ts",
       "src/components/plans/links.ts",
       "src/components/workers/queries.ts"
     ],

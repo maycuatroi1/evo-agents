@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, ExternalLink, GitPullRequestDraft, TriangleAlert } from "lucide-react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -59,7 +60,7 @@ export function MessageRuns({ message, chat }: { message: GroupMessage; chat: Pi
   const t = useTranslations("chats.message");
   const projects = new Map(chat.agents.map((agent) => [agent.handle, agent.project]));
   const author = message.author;
-  const runs: { key: string; href: string; label: string; testId: string; run: number }[] = [];
+  const runs: { key: string; href: Route; label: string; testId: string; run: number }[] = [];
   if (author.kind === "agent" && author.project && message.run_id) {
     runs.push({
       key: "own",
