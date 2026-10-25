@@ -751,15 +751,16 @@ def queue_now(world, which: str):
     gate (which waits while any run of the schedule is queued or held), so their own rule is what answers."""
     from evo_agents.hub.server import changes as change_routes
     from evo_agents.hub.server.collect import Gate
-    from evo_agents.hub.server.curator import _due, _on_duty, _writer_access
+    from evo_agents.hub.server.curator import _due, _writer_access
+    from evo_agents.hub.server.night_duty import on_duty
 
     async def go():
         async with world.app.state.engine.begin() as conn:
             (due,) = (await conn.execute(_due(NIGHT))).all()
             access = await _writer_access(conn, due)
-            worker, _ = await _on_duty(conn, due.worker_id, due.project_id)
+            duty, _ = await on_duty(conn, due)
             budget = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}
-            gate = Gate(night=THE_NIGHT, figures=None, budget=budget, access=access, worker=worker)
+            gate = Gate(night=THE_NIGHT, figures=None, budget=budget, access=access, duty=duty)
             if which == "builder":
                 return await change_routes.queue_builder(conn, due, gate, curator_app=True)
             return await change_routes.queue_judge(conn, due, gate)
