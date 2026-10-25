@@ -72,13 +72,11 @@ harness = "evo_agents.kg.connectors.harness:run"
 git = "evo_agents.kg.connectors.git:run"
 
 # The core plugins evo-ak ships (evo_agents.core_plugins), which the hub's image therefore has. telegram and chats are
-# evo-agents-core-plugins', which deploy/hub/core-plugins.txt pins into the image.
+# evo-agents-core-plugins', which deploy/hub/core-plugins.txt pins into the image. canvas, srs and tasks are features
+# of the hub, not plugins: the hub registers them itself (evo_agents.hub.plugin_calls.BUILTIN).
 [project.entry-points."evo_agents.plugins"]
 browser = "evo_agents.core_plugins.browser:MANIFEST"
 builder = "evo_agents.core_plugins.builder:MANIFEST"
-srs = "evo_agents.core_plugins.srs:MANIFEST"
-tasks = "evo_agents.core_plugins.tasks:MANIFEST"
-canvas = "evo_agents.core_plugins.canvas:MANIFEST"
 pm = "evo_agents.core_plugins.pm:MANIFEST"
 crm = "evo_agents.core_plugins.crm:MANIFEST"
 marketing = "evo_agents.core_plugins.marketing:MANIFEST"
@@ -107,6 +105,8 @@ evo_agents = [
     "hub/migrations/sql/*",
     "core_plugins/*/packs/**/*",  # the agent packs a core plugin ships (evo_agents.plugins.core.image_bundle)
     "core_plugins/*/packs/**/.mcp.json",  # a dotfile no star matches
+    "hub/server/*/packs/**/*",  # the agent packs of the features canvas and srs (@strategist, @ba)
+    "hub/server/*/packs/**/.mcp.json",
 ]
 
 [tool.ruff]
@@ -255,13 +255,13 @@ out of the plugin into evo_agents.hub. See docs/plugins.md, section Core plugins
 
 [[tool.importlinter.contracts]]
 id = "srs-plugin-own-package"
-name = "The core plugin srs imports no other core plugin, the worker or the CLI"
+name = "The hub feature srs imports no other of the features canvas, srs and tasks, no core plugin, the worker or the CLI"
 type = "forbidden"
-source_modules = ["evo_agents.core_plugins.srs"]
+source_modules = ["evo_agents.hub.server.srs"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.canvas",
-    "evo_agents.core_plugins.tasks",
+    "evo_agents.hub.server.canvas",
+    "evo_agents.hub.server.tasks",
     "evo_agents.core_plugins.pm",
     "evo_agents.core_plugins.crm",
     "evo_agents.core_plugins.marketing",
@@ -269,20 +269,20 @@ forbidden_modules = [
     "evo_agents.worker",
 ]
 broken_contract_guidance = """\
-The core plugin srs is one package that leans on the hub alone (its tables, its access rules, its server's \
+The hub feature srs (once the core plugin srs) is one package that leans on the hub alone (its tables, its access rules, its server's \
 dependencies). It imports no other core plugin, nor the worker or the command line: those reach it through its \
 manifest and its routes. Move what both need into evo_agents.hub, or call the route. See docs/plugins.md, \
 section Core plugins."""
 
 [[tool.importlinter.contracts]]
 id = "tasks-plugin-own-package"
-name = "The core plugin tasks imports no other core plugin, the worker or the CLI"
+name = "The hub feature tasks imports no other of the features canvas, srs and tasks, no core plugin, the worker or the CLI"
 type = "forbidden"
-source_modules = ["evo_agents.core_plugins.tasks"]
+source_modules = ["evo_agents.hub.server.tasks"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.canvas",
-    "evo_agents.core_plugins.srs",
+    "evo_agents.hub.server.canvas",
+    "evo_agents.hub.server.srs",
     "evo_agents.core_plugins.pm",
     "evo_agents.core_plugins.crm",
     "evo_agents.core_plugins.marketing",
@@ -290,7 +290,7 @@ forbidden_modules = [
     "evo_agents.worker",
 ]
 broken_contract_guidance = """\
-The core plugin tasks is one package that leans on the hub alone (its tables, the tables of srs and plans it links \
+The hub feature tasks (once the core plugin tasks) is one package that leans on the hub alone (its tables, the tables of srs and plans it links \
 to, its access rules, its server's dependencies). It imports no other core plugin, the plugin srs included, nor the \
 worker or the command line: it reads srs items through evo_agents.hub.tables.srs and finds them by code with \
 evo_agents.hub.tables_srs.code_key. Move what both need into evo_agents.hub. See docs/plugins.md, section Core \
@@ -298,13 +298,13 @@ plugins."""
 
 [[tool.importlinter.contracts]]
 id = "canvas-plugin-own-package"
-name = "The core plugin canvas imports no other core plugin, the worker or the CLI"
+name = "The hub feature canvas imports no other of the features canvas, srs and tasks, no core plugin, the worker or the CLI"
 type = "forbidden"
-source_modules = ["evo_agents.core_plugins.canvas"]
+source_modules = ["evo_agents.hub.server.canvas"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.srs",
-    "evo_agents.core_plugins.tasks",
+    "evo_agents.hub.server.srs",
+    "evo_agents.hub.server.tasks",
     "evo_agents.core_plugins.pm",
     "evo_agents.core_plugins.crm",
     "evo_agents.core_plugins.marketing",
@@ -312,7 +312,7 @@ forbidden_modules = [
     "evo_agents.worker",
 ]
 broken_contract_guidance = """\
-The core plugin canvas is one package that leans on the hub alone (its tables, its access rules, its server's \
+The hub feature canvas (once the core plugin canvas) is one package that leans on the hub alone (its tables, its access rules, its server's \
 dependencies). It imports no other core plugin, the plugin srs included, nor the worker or the command line: what \
 it reads of srs it reads through evo_agents.hub.tables.srs. Move what both need into evo_agents.hub. See \
 docs/plugins.md, section Core plugins."""
@@ -324,9 +324,9 @@ type = "forbidden"
 source_modules = ["evo_agents.core_plugins.pm"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.canvas",
-    "evo_agents.core_plugins.srs",
-    "evo_agents.core_plugins.tasks",
+    "evo_agents.hub.server.canvas",
+    "evo_agents.hub.server.srs",
+    "evo_agents.hub.server.tasks",
     "evo_agents.core_plugins.crm",
     "evo_agents.core_plugins.marketing",
     "evo_agents.cli",
@@ -346,9 +346,9 @@ type = "forbidden"
 source_modules = ["evo_agents.core_plugins.crm"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.canvas",
-    "evo_agents.core_plugins.srs",
-    "evo_agents.core_plugins.tasks",
+    "evo_agents.hub.server.canvas",
+    "evo_agents.hub.server.srs",
+    "evo_agents.hub.server.tasks",
     "evo_agents.core_plugins.pm",
     "evo_agents.cli",
     "evo_agents.worker",
@@ -366,9 +366,9 @@ type = "forbidden"
 source_modules = ["evo_agents.core_plugins.marketing"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.canvas",
-    "evo_agents.core_plugins.srs",
-    "evo_agents.core_plugins.tasks",
+    "evo_agents.hub.server.canvas",
+    "evo_agents.hub.server.srs",
+    "evo_agents.hub.server.tasks",
     "evo_agents.core_plugins.pm",
     "evo_agents.core_plugins.crm",
     "evo_agents.cli",

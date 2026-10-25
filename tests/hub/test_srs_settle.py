@@ -1,4 +1,4 @@
-"""The settle chat of a version (``evo_agents.core_plugins.srs.settle``), as criterion a7 of plan
+"""The settle chat of a version (``evo_agents.hub.server.srs.settle``), as criterion a7 of plan
 srs-conflicts-and-tasks names it.
 
 When @ba's review of a version ends with a finding of level decide open, the hub opens one chat for that version, of
@@ -33,10 +33,10 @@ if not pg.DSN:
 
 from sqlalchemy import select
 
-from evo_agents.core_plugins.srs import settle
 from evo_agents.hub import plugin_events, tables
 from evo_agents.hub.kg_graph import BuiltGraph, HubSession, UnknownRefs
 from evo_agents.hub.server import kg
+from evo_agents.hub.server.srs import settle
 from evo_agents.kg.build import build_project
 from evo_agents.kg.policy import Label
 from evo_agents.kg.store import Store

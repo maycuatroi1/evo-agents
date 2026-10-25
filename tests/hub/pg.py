@@ -218,7 +218,9 @@ OPPORTUNITY_TABLES = frozenset(
 )
 KG_REVIEW_TABLES = frozenset({"kg_review_dismissals"})  # migration 0141 (plan kg-map-and-review)
 KG_DECISION_TABLES = frozenset({"kg_decisions", "kg_decision_events"})  # migration 0142 (plan kg-map-and-review)
-PROVIDER_ACCOUNT_TABLES = frozenset({"provider_accounts"})  # migration 0147 (plan model-providers)
+# migration 0147: the rows of project_plugins of canvas, srs and tasks, once those became features (plan plugin-market)
+RETIRED_PLUGIN_TABLES = frozenset({"retired_project_plugins"})
+PROVIDER_ACCOUNT_TABLES = frozenset({"provider_accounts"})  # migration 0148 (plan model-providers)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

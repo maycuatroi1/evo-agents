@@ -1,6 +1,6 @@
 """``evo-agents hub srs list|show|import|export|submit|approve|reviews|withdraw|retire|archive|unarchive|findings|waive``: the
 BA documents of a project that enabled the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core
-plugins). The plugin's code is ``evo_agents.core_plugins.srs``, which this client never imports: it speaks HTTP only.
+plugins). The plugin's code is ``evo_agents.hub.server.srs``, which this client never imports: it speaks HTTP only.
 
 ``list`` prints the documents with their latest and approved versions, ``--all`` the archived ones too. ``show SLUG``
 prints a document's versions and the items of its latest version (``--version N`` another), ``--item CODE`` one item

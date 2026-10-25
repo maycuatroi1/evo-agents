@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import type { ItemKind, SrsPreview, SrsProblem } from "./api";
 import { KIND_ICONS } from "./badges";
 
-/** The checks whose errors refuse saving, not only submitting (evo_agents.core_plugins.srs.doc.SAVE_CHECKS). */
+/** The checks whose errors refuse saving, not only submitting (evo_agents.hub.server.srs.doc.SAVE_CHECKS). */
 const SAVE_CHECKS = new Set(["code_pattern", "code_duplicate", "code_taken", "code_changed", "coded_item_dropped"]);
 
 /** The outline's indent by heading level; a table row sits deepest. */

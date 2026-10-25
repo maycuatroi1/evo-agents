@@ -1,4 +1,4 @@
-# The core plugin canvas: a living Lean Canvas on the hub
+# The hub feature canvas: a living Lean Canvas on the hub
 
 The plugin **canvas** keeps a Lean Canvas for each product of a project in the hub's database. Each of the nine cells
 holds claims, and each claim carries a status, a test card, evidence and every rev it went through. Members edit
@@ -7,8 +7,13 @@ undone, and never overwrites a change someone else made in the meantime. A claim
 evidence. The hub's signals (`docs/signals.md`) become evidence through the value check, and a weekly baseline that
 members approve makes each change of status take effect and tells the Loop about it.
 
-Its code is `evo_agents/core_plugins/canvas`. evo-ak ships it as a core plugin, so every hub has it (`docs/plugins.md`,
-Core plugins), and it does nothing in a project until an admin of the project enables it there.
+Its code is `evo_agents/hub/server/canvas`, a feature of the hub, so every hub has it, and it does nothing in a project
+until an admin of the project enables it there.
+
+A feature of the hub since migration 0147, a core plugin before it, it keeps the plugin's names: the routes under
+`/v1/x/canvas/`, its MCP tools, its config (`hub plugin config canvas`), and `hub plugin enable canvas`, which turns the
+feature on in the project's layer of its features. A hub admin turns it on or off in the administration, Features,
+for the hub or for one project. `hub plugin list` and /admin/plugins do not list it (`docs/plugins.md`, Core plugins).
 
 ## Enabling it
 
@@ -79,7 +84,7 @@ diff compares two revs field by field, each field of the test card on its own.
 
 ## The rule of evidence
 
-`evo_agents/core_plugins/canvas/rules.py` checks every path that changes a status: an edit on the web, the command line
+`evo_agents/hub/server/canvas/rules.py` checks every path that changes a status: an edit on the web, the command line
 or the API, an import, an undo, a proposal and its acceptance, @strategist's tools, and the decisions on a baseline.
 
 - A claim goes to `validated` only with at least one piece of real evidence that supports it. Real evidence is not
@@ -362,4 +367,4 @@ The hub's migrations own the plugin's tables: `canvas_canvases`, `canvas_claims`
 `canvas_baselines` and `canvas_baseline_items` (0077), the links of a claim (0078) and its problems
 (`canvas_claims.problems`, 0135). Schema 0074 adds the hub's
 signal tables and 0077 the hub's `hub_events` (`docs/signals.md`). Import-linter keeps the plugin in its own package
-(contract canvas-plugin-own-package): it imports no other core plugin, and reads the SRS through the hub's tables.
+(contract canvas-plugin-own-package): it imports neither srs, tasks nor a core plugin, and reads the SRS through the hub's tables.

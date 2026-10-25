@@ -16628,6 +16628,12 @@ export interface components {
              */
             r2: "ok" | "unavailable" | "unconfigured";
             /**
+             * Gateway
+             * @description the model gateway, by its health check
+             * @enum {string}
+             */
+            gateway: "ok" | "error" | "off";
+            /**
              * Failed
              * @description components that did not answer
              */
@@ -24588,6 +24594,12 @@ export interface components {
             disabled_reason: string | null;
             /** Enabled */
             enabled: boolean;
+            /**
+             * Builtin
+             * @description a feature of the hub (canvas, srs, tasks), not a plugin of the store: the project's features turn it on and off, and it may do what it asks for while on
+             * @default false
+             */
+            builtin: boolean;
             /**
              * Permissions
              * @description what the installed version asks for, granted or not
