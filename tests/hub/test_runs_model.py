@@ -682,7 +682,12 @@ def test_the_plan_run_prompt_holds_the_rules_the_repos_and_the_open_steps(plan):
         "does not count toward the run's timeout",
         'line that starts with "Decision:"',
         "even when it is the repo's default branch",
-        "never push or merge into a branch the plan does not name for that repo, never force-push",
+        # run #820: at A5 (no card here) merging its own pull request is the agent's, with no question
+        "merge a pull request you opened into that repo's default branch with no question to the owner",
+        "Never push to a branch the plan does not name for that repo, never merge into any other branch, never "
+        "force-push",
+        # run #820 asked its owner to answer the hub's release decision #462: a relay is never asked
+        "Never ask the owner to answer another open decision",
         "`evo-agents worker notify --kind push_default_branch",
         "`--kind merge_default_branch`",
         ".evo-run/result.json",

@@ -12,6 +12,7 @@ from evo_agents.hub.autonomy_levels import NO_ASK, Source, effective, pref_sourc
 TAKEN = "2026-10-22T00:00:00+00:00"
 LENA, IVAN = Who("lena", "lead", "lab"), Who("ivan", "intern", "intern-2026", reports_to="lena")
 SHIPS = "merging, deploying and releasing are the agent's"
+MERGES = "merge a pull request you opened into that repo's default branch with no question to the owner"
 
 
 def of(*sources: Source) -> dict:
@@ -66,13 +67,16 @@ def test_autonomy_level_card_replaces_the_fixed_categories_of_a_plan_runs_prompt
     carded = runs.build_plan_prompt(plan, repos, None, spec)
     assert carded.startswith(spec["card"] + "\n\n")
     assert SHIPS not in carded and "(K5) and a deploy or a release (K6) go as your autonomy card says" in carded
+    assert MERGES not in carded and "merges into that repo's default branch only as your autonomy card says" in carded
     listed = [line[4:].split(":")[0] for line in carded.splitlines() if line.startswith("  - ")]
     assert listed == ["deploy", "external_send", "merge", "architecture", "scope"]
     short = autonomy_card.card(of(pref_source("lena", None)), LENA).spec()
     at_a5 = runs.build_plan_prompt(plan, repos, None, short)
-    assert at_a5.startswith(HEADING) and SHIPS in at_a5
+    assert at_a5.startswith(HEADING) and SHIPS in at_a5 and MERGES in at_a5
     step = runs.build_step_session_prompt(plan, plan["steps"][0], repos, autonomy=spec)
     assert step.startswith(spec["card"])
+    shipped = runs.build_step_session_prompt(plan, plan["steps"][0], repos, autonomy=short)
+    assert MERGES not in step and MERGES in shipped
     assert autonomy_card.with_card("the prompt", None) == "the prompt"
 
 
