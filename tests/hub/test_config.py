@@ -460,6 +460,36 @@ def test_market_default_source_and_publisher_lock_load_from_the_environment():
         assert caught.value.variable == variable
 
 
+def test_a_seller_loads_its_id_key_instructions_and_signal_project_and_the_key_is_a_secret():
+    base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    config = load_config(base)
+    assert (config.seller_id, config.seller_key, config.seller_signal_project) == (None, None, None)
+    seed = secrets.token_bytes(32)
+    encoded = base64.b64encode(seed).decode()
+    config = load_config(
+        {
+            **base,
+            "EVO_HUB_SELLER_ID": "northwind",
+            "EVO_HUB_SELLER_KEY": encoded,
+            "EVO_HUB_SELLER_PAYMENT_INSTRUCTIONS": "IBAN DE00 1234\\nNorthwind GmbH ",
+            "EVO_HUB_SELLER_SIGNAL_PROJECT": "sales",
+        }
+    )
+    assert (config.seller_id, config.seller_key, config.seller_signal_project) == ("northwind", seed, "sales")
+    assert config.seller_payment_instructions == "IBAN DE00 1234\nNorthwind GmbH"
+    assert encoded not in repr(config) and encoded not in scrub(f"key {encoded}")
+    for variable, value, problem in (
+        ("EVO_HUB_SELLER_ID", "North Wind", "lower-case letters"),
+        ("EVO_HUB_SELLER_KEY", base64.b64encode(b"short").decode(), "Ed25519 seed"),
+        ("EVO_HUB_SELLER_KEY", "not base64!", "Ed25519 seed"),
+        ("EVO_HUB_SELLER_SIGNAL_PROJECT", "Sales Team", "name of a project"),
+    ):
+        with pytest.raises(ConfigError, match=problem) as caught:
+            load_config({**base, variable: value})
+        assert caught.value.variable == variable
+        assert value not in str(caught.value) or variable != "EVO_HUB_SELLER_KEY"
+
+
 def test_config_repr_keeps_the_dsns_out():
     config = HubConfig(dsn="postgresql://u:Repr-Secret-1@db/hub", data_dir=Path("/tmp/x"), sentry_dsn="https://k@s/1")
     assert "Repr-Secret-1" not in repr(config) and "https://k@s/1" not in repr(config)
