@@ -9,7 +9,10 @@ import {
   type BridgeRequest,
   FRAME_HEIGHT,
   type Host,
+  KIT,
   MAX_PARAMS_BYTES,
+  MAX_TOAST_CHARS,
+  navigateTarget,
   readRequest,
   reply,
 } from "./bridge";
@@ -23,6 +26,8 @@ const CONTEXT: BridgeContext = {
   locale: "en",
   theme: "light",
   methods: [],
+  location: { path: "items/12", query: { tab: "open" } },
+  kit: KIT,
 };
 
 type TestHost = Host & { calls: string[]; grant: string[]; reads: number };
@@ -42,6 +47,8 @@ function host(): TestHost {
     reads: 0,
     context: () => CONTEXT,
     resize: vi.fn(),
+    navigate: vi.fn(),
+    toast: vi.fn(),
     granted: async () => {
       page.reads += 1;
       return page.grant;
@@ -78,8 +85,11 @@ async function refusal(promise: Promise<unknown>): Promise<BridgeError> {
 
 describe("bridge evo-plugin/1", () => {
   it("opens a method only when the project granted the permission it needs", () => {
-    expect(allowedMethods([])).toEqual(["context", "resize", "route"]);
-    expect(allowedMethods(["runs:read", "chats:write"])).toEqual(["context", "resize", "route", "runs.list", "runs.get"]);
+    expect(allowedMethods([])).toEqual(["context", "resize", "route", "navigate", "toast"]);
+    expect(allowedMethods(["runs:read", "chats:write"])).toEqual([
+      ...["context", "resize", "route", "navigate", "toast"],
+      ...["runs.list", "runs.get"],
+    ]);
     expect(allowedMethods(["plans:read", "memories:read"])).toContain("memories.list");
   });
 
@@ -174,5 +184,64 @@ describe("bridge evo-plugin/1", () => {
       id: "x",
       error: { code: "hub_unavailable", message: "the hub did not answer" },
     });
+  });
+
+  it("gives the page its location and the kit's version in the context", async () => {
+    const context = (await ask(host(), request("context"), [])) as BridgeContext;
+    expect(context.location).toEqual({ path: "items/12", query: { tab: "open" } });
+    expect(context.kit).toBe(1);
+  });
+
+  it("navigates the hub's page only within the same project, without asking for a grant", async () => {
+    const page = host();
+    expect(await ask(page, request("navigate", { to: "/p/demo/x/sample/board/items/3?tab=done" }), [])).toEqual({
+      to: "/p/demo/x/sample/board/items/3?tab=done",
+    });
+    expect(await ask(page, request("navigate", { to: "/p/demo/runs/12#log" }), [])).toEqual({ to: "/p/demo/runs/12#log" });
+    expect(page.navigate).toHaveBeenNthCalledWith(1, "/p/demo/x/sample/board/items/3?tab=done");
+    expect(page.navigate).toHaveBeenNthCalledWith(2, "/p/demo/runs/12#log");
+    expect(page.reads).toBe(0);
+    const refused = [
+      "/p/northwind/runs", // another project
+      "/p/demo", // not under the project's pages
+      "/p/demo/../lumen/runs",
+      "/p/demo/%2e%2e/lumen",
+      "/admin",
+      "https://evil.test/p/demo/runs",
+      "//evil.test/p/demo/runs",
+      "/p/demo/\\evil.test",
+      "/p/demo//runs",
+      "runs",
+      "/p/demo/x" + "a".repeat(3000),
+      42,
+      undefined,
+    ];
+    for (const to of refused) {
+      const error = await refusal(ask(page, request("navigate", { to }), []));
+      expect(error.code).toBe("invalid_params");
+      expect(error.message).toBe("to is a path of this project's pages, such as /p/demo/runs");
+    }
+    expect(page.navigate).toHaveBeenCalledTimes(2);
+    expect(navigateTarget("/p/demo/a/./b/../c", "demo")).toBe("/p/demo/a/c");
+  });
+
+  it("shows a toast of a known tone with a bounded text", async () => {
+    const page = host();
+    expect(await ask(page, request("toast", { text: "Saved northwind", tone: "success" }), [])).toEqual({ shown: true });
+    await ask(page, request("toast", { text: "  Note  " }), []);
+    expect(page.toast).toHaveBeenNthCalledWith(1, "Saved northwind", "success");
+    expect(page.toast).toHaveBeenNthCalledWith(2, "Note", "info");
+    await ask(page, request("toast", { text: "x".repeat(MAX_TOAST_CHARS), tone: "error" }), []);
+    const bad = [
+      { text: "x".repeat(MAX_TOAST_CHARS + 1) },
+      { text: "" },
+      { text: "   " },
+      { text: 12 },
+      { text: "Hi", tone: "running" },
+      { text: "Hi", tone: "warning" },
+    ];
+    for (const params of bad) expect((await refusal(ask(page, request("toast", params), []))).code).toBe("invalid_params");
+    expect(page.toast).toHaveBeenCalledTimes(3);
+    expect(page.reads).toBe(0);
   });
 });

@@ -8249,7 +8249,8 @@
       "missingDescription": "Dự án này chưa bật plugin, hoặc plugin không có trang này."
     },
     "frame": {
-      "title": "{page}, một trang của plugin {plugin}"
+      "title": "{page}, một trang của plugin {plugin}",
+      "toastFrom": "Từ plugin {plugin}"
     },
     "notes": {
       "metaTitle": "Ghi chú | {project}",

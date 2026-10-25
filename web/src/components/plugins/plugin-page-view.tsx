@@ -17,20 +17,23 @@ import { SandboxTag } from "./parts";
 import { PluginFrame } from "./plugin-frame";
 
 /**
- * An isolated plugin's page in a project (/p/{project}/x/{plugin}/{page}; web/DESIGN.md, Plugins): the page's title
- * as the h1, the plugin as a tag that opens its settings in the project, Sandboxed, one line saying what the page may
- * read (the project's grant), then the frame. A native page of a core plugin never comes here: it has a route of its
- * own under x/<plugin>.
+ * An isolated plugin's page in a project (/p/{project}/x/{plugin}/{page}, and any sub path after it; web/DESIGN.md,
+ * Plugins): the page's title as the h1, the plugin as a tag that opens its settings in the project, Sandboxed, one line
+ * saying what the page may read (the project's grant), then the frame. A native page of a core plugin never comes
+ * here: it has a route of its own under x/<plugin>.
  */
 export function PluginPageView({
   project,
   plugin: name,
   page: pageName,
+  path = "",
   initialError,
 }: {
   project: string;
   plugin: string;
   page: string;
+  /** The sub path after the page's name, "" for none. */
+  path?: string;
   initialError: ApiErrorInfo | null;
 }) {
   const t = useTranslations("plugins.page");
@@ -58,7 +61,7 @@ export function PluginPageView({
               }
               sub={t("mayRead", { granted })}
             />
-            <PluginFrame project={project} plugin={plugin} page={page} />
+            <PluginFrame project={project} plugin={plugin} page={page} path={path} />
           </div>
         );
       }}

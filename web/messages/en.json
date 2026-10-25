@@ -8249,7 +8249,8 @@
       "missingDescription": "The plugin is not enabled in this project, or it has no such page."
     },
     "frame": {
-      "title": "{page}, a page of the plugin {plugin}"
+      "title": "{page}, a page of the plugin {plugin}",
+      "toastFrom": "From the plugin {plugin}"
     },
     "notes": {
       "metaTitle": "Notes | {project}",

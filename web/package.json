@@ -14,7 +14,8 @@
     "test": "vitest run",
     "gen:api": "node scripts/gen-api.mjs",
     "e2e": "playwright test",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "build:plugin-kit": "node scripts/build-plugin-kit.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",
