@@ -69,8 +69,10 @@ test("a day can be picked, and Today goes back", async ({ page, member }) => {
   const date = main(page).getByTestId("pm-date");
   await expect(date).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
   await expect(main(page).getByTestId("pm-today")).toHaveCount(0);
-  // A fill before the page hydrates changes the input but navigates nowhere, so fill again until the URL follows.
+  // A fill before the page hydrates changes the input but navigates nowhere, so fill again until the URL follows. Each
+  // try clears the field first: a fill with the value the input already holds fires no change.
   await expect(async () => {
+    await date.fill("");
     await date.fill("2026-01-07");
     await expect(page).toHaveURL(pmPath(project, "2026-01-07"), { timeout: 2_000 });
   }).toPass();

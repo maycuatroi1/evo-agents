@@ -976,7 +976,7 @@ const PAGES: Entry[] = [
     name: "runs list with its summary, facets and a failed run",
     open: async ({ page, me }) => {
       await seedRuns(me);
-      await open(page, `/p/${me.projects[0]}/runs`);
+      await open(page, `/p/${me.projects[0]}/runs?state=all`);
       await expect(page.locator("#main").getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
       await expect(page.locator("#main").getByTestId("runs-summary")).toBeVisible();
     },
@@ -1294,7 +1294,7 @@ const PAGES: Entry[] = [
     open: async ({ page, me }) => {
       const { live } = await seedRuns(me);
       await page.setViewportSize({ width: 375, height: 812 });
-      await open(page, `/p/${me.projects[0]}/runs`);
+      await open(page, `/p/${me.projects[0]}/runs?state=all`);
       await expect(page.locator("#main").getByTestId("runs-table")).toBeVisible();
       await expectNoSeriousViolations(page, "runs at 375 px");
       await open(page, `/workers/${live.worker.id}`);

@@ -31,7 +31,7 @@ test("a reader sees the runs but cannot dispatch, on the pages or through the AP
   const reader = await member([]);
   await admin.grant(project, reader.login, "reader", "internal");
 
-  await open(page, `/p/${project}/runs`);
+  await open(page, `/p/${project}/runs?state=all`);
   await expect(runRow(page, run.id).getByTestId("run-state")).toHaveText("Queued");
   await expect(page.locator("#main").getByRole("heading", { level: 1, name: "Runs" })).toBeVisible();
   await expect(page.getByTestId("runs-dispatch")).toHaveCount(0);

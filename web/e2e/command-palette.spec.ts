@@ -36,7 +36,7 @@ test("opens with the keyboard or the top bar's field, and Esc gives focus back",
   const project = me.projects[0];
   await seedRunPlan(me, project);
   await dispatch(me, project, ["2"]);
-  await open(page, `/p/${project}/runs`);
+  await open(page, `/p/${project}/runs?state=all`);
   await expect(main(page).getByTestId("runs-table")).toBeVisible();
 
   // "/" still focuses the list's search; Cmd K opens the palette over it and Esc returns there. The page's content
