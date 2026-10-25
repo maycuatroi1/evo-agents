@@ -64,7 +64,10 @@ the hub accepts, comma-separated ``ID=sigstore:OWNER/REPO/.github/workflows/FILE
 signs keyless with Sigstore) or ``ID=ed25519:KEY`` (a public key, 32 bytes in base64) entries, several for one id when
 it has several workflows or keys (``evo_agents.plugins.signing.parse_publishers``). Unset, the hub trusts nobody and
 refuses every bundle. EVO_HUB_PLUGIN_CORE_PUBLISHERS lists, comma-separated, the ids among them whose plugins may be
-core plugins, with Python in the hub's processes; each must be in EVO_HUB_PLUGIN_PUBLISHERS.
+core plugins, with Python in the hub's processes; each must be in EVO_HUB_PLUGIN_PUBLISHERS. A hub admin may trust
+more publishers from the web or the CLI as they install from a market (``plugin_publishers``, docs/market.md), unless
+EVO_HUB_PLUGIN_PUBLISHERS_LOCKED is true. EVO_HUB_MARKET_DEFAULT_SOURCE is the GitHub repo OWNER/REPO of the market the
+hub lists unless its admins remove it, maycuatroi1/evo-agents-market when unset, none when set empty.
 
 The backends of isolated plugins run in the plugin host, ``evo-agents hub plugin-host``, a service of its own that
 holds none of the hub's variables (docs/plugins.md). EVO_HUB_PLUGIN_HOST_URL is where the api reaches it (on the
@@ -88,6 +91,8 @@ from urllib.parse import urlsplit
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
 from evo_agents.plugins.host import MIN_HOST_TOKEN, host_token_problem
+from evo_agents.plugins.market import DEFAULT_SOURCE as DEFAULT_MARKET
+from evo_agents.plugins.market import REPO as MARKET_REPO
 from evo_agents.plugins.signing import PUBLISHER_ID, Publisher, parse_publishers
 
 # The blob store's bound (evo_agents.hub.blobs takes it from here: that module needs boto3, this one only the stdlib).
@@ -195,6 +200,8 @@ class HubConfig:
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
     plugin_publishers: tuple[Publisher, ...] = ()  # whose signed plugin bundles the hub accepts
     plugin_core_publishers: frozenset[str] = frozenset()  # the ids among them whose plugins may be core plugins
+    plugin_publishers_locked: bool = False  # hub admins may not trust more publishers than the operator lists
+    market_default_source: str | None = None  # OWNER/REPO of the market the hub adds on its first refresh
     plugin_host_url: str | None = None  # where the api reaches the plugin host
     plugin_host_token: str | None = None  # the secret the api and the plugin host share; never logged or returned
 
@@ -503,9 +510,18 @@ def _plugins(env: Mapping[str, str]) -> dict:
     problem = host_token_problem(token) if token else None
     if problem:
         raise ConfigError(token_name, f"{token_name} {problem}")
+    locked_name, market_name = "EVO_HUB_PLUGIN_PUBLISHERS_LOCKED", "EVO_HUB_MARKET_DEFAULT_SOURCE"
+    locked = (_text(env, locked_name) or "false").lower()
+    if locked not in ("true", "false", "1", "0", "yes", "no"):
+        raise ConfigError(locked_name, f"{locked_name} is true or false, not {locked!r}")
+    market = env.get(market_name, DEFAULT_MARKET).strip() or None
+    if market is not None and not MARKET_REPO.fullmatch(market):
+        raise ConfigError(market_name, f"{market_name} is a GitHub repo OWNER/REPO, or empty for none, not {market!r}")
     return {
         "plugin_publishers": publishers,
         "plugin_core_publishers": frozenset(core),
+        "plugin_publishers_locked": locked in ("true", "1", "yes"),
+        "market_default_source": market,
         "plugin_host_url": _url(env, url_name, None),
         "plugin_host_token": token,
     }

@@ -171,6 +171,15 @@ PLUGIN_INSTALL = "plugin.install"  # a hub admin installed a version, or install
 PLUGIN_UPGRADE = "plugin.upgrade"  # a hub admin moved the installed version to a newer one
 PLUGIN_REMOVE = "plugin.remove"  # a hub admin removed the installed version; the versions stay in the store
 PLUGIN_DISABLE = "plugin.disable"  # the hub turned off an installed version that no longer runs on its release
+# The plugin market (evo_agents.hub.server.market), outside any project: "publisher:<id> signer:<signer>" for a
+# publisher a hub admin trusted or stopped trusting, "market:<OWNER/REPO>" for a market source added or removed.
+PLUGIN_PUBLISHER_ADD = "plugin.publisher.add"
+PLUGIN_PUBLISHER_REMOVE = "plugin.publisher.remove"
+MARKET_SOURCE_ADD = "market.source.add"
+MARKET_SOURCE_REMOVE = "market.source.remove"
+# A project admin asked the hub admins to install a plugin of a market, in that project:
+# "<project>/market:<source id>/<plugin>".
+MARKET_REQUEST = "market.request"
 # Plugins in a project (evo_agents.hub.server.plugin_grants), in that project; the target is
 # "<project>/plugin:<name>@<version>", then " permissions=<names>" for a grant.
 PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it

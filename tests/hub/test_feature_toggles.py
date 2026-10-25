@@ -22,12 +22,13 @@ SECOND = "second-project"
 
 
 def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
-    assert features.IDS == ("chats", "curator", "kg", "monitor", "canvas", "srs", "tasks")
+    assert features.IDS == ("chats", "curator", "kg", "monitor", "market", "canvas", "srs", "tasks")
     assert {f.id: f.layers for f in features.FEATURES} == {
         "chats": ("instance",),
         "curator": ("instance", "project"),
         "kg": ("instance", "project"),
         "monitor": ("instance",),
+        "market": ("instance",),
         "canvas": ("instance", "project"),
         "srs": ("instance", "project"),
         "tasks": ("instance", "project"),
@@ -50,6 +51,10 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
         "/v1/x/srs/demo/documents/4/versions": ("srs", "demo"),
         "/v1/x/tasks/demo/tasks": ("tasks", "demo"),
         "/v1/x/tasksboard/demo": None,
+        "/v1/market": ("market", None),
+        "/v1/market/3/lumen-notes": ("market", None),
+        "/v1/marketplace": None,
+        "/v1/plugins/install-github": None,  # installing from a release stays with the market off
         "/v1/x/crm/demo/contacts": None,  # a plugin of the store, which its own gate turns away
     }
     for path, owner in owners.items():
@@ -72,7 +77,7 @@ def test_a_projects_layer_wins_over_the_hubs_and_a_feature_neither_sets_is_on():
     assert not features.enabled(chats, {"chats": False}, {"chats": True})  # the hub's alone: a project's is ignored
     assert features.problems({"kg": False, "curator": True}, "project") == []
     assert features.problems({"wiki": False}, "instance") == [
-        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, canvas, srs, tasks"
+        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, market, canvas, srs, tasks"
     ]
     srs = features.BY_ID["srs"]
     assert not features.enabled(srs, {}) and features.enabled(srs, {}, {"srs": True})
@@ -157,6 +162,7 @@ def test_with_nothing_set_every_feature_is_on_and_no_route_is_turned_away(toggle
             {"id": "curator", "layers": ["instance", "project"], "enabled": True},
             {"id": "kg", "layers": ["instance", "project"], "enabled": True},
             {"id": "monitor", "layers": ["instance"], "enabled": True},
+            {"id": "market", "layers": ["instance"], "enabled": True},
             {"id": "canvas", "layers": ["instance", "project"], "enabled": False},
             {"id": "srs", "layers": ["instance", "project"], "enabled": False},
             {"id": "tasks", "layers": ["instance", "project"], "enabled": False},
@@ -202,6 +208,7 @@ def test_the_hubs_layer_turns_a_feature_off_everywhere_and_a_projects_layer_turn
         "curator": True,
         "kg": False,
         "monitor": False,
+        "market": True,
         "canvas": False,
         "srs": False,
         "tasks": False,
