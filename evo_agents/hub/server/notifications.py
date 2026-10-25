@@ -97,7 +97,7 @@ from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME, REFUSAL
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.security import WEB as WEB_SESSION
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.tables_push import WEBPUSH
+from evo_agents.hub.tables_push import APNS, FCM, WEBPUSH
 
 log = logging.getLogger(__name__)
 
@@ -282,6 +282,8 @@ class WebChannel(Channel):
 CHANNELS: dict[str, type[Channel] | str] = {
     WEB: WebChannel,
     WEBPUSH: "evo_agents.hub.server.push_senders:WebPushChannel",  # the devices of push_devices of kind webpush
+    APNS: "evo_agents.hub.server.push_native:ApnsChannel",  # ... of kind apns
+    FCM: "evo_agents.hub.server.push_native:FcmChannel",  # ... of kind fcm
 }
 
 

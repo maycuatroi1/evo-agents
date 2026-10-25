@@ -12,7 +12,8 @@ the rest of the outbox goes on.
 WebPushChannel sends to a browser's subscription: the payload encrypted for it (RFC 8291), the hub's VAPID JWT
 (RFC 8292), a TTL of TTL_SECONDS and urgency high, to the subscription's endpoint, which must be a push service's
 (``webpush.endpoint_problem``). The push service's 404 or 410 says the subscription is gone; its 429 asks to wait;
-another 4xx fails the delivery; anything else is tried again.
+another 4xx fails the delivery; anything else is tried again. The senders of the hub's apps, APNs and FCM, are
+``push_native``'s.
 """
 
 from __future__ import annotations
@@ -90,7 +91,7 @@ class PushSender(Channel):
         raise NotImplementedError
 
 
-def _retry_after(answer: httpx.Response) -> float:
+def retry_after(answer: httpx.Response) -> float:
     """The seconds a 429 asks to wait: its Retry-After in seconds or as a date, else BACKOFF_SECONDS."""
     said = answer.headers.get("retry-after", "").strip()
     if said.isdigit():
@@ -114,7 +115,7 @@ def outcome(answer: httpx.Response) -> str | None:
     if status in (404, 410):
         raise ChannelGone(f"{_reason(answer)}; the device's subscription is gone")
     if status == 429:
-        raise RetryAfter(_retry_after(answer), _reason(answer))
+        raise RetryAfter(retry_after(answer), _reason(answer))
     if 400 <= status < 500:
         raise Undeliverable(_reason(answer))
     raise RuntimeError(_reason(answer))
