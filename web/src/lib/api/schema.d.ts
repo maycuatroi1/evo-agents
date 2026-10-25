@@ -7212,6 +7212,54 @@ export interface paths {
         patch: operations["change_agent_account_v1_projects__project__agents__handle__accounts__name__patch"];
         trace?: never;
     };
+    "/v1/projects/{project}/agents/{handle}/provider-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Provider Accounts
+         * @description The agent's provider accounts, by name, without their keys; any member of the project reads them.
+         */
+        get: operations["list_agent_provider_accounts_v1_projects__project__agents__handle__provider_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/provider-accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Agent Provider Account
+         * @description Give the agent the provider account ``name``, or replace it whole; the key is sealed and never shown again.
+         */
+        put: operations["put_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__put"];
+        post?: never;
+        /**
+         * Delete Agent Provider Account
+         * @description Delete the agent's provider account ``name``: its key and bindings go, its leases are revoked.
+         */
+        delete: operations["delete_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Agent Provider Account
+         * @description Change what ``body`` gives of the agent's provider account ``name``; the rest, the key included, stays.
+         */
+        patch: operations["change_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__patch"];
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/accounts": {
         parameters: {
             query?: never;
@@ -8838,6 +8886,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/model-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Catalog
+         * @description The providers a member can add an account for, with where the catalog came from.
+         */
+        get: operations["get_model_catalog_v1_model_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Provider Accounts
+         * @description The caller's provider accounts, by name, without their keys; a hub admin's own too.
+         */
+        get: operations["list_provider_accounts_v1_provider_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Provider Account
+         * @description The caller's provider account ``name``, without its key.
+         */
+        get: operations["get_provider_account_v1_provider_accounts__name__get"];
+        /**
+         * Put Provider Account
+         * @description Create the caller's provider account ``name``, or replace it whole; the key is sealed and never shown again.
+         */
+        put: operations["put_provider_account_v1_provider_accounts__name__put"];
+        post?: never;
+        /**
+         * Delete Provider Account
+         * @description Delete the caller's account ``name``: its key and bindings go, its leases and shares are revoked.
+         */
+        delete: operations["delete_provider_account_v1_provider_accounts__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Provider Account
+         * @description Change what ``body`` gives of the caller's account ``name``; the rest, the key included, stays.
+         */
+        patch: operations["change_provider_account_v1_provider_accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/provider-accounts/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Endpoint
+         * @description Call an endpoint not saved yet with the key of ``body``: whether it took it, and the models it lists.
+         */
+        post: operations["probe_endpoint_v1_provider_accounts_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-accounts/{name}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Provider Account
+         * @description Call the endpoint of the caller's account ``name`` with its key: whether it took it, and the models it lists.
+         */
+        post: operations["probe_provider_account_v1_provider_accounts__name__probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runnable-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runnable Models
+         * @description The models of provider accounts the caller may run in ``project``, through the model gateway.
+         */
+        get: operations["list_runnable_models_v1_projects__project__runnable_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/signals/{project}": {
         parameters: {
             query?: never;
@@ -9760,7 +9940,7 @@ export interface components {
     schemas: {
         /**
          * Account
-         * @description One of the caller's env secrets as an account: everything but its value.
+         * @description One of the caller's env secrets or provider accounts as an account: everything but its value or key.
          */
         Account: {
             /** Name */
@@ -9884,6 +10064,8 @@ export interface components {
              * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
              */
             cost_by_principal: components["schemas"]["PrincipalCost"][];
+            /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
+            gateway?: components["schemas"]["GatewayAccount"] | null;
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -10644,6 +10826,88 @@ export interface components {
             runtime?: components["schemas"]["AgentAxis"];
             /** @description where the agent runs, in order of preference: host, the worker's own machine, and plugins' environments <plugin>/<name>, each a container; all runs on the host */
             environment?: components["schemas"]["AgentAxis"];
+        };
+        /** AgentProviderAccountChange */
+        AgentProviderAccountChange: {
+            /** Base Url */
+            base_url?: string | null;
+            /** Api Format */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description a new API key
+             */
+            value?: string | null;
+            /** Models */
+            models?: string[] | null;
+            /** Models From */
+            models_from?: ("endpoint" | "catalog") | null;
+            /** Workers */
+            workers?: string[] | null;
+            /**
+             * Expires At
+             * @description null drops the end
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** AgentProviderAccountWrite */
+        AgentProviderAccountWrite: {
+            /**
+             * Provider
+             * @description the id of an entry of the catalog
+             */
+            provider: string;
+            /**
+             * Base Url
+             * @description the https root of its API; the catalog's when left out
+             */
+            base_url?: string | null;
+            /**
+             * Api Format
+             * @description the catalog's when left out
+             */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * Format: password
+             * @description the API key; never shown again
+             */
+            value: string;
+            /**
+             * Models
+             * @description model names, as typed
+             */
+            models?: string[];
+            /**
+             * Models From
+             * @description add the catalog's default model, or the endpoint's
+             */
+            models_from?: ("endpoint" | "catalog") | null;
+            /**
+             * Workers
+             * @description workers serving the agent's project
+             */
+            workers: string[];
+            /**
+             * Expires At
+             * @description after this no run takes it; in the future
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /** Paused */
+            paused?: boolean | null;
         };
         /** AgentReactionIn */
         AgentReactionIn: {
@@ -13293,6 +13557,70 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** CatalogProvider */
+        CatalogProvider: {
+            /** Id */
+            id: string;
+            /**
+             * Alias
+             * @description what the gateway reads before the slash of a model name
+             */
+            alias: string;
+            /** Name */
+            name: string;
+            /** Group */
+            group: string;
+            /** Color */
+            color: string;
+            /** Text Icon */
+            text_icon: string;
+            /** Website */
+            website: string;
+            /** Key Hint */
+            key_hint: string;
+            /**
+             * Base Url
+             * @description the root of the API; empty for the custom entries and the Claude subscription
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @enum {string}
+             */
+            api_format: "openai" | "anthropic" | "openai-responses" | "gemini";
+            /** Default Model */
+            default_model: string;
+            /** Key Required */
+            key_required: boolean;
+            /** Free */
+            free: boolean;
+            /**
+             * Via
+             * @description login: the Claude subscription, which skips the gateway
+             * @enum {string}
+             */
+            via: "gateway" | "login";
+        };
+        /** CatalogSource */
+        CatalogSource: {
+            /** Name */
+            name: string;
+            /** Repository */
+            repository: string;
+            /** Tag */
+            tag: string;
+            /**
+             * Version
+             * @description the OmniRoute version, the one of the gateway image
+             */
+            version: string;
+            /** Commit */
+            commit: string;
+            /** License */
+            license: string;
+            /** Copyright */
+            copyright: string;
+        };
         /**
          * CeilingSet
          * @description The next ceiling revision of one unit (unit), one person's primary seat (login) or one seat (seat).
@@ -14697,8 +15025,7 @@ export interface components {
              */
             id: number;
             /**
-             * Kind
-             * @description env: a variable of the agent; git: what git's helper answers
+             * @description env: a variable of the agent; git: what git's helper answers (enum property replaced by openapi-typescript)
              * @enum {string}
              */
             kind: "env" | "git";
@@ -14818,7 +15145,7 @@ export interface components {
         /** Credentials */
         Credentials: {
             /** Leases */
-            leases: components["schemas"]["CredentialLease"][];
+            leases: (components["schemas"]["CredentialLease"] | components["schemas"]["GatewayLease"])[];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
             /**
@@ -16176,6 +16503,104 @@ export interface components {
             /** Rank */
             rank: number;
         };
+        /**
+         * GatewayAccount
+         * @description What a provider account calls, through the model gateway (``evo_agents.hub.gateway_runs``).
+         */
+        GatewayAccount: {
+            /**
+             * Provider
+             * @description the id of its entry in the catalog
+             */
+            provider: string;
+            /**
+             * Prefix
+             * @description what its models are named with, <prefix>/<model>; null when not served
+             */
+            prefix: string | null;
+            /**
+             * Base Url Host
+             * @description the host of the endpoint it calls
+             */
+            base_url_host: string | null;
+            /** Api Format */
+            api_format: string;
+            /**
+             * Models
+             * @description how many models it serves
+             */
+            models: number;
+            /**
+             * Status
+             * @description what the gateway last said of it: ok, cooling after a rate limit, failing, or unknown before any
+             * @enum {string}
+             */
+            status: "ok" | "cooling" | "failing" | "unknown";
+            /**
+             * Reason
+             * @description the gateway's error code or type when cooling or failing; never its text
+             */
+            reason: string | null;
+        };
+        /**
+         * GatewayLease
+         * @description The lease of a run on a provider account's model (``evo_agents.hub.gateway_runs``): the hub's gateway route
+         *     and a token of the run for it; never a provider's key nor the gateway's.
+         */
+        GatewayLease: {
+            /**
+             * Id
+             * @description the lease of the run's key of the gateway; the same id when it is asked for again
+             */
+            id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gateway";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "gateway";
+            /**
+             * Name
+             * @description gateway:<prefix>, the prefix of the run's model
+             */
+            name: string;
+            /** Env Var */
+            env_var?: null;
+            /** Url Prefix */
+            url_prefix?: null;
+            /** Username */
+            username?: null;
+            /**
+             * Value
+             * @description the run's token to the route: for memory only, never a file, a log line or an event
+             */
+            value: string;
+            /**
+             * Expires At
+             * @description when the run's key of the gateway ends
+             */
+            expires_at: string | null;
+            /**
+             * Base Url
+             * @description the hub's gateway route, <hub>/v1, that the runtime sends its model calls to
+             */
+            base_url: string;
+            /**
+             * Model
+             * @description the run's model, <prefix>/<model of the provider>
+             */
+            model: string;
+            /**
+             * Api Format
+             * @description what the runtime speaks
+             * @enum {string}
+             */
+            api_format: "anthropic" | "openai" | "openai-responses";
+        };
         /** GitHubLogin */
         GitHubLogin: {
             /**
@@ -16516,6 +16941,12 @@ export interface components {
              * @enum {string}
              */
             r2: "ok" | "unavailable" | "unconfigured";
+            /**
+             * Gateway
+             * @description the model gateway, by its health check
+             * @enum {string}
+             */
+            gateway: "ok" | "error" | "off";
             /**
              * Failed
              * @description components that did not answer
@@ -19967,6 +20398,14 @@ export interface components {
             origin: string | null;
             /** Reason */
             reason: string;
+        };
+        /** ModelCatalog */
+        ModelCatalog: {
+            source: components["schemas"]["CatalogSource"];
+            /** Groups */
+            groups: string[];
+            /** Providers */
+            providers: components["schemas"]["CatalogProvider"][];
         };
         /** ModelCount */
         ModelCount: {
@@ -23704,6 +24143,42 @@ export interface components {
              */
             replacements?: components["schemas"]["ProbeReplacement"][];
         };
+        /**
+         * ProbeWrite
+         * @description An endpoint to try before an account is saved: the same fields as the write, the key included.
+         */
+        ProbeWrite: {
+            /**
+             * Provider
+             * @description the id of an entry of the catalog
+             */
+            provider: string;
+            /**
+             * Base Url
+             * @description the https root of its API; the catalog's when left out
+             */
+            base_url?: string | null;
+            /**
+             * Api Format
+             * @description the catalog's when left out
+             */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description the API key
+             */
+            value?: string | null;
+            /**
+             * From Secret
+             * @description or the name of one of your env secrets that holds it
+             */
+            from_secret?: string | null;
+            /**
+             * Model
+             * @description a model to ask, when the endpoint lists none
+             */
+            model?: string | null;
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -25504,6 +25979,357 @@ export interface components {
              * @description the chat message that started the run
              */
             chat_message: number | null;
+        };
+        /**
+         * ProviderAccount
+         * @description A provider account as its owner sees it: everything but its key.
+         */
+        ProviderAccount: {
+            /** Name */
+            name: string;
+            /**
+             * Provider
+             * @description the id of its entry in the catalog (GET /v1/model-catalog)
+             */
+            provider: string;
+            /**
+             * Provider Name
+             * @description the catalog's name of that provider
+             */
+            provider_name: string;
+            /**
+             * Alias
+             * @description what the gateway reads before the slash of a model name: <alias>/<model>
+             */
+            alias: string;
+            /**
+             * Base Url
+             * @description the https root of its API; every address it resolves to is public
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @enum {string}
+             */
+            api_format: "openai" | "anthropic" | "openai-responses" | "gemini";
+            /**
+             * Models
+             * @description the models it serves, by the endpoint's names
+             */
+            models: string[];
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused or expired, now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares?: components["schemas"]["CredentialShare"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProviderAccountChange */
+        ProviderAccountChange: {
+            /**
+             * Base Url
+             * @description the https root of its API
+             */
+            base_url?: string | null;
+            /** Api Format */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description a new API key
+             */
+            value?: string | null;
+            /**
+             * From Secret
+             * @description or an env secret's value
+             */
+            from_secret?: string | null;
+            /**
+             * Models
+             * @description the model names, replaced
+             */
+            models?: string[] | null;
+            /**
+             * Models From
+             * @description add the catalog's default model, or the endpoint's
+             */
+            models_from?: ("endpoint" | "catalog") | null;
+            /** Projects */
+            projects?: string[] | null;
+            /** Workers */
+            workers?: string[] | null;
+            /**
+             * Expires At
+             * @description null drops the end
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** ProviderAccountWrite */
+        ProviderAccountWrite: {
+            /**
+             * Provider
+             * @description the id of an entry of the catalog
+             */
+            provider: string;
+            /**
+             * Base Url
+             * @description the https root of its API; the catalog's when left out
+             */
+            base_url?: string | null;
+            /**
+             * Api Format
+             * @description the catalog's when left out
+             */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description the API key; written once, never shown again
+             */
+            value?: string | null;
+            /**
+             * From Secret
+             * @description or one of your env secrets whose value is the key
+             */
+            from_secret?: string | null;
+            /**
+             * Models
+             * @description model names, as typed
+             */
+            models?: string[];
+            /**
+             * Models From
+             * @description add the catalog's default model, or the endpoint's
+             */
+            models_from?: ("endpoint" | "catalog") | null;
+            /**
+             * Projects
+             * @description the writer role on each
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description your own; empty for any
+             */
+            workers?: string[];
+            /**
+             * Expires At
+             * @description after this no run takes it; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Weight
+             * @description its share in a weighted pool; 0 leaves it
+             */
+            weight?: number | null;
+            /**
+             * Priority
+             * @description the lower, the sooner in a fill-first pool
+             */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true: no new run takes it
+             */
+            paused?: boolean | null;
+        };
+        /** ProviderAccountWritten */
+        ProviderAccountWritten: {
+            /** Name */
+            name: string;
+            /**
+             * Provider
+             * @description the id of its entry in the catalog (GET /v1/model-catalog)
+             */
+            provider: string;
+            /**
+             * Provider Name
+             * @description the catalog's name of that provider
+             */
+            provider_name: string;
+            /**
+             * Alias
+             * @description what the gateway reads before the slash of a model name: <alias>/<model>
+             */
+            alias: string;
+            /**
+             * Base Url
+             * @description the https root of its API; every address it resolves to is public
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @enum {string}
+             */
+            api_format: "openai" | "anthropic" | "openai-responses" | "gemini";
+            /**
+             * Models
+             * @description the models it serves, by the endpoint's names
+             */
+            models: string[];
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused or expired, now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares?: components["schemas"]["CredentialShare"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Created
+             * @description true when this write created it, false when it replaced one
+             */
+            created: boolean;
+        };
+        /**
+         * ProviderProbe
+         * @description What the endpoint answered a call with the key: never the key, nor more than a line of its words.
+         */
+        ProviderProbe: {
+            /**
+             * Ok
+             * @description whether the endpoint took the key
+             */
+            ok: boolean;
+            /**
+             * Status
+             * @description the HTTP status of its answer; null when none came
+             */
+            status: number | null;
+            /**
+             * Count
+             * @description how many models it listed
+             */
+            count: number;
+            /**
+             * Models
+             * @description the models it listed, by its names
+             */
+            models: string[];
+            /**
+             * Error
+             * @description why not, sanitized: no key, at most one short line of what it said
+             */
+            error: string | null;
         };
         /** PruneRequest */
         PruneRequest: {
@@ -28576,6 +29402,29 @@ export interface components {
              */
             items: components["schemas"]["RunBlobItem"][];
         };
+        /** RunnableModel */
+        RunnableModel: {
+            /**
+             * Model
+             * @description as a run asks for it: <prefix>/<model>
+             */
+            model: string;
+            /**
+             * Prefix
+             * @description the catalog's alias of its provider, or evo-<id> for an endpoint of a member
+             */
+            prefix: string;
+            /**
+             * Runtimes
+             * @description the runtimes that run it through the model gateway; any picks one
+             */
+            runtimes: string[];
+            /**
+             * Accounts
+             * @description the names of the provider accounts that serve it, by name
+             */
+            accounts: string[];
+        };
         /** Runs */
         Runs: {
             /**
@@ -31271,6 +32120,14 @@ export interface components {
             pending_deletions: number;
             /** Pending Bytes */
             pending_bytes: number;
+        };
+        /** StoredProbe */
+        StoredProbe: {
+            /**
+             * Model
+             * @description a model to ask, when the endpoint lists none; its first otherwise
+             */
+            model?: string | null;
         };
         /**
          * Task
@@ -61431,6 +62288,330 @@ export interface operations {
             };
         };
     };
+    list_agent_provider_accounts_v1_projects__project__agents__handle__provider_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentProviderAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccountWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentProviderAccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_agent_accounts_v1_projects__project__agents__handle__accounts_get: {
         parameters: {
             query?: never;
@@ -67424,6 +68605,605 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_model_catalog_v1_model_catalog_get: {
+        parameters: {
+            query?: {
+                /** @description only the providers of this group */
+                group?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCatalog"];
+                };
+            };
+            /** @description unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_provider_accounts_v1_provider_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_provider_account_v1_provider_accounts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_provider_account_v1_provider_accounts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccountWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_provider_account_v1_provider_accounts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_provider_account_v1_provider_accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderAccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    probe_endpoint_v1_provider_accounts_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderProbe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    probe_provider_account_v1_provider_accounts__name__probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredProbe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderProbe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_runnable_models_v1_projects__project__runnable_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnableModel"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

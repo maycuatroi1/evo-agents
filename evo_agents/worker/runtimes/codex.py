@@ -21,7 +21,9 @@ the CLI prints is parsed here.
   ``peak_context_tokens``, the largest ``last.inputTokens`` (the input of one request of the model, the cached part
   in it), ``context_window``, the model's (``modelContextWindow``), and the first request's cache tokens, the
   ``cachedInputTokens`` and ``cacheWriteInputTokens`` of the first ``last`` (``common.FIRST_REQUEST``).
-- The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. For the
+- The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. A run whose model
+  goes through the hub's gateway route gets it as the thread's model provider (``gateway.codex_config``): wire API
+  responses, the run's token read from the environment (``env_key``), in the terminal UI too (``config_args``). For the
   heartbeat, ``models`` reads the owner's codex home (``$CODEX_HOME``, ``~/.codex`` by default): the ``model`` of
   ``config.toml`` and of each of its profiles, then the models codex offers in its picker, from the cache it keeps
   there (``models_cache.json``: each entry's ``slug`` whose ``visibility`` is ``list``). A file that is missing or not
@@ -68,7 +70,7 @@ from pathlib import Path
 
 from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
-from evo_agents.worker.runtimes import hub_tools, profiles
+from evo_agents.worker.runtimes import gateway, hub_tools, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -223,10 +225,11 @@ def thread_compaction(context: RunContext) -> dict[str, int]:
 
 def config_args(context: RunContext, effort: str | None) -> list[str]:
     """The ``-c`` options of the terminal UI on the run of ``context``: the reasoning effort ``effort``, then
-    ``thread_compaction``, as the headless thread's config has them."""
+    ``thread_compaction``, as the headless thread's config has them, and the gateway's model provider
+    (``gateway.codex_args``)."""
     settings: dict[str, object] = {"model_reasoning_effort": json.dumps(effort)} if effort else {}
     settings.update(thread_compaction(context))
-    return [part for key, value in settings.items() for part in ("-c", f"{key}={value}")]
+    return [part for key, value in settings.items() for part in ("-c", f"{key}={value}")] + gateway.codex_args(context)
 
 
 def wire(payload) -> dict:
@@ -421,6 +424,7 @@ class CodexAdapter(QueueAdapter):
         config = {
             **thread_compaction(self.context),
             **profiles.codex_config(profile, self.mcp_servers() if profile is not None else ()),
+            **gateway.codex_config(self.context),  # the hub's gateway route as the model provider, for a gateway run
         }
         if effort:
             config["model_reasoning_effort"] = effort

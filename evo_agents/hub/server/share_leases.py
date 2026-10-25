@@ -158,11 +158,12 @@ def live_share():
 
 
 async def shared_secrets(
-    conn: AsyncConnection, run, worker_id: int, *, lock: bool, refreshable: bool = False
+    conn: AsyncConnection, run, worker_id: int, *, lock: bool, refreshable: bool = False, kinds=LEASED_KINDS
 ) -> tuple[list, list[Refusal]]:
     """(the rows of the secrets shared with the principal of ``run`` that the hub lends it now, each with its
-    share_id; the refusals of the shares that lend nothing), as the module says. With ``lock`` the rows of the
-    secrets and of their shares are shared-locked, so a share revoked meanwhile waits for these leases and ends them."""
+    share_id; the refusals of the shares that lend nothing), as the module says; of ``kinds``, the provider accounts
+    of a gateway run among them (``gateway_accounts``). With ``lock`` the rows of the secrets and of their shares are
+    shared-locked, so a share revoked meanwhile waits for these leases and ends them."""
     s, b, cs, csp, a = (
         tables.secrets,
         tables.secret_bindings,
@@ -189,7 +190,7 @@ async def shared_secrets(
             exists().where(csp.c.share_id == cs.c.id, csp.c.project_id == run.project_id),
             await grantee_clause(conn, run.principal),
             s.c.owner_id.not_in({run.owner_id, run.principal}),
-            s.c.kind.in_(LEASED_KINDS),
+            s.c.kind.in_(kinds),
             s.c.deleted_at.is_(None),
             _live(refreshable),
             exists().where(b.c.secret_id == s.c.id, b.c.project_id == run.project_id),
@@ -349,7 +350,7 @@ async def end_unlent(conn: AsyncConnection, run_id: int, worker_id: int, lent: s
         .where(
             cl.c.run_id == run_id,
             cl.c.worker_id == worker_id,
-            cl.c.share_id.is_not(None),
+            cl.c.provider != "gateway",  # the accounts a gateway key reaches end with the key (``gateway_leases``)
             cl.c.share_id.not_in(lent) if lent else cl.c.share_id.is_not(None),
             cl.c.revoked_at.is_(None),
         )

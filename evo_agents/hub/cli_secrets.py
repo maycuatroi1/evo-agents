@@ -16,8 +16,8 @@ project's repos under ``--url-prefix``: it needs ``--expires`` and the admin rol
 in ``run_cli``, lists the leases one run got of them.
 
 ``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
-variable. ``account list`` prints them, never a value (GET /v1/accounts); ``account set`` changes the weight or
-priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them take it again (PATCH
+variable. ``account list`` prints them and the provider accounts, never a value (GET /v1/accounts); ``account set``
+changes the weight or priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them back (PATCH
 /v1/accounts/{name}). ``account policy PROJECT`` prints the caller's policy for a project (GET
 /v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
 ``--reset`` drops it, so the defaults hold again (DELETE). ``account list`` and ``account show`` remind the member to
@@ -65,6 +65,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.cli_bindings import BOTH, add_pool_flag, bound_to, where_cell, where_text
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_provider_accounts import print_gateway, provider_text, register_provider_accounts
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import (
     FORGE_KIND,
@@ -343,6 +344,7 @@ def register_secrets(hsub) -> None:
     cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
+    register_provider_accounts(hsub)  # and `hub model-catalog`, the providers an account is added for
 
 
 # `hub account`: the env secrets as accounts (docs/credentials.md, section Accounts)
@@ -375,6 +377,7 @@ ACCOUNT_KEYS = (
     "held_by",
     "shares",
     "cost_by_principal",
+    "gateway",
 )
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
@@ -439,8 +442,8 @@ def cmd_account_list(args) -> int:
         (
             a["name"],
             a["env_var"],
-            a["provider"],
-            a["auth"],
+            provider_text(a),
+            "key" if a.get("gateway") else a["auth"],
             a["state"],
             a["weight"],
             a["priority"],
@@ -480,6 +483,8 @@ def cmd_account_list(args) -> int:
 
 
 def _renew_command(account: dict) -> str:
+    if account.get("gateway"):
+        return f"`evo-agents hub provider-account set {account['name']} --expires ...`"
     if account["env_var"] == setup_token.ENV_VAR:
         command = "oauth-login" if account.get("auth") == "oauth" else "login"
         return f"`evo-agents hub account {command} {account['name']}`"
@@ -552,6 +557,7 @@ def _print_account(a: dict) -> None:
     usage = _usage_text(a["last_usage"])
     reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
     print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
+    print_gateway(a)
     if a.get("auth") == "oauth":
         print("  Signed in with OAuth: the hub keeps its tokens sealed; renew with `account oauth-login`.")
     where = (

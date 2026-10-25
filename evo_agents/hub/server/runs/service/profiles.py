@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import run_autonomy, worker_placement
+from evo_agents.hub.server import gateway_accounts, run_autonomy, worker_placement
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
@@ -58,9 +58,14 @@ class Chosen:
 
     profile: Profile
     model: str | None
+    gateway: str | None = None  # the prefix of a model the run takes through the gateway (``gateway_accounts``)
 
     def columns(self) -> dict:
-        return {"profile_id": self.profile.id, "profile_version": self.profile.version}
+        return {
+            "profile_id": self.profile.id,
+            "profile_version": self.profile.version,
+            "gateway_provider": self.gateway,
+        }
 
     def audit_text(self) -> str:
         """How the audit row of the dispatch names the profile: not at all for the project's default, so the row of a
@@ -285,7 +290,22 @@ async def choose(
     await _worker(conn, user, access, profile, asked)
     _rest(profile, asked)
     await _own_account(conn, profile, asked)
-    return Chosen(profile, model)
+    return Chosen(profile, model, await _gateway(conn, user, access, profile, asked, model))
+
+
+async def _gateway(conn, user: Principal, access: ProjectAccess, profile: Profile, asked: Asked, model) -> str | None:
+    """The prefix of the run's model when it goes through the gateway, checked (``gateway_accounts.check_dispatch``)."""
+    asker = gateway_accounts.Asker(
+        0,
+        user.user_id,
+        user.user_id,
+        access.project_id,
+        profile.id,
+        profile.project_id,
+        agent_owned=not profile.is_default,
+        permissions=profile.permissions,
+    )
+    return await gateway_accounts.check_dispatch(conn, asker, asked, model)
 
 
 async def rerun_choice(

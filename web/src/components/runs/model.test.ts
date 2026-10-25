@@ -370,6 +370,12 @@ describe("models", () => {
     expect(readModel("m".repeat(201), "codex").problem).toBe("long");
     expect(readModel("\u{1F600}".repeat(200), "codex").problem).toBeNull(); // characters, as the API counts them
   });
+
+  it("takes a provider's model with any runtime, as the gateway picks one, and no other model", () => {
+    expect(readModel(" glm/glm-5.3-flash ", "any", ["glm/glm-5.3-flash"])).toEqual({ model: "glm/glm-5.3-flash", problem: null });
+    expect(readModel("glm/other", "any", ["glm/glm-5.3-flash"]).problem).toBe("runtime");
+    expect(readModel("glm/glm-5.3-flash", "opencode", ["glm/glm-5.3-flash"]).problem).toBeNull();
+  });
 });
 
 describe("plan runs", () => {
