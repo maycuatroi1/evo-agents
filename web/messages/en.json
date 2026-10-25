@@ -10928,6 +10928,34 @@
       "refused": "The hub refused to reopen the opportunity."
     }
   },
+  "waitingProposals": {
+    "title": "{count, plural, one {# proposal waits for your answer} other {# proposals wait for your answer}}",
+    "problemText": "An intake or @builder proposed these. Approving one makes the problem, or adds its lines of evidence; rejecting one changes nothing.",
+    "opportunityText": "An intake or @builder proposed these. Approving one makes the opportunity, or adds its lines of evidence; rejecting one changes nothing.",
+    "makes": {
+      "new": "New {code}, from {lines, plural, =0 {no line of evidence} one {# line of evidence} other {# lines of evidence}}",
+      "evidence": "{lines, plural, one {# line} other {# lines}} of evidence for {code}",
+      "change": "A change of {code}"
+    },
+    "proposedBy": "Proposed by {login}",
+    "lines": "{count, plural, one {Show the line of evidence} other {Show the # lines of evidence}}",
+    "line": "{kind}, {signal}: {uri}",
+    "thread": "Thread",
+    "approve": "Approve",
+    "approving": "Approving",
+    "reject": "Reject",
+    "rejecting": "Rejecting",
+    "cancel": "Cancel",
+    "rejectTitle": "Reject proposal {id}?",
+    "rejectText": "Nothing is made, and the proposal stays rejected. To propose it again, put it in another intake.",
+    "approved": "{code} is made",
+    "approvedLines": "The lines of evidence are added to {code}",
+    "open": "Open {code}",
+    "rejected": "Proposal {id} is rejected",
+    "failed": "Couldn't apply proposal {id}",
+    "forbidden": "Answering a proposal needs the writer role on the project.",
+    "conflict": "Another writer answered this proposal first."
+  },
   "browser": {
     "metaTitle": "Browser identities of {project}",
     "title": "Browser identities",

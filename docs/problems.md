@@ -53,8 +53,9 @@ fields whose value changed, never a value.
 Every member with a grant on the project reads its problems; a member without one gets 404, as for every route of a
 project. A writer of the project writes, closes and reopens a problem. The agent of a run never writes one: @builder
 proposes one (proposal kind `problem`, target `{"problem": "P-<number>"}`, none for a new problem, whose code the hub
-picks), and a writer of the project approves or rejects it in the thread, from the Inbox, or with the routes of
-@builder (`docs/plugins.md`, Builder). Rolling back an approved proposal that made a new problem drops that problem.
+picks), and a writer of the project approves or rejects it in the thread, from the Inbox, on the Problems page (where
+the proposals an intake made, which have no thread, wait above the list), with `evo-agents hub intake proposal`, or with
+the routes of @builder (`docs/plugins.md`, Builder). Rolling back an approved proposal that made a new problem drops that problem.
 Writes of one project's problems wait for each other.
 
 ## Links

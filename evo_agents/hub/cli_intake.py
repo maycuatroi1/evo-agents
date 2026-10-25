@@ -10,9 +10,16 @@ writing nothing, a candidate with one independent source that nobody confirmed. 
 @builder for each candidate, and a task of the plugin tasks for each promise when the project enabled it. ``show CODE``
 prints one intake, ``list`` the project's, those of one ``--status`` alone when given.
 
-Starting and putting need the writer role on the project; every member reads. Every command finds its project with
-``--project``, or in the harness.yaml (``hub.project``) of the harness around the current directory. ``--json`` prints
-what the hub answered (``list`` an array). Standard library only, like the rest of the client.
+``proposal list`` lists the pending proposals of a problem or an opportunity that the member may decide, an intake's
+among them (GET /v1/x/builder/{p}/proposals/waiting, ``--kind`` for one kind); a proposal an intake made has no thread
+to answer in. ``proposal show ID`` prints one with the fields it sets and its lines of evidence, and ``proposal
+approve|reject ID`` answers it (POST .../proposals/{id}/answer): approved, the hub makes the problem or the opportunity,
+or its lines. The routes are those of the core plugin builder, which the project enables.
+
+Starting, putting and answering need the writer role on the project; every member reads, and a reader decides no
+proposal. Every command finds its project with ``--project``, or in the harness.yaml (``hub.project``) of the harness
+around the current directory. ``--json`` prints what the hub answered (``list`` and ``proposal list`` an array).
+Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -22,7 +29,7 @@ import sys
 from urllib.parse import quote
 
 from evo_agents.hub import intakes
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
+from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.cli_problems import PROJECT_HELP, project_of
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
@@ -44,10 +51,36 @@ INTAKE_KEYS = (
     "opportunities",
     "outcome",
 )
+PROPOSAL_KEYS = (
+    "id",
+    "project",
+    "kind",
+    "target",
+    "change",
+    "summary",
+    "base_version",
+    "state",
+    "approver",
+    "proposed_by",
+    "proposed_at",
+    "decided_by",
+    "decided_at",
+    "applied_version",
+    "rollback_version",
+    "error",
+    "run_id",
+    "link",
+)
+PROPOSAL_KINDS = ("problem", "opportunity")  # the kinds of proposal of @builder an intake makes, a writer's to decide
+SHOWN_SUMMARY_CHARS = 70  # of a proposal's summary in a row of ``proposal list``
 
 
 def _path(project: str, rest: str = "") -> str:
     return f"/v1/projects/{quote(project, safe='')}/intakes{rest}"
+
+
+def _proposals_path(project: str, rest: str = "") -> str:
+    return f"/v1/x/builder/{quote(project, safe='')}/proposals{rest}"
 
 
 def _usage(text: str) -> int:
@@ -170,6 +203,123 @@ def cmd_list(args) -> int:
     return 0
 
 
+# The proposals an intake made
+
+
+def _makes(proposal: dict) -> str:
+    """What a proposal of a problem or an opportunity makes: a new one, lines of evidence of one, or a change of one."""
+    code = proposal["target"].get(proposal["kind"], "?")
+    change = proposal["change"]
+    if proposal["base_version"] == 0:
+        return f"new {proposal['kind']} {code}"
+    if change.get("evidence") and not change.get("set") and not change.get("unset"):
+        return f"evidence for {code}"
+    return f"change of {code}"
+
+
+def _clip(text: str, most: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= most else text[: most - 3] + "..."
+
+
+@client_command
+def cmd_proposal_list(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    kinds = (args.kind,) if args.kind else PROPOSAL_KINDS
+    query = f"?kind={args.kind}" if args.kind else ""
+    found = [p for p in hub.call("GET", _proposals_path(project, "/waiting" + query)) if p["kind"] in kinds]
+    if args.json:
+        print_json(found)
+        return 0
+    if not found:
+        print(f"No proposal of {' or '.join(kinds)} waits for your answer in project {project}.")
+        return 0
+    rows = [
+        (p["id"], _makes(p), p["proposed_by"], when(p["proposed_at"]), _clip(p["summary"], SHOWN_SUMMARY_CHARS))
+        for p in found
+    ]
+    table(("ID", "MAKES", "BY", "PROPOSED", "SUMMARY"), rows)
+    print("Answer each with `evo-agents hub intake proposal approve|reject ID`.")
+    return 0
+
+
+def _show_proposal(found: dict) -> None:
+    print(f"Proposal {found['id']} of project {found['project']}: {_makes(found)}, {found['state'].replace('_', ' ')}")
+    print(f"  {found['summary']}")
+    print(f"  proposed by {found['proposed_by']} at {when(found['proposed_at'])} UTC")
+    if found["decided_by"]:
+        print(f"  decided by {found['decided_by']} at {when(found['decided_at'])} UTC")
+    if found["error"]:
+        print(f"  error: {found['error']}")
+    for name, value in found["change"].get("set", {}).items():
+        shown = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        print(f"  {name}: {shown}")
+    for name in found["change"].get("unset", []):
+        print(f"  {name}: (cleared)")
+    for line in found["change"].get("evidence", []):
+        print(f"  evidence: [{line['signal']}] {line['source_kind']} {line['source_uri']}: {line['excerpt']}")
+    if found["link"]:
+        print(f"  thread: {found['link']}")
+
+
+@client_command
+def cmd_proposal_show(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    found = hub.call("GET", _proposals_path(project, f"/{args.id}"))
+    if args.json:
+        print_json(found)
+        return 0
+    _show_proposal(found)
+    return 0
+
+
+@client_command
+def cmd_proposal_answer(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    found = hub.call("POST", _proposals_path(project, f"/{args.id}/answer"), {"answer": args.answer})
+    if args.json:
+        print_json(found)
+    elif found["state"] == "applied":
+        print(f"Approved proposal {found['id']}: {_makes(found)} is made.")
+    elif found["state"] == "rejected":
+        print(f"Rejected proposal {found['id']}: nothing changed.")
+    else:
+        print(
+            f"error: proposal {found['id']} was approved and the hub could not apply it: {found['error']}",
+            file=sys.stderr,
+        )
+    return 0 if found["state"] != "failed" else 1
+
+
+def _register_proposal(isub) -> None:
+    proposal = isub.add_parser(
+        "proposal", help="the proposals of a problem or an opportunity that wait for a writer: list, show, answer"
+    )
+    psub = proposal.add_subparsers(dest="proposal_command", required=True)
+
+    listed = psub.add_parser("list", help="the pending proposals you may decide, newest first")
+    listed.add_argument("--kind", choices=PROPOSAL_KINDS, help="those of this kind alone")
+    listed.add_argument("--project", help=PROJECT_HELP)
+    json_option(listed, returns_array(*PROPOSAL_KEYS, schema="BuilderProposal"))
+    listed.set_defaults(func=cmd_proposal_list)
+
+    shown = psub.add_parser("show", help="a proposal, with the fields it sets and its lines of evidence")
+    shown.add_argument("id", type=int, metavar="ID", help="the proposal's id")
+    shown.add_argument("--project", help=PROJECT_HELP)
+    json_option(shown, returns_object(*PROPOSAL_KEYS, schema="BuilderProposal"))
+    shown.set_defaults(func=cmd_proposal_show)
+
+    for verb, says in (("approve", "make what it proposes"), ("reject", "refuse it; nothing changes")):
+        answer = psub.add_parser(verb, help=f"answer a pending proposal: {says} (the writer role)")
+        answer.add_argument("id", type=int, metavar="ID", help="the proposal's id")
+        answer.add_argument("--project", help=PROJECT_HELP)
+        json_option(answer, returns_object(*PROPOSAL_KEYS, schema="BuilderProposal"))
+        answer.set_defaults(func=cmd_proposal_answer, answer=verb)
+
+
 def register_intake(hsub) -> None:
     intake = hsub.add_parser("intake", help="an intake: one reading of vague context, its problems and its promises")
     isub = intake.add_subparsers(dest="intake_command", required=True)
@@ -210,3 +360,5 @@ def register_intake(hsub) -> None:
     listed.add_argument("--project", help=PROJECT_HELP)
     json_option(listed, returns_array(*INTAKE_KEYS, schema="Intake"))
     listed.set_defaults(func=cmd_list)
+
+    _register_proposal(isub)
