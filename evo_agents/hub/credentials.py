@@ -184,6 +184,10 @@ class Lease:
     username: str | None = None
     value: str = field(default="", repr=False)
     expires_at: datetime | None = None
+    # kind gateway (``evo_agents.hub.gateway_runs``): the hub's gateway route, the run's model and the format it speaks
+    base_url: str | None = None
+    model: str | None = None
+    api_format: str | None = None
 
     def __repr__(self) -> str:
         target = self.env_var if self.kind == "env" else self.url_prefix
@@ -205,6 +209,9 @@ class Lease:
             "username": self.username,
             "value": self.value,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            **(
+                {"base_url": self.base_url, "model": self.model, "api_format": self.api_format} if self.base_url else {}
+            ),
         }
 
     @classmethod
@@ -220,6 +227,9 @@ class Lease:
             username=data.get("username"),
             value=str(data.get("value") or ""),
             expires_at=datetime.fromisoformat(expires) if expires else None,
+            base_url=data.get("base_url"),
+            model=data.get("model"),
+            api_format=data.get("api_format"),
         )
 
     def seconds_left(self, now: datetime) -> float | None:

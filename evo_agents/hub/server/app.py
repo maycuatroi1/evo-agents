@@ -420,6 +420,7 @@ def create_app(config: HubConfig) -> FastAPI:
         credential_shares,
         credentials,
         features,
+        gateway_proxy,
         goals,
         intake,
         merge_judge,
@@ -438,6 +439,7 @@ def create_app(config: HubConfig) -> FastAPI:
         rate_limits,
         run_leases,
         run_waits,
+        runnable_models,
         secrets,
         signal_keys,
         signals,
@@ -494,6 +496,8 @@ def create_app(config: HubConfig) -> FastAPI:
         features.admin_router,
         model_catalog.router,
         provider_accounts.router,
+        runnable_models.router,
+        gateway_proxy.router,  # /v1/messages and the like: a run's token to the model gateway
         signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
         signals.router,
         signal_keys.router,

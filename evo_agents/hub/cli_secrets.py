@@ -16,8 +16,9 @@ project's repos under ``--url-prefix``: it needs ``--expires`` and the admin rol
 in ``run_cli``, lists the leases one run got of them.
 
 ``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
-variable. ``account list`` prints them, never a value (GET /v1/accounts); ``account set`` changes the weight or
-priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them take it again (PATCH
+variable. ``account list`` prints them, never a value (GET /v1/accounts), with the provider accounts, their provider,
+host, API format and count of models (``account show`` adds what the gateway last said of one); ``account set``
+changes the weight or priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them take it again (PATCH
 /v1/accounts/{name}). ``account policy PROJECT`` prints the caller's policy for a project (GET
 /v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
 ``--reset`` drops it, so the defaults hold again (DELETE). ``account list`` and ``account show`` remind the member to
@@ -374,6 +375,7 @@ ACCOUNT_KEYS = (
     "held_by",
     "shares",
     "cost_by_principal",
+    "gateway",
 )
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
@@ -438,8 +440,8 @@ def cmd_account_list(args) -> int:
         (
             a["name"],
             a["env_var"],
-            a["provider"],
-            a["auth"],
+            _provider_text(a),
+            "key" if a.get("gateway") else a["auth"],
             a["state"],
             a["weight"],
             a["priority"],
@@ -478,7 +480,17 @@ def cmd_account_list(args) -> int:
     return 0
 
 
+def _provider_text(a: dict) -> str:
+    """Who an account signs in to; for a provider account, its provider, host, API format and count of models."""
+    g = a.get("gateway")
+    return (
+        a["provider"] if not g else f"{g['provider']} ({g['base_url_host']}, {g['api_format']}, {g['models']} models)"
+    )
+
+
 def _renew_command(account: dict) -> str:
+    if account.get("gateway"):
+        return f"`evo-agents hub provider-account set {account['name']} --expires ...`"
     if account["env_var"] == setup_token.ENV_VAR:
         command = "oauth-login" if account.get("auth") == "oauth" else "login"
         return f"`evo-agents hub account {command} {account['name']}`"
@@ -551,6 +563,9 @@ def _print_account(a: dict) -> None:
     usage = _usage_text(a["last_usage"])
     reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
     print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
+    if g := a.get("gateway"):
+        print(f"  Provider account: {_provider_text(a)}; the gateway: {g['status']}", end="")
+        print(f" ({g['reason']})." if g["reason"] else ".")
     if a.get("auth") == "oauth":
         print("  Signed in with OAuth: the hub keeps its tokens sealed; renew with `account oauth-login`.")
     print(f"  Projects: {', '.join(a['projects']) or '-'}; workers: {', '.join(a['workers']) or 'any of yours'}.")

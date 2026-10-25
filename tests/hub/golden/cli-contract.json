@@ -39,7 +39,8 @@
           "cost_7d_usd",
           "held_by",
           "shares",
-          "cost_by_principal"
+          "cost_by_principal",
+          "gateway"
         ],
         "schema": "Account"
       }
@@ -122,7 +123,8 @@
           "cost_7d_usd",
           "held_by",
           "shares",
-          "cost_by_principal"
+          "cost_by_principal",
+          "gateway"
         ],
         "schema": "Account"
       }
@@ -205,7 +207,8 @@
           "cost_7d_usd",
           "held_by",
           "shares",
-          "cost_by_principal"
+          "cost_by_principal",
+          "gateway"
         ],
         "schema": "Account"
       }
@@ -256,7 +259,8 @@
           "cost_7d_usd",
           "held_by",
           "shares",
-          "cost_by_principal"
+          "cost_by_principal",
+          "gateway"
         ],
         "schema": "Account"
       }
@@ -386,7 +390,8 @@
           "cost_7d_usd",
           "held_by",
           "shares",
-          "cost_by_principal"
+          "cost_by_principal",
+          "gateway"
         ],
         "schema": "Account"
       }
@@ -453,7 +458,8 @@
           "cost_7d_usd",
           "held_by",
           "shares",
-          "cost_by_principal"
+          "cost_by_principal",
+          "gateway"
         ],
         "schema": "Account"
       }
@@ -643,7 +649,8 @@
           "cost_7d_usd",
           "held_by",
           "shares",
-          "cost_by_principal"
+          "cost_by_principal",
+          "gateway"
         ],
         "schema": "Account"
       }
@@ -70304,6 +70311,74 @@
           }
         }
       },
+      "/v1/projects/{project}/runnable-models": {
+        "get": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "List Runnable Models",
+          "description": "The models of provider accounts the caller may run in ``project``, through the model gateway.",
+          "operationId": "list_runnable_models_v1_projects__project__runnable_models_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/RunnableModel"
+                    },
+                    "title": "Response List Runnable Models V1 Projects  Project  Runnable Models Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/signals/{project}": {
         "post": {
           "tags": [
@@ -75925,6 +76000,17 @@
               "type": "array",
               "title": "Cost By Principal",
               "description": "its runs and their cost by the member each was made for; for a member it was shared with, theirs"
+            },
+            "gateway": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GatewayAccount"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a provider account's endpoint and what the model gateway last said of it; null for a secret"
             }
           },
           "type": "object",
@@ -75955,7 +76041,7 @@
             "cost_by_principal"
           ],
           "title": "Account",
-          "description": "One of the caller's env secrets as an account: everything but its value."
+          "description": "One of the caller's env secrets or provider accounts as an account: everything but its value or key."
         },
         "AccountCandidate": {
           "properties": {
@@ -87637,7 +87723,22 @@
           "properties": {
             "leases": {
               "items": {
-                "$ref": "#/components/schemas/CredentialLease"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CredentialLease"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GatewayLease"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "env": "#/components/schemas/CredentialLease",
+                    "gateway": "#/components/schemas/GatewayLease",
+                    "git": "#/components/schemas/CredentialLease"
+                  }
+                }
               },
               "type": "array",
               "title": "Leases"
@@ -90731,6 +90832,171 @@
             "rank"
           ],
           "title": "Found"
+        },
+        "GatewayAccount": {
+          "properties": {
+            "provider": {
+              "type": "string",
+              "title": "Provider",
+              "description": "the id of its entry in the catalog"
+            },
+            "prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prefix",
+              "description": "what its models are named with, <prefix>/<model>; null when not served"
+            },
+            "base_url_host": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Url Host",
+              "description": "the host of the endpoint it calls"
+            },
+            "api_format": {
+              "type": "string",
+              "title": "Api Format"
+            },
+            "models": {
+              "type": "integer",
+              "title": "Models",
+              "description": "how many models it serves"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "cooling",
+                "failing",
+                "unknown"
+              ],
+              "title": "Status",
+              "description": "what the gateway last said of it: ok, cooling after a rate limit, failing, or unknown before any"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "the gateway's error code or type when cooling or failing; never its text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "provider",
+            "prefix",
+            "base_url_host",
+            "api_format",
+            "models",
+            "status",
+            "reason"
+          ],
+          "title": "GatewayAccount",
+          "description": "What a provider account calls, through the model gateway (``evo_agents.hub.gateway_runs``)."
+        },
+        "GatewayLease": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the lease of the run's key of the gateway; the same id when it is asked for again"
+            },
+            "kind": {
+              "type": "string",
+              "const": "gateway",
+              "title": "Kind"
+            },
+            "provider": {
+              "type": "string",
+              "const": "gateway",
+              "title": "Provider"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "gateway:<prefix>, the prefix of the run's model"
+            },
+            "env_var": {
+              "type": "null",
+              "title": "Env Var"
+            },
+            "url_prefix": {
+              "type": "null",
+              "title": "Url Prefix"
+            },
+            "username": {
+              "type": "null",
+              "title": "Username"
+            },
+            "value": {
+              "type": "string",
+              "title": "Value",
+              "description": "the run's token to the route: for memory only, never a file, a log line or an event"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "when the run's key of the gateway ends"
+            },
+            "base_url": {
+              "type": "string",
+              "title": "Base Url",
+              "description": "the hub's gateway route, <hub>/v1, that the runtime sends its model calls to"
+            },
+            "model": {
+              "type": "string",
+              "title": "Model",
+              "description": "the run's model, <prefix>/<model of the provider>"
+            },
+            "api_format": {
+              "type": "string",
+              "enum": [
+                "anthropic",
+                "openai",
+                "openai-responses"
+              ],
+              "title": "Api Format",
+              "description": "what the runtime speaks"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "provider",
+            "name",
+            "value",
+            "expires_at",
+            "base_url",
+            "model",
+            "api_format"
+          ],
+          "title": "GatewayLease",
+          "description": "The lease of a run on a provider account's model (``evo_agents.hub.gateway_runs``): the hub's gateway route\nand a token of the run for it; never a provider's key nor the gateway's."
         },
         "GitHubLogin": {
           "properties": {
@@ -118977,6 +119243,44 @@
             "items"
           ],
           "title": "RunUploadRequest"
+        },
+        "RunnableModel": {
+          "properties": {
+            "model": {
+              "type": "string",
+              "title": "Model",
+              "description": "as a run asks for it: <prefix>/<model>"
+            },
+            "prefix": {
+              "type": "string",
+              "title": "Prefix",
+              "description": "the catalog's alias of its provider, or evo-<id> for an endpoint of a member"
+            },
+            "runtimes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Runtimes",
+              "description": "the runtimes that run it through the model gateway; any picks one"
+            },
+            "accounts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Accounts",
+              "description": "the names of the provider accounts that serve it, by name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "model",
+            "prefix",
+            "runtimes",
+            "accounts"
+          ],
+          "title": "RunnableModel"
         },
         "Runs": {
           "properties": {
