@@ -12,12 +12,21 @@ A core plugin implements its contributions to the points of the hub (channels, r
 Python, which each names with ``python`` (one that names none does nothing there); a channel of a core plugin is a kind
 of members' channel, named as the hub names those (``CHANNEL_KIND``). Only a core plugin owns tables (``tables``), and
 each one's name starts with the plugin's table prefix (``table_prefix``): its id with ``_`` for ``-``, then ``_``. The
-tables come from the hub's own chain of migrations, never from the plugin at run time. Only a core plugin contributes a
+tables come from a chain of migrations, never from the plugin at run time: the plugin's own (root key ``schema``, its
+``metadata``, its ``migrations`` package and the tables it ``adopts``, which ``evo-agents hub migrate`` runs after the
+hub's chain), or, for the tables of crm, pm and marketing, the hub's older chain. A core plugin's kinds of notification
+(``notice_kinds``) start with its table prefix too. Only a core plugin contributes a
 source of a project's knowledge graph (``kg_sources``), at most one, which the hub reads in its own process when it
 builds the graph of a project that enables the plugin (``evo_agents.hub.kg_sources``).
 
 A page (``pages``) of an isolated plugin names its HTML file in the bundle under ``pages/`` (``entry``), which the web
-shows in a sandboxed iframe; a core plugin's page is native, a page of the hub's web itself, and names no entry.
+shows in a sandboxed iframe. A core plugin's page names one too when the plugin has ``ui`` (``module:directory``, the
+directory of its package that holds ``pages/``), and is framed the same way; otherwise it is native, a page of the hub's
+web itself, and names no entry.
+
+A command (``cli``) is one of ``evo-agents hub <id> <name>``: its arguments, the route of the plugin it calls and how
+its answer prints (``evo_agents.hub.cli_plugins``); its path arguments appear in the route's path, a positional has no
+flag, and each argument has one name.
 
 A runtime (``runtimes``) names one of ``acp``, the command of an agent that speaks the Agent Client Protocol, which
 any plugin may declare (``evo_agents.plugins.runtimes``), and ``python``, a core plugin's adapter of a runtime of the
@@ -58,7 +67,7 @@ MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
 PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
-CORE_ONLY_POINTS = ("tables", "kg_sources", "loop_rules")  # what only a core plugin contributes
+CORE_ONLY_POINTS = ("tables", "kg_sources", "loop_rules", "notice_kinds")  # what only a core plugin contributes
 # what a project enables a plugin for, besides its permissions, its config and its routes and runtimes of a project
 PROJECT_POINTS = (
     "mcp_tools",
@@ -114,6 +123,11 @@ CORE_ONLY_TEXT = {
     "tables": "only a core plugin owns tables, which the hub's migrations create",
     "kg_sources": "only a core plugin contributes a source of the knowledge graph, which the hub reads in its process",
     "loop_rules": "only a core plugin adds rules to the Loop, which the hub calls in its process",
+    "notice_kinds": "only a core plugin adds kinds of notification, which it sends through the core plugin API",
+}
+CORE_ONLY_KEYS = {
+    "schema": "only a core plugin carries tables and a chain of migrations of its own",
+    "ui": "only a core plugin names a directory of its package for its pages; an isolated plugin's are in its bundle",
 }
 
 
@@ -178,6 +192,16 @@ class Manifest:
         """The tables a core plugin owns, which the hub's migrations create."""
         return tuple(item["name"] for item in self.contributions("tables"))
 
+    @property
+    def ui(self) -> str | None:
+        """``module:directory`` of a core plugin's page files, or None."""
+        return self.data.get("ui")
+
+    @property
+    def plugin_schema(self) -> dict | None:
+        """A core plugin's own tables and chain of migrations (root key ``schema``), or None."""
+        return self.data.get("schema")
+
     def per_project(self) -> bool:
         """Whether a project enables the plugin for anything (``is_per_project``)."""
         return is_per_project(self.data)
@@ -212,6 +236,15 @@ def _semantics(data: dict) -> list[str]:
         for index, item in enumerate(items):
             found.extend(_contribution_problems(data["id"], point, index, item, core))
     found.extend(_backend_problems(data, core))
+    for key, text in CORE_ONLY_KEYS.items():
+        if key in data and not core:
+            found.append(f"{key}: {text}")
+    for index, item in enumerate((data.get("contributes") or {}).get("pages") or ()):
+        if core and "entry" in item and "ui" not in data:
+            found.append(
+                f"contributes.pages[{index}].entry: a core plugin's page is native, a page of the hub's web, unless "
+                "the plugin names ui, the directory of its package that holds pages/, for a framed page"
+            )
     found.extend(_agent_type_problems(data.get("contributes") or {}))
     try:
         parse_spec(data["engines"]["evo-agents"])
@@ -250,6 +283,10 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return _loop_rule_problems(where, item)
     if point == "pages":
         return _page_problems(where, item, core)
+    if point == "notice_kinds" and not item["name"].startswith(table_prefix(plugin_id)):
+        return [f"{where}: notice kind {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
+    if point == "cli":
+        return _command_problems(where, item)
     if point == "runtimes":
         return _runtime_problems(where, item)
     if point == "environments":
@@ -351,17 +388,38 @@ def _mount_problems(where: str, mount: dict) -> list[str]:
     return found
 
 
+def _command_problems(where: str, item: dict) -> list[str]:
+    """What is wrong with command ``item``: an argument named twice, a positional with a flag or a flag twice, a path
+    argument the route's path lacks, or a ``{name}`` of the path no argument fills."""
+    found = []
+    args = item.get("args") or ()
+    names = [arg["name"] for arg in args]
+    flags = [arg["flag"] for arg in args if "flag" in arg]
+    for name in sorted({name for name in names if names.count(name) > 1}):
+        found.append(f"{where}.args: {name!r} is named twice")
+    for flag in sorted({flag for flag in flags if flags.count(flag) > 1}):
+        found.append(f"{where}.args: {flag} is given twice")
+    path = item["http"]["path"]
+    holes = set(re.findall(r"{([a-z][a-z0-9_]*)}", path))
+    for index, arg in enumerate(args):
+        if arg.get("positional") and "flag" in arg:
+            found.append(f"{where}.args[{index}]: a positional argument has no flag")
+        if arg["in"] == "path" and arg["name"] not in holes:
+            found.append(f"{where}.args[{index}]: path argument {arg['name']!r} is not {{{arg['name']}}} of {path!r}")
+        if arg["in"] == "path" and (arg.get("repeatable") or arg["type"] in ("boolean", "file")):
+            found.append(f"{where}.args[{index}]: a path argument is one string or number")
+    for hole in sorted(holes - {arg["name"] for arg in args if arg["in"] == "path"}):
+        found.append(f"{where}.http.path: {{{hole}}} is filled by no path argument")
+    return found
+
+
 def _page_problems(where: str, item: dict, core: bool) -> list[str]:
-    """What is wrong with page ``item``: a core plugin's page is native and names no entry; an isolated plugin's
-    names its HTML file, inside the bundle's pages/."""
+    """What is wrong with page ``item``: a core plugin's page is native and names no entry unless the plugin has
+    ``ui`` (checked with the manifest's root, ``_semantics``); a page that names one, of either tier, names an HTML
+    file inside pages/."""
     entry = item.get("entry")
-    if core:
-        if entry is None:
-            return []
-        return [
-            f"{where}.entry: a core plugin's page is native, a page of the hub's web; only an isolated plugin's names "
-            "an entry"
-        ]
+    if core and entry is None:
+        return []
     if entry is None:
         return [f"{where}: an isolated plugin's page names its entry, an HTML file of its bundle under pages/"]
     if any(part in ("", ".", "..") for part in entry.split("/")):
