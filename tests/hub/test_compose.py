@@ -210,7 +210,9 @@ def test_gateway_compose_runs_the_pinned_image_on_its_own_network_without_a_port
     assert "evo-agents-hub-gateway" in gateway["networks"]["gateway"]["aliases"]
     assert "gateway" in api["networks"]
     # A host whose default address pools are all taken creates the network only with a stated subnet.
-    assert data["networks"]["gateway"] == {"ipam": {"config": [{"subnet": "${EVO_HUB_GATEWAY_SUBNET:-10.231.128.0/28}"}]}}
+    assert data["networks"]["gateway"] == {
+        "ipam": {"config": [{"subnet": "${EVO_HUB_GATEWAY_SUBNET:-10.231.128.0/28}"}]}
+    }
     on_gateway = sorted(
         name for name, service in data["services"].items() if "gateway" in (service.get("networks") or {})
     )
