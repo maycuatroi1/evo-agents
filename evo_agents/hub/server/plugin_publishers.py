@@ -1,6 +1,6 @@
 """The publishers whose signed plugin bundles the hub accepts (plan plugin-market, criterion a6): those the operator
 lists in EVO_HUB_PLUGIN_PUBLISHERS, and the signers hub admins trusted from the web or the CLI as they installed from a
-market or a GitHub release (``plugin_publishers``, 0149). The hub accepts the union of both
+market or a GitHub release (``plugin_publishers``, 0154). The hub accepts the union of both
 (``plugin_store.trusted_publishers``).
 
 - GET /v1/plugin-publishers: every publisher, the operator's first in their order, each with what signs for it
@@ -34,7 +34,7 @@ from evo_agents.hub.server.security import AdminUser, Principal, admin
 from evo_agents.plugins.market import merge_publishers, signer_identity, signer_publisher
 from evo_agents.plugins.signing import PUBLISHER_ID
 
-MAX_NOTE_CHARS = 500  # plugin_publishers.note (0149)
+MAX_NOTE_CHARS = 500  # plugin_publishers.note (0154)
 SIGNER = r"^(sigstore|ed25519):\S{1,600}$"
 LOCKED = (
     "this hub's operator locked its publishers (EVO_HUB_PLUGIN_PUBLISHERS_LOCKED): the hub trusts only those "

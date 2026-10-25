@@ -98,6 +98,7 @@ include = ["evo_agents*"]
 [tool.setuptools.package-data]
 evo_agents = [
     "harness/schemas/*.json",
+    "hub/model_catalog.json",
     "hub/migrations/*.py",
     "hub/migrations/*.mako",
     "hub/migrations/versions/*.py",
@@ -111,6 +112,7 @@ evo_agents = [
     "core_plugins/*/ui/**/*",  # the files of a core plugin's framed pages (manifest key ui)
     "hub/server/*/packs/**/*",  # the agent packs of the features canvas and srs (@strategist, @ba)
     "hub/server/*/packs/**/.mcp.json",
+    "worker/bootstrap.sh",  # a link to deploy/worker/bootstrap.sh, copied in as a file (`worker pool user-data`)
 ]
 
 [tool.ruff]
@@ -132,6 +134,7 @@ pythonpath = ["."]
 markers = [
     "empty_db: hub_db is an empty database, not a copy of the migrated template (tests/hub/conftest.py)",
     "structure: evo_agents against its structure budgets (tests/test_structure.py); runs only with -m structure",
+    "gateway_image: the model gateway's client against the pinned OmniRoute image (tests/hub/test_gateway_image.py); skipped without Docker",
 ]
 # The structure budgets are a check to run when wanted, not part of the suite or of CI (docs/structure.md):
 # `python -m pytest -m structure tests/test_structure.py`. Another -m replaces this one.

@@ -56,6 +56,7 @@ def test_health_reports_version_schema_and_db(client, tmp_path):
         "schema": HEAD,
         "db": "ok",
         "r2": "unconfigured",  # without EVO_HUB_S3_*; tests/hub/test_blobs.py checks R2 itself
+        "gateway": "off",  # without EVO_HUB_GATEWAY_SECRET; tests/hub/test_gateway.py checks the gateway
         "failed": [],
     }
     assert response.headers["cache-control"] == "no-store"
@@ -75,6 +76,7 @@ def test_health_is_503_with_a_json_body_while_postgres_is_down(client, hub_db):
             "schema": None,
             "db": "unavailable",
             "r2": "unconfigured",
+            "gateway": "off",
             "failed": ["db"],
         }
         live = client.get("/v1/health/live")  # the container stays up while the database is away

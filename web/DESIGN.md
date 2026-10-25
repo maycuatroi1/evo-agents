@@ -316,8 +316,33 @@ account stays with its pill and its dot, and a logo never changes colour for a s
 | SSH, other | Lucide `KeyRound` | `fg-subtle` |
 
 An account that is ready has no pill; the pill appears only for Paused, Cooling, Expired and Needs sign-in, and the word
-"Ready" stays in the page for a screen reader. Model accounts and service credentials are two groups with a title and
-a count each; a kind of account added later is one more group of the same shape.
+"Ready" stays in the page for a screen reader.
+
+### Provider cards and the catalog
+
+The Accounts page is in tabs held in `?tab=` (Providers, the default, then Models, Service credentials, Rotation,
+Sharing), so a link or a reload opens the same one; the arrow keys move between them. The Providers tab is a grid of
+cards (`components/accounts/provider-card.tsx`), one per provider the visitor's model accounts call. Claude is a card
+like any other, read from the same catalog. A card's header carries the provider's mark, its name as the title, the
+host of its base URL (or "Signs in on the worker" for Claude), its format and a count of keys; the body is the table of
+its keys, each with its own state pill and actions, then its models as monospaced chips. An agent's account carries
+the agent mark, and a share the shared mark, both as text badges next to the account's name.
+
+The mark (`provider-mark.tsx`) is the logo for the providers `provider-logo.tsx` draws (Claude, Anthropic) on a card
+tile, and for any other the catalog's abbreviation (`text_icon`, two letters) on the catalog colour, with white or black
+ink, whichever contrasts more with it (never under 4.5:1). It is decorative (`aria-hidden`): the name is text beside it, and a mark
+never says how the keys are doing.
+
+Add provider opens the catalog in a dialog (`provider-catalog.tsx`): a search over name and id, a row of group filters
+with a count each (`aria-pressed`), a live count of what matches, then the entries as buttons in two columns from
+`sm`, 24 at a time behind Show more. Loading draws skeleton tiles, a failed load says so with Retry, and no match says
+so in a dashed box. Picking Claude closes the catalog and opens the sign-in; any other entry opens the provider form in
+the same dialog, with Back to the catalog. The form takes the name and base URL prefilled from the entry, the format,
+the key in a password field emptied as the form is sent (or an env secret of the visitor's instead), projects,
+workers, expiry, Test connection and Fetch models, and the models as a searchable list of checkboxes with a field to
+add an id. Edit opens the same form without the key; Change key is a dialog of its own. With the hub's model gateway off
+the Providers tab says runs cannot take provider accounts until an admin turns it on, and, when the gateway does not
+answer, that runs asking for a provider model wait.
 
 The mark (`components/brand.tsx`) is a brush-weight lowercase e drawn as an ensō, heavy at the lower left with a
 tapered tail, a sibling of omelet.tech's mark. In the shell it has no tile and takes `foreground`: ink `#09090b` in
@@ -998,18 +1023,19 @@ Shared pieces built on them:
   name: who, then when) and gives its full time as the bubble's tooltip. A bubble is `radius-lg`, at most 42 rem wide
   and on phones the line less the face (the visitor's 85 %), its text through SafeMarkdown
   (`components/data/markdown.tsx`: Markdown, never HTML) with inline code and code blocks on `card`, a code block or a
-  table scrolling inside it. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: an
-  agent's message's run, each mention's run as `@handle: run #N`, a mention the hub refused in `attention` with the
+  table scrolling inside it. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: a
+  mention the hub refused in `attention` with the
   hub's reason, each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
   that run is on its way (`message-progress.tsx`, by the hub's rule, for a visitor who may read the run: one polite
   status line per run, "@handle got it, waiting for worker X" or "in the inbox of the running turn" with a still
   neutral dot, then each step of its setup and working with the running dot, each in place of the one before; gone
   once the agent answers or the run ends, so a message nobody works on shows nothing), what the page puts under it (a
   decision), its reactions, and in a group chat, for a message that starts a thread, the faces of who replied, "3
-  replies" in `brand` and when the last came, which opens the thread. React and Reply sit beside the bubble at its
+  replies" in `brand` and when the last came, which opens the thread. React, the message's runs and Reply sit beside the bubble at its
   top, on the side away from the face, from 768 px (a `popover` box shown while the pointer is
   over the message, a key is in it or its picker is open; the line leaves it room), and in a row of their own under it
-  on phones, 44 px each. A group chat's line holds the messages that are no reply: Reply in thread
+  on phones, 44 px each. The runs (`MessageRuns`: an agent's message's own run, the run each mention handed work to)
+  are `Activity` icon links named "Run #N of @handle" or "@handle: run #N", so a run shows only when asked for. A group chat's line holds the messages that are no reply: Reply in thread
   (`MessageSquareReply`) opens the thread, where the replies live. A direct chat's line holds every message: the agent's
   answers, which the hub posts in the thread of the message they answer, sit right under it, and no thread needs
   opening; when another message came between (two tasks at once, an answer after the next question), the answer quotes

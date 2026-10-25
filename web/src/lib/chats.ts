@@ -55,6 +55,15 @@ export function utf8Bytes(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
+/**
+ * The project a refused mention names when the refusal is that its dispatcher has no worker taking the project's runs
+ * (`chat_runs._no_worker` of the hub); null for any other refusal. Binding is offered for that refusal only.
+ */
+export function noWorkerProject(refusal: string | null | undefined): string | null {
+  const found = /has no worker that takes runs of project (\S+?),/.exec(refusal ?? "");
+  return found ? found[1] : null;
+}
+
 // Mentions, as `chats.mention_names` reads them.
 
 const FENCE = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[ \t]*$|(?![\s\S]))/gm;

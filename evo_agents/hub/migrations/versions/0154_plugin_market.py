@@ -1,7 +1,7 @@
 """The plugin market: the GitHub repos a hub reads markets from, the publishers a hub admin trusted, install requests.
 
-Revision ID: 0149
-Revises: 0148
+Revision ID: 0154
+Revises: 0153
 Create Date: 2026-10-25
 
 The names below are copies of ``evo_agents.hub.tables_market`` and ``evo_agents.plugins.market`` as of this revision,
@@ -27,8 +27,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0149"
-down_revision = "0148"
+revision = "0154"
+down_revision = "0153"
 branch_labels = None
 depends_on = None
 

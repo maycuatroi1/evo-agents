@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -24,6 +24,26 @@ class CredentialLease(BaseModel):
     expires_at: datetime | None = Field(description="when it stops working; ask again before, for a GitHub token")
 
 
+class GatewayLease(BaseModel):
+    """The lease of a run on a provider account's model (``evo_agents.hub.gateway_runs``): the hub's gateway route
+    and a token of the run for it; never a provider's key nor the gateway's."""
+
+    id: int = Field(description="the lease of the run's key of the gateway; the same id when it is asked for again")
+    kind: Literal["gateway"]
+    provider: Literal["gateway"]
+    name: str = Field(description="gateway:<prefix>, the prefix of the run's model")
+    env_var: None = None
+    url_prefix: None = None
+    username: None = None
+    value: str = Field(
+        description="the run's token to the route: for memory only, never a file, a log line or an event"
+    )
+    expires_at: datetime | None = Field(description="when the run's key of the gateway ends")
+    base_url: str = Field(description="the hub's gateway route, <hub>/v1, that the runtime sends its model calls to")
+    model: str = Field(description="the run's model, <prefix>/<model of the provider>")
+    api_format: Literal["anthropic", "openai", "openai-responses"] = Field(description="what the runtime speaks")
+
+
 class MissingOrigin(BaseModel):
     """A repo of the run whose origin no lease covers: git uses the machine's own credentials for it."""
 
@@ -42,7 +62,7 @@ class RunRepoSource(BaseModel):
 
 
 class Credentials(BaseModel):
-    leases: list[CredentialLease]
+    leases: list[Annotated[CredentialLease | GatewayLease, Field(discriminator="kind")]]
     missing: list[MissingOrigin]
     repos: list[RunRepoSource] = Field(default_factory=list, description="each repo of the run, in the run's order")
 

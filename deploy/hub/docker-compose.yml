@@ -58,6 +58,12 @@ x-hub-environment: &hub-environment
   EVO_HUB_PLUGIN_HOST_URL: ${EVO_HUB_PLUGIN_HOST_URL:-}
   EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
 
+# The model gateway's variables (evo_agents/hub/config.py): the api alone takes them beside x-hub-environment, since
+# only the api calls the gateway. Without EVO_HUB_GATEWAY_SECRET the gateway is off.
+x-gateway-environment: &gateway-environment
+  EVO_HUB_GATEWAY_URL: ${EVO_HUB_GATEWAY_URL:-}
+  EVO_HUB_GATEWAY_SECRET: ${EVO_HUB_GATEWAY_SECRET:-}
+
 # api, worker and plugins run one image, built from one definition. Beside the core plugins deploy/hub/core-plugins.txt
 # pins, the build installs a hub's own: the requirements of EVO_HUB_EXTRA_CORE_PLUGINS, from the index of
 # EVO_HUB_CORE_PLUGIN_INDEX_URL, else PyPI (docs/hub-deployment.md, section Core plugins in the image). The index URL
@@ -86,7 +92,8 @@ services:
     image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
     build: *hub-build
     restart: unless-stopped
-    environment: *hub-environment
+    environment:
+      <<: [*hub-environment, *gateway-environment]
     volumes:
       - api-cache:/cache
     expose: ["8080"]
@@ -94,6 +101,7 @@ services:
       default:
         aliases: [evo-agents-hub-api]
       platform: {}
+      gateway: {}
     # The image's HEALTHCHECK, stated here so the platform shows it: liveness only (/v1/health/live), never /v1/health,
     # which would mark the api dead during an R2 outage while it still answers kg_* from its cache.
     healthcheck:
@@ -181,6 +189,45 @@ services:
       api:
         condition: service_healthy
 
+  # The model gateway, OmniRoute pinned by digest (docs/hub.md, section Model gateway; the version is GATEWAY_VERSION of
+  # evo_agents/hub/model_catalog.py). Only the api calls it: it publishes no port, has no domain, and is on the network
+  # gateway alone, which the api joins, so neither the dashboard nor the management API is on the internet and the
+  # gateway has no route to the database (platform) or to web (default). It takes EVO_HUB_GATEWAY_SECRET and nothing
+  # else of the hub's; the entrypoint derives OmniRoute's own secrets and dashboard password from it (each the
+  # HMAC-SHA256 of "evo-hub-gateway/<label>" under it, as evo_agents/hub/server/gateway_client.py derives the
+  # password), drops it, and starts the gateway. Unset, the service exits at once and the hub runs without a gateway.
+  # Every request needs a key (REQUIRE_API_KEY), and no request or response body is logged: request logs are off and
+  # every key the hub makes is noLog. The volume holds what the hub reconciles into it; a lost one is rebuilt.
+  gateway:
+    <<: *hardening
+    image: diegosouzapw/omniroute:3.8.52@sha256:b08a12e876baa8a5ccadd1ebbe346fe7267dba3b1c9f4fd6bb02070fae41ab6c
+    restart: on-failure
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ -z "$${EVO_HUB_GATEWAY_SECRET:-}" ]; then echo "gateway off: EVO_HUB_GATEWAY_SECRET is not set"; exit 0; fi
+        derived=$$(node -e 'const c = require("crypto"); const s = process.env.EVO_HUB_GATEWAY_SECRET; for (const [n, l] of [["JWT_SECRET", "jwt"], ["API_KEY_SECRET", "api-key"], ["STORAGE_ENCRYPTION_KEY", "storage"], ["INITIAL_PASSWORD", "password"]]) console.log("export " + n + "=" + c.createHmac("sha256", s).update("evo-hub-gateway/" + l).digest("hex"))') || exit 1
+        eval "$$derived"
+        unset derived EVO_HUB_GATEWAY_SECRET
+        exec /app/check-permissions.sh node dev/run-standalone.mjs
+    command: []
+    environment:
+      EVO_HUB_GATEWAY_SECRET: ${EVO_HUB_GATEWAY_SECRET:-}
+      REQUIRE_API_KEY: "true"
+      ENABLE_REQUEST_LOGS: "false"
+      APP_LOG_TO_FILE: "false"
+      OMNIROUTE_DISABLE_CLI_TOKEN: "true"
+    volumes:
+      - gateway-data:/app/data
+    expose: ["20128"]
+    networks:
+      gateway:
+        aliases: [evo-agents-hub-gateway]
+    cpus: ${EVO_HUB_GATEWAY_CPUS:-1}
+    mem_limit: ${EVO_HUB_GATEWAY_MEMORY:-1536m}
+    stop_grace_period: 15s
+
   web:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub-web:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
@@ -211,6 +258,7 @@ volumes:
   api-cache:
   worker-cache:
   plugins-cache:
+  gateway-data:
 
 # The build's only secret, from the environment compose reads (the platform's, or .env next to this file); unset, the
 # build finds no secret and pip uses PyPI.
@@ -224,3 +272,6 @@ networks:
   platform:
     name: ${EVO_HUB_PLATFORM_NETWORK:-dokploy-network}
     external: true
+  # The model gateway's own: the gateway and the api, nothing else. Not internal, since the gateway calls the
+  # providers' APIs on the internet.
+  gateway: {}

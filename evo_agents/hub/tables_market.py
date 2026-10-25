@@ -1,4 +1,4 @@
-"""The tables of the plugin market (0149), which ``evo_agents.hub.tables`` adds to its metadata as
+"""The tables of the plugin market (0154), which ``evo_agents.hub.tables`` adds to its metadata as
 ``tables.market_sources``, ``tables.plugin_publishers`` and ``tables.market_install_requests``.
 
 A market source (``market_sources``) is a GitHub repo holding a market's index (``evo_agents.plugins.market``) at
@@ -52,7 +52,7 @@ def _user(table: str, column: str) -> ForeignKeyConstraint:
 
 
 def market_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """market_sources, plugin_publishers and market_install_requests (0149), added to ``metadata``."""
+    """market_sources, plugin_publishers and market_install_requests (0154), added to ``metadata``."""
     sources = Table(
         "market_sources",
         metadata,

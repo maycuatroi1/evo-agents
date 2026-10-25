@@ -104,6 +104,9 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     slots: 2,
     labels: [],
     plugins: [],
+    auto_labels: [],
+    taints: [],
+    ready: true,
     agent_commit: null,
     version_locked: false,
     shared: false,
@@ -136,15 +139,17 @@ describe("filters", () => {
     expect(readFilters(params("state=active&q=%20queue%20&page=3"))).toEqual({ facet: "active", kind: null, account: "", q: "queue", page: 3 });
     expect(readFilters(params("kind=local&account=%20Ana@Example.com%20&kind=x"))).toMatchObject({ kind: "local", account: "Ana@Example.com" });
     expect(readFilters(params("kind=plan")).kind).toBeNull();
-    expect(readFilters(params("state=running&page=0"))).toEqual({ facet: null, kind: null, account: "", q: "", page: 1 });
+    expect(readFilters(params("state=bogus&page=0"))).toEqual({ facet: "running", kind: null, account: "", q: "", page: 1 });
     expect(readFilters(params(`q=${"x".repeat(300)}&page=1.5`)).q).toHaveLength(200);
     expect(readFilters(params("page=999999")).page).toBe(1);
+    expect(readFilters(params("")).facet).toBe("running");
+    expect(readFilters(params("state=all")).facet).toBeNull();
   });
 
   it("writes only what is set, and pages from 2 on", () => {
-    expect(filtersSearch({ facet: null, kind: null, account: "", q: "", page: 1 })).toBe("");
+    expect(filtersSearch({ facet: "running", kind: null, account: "", q: "", page: 1 })).toBe("");
     expect(filtersSearch({ facet: "ended", kind: null, account: "", q: "lab ws", page: 2 })).toBe("?state=ended&q=lab+ws&page=2");
-    expect(filtersSearch({ facet: null, kind: "local", account: "a@b.c", q: "", page: 1 })).toBe("?kind=local&account=a%40b.c");
+    expect(filtersSearch({ facet: "running", kind: "local", account: "a@b.c", q: "", page: 1 })).toBe("?kind=local&account=a%40b.c");
   });
 
   it("asks the API for the states of the facet, one page at a time, each chat session once", () => {
@@ -157,7 +162,9 @@ describe("filters", () => {
       limit: 50,
       offset: 100,
     });
-    expect(listQuery({ facet: null, kind: null, account: "", q: "", page: 1 }).states).toEqual([]);
+    expect(filtersSearch({ facet: null, kind: null, account: "", q: "", page: 1 })).toBe("?state=all");
+    expect(listQuery({ facet: null, kind: null, account: "", q: "", page: 1 }).states).not.toContain("idle");
+    expect(listQuery({ facet: "running", kind: null, account: "", q: "", page: 1 }).states).toContain("running");
   });
 
   it("counts a facet from the counts of its states", () => {
@@ -166,6 +173,8 @@ describe("filters", () => {
     expect(facetCount({ ...counts, waiting: 1, parked: 1 }, "active")).toBe(6);
     expect(facetCount(counts, "ended")).toBe(3);
     expect(facetCount(counts, null)).toBe(12);
+    expect(facetCount({ ...counts, idle: 5 }, null)).toBe(12);
+    expect(facetCount({ ...counts, idle: 5 }, "idle")).toBe(5);
   });
 });
 
@@ -360,6 +369,12 @@ describe("models", () => {
     expect(readModel("m".repeat(200), "codex").problem).toBeNull();
     expect(readModel("m".repeat(201), "codex").problem).toBe("long");
     expect(readModel("\u{1F600}".repeat(200), "codex").problem).toBeNull(); // characters, as the API counts them
+  });
+
+  it("takes a provider's model with any runtime, as the gateway picks one, and no other model", () => {
+    expect(readModel(" glm/glm-5.3-flash ", "any", ["glm/glm-5.3-flash"])).toEqual({ model: "glm/glm-5.3-flash", problem: null });
+    expect(readModel("glm/other", "any", ["glm/glm-5.3-flash"]).problem).toBe("runtime");
+    expect(readModel("glm/glm-5.3-flash", "opencode", ["glm/glm-5.3-flash"]).problem).toBeNull();
   });
 });
 

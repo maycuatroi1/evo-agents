@@ -14,7 +14,7 @@ type Schemas = components["schemas"];
 export type Account = Schemas["Account"];
 export type AccountState = Account["state"];
 /** What an account of the visitor's and an account of an agent have in common: what the shared cells read. */
-export type AccountFigures = Omit<Account, "projects" | "auth" | "shares" | "cost_by_principal"> & Partial<Pick<Account, "auth">>;
+export type AccountFigures = Omit<Account, "projects" | "auth" | "shares" | "cost_by_principal" | "pools"> & Partial<Pick<Account, "auth">>;
 export type AccountUsage = NonNullable<Account["last_usage"]>;
 export type AccountChange = Schemas["AccountChange"];
 export type AccountPolicy = Schemas["AccountPolicy"];
@@ -46,6 +46,7 @@ export const accountKeys = {
   policies: ["accounts", "policies"] as const,
   secrets: ["accounts", "secrets"] as const,
   workers: ["accounts", "workers"] as const,
+  pools: ["accounts", "pools"] as const,
 };
 
 /** The visitor's own accounts with their figures, by variable and name, without their values. */

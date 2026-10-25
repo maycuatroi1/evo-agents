@@ -10,6 +10,11 @@ tokens (0066: oauth_sealed, oauth_nonce, oauth_key_id, all null for any other ac
 has the defaults. account_policies holds a member's policy for a project; none means DEFAULT_POLICY. run_accounts
 holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
 
+provider_accounts (0151) holds what a provider account calls, for its secret of kind provider, whose sealed value is
+its API key (``evo_agents.hub.server.provider_accounts``): the catalog id of its provider, its base URL, its API
+format and the names of its models. Its weight, priority, pause and cooldown are its ``accounts`` row, as for any
+account.
+
 user_emails holds each email a member listed, or a hub admin listed for them, as it was written: one member an
 address, whatever its case (user_emails_email_key, on lower(email)). ``evo_agents.hub.user_emails`` names the login of
 an address from these rows, or from GitHub's noreply address, which needs none.
@@ -18,7 +23,8 @@ credential_shares holds each share an owner gave of a secret or an account (``ev
 one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
 moment its owner acknowledged the terms warning, and when it was revoked; never deleted. credential_share_projects
 holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
-made for and the share it came under (0106).
+made for and the share it came under (0106), and the hash of a gateway lease's run token (0152); runs gains the
+provider prefix of a run that goes through the model gateway (0152, ``evo_agents.hub.gateway_runs``).
 """
 
 from __future__ import annotations
@@ -71,8 +77,9 @@ def email_table(metadata: MetaData) -> Table:
     return user_emails
 
 
-def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
-    """(accounts, account_policies, run_accounts, user_emails), added to ``metadata``."""
+def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table]:
+    """(accounts, account_policies, run_accounts, user_emails, provider_accounts), added to ``metadata`` (0027, 0066,
+    0068, 0151)."""
     accounts = Table(
         "accounts",
         metadata,
@@ -123,7 +130,21 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
         PrimaryKeyConstraint("run_id", "env_var", name="run_accounts_pkey"),
         Index("run_accounts_secret_idx", "secret_id"),
     )
-    return accounts, account_policies, run_accounts, email_table(metadata)
+    provider_accounts = Table(
+        "provider_accounts",
+        metadata,
+        Column("secret_id", BigInteger, nullable=False),
+        Column("provider", Text, nullable=False),  # the id of its entry in the catalog (evo_agents.hub.model_catalog)
+        Column("base_url", Text, nullable=False),  # https://host[:port][/path], whose every address is public
+        Column("api_format", Text, nullable=False),
+        Column("models", JSONB, nullable=False, server_default="[]"),  # names, an array of strings
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["secret_id"], ["secrets.id"], ondelete="CASCADE", name="provider_accounts_secret_id_fkey"
+        ),
+        PrimaryKeyConstraint("secret_id", name="provider_accounts_pkey"),
+    )
+    return accounts, account_policies, run_accounts, email_table(metadata), provider_accounts
 
 
 def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, Table]:
@@ -177,4 +198,8 @@ def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, T
     credential_leases.append_constraint(key("credential_leases", "share_id", "credential_shares", ondelete="SET NULL"))
     leases = credential_leases.c
     Index("credential_leases_share_idx", leases.share_id, postgresql_where=leases.share_id.is_not(None))
+    credential_leases.append_column(Column("token_hash", LargeBinary))  # SHA-256 of a gateway lease's run token
+    where = credential_leases.c.token_hash.is_not(None)
+    Index("credential_leases_token_idx", credential_leases.c.token_hash, unique=True, postgresql_where=where)
+    metadata.tables["runs"].append_column(Column("gateway_provider", Text))  # the prefix of its gateway model
     return shares, projects

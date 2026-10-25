@@ -40,7 +40,7 @@ def run(tmp_path: Path, runtime: str, env: dict[str, str]) -> SimpleNamespace:
         curator=None,
         spec={"kind": "step", "plan_id": "p", "step_key": "1"},
         daemon=SimpleNamespace(env={"PATH": "/usr/bin", **env}, home=SimpleNamespace(root=tmp_path / "worker")),
-        credentials=SimpleNamespace(agent_vars={}, withheld=frozenset()),
+        credentials=SimpleNamespace(agent_vars={}, withheld=frozenset(), gateway=None),
         venvs={},
         worktree=None,  # no work tree: no hooks of the trailers (autonomy-levels)
     )

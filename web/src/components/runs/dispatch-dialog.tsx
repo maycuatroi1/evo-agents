@@ -11,11 +11,12 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { workersQuery } from "@/components/workers/queries";
-import { agentProblems, agentWorkers, profileField } from "@/lib/agents";
+import { agentModels, agentProblems, agentWorkers, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
+import { modelsFor, runnableModelsQuery } from "@/lib/runnable-models";
 
 import { AccountField, useAccountChoice } from "./account-field";
 import { accountField } from "./account-model";
@@ -26,7 +27,8 @@ import { FieldLabel } from "./field-label";
 import { StepPicker } from "./dispatch-step-picker";
 import { readySelection, selectedRepos } from "./dispatch-steps";
 import { useDispatch } from "./hooks";
-import { chosenWorker, dispatchOutlook, dispatchWorkers, fitWorker, outlookFine, pinRefused, runtimeCount } from "./model";
+import { chosenWorker, dispatchOutlook, dispatchWorkers, fitWorker, modelSuggestions, outlookFine, pinRefused, readModel, runtimeCount, type RuntimeName } from "./model";
+import { ModelField } from "./model-field";
 import {
   type Approval,
   APPROVALS,
@@ -129,6 +131,8 @@ function DispatchForm({
   const selected = readySelection(picked ?? initial, steps);
 
   const [runtime, setRuntime] = useState<RequestedRuntime>("any");
+  const [modelText, setModelText] = useState("");
+  const gateway = useQuery(runnableModelsQuery(browserApi, project)).data ?? [];
   const [mode, setMode] = useState<RunMode>("headless");
   const [workerPick, setWorkerPick] = useState<WorkerChoice | null>(null);
   const [approval, setApproval] = useState<Approval>("review");
@@ -139,12 +143,14 @@ function DispatchForm({
   // The workers of the visitor's for the project, then those the agent lets claim the runs, and the one found for them.
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const mine = agentWorkers(own, agents.agent);
-  const problems = agentProblems(agents.agent, { runtime, workers: own });
+  const model = readModel(modelText, runtime, gateway.map((item) => item.model));
+  const problems = agentProblems(agents.agent, { runtime, model: model.model, workers: own });
   const request = { project, runtime, repos: selectedRepos(selected, steps) };
   const pinned = chosenWorker(mine, request, workerPick, Math.max(selected.length, 1));
   const [account, setAccount] = useAccountChoice(project, runtime, mine.find((worker) => worker.id === pinned)?.name ?? null);
   const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
   const outlook = dispatchOutlook(selected.length, mine, request, pinned);
+  const models = Object.fromEntries(RUNTIMES.map((name) => [name, agentModels(agents.agent, modelSuggestions(mine, name))])) as Record<RuntimeName, string[]>;
   const tooMany = selected.length > MAX_DISPATCH_STEPS;
   const pending = write.isPending;
 
@@ -153,6 +159,12 @@ function DispatchForm({
     setPlanChoice(next);
     setPicked([]);
   };
+  // A model goes with its runtime, as in Run plan: kept only when the next runtime lists it or runs it through the gateway.
+  const changeRuntime = (next: RequestedRuntime) => {
+    setRuntime(next);
+    const kept = modelsFor(gateway, next).some((item) => item.model === modelText.trim());
+    if (!kept && (next === "any" || !models[next].includes(modelText.trim()))) setModelText("");
+  };
   const toggle = (key: string, on: boolean) => {
     const current = picked ?? initial;
     setPicked(on ? [...current.filter((other) => other !== key), key] : current.filter((other) => other !== key));
@@ -160,13 +172,14 @@ function DispatchForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (pending || plan === null || selected.length === 0 || tooMany || problems.length > 0) return;
+    if (pending || plan === null || selected.length === 0 || tooMany || problems.length > 0 || model.problem !== null) return;
     let runs: Run[];
     try {
       runs = await write.mutateAsync({
         plan_id: plan,
         steps: selected,
         runtime,
+        ...(model.model ? { model: model.model } : {}),
         mode,
         approval,
         timeout_min: timeout,
@@ -268,9 +281,19 @@ function DispatchForm({
 
         <AgentField choice={agents} problems={problems} disabled={pending} />
 
-        <RuntimeField value={runtime} onChange={setRuntime} reach={reach} />
+        <RuntimeField value={runtime} onChange={changeRuntime} reach={reach} />
 
         <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+          <ModelField
+            value={modelText}
+            onChange={setModelText}
+            runtime={runtime}
+            models={models}
+            gateway={gateway}
+            onRuntime={changeRuntime}
+            problem={model.problem}
+            disabled={pending}
+          />
           <WorkerField
             project={project}
             fits={mine.map((worker) => fitWorker(worker, request))}
@@ -328,7 +351,7 @@ function DispatchForm({
           <Button
             type="submit"
             size="lg"
-            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0 || pinRefused(outlook)}
+            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0 || model.problem !== null || pinRefused(outlook)}
             busy={pending}
             data-testid="dispatch-submit"
           >

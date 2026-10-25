@@ -3,7 +3,9 @@
 ``/v1/health`` reports the package version and the schema revision read from Postgres, and the blob store (R2)
 after a HeadBucket on its bucket. It answers 503 naming the component that failed when Postgres does not answer
 within HEALTH_TIMEOUT or the bucket does not answer; both are checked at the same time. A hub without the
-EVO_HUB_S3_* variables reports ``r2: unconfigured`` and stays healthy, as it was configured. ``/v1/health/live``
+EVO_HUB_S3_* variables reports ``r2: unconfigured`` and stays healthy, as it was configured. ``gateway`` is the model
+gateway (``gateway_client``): ``off`` without EVO_HUB_GATEWAY_SECRET, else ``ok`` when its health check answers and
+``error``, which fails the check, when it does not. ``/v1/health/live``
 only says the process serves requests: it is the container healthcheck, and a database or R2 outage must not
 get the container restarted.
 """
@@ -37,6 +39,7 @@ class Health(BaseModel):
     schema_revision: str | None = Field(alias="schema", description="Alembic revision applied to the database")
     db: Literal["ok", "unavailable"]
     r2: Literal["ok", "unavailable", "unconfigured"] = Field(description="the blob store, by a HeadBucket")
+    gateway: Literal["ok", "error", "off"] = Field(description="the model gateway, by its health check")
     failed: list[str] = Field(default_factory=list, description="components that did not answer")
 
 
@@ -52,6 +55,8 @@ class Live(BaseModel):
 async def health(request: Request, response: Response):
     store = request.app.state.blobs
     r2 = asyncio.ensure_future(store.status()) if store is not None else None
+    gateway = getattr(request.app.state, "gateway", None)
+    gateway_up = asyncio.ensure_future(gateway.healthy()) if gateway is not None else None
     try:
         schema, db = await schema_revision(request.app.state.engine, HEALTH_TIMEOUT), "ok"
     except (psycopg.Error, sa_exc.DBAPIError, OSError, TimeoutError) as exc:  # PoolTimeout arrives as a DBAPIError
@@ -60,13 +65,18 @@ async def health(request: Request, response: Response):
     r2_status = "unconfigured" if r2 is None else await r2
     if r2_status == "unavailable":
         log.warning("health check failed: blob store unavailable", extra={"bucket": store.bucket})
-    failed = [name for name, status in (("db", db), ("r2", r2_status)) if status == "unavailable"]
+    gateway_status = "off" if gateway_up is None else "ok" if await gateway_up else "error"
+    if gateway_status == "error":
+        log.warning("health check failed: model gateway unavailable", extra={"url": gateway.url})
+    statuses = (("db", db), ("r2", r2_status), ("gateway", gateway_status))
+    failed = [name for name, status in statuses if status in ("unavailable", "error")]
     body = Health(
         status="unavailable" if failed else "ok",
         version=__version__,
         schema=schema,
         db=db,
         r2=r2_status,
+        gateway=gateway_status,
         failed=failed,
     )
     if failed:

@@ -198,7 +198,7 @@ def check_bundle(
 
 async def trusted_publishers(conn: AsyncConnection, config: HubConfig) -> tuple[signing.Publisher, ...]:
     """The publishers whose signatures the hub accepts: EVO_HUB_PLUGIN_PUBLISHERS with the signers hub admins trusted
-    and did not remove (``plugin_publishers``, 0149)."""
+    and did not remove (``plugin_publishers``, 0154)."""
     p = tables.plugin_publishers.c
     query = select(p.publisher, p.signer).where(p.removed_at.is_(None)).order_by(p.id)
     extra = [(row.publisher, row.signer) for row in await conn.execute(query)]

@@ -311,10 +311,17 @@ async def resolve_mentions(conn: AsyncConnection, chat: ChatAccess, user: Princi
 
 async def _thread_agent(conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int | None) -> list[dict]:
     """The mention, ``via`` thread, of the one agent whose session ``user`` has in the thread of ``root``, when the
-    chat has no other person; none otherwise."""
-    m = tables.chat_members
+    chat has no other person, or no other person wrote in that thread; none otherwise."""
+    if root is None:
+        return []
+    m, cm = tables.chat_members, tables.chat_messages
     people = select(func.count()).where(m.c.chat_id == chat.chat_id, m.c.user_id.is_not(None), m.c.removed_at.is_(None))
-    if root is None or (await conn.execute(people)).scalar_one() != 1:
+    others = select(func.count()).where(
+        or_(cm.c.id == root, cm.c.thread_root_id == root),
+        cm.c.author_user_id.is_not(None),
+        cm.c.author_user_id != user.user_id,
+    )
+    if (await conn.execute(people)).scalar_one() != 1 and (await conn.execute(others)).scalar_one():
         return []
     profile_id = await thread_session(conn, chat.chat_id, root, user.user_id)
     if profile_id is None:

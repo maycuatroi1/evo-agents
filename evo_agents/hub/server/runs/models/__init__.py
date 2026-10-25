@@ -20,6 +20,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, BrowserInstallRequest, BrowserReport
+from evo_agents.hub.server.runs.models.placement import PlacementFields, RunPlacement
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     PlanCopy,
@@ -116,7 +117,7 @@ class ReadySteps(BaseModel):
     steps: list[StepReadiness] = Field(description="every step of the plan, in plan order")
 
 
-class Dispatch(BaseModel):
+class Dispatch(PlacementFields):
     plan_id: str = Field(pattern=PLAN_ID)
     steps: list[int | Annotated[str, Field(min_length=1, max_length=STEP_KEY_CHARS)]] = Field(
         min_length=1, max_length=MAX_DISPATCH_STEPS, description="step ids (or orders), one run each"
@@ -146,18 +147,19 @@ class Dispatch(BaseModel):
         return self
 
 
-class AuthorRunDispatch(BaseModel):
+class AuthorRunDispatch(PlacementFields):
     request: str = Field(
         min_length=1,
         max_length=author.MAX_REQUEST_BYTES,
         description=f"what the plan should achieve, in the member's words: at most {author.MAX_REQUEST_BYTES} bytes "
         "of UTF-8",
     )
-    worker_id: int = Field(
+    worker_id: int | None = Field(
+        None,
         ge=1,
         le=MAX_ID,
-        description="the worker of yours, or one shared with you in the project, the run goes to; an author run is "
-        "pinned",
+        description="pin the run to this worker of yours, or one shared with you in the project; null: a worker its "
+        "labels and tolerations fit takes it",
     )
     plan_id: str | None = Field(
         None,
@@ -176,7 +178,7 @@ class AuthorRunDispatch(BaseModel):
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
 
 
-class PlanRunDispatch(BaseModel):
+class PlanRunDispatch(PlacementFields):
     plan_id: str = Field(pattern=PLAN_ID)
     worker_id: int | None = Field(
         None, ge=1, le=MAX_ID, description="pin the run to this worker of yours, or one shared with you in the project"
@@ -201,8 +203,9 @@ class PlanRunDispatch(BaseModel):
     identities: list[browser_help.IdentityName] = browser_help.identities_field()
 
 
-class Rerun(BaseModel):
-    """What a rerun may change of the run it reruns; no body keeps everything."""
+class Rerun(PlacementFields):
+    """What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations
+    keep the run's own selector and tolerations."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -235,7 +238,19 @@ class SteadyWait(BaseModel):
     )
 
 
-class Run(BaseModel):
+class PlanProgress(BaseModel):
+    """How far a plan run's plan has come, as the plan holds it now."""
+
+    done: int = Field(description="steps with status done")
+    total: int = Field(description="steps of the plan")
+    percent: int = Field(description="done of total, rounded down; 0 for a plan without steps")
+    current_step: str | None = Field(
+        description="the step in progress, else the first not done: its title, else its key; null once all are done"
+    )
+    current_status: str | None = Field(description="that step's status as the plan holds it")
+
+
+class Run(RunPlacement):
     id: int
     kind: Literal[runs.SHOWN_KINDS] = Field(
         description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
@@ -289,6 +304,9 @@ class Run(BaseModel):
     verify: list | None
     evidence: str | None
     usage: dict | None
+    plan_progress: PlanProgress | None = Field(
+        None, description="a plan run's plan progress, set in a list of runs; null for any other run"
+    )
     budget: RunBudget | None = Field(None, description="the caps of a run the night shift queued; null for any other")
     error: str | None
     log_sha256: str | None = Field(description="the blob of kind run-log its worker uploaded")

@@ -13,11 +13,12 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { workersQuery } from "@/components/workers/queries";
+import { poolsQuery, workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import { projectsQuery, whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
+import { BindingPicker } from "./binding-picker";
 import { type PutSecret, usePutSecret, useSecretFailure } from "./hooks";
 import {
   emptySecretForm,
@@ -110,6 +111,7 @@ function SecretFormBody({
   const { data: me } = useQuery(whoamiQuery(browserApi));
   const projects = useQuery(projectsQuery(browserApi));
   const workers = useQuery(workersQuery(browserApi));
+  const pools = useQuery(poolsQuery(browserApi));
   const [form, setForm] = useState<SecretForm>(() => (secret ? formOf(secret) : emptySecretForm()));
   const [errors, setErrors] = useState<SecretProblems>({});
   const [forgotten, setForgotten] = useState(false);
@@ -130,13 +132,17 @@ function SecretFormBody({
     const own = (workers.data ?? []).filter((worker) => worker.owner === me?.login && worker.status !== "revoked").map((worker) => worker.name);
     return [...new Set([...own, ...(secret?.workers ?? [])])].sort((a, b) => a.localeCompare(b));
   }, [workers.data, me?.login, secret]);
+  const poolChoices = useMemo(() => {
+    const own = (pools.data ?? []).filter((pool) => pool.owner === me?.login).map((pool) => pool.name);
+    return [...new Set([...own, ...(secret?.pools ?? [])])].sort((a, b) => a.localeCompare(b));
+  }, [pools.data, me?.login, secret]);
   const noProjects = !projects.isPending && !projects.isError && projectChoices.length === 0;
 
   const set = (patch: Partial<SecretForm>, field?: SecretField) => {
     setForm((current) => ({ ...current, ...patch }));
     if (field) setErrors((current) => ({ ...current, [field]: undefined }));
   };
-  const toggle = (list: "projects" | "workers", name: string, on: boolean) =>
+  const toggle = (list: "projects" | "workers" | "pools", name: string, on: boolean) =>
     set({ [list]: on ? [...form[list], name] : form[list].filter((item) => item !== name) }, list === "projects" ? "projects" : undefined);
   const describedBy = (field: SecretField, hint = true) =>
     [hint ? `${ids}-${field}-hint` : "", errors[field] ? `${ids}-${field}-error` : ""].filter(Boolean).join(" ") || undefined;
@@ -360,32 +366,26 @@ function SecretFormBody({
           <FieldError id={`${ids}-projects-error`} text={problem("projects")} testId="secret-projects-error" />
         </fieldset>
 
-        <fieldset className={cn("flex min-w-0 flex-col gap-2", forge && "hidden")} aria-describedby={`${ids}-workers-hint`} data-testid="secret-workers">
-          <legend className="mb-1.5 text-sm font-medium">{t("workers")}</legend>
-          {workers.isPending ? (
-            <Skeleton className="h-10 w-full sm:w-1/2" aria-hidden="true" />
-          ) : workerChoices.length === 0 ? (
-            <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="secret-no-workers">
-              {t("noWorkers")}
-            </p>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {workerChoices.map((name) => (
-                <Choice
-                  key={name}
-                  type="checkbox"
-                  name="workers"
-                  value={name}
-                  checked={form.workers.includes(name)}
-                  onChange={(on) => toggle("workers", name, on)}
-                  title={<span className="font-mono">{name}</span>}
-                  testId={`secret-worker-${name}`}
-                />
-              ))}
-            </div>
-          )}
-          <Hint id={`${ids}-workers-hint`}>{t("workersHint")}</Hint>
-        </fieldset>
+        {(["workers", "pools"] as const).map((list) => {
+          const [kind, locked] = list === "workers" ? (["worker", form.pools.length > 0] as const) : (["pool", form.workers.length > 0] as const);
+          return (
+            <BindingPicker
+              key={list}
+              id={`${ids}-${list}`}
+              kind={kind}
+              legend={t(list)}
+              hint={t(locked ? `${list}Locked` : `${list}Hint`)}
+              empty={t(list === "workers" ? "noWorkers" : "noPools")}
+              loading={(list === "workers" ? workers : pools).isPending}
+              hidden={forge}
+              choices={list === "workers" ? workerChoices : poolChoices}
+              chosen={form[list]}
+              locked={locked}
+              onToggle={(name, on) => toggle(list, name, on)}
+              choice={Choice}
+            />
+          );
+        })}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${ids}-expires`}>{t("expires")}</Label>

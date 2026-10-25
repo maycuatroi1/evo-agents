@@ -176,6 +176,23 @@ def test_a_writer_dispatches_an_author_run_to_their_own_worker_and_a_reader_gets
     assert rerun.status_code == 409 and "is an author run: dispatch a new one" in rerun.json()["message"]
 
 
+def test_an_author_run_needs_no_worker_and_goes_to_one_with_the_labels_it_asks(client, hub, hub_db, tmp_path):
+    publish_skill(client, hub, tmp_path, "The author mode.")
+    plain = author_worker(client, hub["owner"], "plain")
+    gpu = author_worker(client, hub["owner"], "gpu")
+    w = tables.workers
+    sql(hub_db, update(w).where(w.c.id == gpu["id"]).values(labels=["gpu"]))
+    response = client.post(
+        f"/v1/projects/{PROJECT}/author-runs", json={"request": REQUEST, "labels": ["gpu"]}, headers=hub["owner"]
+    )
+    assert response.status_code == 201, response.text
+    run = response.json()
+    assert (run["pinned_worker_id"], run["selector"], run["tolerations"]) == (None, ["gpu"], [])
+    assert run["repos"][0] == {"repo": HARNESS, "branch": None}
+    assert claim(client, plain) is None
+    assert claim(client, gpu)["id"] == run["id"]
+
+
 def test_an_author_run_on_another_runtime_or_with_a_request_over_16_kib_is_422_saying_why(client, hub, hub_db):
     worker = author_worker(client, hub["owner"], "mac-mini")
     for runtime in ("opencode", "codex"):

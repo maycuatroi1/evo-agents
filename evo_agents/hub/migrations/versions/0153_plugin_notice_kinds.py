@@ -1,7 +1,7 @@
 """Core plugins add kinds of notification: notifications.notice_kind takes the hub's kinds and any name of a plugin's.
 
-Revision ID: 0148
-Revises: 0147
+Revision ID: 0153
+Revises: 0152
 Create Date: 2026-10-25
 
 A core plugin declares the kinds of notification it sends in its manifest (extension point ``notice_kinds``), each
@@ -17,8 +17,8 @@ Going back deletes the notices of every kind the hub's list lacks and puts the c
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0148"
-down_revision = "0147"
+revision = "0153"
+down_revision = "0152"
 branch_labels = None
 depends_on = None
 

@@ -1,5 +1,6 @@
 """A Claude Code config dir of its own for the agent of a run under an agent profile that is not its project's default
-(the claim's ``own_home``, which the hub sends only to a daemon of feature ``runs.AGENT_HOME``).
+(the claim's ``own_home``, which the hub sends only to a daemon of feature ``runs.AGENT_HOME``), and of a run whose
+model goes through the hub's gateway route (``runtimes.gateway``), whose dir holds no login at all.
 
 Such an agent runs with CLAUDE_CONFIG_DIR set to CONFIG_DIR of the run's directory, so the session loads none of the
 owner's user-level settings, hooks, plugins, skills, agents, CLAUDE.md or memory; what the hub delivers (the skills
@@ -87,6 +88,7 @@ REFUSAL = (
     f"owner's Claude Code config dir, no keychain item {KEYCHAIN_ITEM}. Sign Claude Code in on the worker, or give "
     f"the run a lease of {OAUTH_TOKEN} made by `claude setup-token`"
 )
+GATEWAY_LOGIN = "the run's token to the hub's gateway route (ANTHROPIC_AUTH_TOKEN), and no Claude login"
 OWNER_HOME_NOTE = (
     "{runtime} runs with this machine's home and its configuration there: only a claude-code agent under a profile "
     "that is not its project's default gets a config dir of its own."
@@ -97,10 +99,11 @@ class RefreshFailed(RuntimeError):
     """The owner's login expires within REFRESH_BEFORE and its refresh failed: the run fails with cause credentials."""
 
 
-def wanted(spec: Mapping, runtime: str) -> bool:
+def wanted(spec: Mapping, runtime: str, gateway: bool = False) -> bool:
     """Whether the agent of the run of claim ``spec`` on ``runtime`` gets a config dir of its own: a claude-code run
-    the claim says ``own_home`` of, on this machine (not in a container)."""
-    return bool(spec.get("own_home")) and runtime == RUNTIME and not spec.get("environment")
+    the claim says ``own_home`` of, or one through the gateway route (``gateway``), on this machine (not in a
+    container)."""
+    return (bool(spec.get("own_home")) or gateway) and runtime == RUNTIME and not spec.get("environment")
 
 
 def keeps_owner_home(spec: Mapping, runtime: str) -> bool:
@@ -117,10 +120,11 @@ def gh_dir(worktree: Path | str) -> Path:
 
 
 def isolated(run: Mapping, runtime: str, env: Mapping[str, str], worktree: Path | str) -> bool:
-    """Whether the agent of claim ``run`` on ``runtime`` with ``env`` runs in a config dir of its own (``wanted``, and
-    CLAUDE_CONFIG_DIR is that dir), so it gets the MCP servers the daemon names alone (``mcp_config``)."""
+    """Whether the agent of claim ``run`` on ``runtime`` with ``env`` runs in a config dir of its own (``wanted``, the
+    daemon's alone sets CLAUDE_CONFIG_DIR to that dir), so it gets the MCP servers the daemon names alone
+    (``mcp_config``)."""
     configured = env.get("CLAUDE_CONFIG_DIR") or ""
-    return wanted(run, runtime) and bool(configured) and Path(configured) == config_dir(worktree)
+    return wanted(run, runtime, True) and bool(configured) and Path(configured) == config_dir(worktree)
 
 
 def mcp_config(servers: Mapping[str, dict]) -> list[str]:
@@ -349,12 +353,14 @@ def prepare(
     owner_env: Mapping[str, str],
     leased: bool,
     server: dict | None,
+    gateway: bool = False,
     keychain: Callable[[], str | None] | None = None,
     lock: Path | None = None,
     post: Callable[[dict], dict] | None = None,
 ) -> str | None:
     """Write the config dir ``directory`` for an agent that starts now (see the module): ``leased`` says a lease of
-    the run sets CLAUDE_CODE_OAUTH_TOKEN, ``owner_env`` is the daemon's environment, whose config dir has the owner's
+    the run sets CLAUDE_CODE_OAUTH_TOKEN, ``gateway`` that the run goes through the gateway route, which gives the dir
+    no login (GATEWAY_LOGIN), ``owner_env`` is the daemon's environment, whose config dir has the owner's
     login, refreshed first under the lock of file ``lock`` when it expires soon (``refresh_owner``). Where the
     agent's login comes from; None when there is none (``REFUSAL``). OSError when the dir is not written,
     RefreshFailed when the owner's login expires soon and was not refreshed."""
@@ -363,6 +369,9 @@ def prepare(
     _write_private(directory / GLOBAL_FILE, _global_config(directory, server))
     (directory.parent / Path(GH_DIR).name).mkdir(mode=0o700, exist_ok=True)
     copy = directory / CREDENTIALS_FILE
+    if gateway:
+        copy.unlink(missing_ok=True)
+        return GATEWAY_LOGIN
     if leased:
         copy.unlink(missing_ok=True)
         return f"the lease's {OAUTH_TOKEN}"
@@ -379,8 +388,8 @@ def prepare(
 
 def note(directory: Path, login: str) -> str:
     """What the run's log says once of the agent's config dir."""
+    why = "through the hub's gateway route" if login == GATEWAY_LOGIN else "under a profile not the project's default"
     return (
-        f"Claude Code runs with a config dir of its own, {directory}, under a profile that is not the project's "
-        f"default: none of the owner's user settings, hooks, plugins, skills, agents, CLAUDE.md or memory load. Its "
-        f"login is {login}."
+        f"Claude Code runs with a config dir of its own, {directory}, {why}: none of the owner's user settings, "
+        f"hooks, plugins, skills, agents, CLAUDE.md or memory load. Its login is {login}."
     )

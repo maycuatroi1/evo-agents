@@ -198,6 +198,138 @@ its projects as the hub lists them; `--worker W` changes another of the owner's 
 machine signed in to its hub. On the web, the owner checks or unchecks them in the Settings card of the worker's page.
 A project added still needs its checkouts on the machine, as at registration ([Runtimes and checkouts](#runtimes-and-checkouts)).
 
+## Pools
+
+A pool is a set of machines a member adds with one join token instead of a pairing code each: servers made for runs,
+which take a name, labels and settings from the pool and need no one at the keyboard. Laptops and desktops keep
+joining with a pairing code or registering with `hub login`, as above; a worker of no pool behaves as it always did.
+Schema 0148 adds `worker_pools`, `worker_join_tokens` and `workers.pool_id`; 0149 `workers.taints`, `runs.selector`
+and `runs.tolerations`; 0150 the pool of a charter, a schedule and a secret binding (`pool_id`). The hub's side is
+`evo_agents/hub/server/worker_pools.py` (pools and tokens), `worker_join.py` (the join), `worker_placement.py`
+(labels, taints, readiness) and `worker_reaper.py`; the command line is `evo-agents worker pool`
+(`evo_agents/worker/pool_cli.py`), and the web shows the pools at `/workers/pools`, reached from the Pools button of
+the Workers page.
+
+```sh
+evo-agents worker pool create vps --project demo --slots 2 --label region=eu --taint dedicated
+evo-agents worker pool list                                   # your pools and their nodes
+evo-agents worker pool show vps                               # one pool, each node with ready and why not
+evo-agents worker pool set vps --reap-after-days 3 --accept-finding home-readable
+evo-agents worker pool token create vps --hours 48 --max-uses 4  # evj_..., printed once
+evo-agents worker pool token list vps                         # the tokens, never their values
+evo-agents worker pool token revoke vps 12                    # the nodes it joined stay
+evo-agents worker pool user-data vps --ttl 24 --max-nodes 1 > user-data.sh
+```
+
+**A pool.** `POST /v1/worker-pools` (a web session with its CSRF header, or the machine token of `hub login`) names
+it, unique among its owner's pools in any case, with the projects its nodes serve (1 to 100, the writer role on each,
+as a pairing needs), the slots of each node (1 to 16, 1 by default), labels and taints (a word or key=value each;
+not the keys `pool`, `os`, `arch`, `runtime` or `feature`, which the hub sets), the codes of high doctor findings the
+pool accepts (`accepted_findings`), and `reap_after_days` (1 to 90, 7 by default). `GET /v1/worker-pools` lists the
+caller's pools, `GET /v1/worker-pools/{name}` shows one with its live nodes, and `PATCH /v1/worker-pools/{name}`
+changes its settings; a list given replaces the whole list, and `pool set --no-labels`, `--no-taints` and
+`--no-accepted-findings` empty one. A change of slots or projects is written into the rows of its live nodes
+(projects with the refusals of [The projects a worker serves](#the-projects-a-worker-serves)), and each daemon learns
+it from its next heartbeat answer. A pool belongs to the member who made it, as a worker does: only they see or
+change it, and another member's pool is 404. Each node is a worker of that member, shared or not by the rules of
+[Shared workers](#shared-workers). Each write is audited (`worker_pool.create`, `worker_pool.update`, `worker_pool.token` and
+`worker_pool.token_revoke`), naming the pool and the token's id, never the token.
+
+**A join token.** `POST /v1/worker-pools/{name}/tokens` makes one: `evj_` and 32 random bytes in base64url, shown
+once; the hub keeps its SHA-256 alone. It works for `hours` (1 to 720, 24 by default) and joins `max_uses` machines
+(1 to 100, 1 by default). `GET .../tokens` lists them with their uses and never their values, and `POST
+.../tokens/{id}/revoke` ends one; the nodes it joined stay. On the machine, `evo-agents worker join --url URL --token
+evj_...` sends it to `POST /v1/worker/join` instead of a code; `EVO_JOIN_TOKEN` gives it without putting it on the
+command line, where the shell's history and the process list would see it. A token that is unknown, expired, revoked
+or used up gets a 403 that names none of these, and counts against the client address in the same limit as a wrong
+code, so the 429 after 10 refusals in 10 minutes covers both ([Joining](#joining)). When the owner has lost the
+writer role on one of the pool's projects, the join gets 409 and uses none of the token.
+
+**Name and labels.** A node is named `<pool>-<host>`, the host being the first DNS label of the machine's hostname,
+lowercased and cut to what a worker name takes; a hostname that already starts with `<pool>-` is kept as it is. When
+the owner has a live worker of that name, `-2`, `-3` and so on are added. A node joins with the pool's slots and
+projects, no labels of its own and the web terminal off. Its labels are computed, not stored: its own (`PATCH
+/v1/workers/{id}` edits those alone), the pool's, and `pool=<name>`. The hub also gives every worker, in a pool or
+not, `auto_labels` from its heartbeat: `os=<os>`, `arch=<arch>`, `runtime=<name>` for each runtime it has, and
+`feature=browser` when it has a browser. Labels, taints and tolerations are lowercased and deduplicated. `GET
+/v1/workers` and the heartbeat's settings show `labels`, `auto_labels`, `taints`, `pool`, `ready` and `ready_reason`.
+
+**The doctor gate.** A node takes no run, pinned or not, until it is ready: its newest doctor report (`POST
+/v1/worker/doctor`, which the daemon sends when it starts and every 24 hours, [Shared workers](#shared-workers)) is at
+most 48 hours old and has no high finding but those whose codes the pool accepts. While it is not, `ready_reason`
+says why (no report yet, a report too old, or the codes found) and what to do; `pool show` and the web's pool page
+show it, and the web's Not ready badge marks such a node while it is idle, busy or draining. No person approves a
+node: a clean doctor report is the approval. A worker of no pool is always ready.
+
+**Selector and taints.** A run may name where it goes: `pool` (the label `pool=<name>`, which must be one of the
+dispatcher's pools), `labels`, every one of which the claiming worker must have among its labels and `auto_labels`,
+and `tolerations`, the taints it accepts. The run's `selector` and `tolerations` hold them (`POST .../runs`,
+`.../plan-runs` and `.../author-runs`; `--pool`, `--label` and `--tolerate` on `hub run dispatch|plan|author|rerun`,
+`docs/hub.md`). A worker claims a run when its labels hold the run's whole selector and the run tolerates each of the
+worker's taints, a pool's taints included. A run pinned to a worker with `--worker` skips the taint check but still
+needs every label of its selector. A run with no selector on a worker with no taint is claimed as before, so a daemon
+that knows nothing of pools claims, heartbeats and joins by code unchanged. A rerun that names none of the three keeps
+the run's own selector and tolerations. A worker's owner sets its own taints with `PATCH /v1/workers/{id}`
+(`{"taints": [...]}`, the whole list) or in the Settings card of its page: a laptop with the taint `laptop` takes
+only the runs that tolerate it, or those pinned to it. Chat runs carry no selector or tolerations, so the pick of a
+chat run's worker passes over a tainted or not-ready worker. The worker axis of an agent profile checks the selector
+and taints when the profile limits workers and the run is not pinned, and answers 422 naming what is missing.
+
+**Where the night shift goes.** A charter names `worker` or `pool` (`docs/curator.md`, The charter). A pool's
+schedule queues its runs with the selector `pool=<name>`, tolerating the pool's taints, instead of pinning them, so
+any ready node of the pool that serves the project claims them. The keeper of the project's graph is the ready node
+with the lowest id, and the Judge's merge goes to a ready node that has the merge judge feature. A pool with no ready
+node waits, as an offline worker does, and the Curator's status says so.
+
+**Secrets and accounts.** A secret or an account bound to a pool (`pools` on `PUT /v1/secrets/{name}`, `--pool` on
+`hub secret set` and `hub account login|oauth-login`) reaches each node of the pool, those that join later too; it
+ranks as a binding to the worker itself. A binding names workers or pools, never both
+([credentials.md](credentials.md#the-owners-routes)).
+
+**Revoking dead nodes.** The hub's hourly job `hub.reap_pool_nodes` revokes each node that has been offline longer
+than its pool's `reap_after_days`, counted from its last heartbeat, or from its join when it never sent one. The
+revoke is the one of `POST /v1/workers/{id}/revoke`: the token ends, the name is free again, the runs it held are
+released with the reason "its worker NAME was offline more than N days and the reaper revoked it", its leases are
+given back and the GitHub tokens they held revoked. The `worker.revoke` audit row has no actor and ends `by=reaper`.
+Each node is revoked in its own transaction, which locks its row and checks again, so a node that sent a heartbeat
+meanwhile is left alone. Workers of no pool are never reaped.
+
+**Skills on a node.** A node has no `hub login`, so its daemon (feature `skill_sync`) syncs the hub's skills with its
+worker token: when it starts and every 6 hours it runs `hub skills sync` in a thread, writing the global skills its
+owner reads (the admins' too when the owner is a hub admin) into the skills directory of each runtime installed,
+each with its `.evo-hub.json` marker. The worker token reads only `GET /v1/worker/skills` and `GET
+/v1/worker/skills/global/{name}/bundle`, never anything of a run, and both answer 403 to a worker that is not a live
+node of a pool. Project skills stay with the harnesses. A hub of an older release answers 404, which the daemon logs
+and tries again at the next turn.
+
+**Bootstrap.** `deploy/worker/bootstrap.sh`, shipped in the package as `evo_agents/worker/bootstrap.sh`, makes a fresh
+Ubuntu 22.04 or 24.04 machine a node in one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/maycuatroi1/evo-agents/main/deploy/worker/bootstrap.sh -o bootstrap.sh
+EVO_HUB_URL=https://hub.example.org EVO_JOIN_TOKEN=evj_... bash bootstrap.sh
+```
+
+Run as root, it installs the system packages with apt (git, tmux, jq, ripgrep, curl, and the libraries and fonts
+Chromium needs; a `t64` name falls back to the 22.04 name), creates the user `evo` (`EVO_BOOTSTRAP_USER`) without sudo
+and outside the docker group, turns lingering on, and installs the rest as that user: uv with Python 3.12, Node 22
+from nodejs.org checked against its SHA256 with pnpm through corepack, Claude Code with its native installer, Codex
+and opencode with npm under `~/.local`, and evo-agents from the tag `nightly` with `uv tool` (`EVO_AK_REQUIREMENT`
+overrides it). It then runs `evo-agents worker join` with the token, and only after that `evo-agents worker service
+install`, since a daemon started before the join would exit as "not a worker" and systemd would keep it stopped. Run
+as another user, it installs in that user's home alone and names the system packages missing; a missing git or curl
+stops it, a missing tmux, jq or rg only warns. A rerun skips each tool already there, skips the join when the machine
+is a worker already (the token may then be left out) and skips the service when its unit exists, so it never restarts
+a running daemon. It does not install a browser (`evo-agents worker browser install`).
+
+**As user-data.** `evo-agents worker pool user-data NAME [--ttl HOURS] [--max-nodes N]` makes a new join token
+(`--ttl` 1 to 720 hours, 24 by default; `--max-nodes` 1 to 100, 1 by default) and prints on stdout the bootstrap
+script with the hub's URL and the token written in, shell-quoted, in place of its `# evo-bootstrap settings:` line.
+The token's id and how to revoke it go to stderr. Paste the output as the cloud-init user-data of a new machine: it
+runs as root at first boot, and the machine joins the pool, gets its name and labels, and takes runs once its first
+doctor report is clean. The user-data holds the token, so keep `--max-nodes` to the machines meant and the TTL short,
+and revoke the token once they joined.
+
 ## Worker status
 
 A worker's status follows from three columns and the clock (`worker_status` in `runs.py`), checked in this order:
@@ -1545,7 +1677,8 @@ page's own origin, under the CSP's `connect-src 'self'`.
 
 | Command | What it does |
 | --- | --- |
-| `evo-agents worker join --url URL --code CODE` | trades a pairing code from the web for a worker token |
+| `evo-agents worker join --url URL --code CODE` | trades a pairing code from the web for a worker token; `--token evj_...` (or `EVO_JOIN_TOKEN`) instead joins a pool ([Pools](#pools)) |
+| `evo-agents worker pool create\|list\|show\|set\|token\|user-data` | the member's pools and their join tokens, with the machine token of `hub login` ([Pools](#pools)) |
 | `evo-agents worker register --name NAME --project P [--project P ...] --slots N [--label L ...]` | registers the machine with the machine token of `evo-agents hub login`, without a code; `--allow-web-terminal` lets the owner open the terminal |
 | `evo-agents worker run` | the daemon in the foreground |
 | `evo-agents worker service install` | keeps the daemon running in the background, now and at each login (see [In the background](#in-the-background)) |
