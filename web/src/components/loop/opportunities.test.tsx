@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loopKeys } from "@/lib/loop-queries";
 import { type OpportunityEvidence, opportunityKeys, type ProjectOpportunity, type ProjectOpportunityShown } from "@/lib/opportunity-queries";
 import { queryKeys } from "@/lib/queries";
+import { waitingKeys } from "@/lib/waiting-proposals";
 import { renderVi } from "@/test/render";
 
 import { OpportunitiesPage } from "./opportunities-page";
@@ -92,6 +93,7 @@ function seeded(role: "reader" | "writer") {
     { code: "G-2", statement: "Another", status: "active", opportunity: null, close_reason: null },
   ]);
   client.setQueryData(loopKeys.items(PROJECT, { state: null, kind: null, goal: null, open: false, opportunity: "O-1" }), { items: [], more: false });
+  client.setQueryData(waitingKeys.of(PROJECT, "opportunity"), []);
   client.setQueryData(queryKeys.whoami, {
     login: "bao",
     admin: false,

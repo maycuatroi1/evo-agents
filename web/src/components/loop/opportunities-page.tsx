@@ -25,6 +25,7 @@ import { useOpportunityViewer } from "./opportunity-hooks";
 import { byClosingWindow, readStatusFilter, statusCounts } from "./opportunity-model";
 import { useDaysLeftText } from "./opportunity-parts";
 import { OPPORTUNITY_LOOKS, OpportunityStatusBadge } from "./opportunity-status";
+import { WaitingProposals } from "./waiting-proposals";
 
 const NARROW_HIDDEN = { answers: "hidden md:table-cell", owner: "hidden lg:table-cell" };
 
@@ -184,7 +185,8 @@ function Opportunities({ project, opportunities, writer, onNew }: { project: str
 /**
  * A project's opportunities (/p/{project}/opportunities), for any member with a grant on it: what the project could win,
  * the nearest closing window first and those with no date last, filtered by status. A writer adds one here (New
- * opportunity) or with `evo-agents hub opportunity set`; goals and claims point back to them.
+ * opportunity) or with `evo-agents hub opportunity set`; goals and claims point back to them. Above the list, a
+ * writer answers the proposed opportunities that wait for them, an intake's among them.
  */
 export function OpportunitiesPage({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("opportunities.list");
@@ -206,6 +208,7 @@ export function OpportunitiesPage({ project, initialError }: { project: string; 
           ) : null
         }
       />
+      {writer ? <WaitingProposals project={project} kind="opportunity" /> : null}
       <QueryView state={state} loading={<TableSkeleton rows={3} toolbar />}>
         {(opportunities) => <Opportunities project={project} opportunities={opportunities} writer={writer} onNew={() => setCreating(true)} />}
       </QueryView>

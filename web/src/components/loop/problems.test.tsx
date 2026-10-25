@@ -9,6 +9,7 @@ import { ProblemChips } from "@/components/data/problem-chips";
 import { loopKeys } from "@/lib/loop-queries";
 import { problemKeys, type ProjectProblem, type ProjectProblemShown } from "@/lib/problem-queries";
 import { queryKeys } from "@/lib/queries";
+import { waitingKeys } from "@/lib/waiting-proposals";
 import { renderVi } from "@/test/render";
 
 import { ProblemPage } from "./problem-page";
@@ -65,6 +66,7 @@ function seeded(role: "reader" | "writer") {
     { revision: 1, status: "open", note: "from the interviews", created_by: "mai", created_at: "2026-10-20T08:00:00Z", changed: ["statement", "who"] },
   ]);
   client.setQueryData(loopKeys.items(PROJECT, { state: null, kind: null, goal: null, open: false, problem: "P-1" }), { items: [], more: false });
+  client.setQueryData(waitingKeys.of(PROJECT, "problem"), []);
   client.setQueryData(queryKeys.whoami, {
     login: "bao",
     admin: false,

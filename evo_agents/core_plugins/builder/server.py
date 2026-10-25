@@ -14,7 +14,9 @@ change with, the event that reads an admin's answer in the thread, and the route
   who may not decide it gets the hub's refusal there. A delivery made again finds the answer done, or the refusal
   said, and says nothing.
 - ``router`` lists and shows a project's proposals, and answers and rolls one back, under /v1/x/builder/<project>/
-  for a member with a grant on the project; the agent of a run never answers one.
+  for a member with a grant on the project; the agent of a run never answers one. ``proposals/waiting`` lists the
+  pending ones the caller may decide, where the web and ``evo-agents hub intake proposal`` find those an intake made,
+  which have no thread.
 
 Approving a proposal of kind plugin_install installs the release from GitHub (``market_install.install_github``) with
 what the request's app holds, or, in the thread, with the hub's engine, config, blob store and Sigstore.
@@ -49,7 +51,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market_install import GitHubInstallIn, Installing, install_github
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
-from evo_agents.hub.tables_settings import PROPOSAL_STATES
+from evo_agents.hub.tables_settings import PROPOSAL_KINDS, PROPOSAL_STATES
 from evo_agents.plugins.signing import default_sigstore
 
 log = logging.getLogger(__name__)
@@ -398,6 +400,23 @@ async def list_proposals(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         return await proposals.listed(conn, access.project_id, state)
+
+
+# Before /{project}/proposals/{proposal_id}, which would take "waiting" for an id and refuse it.
+@router.get("/{project}/proposals/waiting", response_model=list[BuilderProposal])
+async def waiting_proposals(
+    request: Request, project: ProjectName, user: CurrentUser, kind: Literal[PROPOSAL_KINDS] | None = None
+) -> list[BuilderProposal]:
+    """The project's pending proposals that the caller may decide, the newest first; those of ``kind`` alone when
+    given. A writer has those of a problem and an opportunity, an intake's among them, which have no thread to answer
+    in; an admin of the project has the project's others too, a hub admin those of the branding and the features; a
+    reader, and the agent of a run, none."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        decides = [
+            k for k in PROPOSAL_KINDS if kind in (None, k) and not proposals.refusal(user, access, k, "deciding")
+        ]
+        return await proposals.listed(conn, access.project_id, proposals.PENDING, kinds=decides) if decides else []
 
 
 @router.get("/{project}/proposals/{proposal_id}", response_model=BuilderProposal, responses=REFUSALS)

@@ -4,8 +4,8 @@ An intake (I-1, I-2, ...) is one reading of vague context by the session of a me
 thread, a mail folder, a directory of documents, another harness, the hub's own chats. The session reads the sources
 with the member's own access (the hub has no connector for them), cuts them into addressed pieces, keeps the pieces
 that show a pain, and puts one result on the hub. Writers then approve what it proposed. The plan is
-`problem-intake`; the web has no page of its own: proposals show in the Inbox, and problems with their evidence on the
-Problems page.
+`problem-intake`; the web has no page of its own: the proposals wait for a writer above the list of the Problems and
+Opportunities pages, and the problems show with their evidence on the Problems page.
 
 ## The life of an intake
 
@@ -81,6 +81,26 @@ with the candidate's, so one new source can be enough.
   whether evidence of delivery was found. Its external key is `intake:<project>:I-n:promise:<k>`. When the plugin is off
   the promises stay in the intake and the answer says `tasks_skipped`.
 - Questions stay in the intake for the people named.
+
+## Answering the proposals
+
+A proposal a put makes has no thread, so nobody answers it with `approve N` in a chat, and it sends no notice to the
+Inbox. A writer of the project finds the ones that wait on the Problems page (kind `problem`) and the Opportunities
+page (kind `opportunity`), above the list: what each makes, who it hurts or who gains, its lines of evidence, and
+Approve and Reject. A reader sees none. On the command line:
+
+```
+evo-agents hub intake proposal list --project demo
+evo-agents hub intake proposal show 13 --project demo
+evo-agents hub intake proposal approve 13 --project demo
+evo-agents hub intake proposal reject 14 --project demo
+```
+
+`list` takes `--kind problem|opportunity`. Both read `GET /v1/x/builder/{project}/proposals/waiting` (`?kind=`), the
+pending proposals the caller may decide (a writer: problems and opportunities; an admin of the project: every kind of
+the project; a reader: none), and answer with `POST .../proposals/{id}/answer` `{"answer": "approve"|"reject"}`. These
+are the routes of the core plugin builder, so the project must enable it. A plan that names a P-n or O-n of a proposal
+is refused until the proposal is approved: the problem does not exist before.
 
 The session never sends a message, mail or comment to anyone: what it would say to someone else is a draft.
 

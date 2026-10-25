@@ -6,7 +6,8 @@ import { expect, isDeployed, test } from "./support/fixtures";
 import { HubAdmin, newAccount } from "./support/hub";
 import { goalsPath, itemPath, RELEASED_PLAN } from "./support/loop";
 import { open } from "./support/plans";
-import { PROBLEM, problemsPath, putProblemByApi, seedProblems } from "./support/problems";
+import { enablePlugin } from "./support/plugins";
+import { INTAKE_CANDIDATE, PROBLEM, problemsPath, proposeByIntake, putProblemByApi, seedProblems } from "./support/problems";
 import { toast } from "./support/toast";
 
 /**
@@ -185,6 +186,43 @@ test("a reader reads the problems and finds nothing that writes", async ({ page,
   await expect(main(page).getByTestId("problem-owner")).toHaveText(owner.login);
   await expect(main(page).getByTestId("problem-metric")).toContainText("This problem names no metric");
   await bothThemes(page, "a problem a reader reads");
+});
+
+test("a writer approves the problem an intake proposed, which has no thread, and a reader sees no proposal", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await enablePlugin(me, project, "builder", ["chats:read"]);
+  const proposal = await proposeByIntake(me, project);
+
+  await open(page, problemsPath(project));
+  await expect(main(page).getByTestId("problems-empty")).toBeVisible();
+  const waiting = main(page).getByTestId("waiting-proposals");
+  await expect(waiting.getByRole("heading", { level: 2 })).toHaveText("1 proposal waits for your answer");
+  const item = waiting.getByTestId("waiting-proposal");
+  await expect(item).toHaveAttribute("data-proposal", String(proposal));
+  await expect(item).toContainText(INTAKE_CANDIDATE.statement);
+  await expect(item.getByTestId("waiting-proposal-meta")).toContainText(`New P-1, from 2 lines of evidence. Hurts: ${INTAKE_CANDIDATE.who}. Proposed by ${me.login}`);
+  await item.getByTestId("waiting-proposal-lines").locator("summary").click();
+  await expect(item.getByTestId("waiting-proposal-lines")).toContainText(INTAKE_CANDIDATE.evidence[1].excerpt);
+  await bothThemes(page, "a proposal that waits for a writer");
+
+  await item.getByTestId("waiting-proposal-approve").click();
+  await expect(toast(page, "P-1 is made")).toBeVisible();
+  await expect(main(page).getByTestId("waiting-proposals")).toHaveCount(0);
+  await expect(main(page).getByTestId("problems-table").getByTestId("problem-link")).toHaveText(INTAKE_CANDIDATE.statement);
+});
+
+test("a reader of a project with a waiting proposal sees none, and nothing to answer", async ({ page, member }) => {
+  const me = await member([{ role: "reader", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const owner = newAccount("owner");
+  await new HubAdmin().grant(project, owner.login, "admin", "internal");
+  await enablePlugin(owner, project, "builder", ["chats:read"]);
+  await proposeByIntake(owner, project);
+
+  await open(page, problemsPath(project));
+  await expect(main(page).getByTestId("problems-empty")).toBeVisible();
+  await expect(main(page).getByTestId("waiting-proposals")).toHaveCount(0);
 });
 
 test("the problems list and a problem's page on a phone", async ({ page, member }) => {

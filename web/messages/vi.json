@@ -10928,6 +10928,34 @@
       "refused": "Hub từ chối mở lại cơ hội."
     }
   },
+  "waitingProposals": {
+    "title": "{count, plural, other {# đề xuất đang chờ bạn trả lời}}",
+    "problemText": "Một intake hoặc @builder đề xuất những mục này. Duyệt thì bài toán được tạo, hoặc các dòng bằng chứng được thêm vào; từ chối thì không gì thay đổi.",
+    "opportunityText": "Một intake hoặc @builder đề xuất những mục này. Duyệt thì cơ hội được tạo, hoặc các dòng bằng chứng được thêm vào; từ chối thì không gì thay đổi.",
+    "makes": {
+      "new": "{code} mới, từ {lines, plural, =0 {không dòng bằng chứng nào} other {# dòng bằng chứng}}",
+      "evidence": "{lines, plural, other {# dòng}} bằng chứng cho {code}",
+      "change": "Thay đổi {code}"
+    },
+    "proposedBy": "Đề xuất bởi {login}",
+    "lines": "{count, plural, other {Xem # dòng bằng chứng}}",
+    "line": "{kind}, {signal}: {uri}",
+    "thread": "Luồng chat",
+    "approve": "Duyệt",
+    "approving": "Đang duyệt",
+    "reject": "Từ chối",
+    "rejecting": "Đang từ chối",
+    "cancel": "Huỷ",
+    "rejectTitle": "Từ chối đề xuất {id}?",
+    "rejectText": "Không gì được tạo, và đề xuất giữ trạng thái bị từ chối. Muốn đề xuất lại thì đưa nó vào một intake khác.",
+    "approved": "Đã tạo {code}",
+    "approvedLines": "Đã thêm các dòng bằng chứng vào {code}",
+    "open": "Mở {code}",
+    "rejected": "Đã từ chối đề xuất {id}",
+    "failed": "Không áp dụng được đề xuất {id}",
+    "forbidden": "Trả lời đề xuất cần vai trò writer trên dự án.",
+    "conflict": "Một writer khác đã trả lời đề xuất này trước."
+  },
   "browser": {
     "metaTitle": "Danh tính trình duyệt của {project}",
     "title": "Danh tính trình duyệt",

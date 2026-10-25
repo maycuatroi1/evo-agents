@@ -16,7 +16,9 @@ session made of them once, as an ``evo-intake/1`` document (``evo_agents/harness
     lacks, a date that does not exist.
 - Each candidate becomes a pending proposal of @builder, kind ``problem``, without a chat: a new problem takes the next
   free code (the codes of one put follow each other), a candidate that matches a problem proposes its lines as
-  evidence of it. A writer approves them as any proposal of @builder; the agent of a run never puts a result.
+  evidence of it. A writer approves them as any proposal of @builder; the agent of a run never puts a result. With no
+  thread to answer in, a writer finds them on the Problems and Opportunities pages of the web, or with ``evo-agents
+  hub intake proposal list`` (both read /v1/x/builder/<project>/proposals/waiting), and answers each there.
 - ``evo-intake/2`` adds ``opportunities``: candidate opportunities, checked and proposed by
   ``evo_agents.hub.server.intake_opportunities`` (a pending proposal of @builder, kind ``opportunity``, for each); a
   document of ``evo-intake/1`` is accepted as before.
