@@ -29347,24 +29347,24 @@ export interface components {
             id: number;
             /**
              * Name
-             * @description the secret's name, github-app:<account>, or @<handle>:<name> for an account of an agent
+             * @description the secret's name, github-app:<account>, @<handle>:<name> for an account of an agent, gateway:<model> for a run's key of the model gateway, or the provider account's name that key reaches
              */
             name: string;
             /**
              * Provider
-             * @description secret: the owner's; github-app: a token the hub's App made
+             * @description secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's
              * @enum {string}
              */
-            provider: "secret" | "github-app";
+            provider: "secret" | "github-app" | "gateway";
             /**
              * Kind
-             * @description env: a variable of the agent; git: what git's helper answered
+             * @description env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the model gateway, or a provider account it reaches
              * @enum {string}
              */
-            kind: "env" | "git";
+            kind: "env" | "git" | "gateway";
             /**
              * Target
-             * @description kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin
+             * @description kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin; kind gateway: the model
              */
             target: string;
             /**
