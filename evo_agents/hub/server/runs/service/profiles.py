@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import run_autonomy
+from evo_agents.hub.server import run_autonomy, worker_placement
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
@@ -78,6 +78,8 @@ class Asked:
     model: str | None
     pinned: object | None = None
     picked: tuple = ()
+    selector: tuple = ()  # the labels the run asks of its worker, and the taints it tolerates (worker_placement)
+    tolerations: tuple = ()
 
 
 def _refuse(profile: Profile, why: str) -> HTTPException:
@@ -155,12 +157,22 @@ async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess,
     w, wp = tables.workers, tables.worker_projects
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
     mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id, user.user_id))
-    rows = await conn.execute(select(w.c.name, w.c.labels).where(mine_or_shared, w.c.revoked_at.is_(None), serves))
-    if not any(profiles.allows_worker(profile.permissions, row.name, row.labels) for row in rows):
+    listed = select(w.c.name, w.c.labels, *worker_placement.columns(w))
+    rows = await conn.execute(listed.where(mine_or_shared, w.c.revoked_at.is_(None), serves))
+    allowed = [row for row in rows if profiles.allows_worker(profile.permissions, row.name, row.labels)]
+    if not allowed:
         raise _refuse(
             profile,
             f"allows none of your workers of project {access.name}, nor any shared there, to take the run: "
             f"{_workers_text(profile)}",
+        )
+    placed = (worker_placement.Placement.of(row) for row in allowed)  # as the claim counts them, ready or not now
+    if not any(not one.problems(asked.selector, asked.tolerations, readiness=False) for one in placed):
+        raise _refuse(
+            profile,
+            f"allows no worker of yours of project {access.name}, nor any shared there, with the labels the run asks "
+            f"({', '.join(asked.selector) or 'none'}) and no taint it does not tolerate "
+            f"({', '.join(asked.tolerations) or 'none tolerated'}): {_workers_text(profile)}",
         )
 
 

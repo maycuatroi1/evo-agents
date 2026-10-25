@@ -106,6 +106,12 @@ class PoolNode(BaseModel):
     status: Literal[runs.WORKER_STATUSES]
     agent_version: str
     labels: list[str] = Field(description="its own labels, its pool's, and pool=<name>")
+    ready: bool = Field(
+        True,
+        description="whether it takes runs: its newest doctor report is at most 48 hours old and has no high finding "
+        "but those the pool accepts",
+    )
+    ready_reason: str | None = Field(None, description="why it takes no run, while ready is false; null when ready")
     created_at: datetime
     last_heartbeat_at: datetime | None
 

@@ -34,9 +34,8 @@ from datetime import timedelta
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Request, Response
-from sqlalchemy import Text, func, insert, literal, select, update
 from sqlalchemy import exc as sa_exc
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
@@ -45,6 +44,7 @@ from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser, Principal, hash_token
 from evo_agents.hub.server.worker_models import WORKER_NAME
+from evo_agents.hub.server.worker_placement import Placement, all_labels, columns
 from evo_agents.hub.server.worker_pool_models import (
     POOL_NAME,
     IssuedJoinToken,
@@ -61,7 +61,6 @@ log = logging.getLogger(__name__)
 
 TOKEN_PREFIX = "evj_"
 TOKEN_BYTES = 32
-POOL_LABEL_KEY = "pool"
 MAX_NODE_NAME = 100  # as WORKER_NAME takes it
 REFUSED_TOKEN = (
     "the join token is wrong, expired, revoked or used up: create a new one (`evo-agents worker pool token create`)"
@@ -72,35 +71,6 @@ SETTINGS = ("projects", "slots", "labels", "taints", "accepted_findings", "reap_
 router = APIRouter(prefix="/v1/worker-pools", tags=["worker pools"], responses={401: {"model": ErrorBody}})
 
 PoolName = Path(pattern=POOL_NAME, description="the pool's name")
-
-
-# The labels of a node
-
-
-def node_labels(w=None):
-    """The labels a worker row of ``w`` (tables.workers by default) has from its pool: the pool's labels and
-    pool=<name>; an empty array for a worker of no pool. Add them to w.labels for all its labels."""
-    w = tables.workers if w is None else w
-    p = tables.worker_pools
-    of_pool = (
-        select(func.array_append(p.c.labels, literal(f"{POOL_LABEL_KEY}=") + p.c.name))
-        .where(p.c.id == w.c.pool_id)
-        .scalar_subquery()
-    )
-    return func.coalesce(of_pool, literal([], ARRAY(Text)))
-
-
-def all_labels(w=None):
-    """All the labels of a worker row: its own, then its pool's (``node_labels``)."""
-    w = tables.workers if w is None else w
-    return func.array_cat(w.c.labels, node_labels(w))
-
-
-def pool_name(w=None):
-    """The name of the pool of a worker row, NULL for a worker of no pool."""
-    w = tables.workers if w is None else w
-    p = tables.worker_pools
-    return select(p.c.name).where(p.c.id == w.c.pool_id).scalar_subquery()
 
 
 # Reading pools
@@ -148,13 +118,15 @@ async def _nodes(conn: AsyncConnection, pool_id: int) -> list[PoolNode]:
             w.c.drained_at,
             w.c.revoked_at,
             func.now().label("now"),
+            *columns(w),
         )
         .where(w.c.pool_id == pool_id, w.c.revoked_at.is_(None))
         .order_by(w.c.created_at.desc(), w.c.id.desc())
     )
     nodes = []
     for row in await conn.execute(statement):
-        fields = dict(row._mapping)
+        placed = Placement.of(row)
+        fields = {key: value for key, value in row._mapping.items() if not key.startswith("place_")}
         status = runs.worker_status(
             last_heartbeat_at=fields["last_heartbeat_at"],
             drained_at=fields.pop("drained_at"),
@@ -162,7 +134,7 @@ async def _nodes(conn: AsyncConnection, pool_id: int) -> list[PoolNode]:
             now=fields.pop("now"),
         )
         fields["labels"] = list(dict.fromkeys(fields["labels"]))
-        nodes.append(PoolNode(**fields, status=status))
+        nodes.append(PoolNode(**fields, status=status, ready=placed.ready, ready_reason=placed.unready))
     return nodes
 
 
