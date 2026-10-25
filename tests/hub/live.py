@@ -178,6 +178,14 @@ def image_plugins() -> list[str]:
     return sorted(plugin.manifest.id for plugin in core.core_plugins() if plugin.manifest.per_project())
 
 
+def builtin_plugins() -> list[str]:
+    """The features of the hub that keep the names of plugins (canvas, srs, tasks): each is in every project's list of
+    plugins with ``builtin`` true, and the hub audits no install of them."""
+    from evo_agents.hub.plugin_calls import BUILTIN
+
+    return sorted(BUILTIN)
+
+
 def image_installs() -> int:
     """How many audit rows the hub writes by itself as it starts on a new database: one for each of ``image_plugins``."""
     return len(image_plugins())

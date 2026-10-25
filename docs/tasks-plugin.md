@@ -1,9 +1,14 @@
-# The core plugin tasks: a project's backlog on the hub
+# The hub feature tasks: a project's backlog on the hub
 
 The plugin **tasks** keeps a project's tasks in the hub's database: a backlog and sprints, the people of each task, and
 links to the use cases and requirements of the plugin srs (`docs/srs-plugin.md`), to plan steps, runs and pull
-requests. Its code is `evo_agents/core_plugins/tasks`; evo-ak ships it as a core plugin, so every hub has it
-(`docs/plugins.md`, Core plugins). It does nothing in a project until an admin of the project enables it there.
+requests. Its code is `evo_agents/hub/server/tasks`, a feature of the hub, so every hub has it. It does nothing in a
+project until an admin of the project enables it there.
+
+A feature of the hub since migration 0147, a core plugin before it, it keeps the plugin's names: the routes under
+`/v1/x/tasks/`, its MCP tools, its config (`hub plugin config tasks`), and `hub plugin enable tasks`, which turns the
+feature on in the project's layer of its features. A hub admin turns it on or off in the administration, Features,
+for the hub or for one project. `hub plugin list` and /admin/plugins do not list it (`docs/plugins.md`, Core plugins).
 
 ## Enabling it
 

@@ -31,8 +31,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
-from importlib.metadata import entry_points
+from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 
 from evo_agents.plugins import agent_packs, bundle, compat
@@ -45,11 +46,13 @@ ENTRY_POINT_GROUP = "evo_agents.plugins"
 
 @dataclass(frozen=True)
 class CorePlugin:
-    """A core plugin found in the entry points: the entry point's name and value, and its manifest."""
+    """A core plugin found in the entry points: the entry point's name and value, and its manifest. ``builtin`` marks
+    a feature of the hub that runs on the plugins' extension points without being a plugin (``builtin_plugins``)."""
 
     entry_point: str
     value: str
     manifest: Manifest
+    builtin: bool = False
 
 
 def _manifest(point) -> Manifest:
@@ -84,6 +87,25 @@ def core_plugins() -> list[CorePlugin]:
             )
             continue
         found.append(CorePlugin(point.name, point.value, manifest))
+    return found
+
+
+def builtin_plugins(refs: Mapping[str, str]) -> list[CorePlugin]:
+    """The features of the hub that ``refs`` names (id -> ``module:attribute`` of a core plugin's manifest), read as
+    core plugins are, by id, each marked ``builtin``; one that does not load is logged and left out. The hub gives the
+    refs (``evo_agents.hub.plugin_calls.BUILTIN``): no entry point declares them, so no store lists them."""
+    found = []
+    for name, value in sorted(refs.items()):
+        point = EntryPoint(name, value, ENTRY_POINT_GROUP)
+        try:
+            manifest = _manifest(point)
+        except Exception as exc:  # its module may raise anything while it loads, as a core plugin's may
+            log.warning(
+                "hub feature not loaded",
+                extra={"entry_point": name, "value": value, "error": f"{type(exc).__name__}: {exc}"},
+            )
+            continue
+        found.append(CorePlugin(name, value, manifest, builtin=True))
     return found
 
 

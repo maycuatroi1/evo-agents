@@ -12,10 +12,13 @@ timeout, a 503 when the backend is down (``PluginHostUnavailable``), the backend
 member reads (``DOWN``), and a hub admin reads it in the backend's status.
 
 The core plugins of this process are those of the entry point group ``evo_agents.plugins``
-(``evo_agents.plugins.core``), read once (``core_registry``; a test that installs others clears it). A plugin is
-reachable in a project while it is installed on the hub, not turned off, and enabled by the project
-(``enabled_query``), and what it may do there is what the project granted that its installed version still asks for
-(``effective_grant``): the extension points check both on every call, never once for all.
+(``evo_agents.plugins.core``) and the features of the hub that run on the same extension points (``BUILTIN``: canvas,
+srs, tasks), read once (``core_registry``; a test that installs others clears it). A plugin is reachable in a project
+while it is installed on the hub, not turned off, and enabled by the project (``enabled_query``), and what it may do
+there is what the project granted that its installed version still asks for (``effective_grant``): the extension
+points check both on every call, never once for all. A feature of ``BUILTIN`` is no plugin: its row in the store is
+marked ``builtin``, no store or project lists it as a plugin, and it is enabled in each project the feature is on in
+(``evo_agents.hub.feature_rule``), granted all it asks for (``enablements``).
 
 This module is outside ``evo_agents.hub.server`` so the job worker (``evo_agents.hub.worker``) runs plugins' jobs and
 events with it, and imports nothing of the server.
@@ -30,12 +33,13 @@ import logging
 from dataclasses import dataclass
 from functools import cache
 
-from sqlalchemy import select
+from sqlalchemy import ARRAY, Text, literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
-from evo_agents.plugins.core import CorePlugin, core_plugins
-from evo_agents.plugins.manifest import Manifest, read_manifest
+from evo_agents.hub.feature_rule import feature_on
+from evo_agents.plugins.core import CorePlugin, builtin_plugins, core_plugins
+from evo_agents.plugins.manifest import PERMISSIONS, Manifest, read_manifest
 from evo_agents.plugins.protocol import INTERNAL_ERROR, POINT_METHODS, result_problems
 
 log = logging.getLogger(__name__)
@@ -43,6 +47,13 @@ log = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 30.0  # seconds one call to a plugin may take
 DOWN = "its backend is not running now; a hub admin sees why in the plugin's backend status"
 NAMESPACE = "__"  # between a plugin's id and its tool's name on /mcp: sample__echo
+# The features of the hub that run on the plugins' extension points, by id: the manifest of each, as a core plugin's
+# entry point names it. Each is a feature of evo_agents.hub.features of the same id.
+BUILTIN = {
+    "canvas": "evo_agents.hub.server.canvas:MANIFEST",
+    "srs": "evo_agents.hub.server.srs:MANIFEST",
+    "tasks": "evo_agents.hub.server.tasks:MANIFEST",
+}
 
 
 class PluginHostUnavailable(RuntimeError):
@@ -130,7 +141,7 @@ def _json(response) -> dict:
 
 @dataclass(frozen=True)
 class CoreRegistry:
-    """The core plugins installed beside evo-agents, as the entry points give them."""
+    """The core plugins installed beside evo-agents, as the entry points give them, and the features of ``BUILTIN``."""
 
     plugins: tuple[CorePlugin, ...]
 
@@ -144,8 +155,16 @@ class CoreRegistry:
 
 @cache
 def core_registry() -> CoreRegistry:
-    """The core plugins of this process, read once from the entry points."""
-    return CoreRegistry(tuple(core_plugins()))
+    """The core plugins of this process, read once from the entry points, and the features of ``BUILTIN``, by name;
+    an entry point that names a feature's id is left out, logged."""
+    builtin = builtin_plugins(BUILTIN)
+    found = list(builtin)
+    for plugin in core_plugins():
+        if plugin.manifest.id in BUILTIN:
+            log.warning("core plugin left out: a feature of the hub has its id", extra={"plugin": plugin.manifest.id})
+            continue
+        found.append(plugin)
+    return CoreRegistry(tuple(sorted(found, key=lambda plugin: plugin.entry_point)))
 
 
 @cache
@@ -195,10 +214,28 @@ def asked_for(manifest: dict) -> list[str]:
     return list(manifest.get("permissions") or [])
 
 
+def enablements():
+    """Each plugin enabled in a project, as a subquery (project_id, plugin_id, permissions): the rows of project_plugins,
+    and for each feature of ``BUILTIN`` whose row in the store is marked builtin, each project the feature is on in,
+    granted every permission (``effective_grant`` leaves what its manifest does not ask for)."""
+    pp, p, projects = tables.project_plugins, tables.plugins, tables.projects
+    every = literal(list(PERMISSIONS), ARRAY(Text))
+    parts = [select(pp.c.project_id, pp.c.plugin_id, pp.c.permissions)]
+    for name in BUILTIN:
+        parts.append(
+            select(projects.c.id.label("project_id"), p.c.id.label("plugin_id"), every.label("permissions"))
+            .join_from(projects, p, p.c.name == name)
+            .where(p.c.builtin, feature_on(name, projects.c.id))
+        )
+    return union_all(*parts).subquery("enablements")
+
+
 def enabled_query():
     """The plugins each project enabled that are installed and turned on: plugin id, name, installed version, its
-    manifest, tier and SHA-256, the project's id and name, and what it granted."""
-    p, v, pp, projects = tables.plugins, tables.plugin_versions, tables.project_plugins, tables.projects
+    manifest, tier and SHA-256, the project's id and name, and what it granted. A query narrows it to one project by
+    ``tables.projects.c.id`` (or ``.name``)."""
+    p, v, projects = tables.plugins, tables.plugin_versions, tables.projects
+    e = enablements()
     return (
         select(
             p.c.id,
@@ -207,13 +244,13 @@ def enabled_query():
             v.c.manifest,
             v.c.tier,
             v.c.sha256,
-            pp.c.project_id,
+            e.c.project_id,
             projects.c.name.label("project"),
-            pp.c.permissions,
+            e.c.permissions,
         )
-        .join_from(pp, p, p.c.id == pp.c.plugin_id)
+        .join_from(e, p, p.c.id == e.c.plugin_id)
         .join(v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
-        .join(projects, projects.c.id == pp.c.project_id)
+        .join(projects, projects.c.id == e.c.project_id)
         .where(p.c.disabled_reason.is_(None))
     )
 
@@ -226,13 +263,13 @@ def effective_grant(row) -> tuple[str, ...]:
 
 async def enabled_plugins(conn: AsyncConnection, project_id: int) -> list:
     """The rows of ``enabled_query`` of project ``project_id``, by plugin name."""
-    query = enabled_query().where(tables.project_plugins.c.project_id == project_id).order_by(tables.plugins.c.name)
+    query = enabled_query().where(tables.projects.c.id == project_id).order_by(tables.plugins.c.name)
     return list(await conn.execute(query))
 
 
 async def enabled_in(conn: AsyncConnection, name: str, project_id: int):
     """The row of ``enabled_query`` of plugin ``name`` in project ``project_id``, or None."""
-    query = enabled_query().where(tables.plugins.c.name == name, tables.project_plugins.c.project_id == project_id)
+    query = enabled_query().where(tables.plugins.c.name == name, tables.projects.c.id == project_id)
     return (await conn.execute(query)).first()
 
 
@@ -290,6 +327,7 @@ async def call(
 
 
 __all__ = [
+    "BUILTIN",
     "ApiContext",
     "CoreContext",
     "CoreRegistry",
@@ -304,6 +342,7 @@ __all__ = [
     "enabled_in",
     "enabled_plugins",
     "enabled_query",
+    "enablements",
     "load",
     "manifest_of",
 ]

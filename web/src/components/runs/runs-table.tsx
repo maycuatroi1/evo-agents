@@ -17,7 +17,9 @@ import { cn } from "@/lib/utils";
 import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadge } from "./badges";
 import { hasOtherTurns, isSessionTurn } from "./chat-session";
 import { SessionTurns, TurnsToggle } from "./chat-session-turns";
+import { PlanProgressLine } from "./plan-progress-line";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
+import { readRunUsage } from "./usage-model";
 import { durationParts, runTiming, taskBranch } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
@@ -53,10 +55,27 @@ const NARROW_HIDDEN: Record<RunsTableVariant, Record<string, string>> = {
 
 /** Which columns each variant shows, in order. */
 const COLUMNS: Record<RunsTableVariant, string[]> = {
-  project: ["run", "step", "state", "worker", "runtime", "started", "duration", "attempt"],
-  step: ["run", "state", "worker", "dispatcher", "runtime", "started", "duration", "attempt"],
-  worker: ["run", "step", "state", "runtime", "started", "duration", "attempt"],
+  project: ["run", "step", "state", "cost", "worker", "runtime", "started", "duration", "attempt"],
+  step: ["run", "state", "cost", "worker", "dispatcher", "runtime", "started", "duration", "attempt"],
+  worker: ["run", "step", "state", "cost", "runtime", "started", "duration", "attempt"],
 };
+
+/** What the run cost in dollars, as its runtime reported it; a dash when it reported none. */
+function CostCell({ run }: { run: Run }) {
+  const format = useFormatter();
+  const cost = readRunUsage(run.usage)?.cost;
+  if (!cost) return <span className="text-fg-subtle">-</span>;
+  const amount = format.number(cost.amount, {
+    style: "currency",
+    currency: cost.currency,
+    maximumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
+  });
+  return (
+    <span className="whitespace-nowrap font-mono text-xs" data-testid="run-cost">
+      {amount}
+    </span>
+  );
+}
 
 export function useDuration() {
   const t = useTranslations("runs.duration");
@@ -305,7 +324,21 @@ export function RunsTable({
     const state = helper.display({
       id: "state",
       header: () => t("columns.state"),
-      cell: (info) => <StatusBadge kind="run" status={info.row.original.state} />,
+      cell: (info) => {
+        const run = info.row.original;
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <StatusBadge kind="run" status={run.state} />
+            <PlanProgressLine run={run} />
+          </div>
+        );
+      },
+    });
+    const cost = helper.display({
+      id: "cost",
+      header: () => t("columns.cost"),
+      meta: { numeric: true },
+      cell: (info) => <CostCell run={info.row.original} />,
     });
     const worker = helper.display({
       id: "worker",
@@ -350,7 +383,7 @@ export function RunsTable({
         );
       },
     });
-    const all = { run, step, state, worker, dispatcher, runtime, started, duration, attempt };
+    const all = { run, step, state, cost, worker, dispatcher, runtime, started, duration, attempt };
     return helper.columns(COLUMNS[variant].map((id) => all[id as keyof typeof all]));
   }, [t, tRuntime, variant, viewer]);
 

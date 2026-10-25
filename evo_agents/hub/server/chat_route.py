@@ -56,7 +56,7 @@ async def route_of(conn: AsyncConnection, profile_id: int) -> Route | None:
     query = (
         enabled_query()
         .add_columns(t.c.name.label("agent_type"), t.c.run_as, u.c.login.label("run_as_login"), t.c.workers)
-        .join(t, (t.c.plugin_id == tables.plugins.c.id) & (t.c.project_id == tables.project_plugins.c.project_id))
+        .join(t, (t.c.plugin_id == tables.plugins.c.id) & (t.c.project_id == tables.projects.c.id))
         .join(u, u.c.id == t.c.run_as)
         .where(t.c.profile_id == profile_id, t.c.disabled_at.is_(None))
     )

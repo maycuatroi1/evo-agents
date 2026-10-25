@@ -236,7 +236,7 @@ def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_onl
 
 def test_plugin_points_a_kg_source_is_a_core_plugin_s_one_and_a_project_enables_it():
     core = manifest(id="srs", tier="core", permissions=None, config=None, contributes={})
-    source = {"name": "documents", "python": "evo_agents.core_plugins.srs.kg:kg_source"}
+    source = {"name": "documents", "python": "evo_agents.hub.server.srs.kg:kg_source"}
     found = read_manifest({**core, "contributes": {"kg_sources": [source]}})
     assert found.contributions("kg_sources") == (source,) and found.per_project()  # read per project that enables it
     cases = [

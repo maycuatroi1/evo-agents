@@ -21,9 +21,9 @@ import yaml
 
 pytest.importorskip("sqlalchemy", reason="the kg source of canvas needs the hub-server extra")
 
-from evo_agents.core_plugins.canvas import kg as canvas_kg
-from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow
 from evo_agents.hub.kg_sources import checked, keep_sources, knowledge_with
+from evo_agents.hub.server.canvas import kg as canvas_kg
+from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow
 from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import finalize_item
