@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { Chat, GroupMessage } from "@/lib/chats";
 
 import { type Feed, replyCount, threadTail } from "./feed-model";
-import { lineMessages, quotes, runsOn } from "./line-model";
+import { continuesRun, lineMessages, quotes, runsOn } from "./line-model";
 import { type MessageActions, MessageItem } from "./message-item";
 import { useFollow } from "./use-follow";
 
@@ -110,6 +110,7 @@ export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onT
                     me={me}
                     thread={direct ? undefined : { count: replyCount(feed, message.id), ...threadTail(feed, message.id) }}
                     runOn={!quote && runsOn(before, message, !newDay)}
+                    sameRun={continuesRun(before, message)}
                     quote={quote}
                     highlighted={highlight === message.id}
                     onReact={onReact}
