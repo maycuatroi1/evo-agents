@@ -3603,6 +3603,13 @@
       "latest": "Jump to the latest",
       "directEmptyBody": "Say what you need: every message goes to {name}, and its answer shows right under yours."
     },
+    "bind": {
+      "lead": "Take runs of {project} on:",
+      "button": "Worker {name}",
+      "none": "You have no worker yet: pair one on the Workers page, then send the message again.",
+      "done": "Worker {name} now takes runs of {project}. Send your message again.",
+      "failed": "Could not add {project} to worker {name}"
+    },
     "message": {
       "hub": "Hub",
       "hubTag": "Automatic",

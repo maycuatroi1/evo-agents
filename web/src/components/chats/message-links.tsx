@@ -4,7 +4,9 @@ import { Activity, ExternalLink, GitPullRequestDraft, TriangleAlert } from "luci
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
-import { type Chat, chatRunHref, type GroupMessage, pullLinks } from "@/lib/chats";
+import { type Chat, chatRunHref, type GroupMessage, noWorkerProject, pullLinks } from "@/lib/chats";
+
+import { BindWorker } from "./bind-worker";
 
 const CHIP =
   "inline-flex h-6 max-w-full items-center gap-1.5 rounded-xs border bg-card px-2 text-xs font-medium text-foreground transition-colors hover:border-brand/40 hover:text-brand max-md:h-8 [&>svg]:size-3.5 [&>svg]:shrink-0";
@@ -58,12 +60,14 @@ export function MessageLinks({ message, chat, hideOwnRun = false }: { message: G
             </li>
           );
         }
+        const unbound = noWorkerProject(mention.refusal);
         return (
-          <li key={`refused-${mention.name}`} className="flex min-w-0 items-start gap-1.5 text-xs text-attention" data-testid="mention-refused" data-handle={mention.name}>
+          <li key={`refused-${mention.name}`} className="flex min-w-0 flex-wrap items-start gap-1.5 text-xs text-attention" data-testid="mention-refused" data-handle={mention.name}>
             <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 [overflow-wrap:anywhere]">
               <span className="font-medium">{t("refused", { handle: mention.name })}</span> {mention.refusal}
             </span>
+            {unbound ? <BindWorker project={unbound} /> : null}
           </li>
         );
       })}
