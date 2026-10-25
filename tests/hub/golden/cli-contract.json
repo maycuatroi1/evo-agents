@@ -19576,7 +19576,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.44.1"
+      "version": "0.44.2"
     },
     "paths": {
       "/v1/health": {
