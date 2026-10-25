@@ -242,8 +242,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_ninety_tables(hub_db):
-    assert len(TABLES) == 190  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_ninety_six_tables(hub_db):
+    assert len(TABLES) == 196  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4193,3 +4193,50 @@ def test_0159_adds_the_hub_identity_and_the_tables_of_paid_plugins_and_going_bac
     assert not pg.SELLER_TABLES & tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0159") :]
+
+
+def test_0160_takes_proposals_of_a_plugin_its_install_and_its_listing_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0159")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    p, n = t.builder_proposals, t.notifications
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0143 knows no plugin proposal
+        conn.execute(insert(p).values({**proposal, "kind": "plugin"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0160")
+    assert {"opened_run_id", "outcome"} <= columns(hub_db, "builder_proposals")
+    decided = {"decided_by": ids["user"], "decided_at": func.now(), "state": "applied", "applied_version": 1}
+    notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "Plugin"}
+    with live.connect(hub_db) as conn:
+        for bad in (
+            {"kind": "secrets"},
+            {"kind": "plugin", **decided, "outcome": ""},
+            {"kind": "plugin", "outcome": "x" * 2001},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(p).values({**proposal, **bad}))
+        conn.execute(insert(p).values({**proposal, "kind": "plugin", **decided, "outcome": "@builder took the task"}))
+        conn.execute(insert(p).values({**proposal, "kind": "plugin_install"}))
+        conn.execute(insert(p).values({**proposal, "kind": "plugin_listing"}))
+        conn.execute(insert(p).values({**proposal, "kind": "policy"}))
+        for number, kind in enumerate(("plugin", "plugin_install", "plugin_listing", "policy"), 1):
+            conn.execute(insert(n).values({**notice, "details": {"proposal": number, "kind": kind}}))
+    assert query(hub_db, select(p.c.kind).order_by(p.c.id)) == [
+        ("plugin",),
+        ("plugin_install",),
+        ("plugin_listing",),
+        ("policy",),
+    ]
+    # Going back drops the proposals of the three kinds with their notices, and the two columns.
+    move_to(hub_db, "0159", down=True)
+    assert not {"opened_run_id", "outcome"} & columns(hub_db, "builder_proposals")
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("policy",)]
+    assert query(hub_db, select(p.c.kind)) == [("policy",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+        conn.execute(delete(p))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0160") :]

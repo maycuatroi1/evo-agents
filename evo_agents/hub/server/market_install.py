@@ -184,15 +184,21 @@ def download_github(reader: GitHubMarket, body: GitHubInstallIn, sigstore) -> tu
     return item, check_release(item, assets, data, reader.download(assets.signature), sigstore)
 
 
-async def _download(request: Request, fetch, *args):
-    state = request.app.state
-    reader = GitHubMarket(state.config, transport=getattr(state, "market_transport", None))
+async def _fetched(config: HubConfig, transport, sigstore, fetch, *args):
+    """What ``fetch`` reads of GitHub through ``transport`` (the real GitHub when None); HTTPException when it is
+    refused."""
+    reader = GitHubMarket(config, transport=transport)
     try:
-        return await asyncio.to_thread(fetch, reader, *args, state.plugin_sigstore)
+        return await asyncio.to_thread(fetch, reader, *args, sigstore)
     except (ReleaseError, SignatureError, SignatureUnavailable, MarketUnavailable) as exc:
         raise _refused(exc) from None
     finally:
         reader.close()
+
+
+async def _download(request: Request, fetch, *args):
+    state = request.app.state
+    return await _fetched(state.config, getattr(state, "market_transport", None), state.plugin_sigstore, fetch, *args)
 
 
 # Installing
@@ -298,6 +304,14 @@ async def install_checked(hub: Installing, user, item: dict, checked: CheckedRel
         result = await stored_plugin(conn, manifest.id, hub.hub_version)
     log.info("plugin installed from a release", extra={"plugin": manifest.id, "version": manifest.version})
     return MarketInstalled(plugin=result, trusted_publisher=new, upgraded=upgraded)
+
+
+async def install_github(hub: Installing, transport, user, body: GitHubInstallIn) -> MarketInstalled:
+    """Install the release of a GitHub repo ``body`` names, as ``install_from_github`` does, without a request: what
+    approving a proposal of @builder to install a plugin does (``evo_agents.core_plugins.builder``). ``transport``
+    reads GitHub, the real one when None."""
+    item, checked = await _fetched(hub.config, transport, hub.sigstore, download_github, body)
+    return await install_checked(hub, user, item, checked, body.trust_publisher)
 
 
 async def install_release(request: Request, user, item: dict, checked: CheckedRelease, confirmed: bool):
