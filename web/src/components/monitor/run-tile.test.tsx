@@ -64,7 +64,7 @@ const RUN = {
   finished_at: null,
 } as unknown as Run;
 
-const DECISION = { id: 7, project: "demo", run_id: 12, owner: "octo", yours: true } as OverviewDecision;
+const DECISION = { id: 7, project: "demo", run_id: 12, owner: "octo", asked_of: "octo", yours: true } as OverviewDecision;
 
 function result(data: Run | undefined, extra: Partial<UseQueryResult<Run, ApiError>> = {}) {
   return { data, isError: false, isFetching: false, refetch: vi.fn(), ...extra } as unknown as UseQueryResult<Run, ApiError>;

@@ -130,9 +130,23 @@ describe("proxy", () => {
       "/apple-icon.png",
       "/manifest.webmanifest",
       "/robots.txt",
+      "/sw.js",
       "/product/og.png",
     ]) {
       expect(source.test(path), path).toBe(false);
+    }
+  });
+
+  it("leaves the service worker to a visitor without a session, and not a page named like it", () => {
+    const pages = config.matcher[0];
+    if (typeof pages === "string") throw new Error("the first matcher is the pages' one");
+    const source = new RegExp(`^${pages.source}$`);
+    // The browser fetches /sw.js again to check for an update, signed in or not: the proxy never sees it.
+    expect(source.test("/sw.js")).toBe(false);
+    // A page named like it is still a page, and still asks for a session.
+    for (const path of ["/sw", "/sw-settings"]) {
+      expect(source.test(path), path).toBe(true);
+      expect(proxy(request(path)).status, path).toBe(307);
     }
   });
 });

@@ -3,6 +3,7 @@
 import {
   AtSign,
   CalendarClock,
+  CalendarDays,
   Boxes,
   CircleCheck,
   CirclePause,
@@ -113,6 +114,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   worker_doctor: { icon: ShieldAlert },
   curator_probe_report: { icon: FlaskConical },
   opportunity_window: { icon: CalendarClock },
+  today: { icon: CalendarDays },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

@@ -428,7 +428,8 @@
     "shortcuts": "Keyboard shortcuts",
     "logout": "Sign out",
     "loggingOut": "Signing out…",
-    "logoutFailed": "Sign-out did not go through. Try again in a moment."
+    "logoutFailed": "Sign-out did not go through. Try again in a moment.",
+    "notifications": "Notifications"
   },
   "locales": {
     "vi": "Tiếng Việt",
@@ -633,6 +634,44 @@
       "parked": "parked <time></time>",
       "reply": "Reply",
       "replyLabel": "Reply in the chat of run #{id}"
+    },
+    "today": {
+      "title": "Today",
+      "window": {
+        "seen": "Since you last looked",
+        "day": "Last 24 hours",
+        "week": "Last 7 days"
+      },
+      "settings": "Notifications",
+      "items": "What changed",
+      "caughtUp": "You're caught up.",
+      "more": "More changed than this. The rest shows next time.",
+      "loadFailed": "Couldn't read Today from the hub.",
+      "retry": "Try again",
+      "loading": "Loading Today",
+      "kind": {
+        "release": "Release",
+        "step_done": "Plan step done",
+        "run_failed": "Run failed",
+        "run_parked": "Run parked",
+        "problem": "Metric moved",
+        "cost": "Cost",
+        "proposal": "Proposal"
+      },
+      "summary": {
+        "asks": "{count, plural, =0 {Nothing waits for your answer} one {# question waits for your answer} other {# questions wait for your answer}}",
+        "nothing": "{asks}, and nothing changed {window, select, seen {since you last looked} day {in the last 24 hours} other {in the last 7 days}}.",
+        "changed": "{asks}. {window, select, seen {Since you last looked} day {In the last 24 hours} other {In the last 7 days}}: {parts}{more, select, yes {, and more} other {}}.",
+        "part": {
+          "release": "{count, plural, one {a release} other {# releases}}",
+          "step_done": "{count, plural, one {a plan step done} other {# plan steps done}}",
+          "run_failed": "{count, plural, one {a failed run} other {# failed runs}}",
+          "run_parked": "{count, plural, one {a parked run} other {# parked runs}}",
+          "problem": "{count, plural, one {a problem whose metric moved} other {# problems whose metric moved}}",
+          "cost": "{count, plural, one {what your runs cost in a project} other {what your runs cost in # projects}}",
+          "proposal": "{count, plural, one {a proposal to answer} other {# proposals to answer}}"
+        }
+      }
     }
   },
   "project": {
@@ -6245,7 +6284,8 @@
       "autonomy": "What the hub did under your autonomy",
       "worker_doctor": "A shared worker's doctor found something high",
       "curator_probe_report": "Weekly probe report of the Curator",
-      "opportunity_window": "The window of an opportunity closes"
+      "opportunity_window": "The window of an opportunity closes",
+      "today": "Today's summary"
     },
     "item": {
       "unread": "Unread",
@@ -6465,7 +6505,8 @@
         }
       },
       "saved": "{on, select, true {You get the notice again} other {You no longer get the notice}}: {kind}",
-      "failed": "Couldn't change the notice"
+      "failed": "Couldn't change the notice",
+      "allSettings": "All notification settings"
     },
     "group": {
       "title": "Run #{id}",
@@ -6480,6 +6521,29 @@
       "today": "Today",
       "yesterday": "Yesterday",
       "summary": "{count, plural, one {# notification} other {# notifications}}{unread, plural, =0 {} other {, # unread}}"
+    },
+    "grounds": {
+      "label": "Why, how to undo it, and the evidence",
+      "why": "Why “{option}”:",
+      "whyPick": "Why the agent's pick:",
+      "reversible": "Can be undone:",
+      "undoUnsaid": "the agent did not say how.",
+      "irreversible": "Cannot be undone.",
+      "evidence": "{count, plural, =1 {Evidence} other {Evidence (#)}}",
+      "ref": {
+        "run": "Run #{id}",
+        "runEvent": "Run #{id}, event {seq}",
+        "output": "File #{id} of run #{run}",
+        "problem": "{problem}, evidence {evidence}",
+        "url": "{page}",
+        "memory": "Memory #{id}, revision {revision}",
+        "code": "{repo}: {path}",
+        "codeLine": "{repo}: {path}, line {line}",
+        "session": "Session {id}",
+        "transcript": "Session {id}, line {line}",
+        "other": "{ref}",
+        "newTab": "(opens in a new tab)"
+      }
     }
   },
   "toast": {
@@ -10990,5 +11054,141 @@
     "tooMany": "A message carries at most {max} files: {names} not attached.",
     "notReady": "A file did not upload: retry it or remove it, then send.",
     "files": "Files of this message"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "browser": {
+      "title": "Push on this browser",
+      "checking": "Checking what this browser can do",
+      "hubOff": "Push is off on this hub",
+      "hubOffText": "A hub administrator turns Web Push on with a VAPID key. The Inbox and Telegram still bring every notification.",
+      "configFailed": "Couldn't read whether this hub sends push.",
+      "retry": "Try again",
+      "homeScreen": "Add the hub to your Home Screen first",
+      "homeScreenText": "On an iPhone or an iPad, Safari brings push only to a web app opened from the Home Screen.",
+      "homeScreenSteps": "How to add the hub to the Home Screen",
+      "homeScreenShare": "In Safari, tap Share.",
+      "homeScreenAdd": "Choose Add to Home Screen, then Add.",
+      "homeScreenOpen": "Open the hub from its new icon and come back to this page to turn push on.",
+      "unsupported": "This browser cannot take push notifications",
+      "unsupportedText": "Use a recent Chrome, Edge, Firefox or Safari on the hub's https address.",
+      "denied": "Notifications are blocked for this site",
+      "deniedText": "Allow notifications for this site in the browser's settings, then turn push on here.",
+      "off": "Push is off for this browser",
+      "offText": "Turn it on to get the questions asked of you, and the kinds you choose below, while the hub is closed.",
+      "on": "Push is on for this browser",
+      "onText": "{device} gets the kinds you choose below, except during your quiet hours.",
+      "turnOn": "Turn on push for this browser",
+      "turningOn": "Turning on",
+      "turnOff": "Turn off",
+      "turningOff": "Turning off",
+      "test": "Send a test",
+      "testing": "Sending",
+      "enabled": "Push is on for this browser",
+      "enabledText": "Send a test to see one arrive.",
+      "disabled": "Push is off for this browser",
+      "enableFailed": "Couldn't turn on push",
+      "subscribeFailed": "The browser did not subscribe: {message}",
+      "tooMany": "You have as many devices as the hub keeps. Remove one below, then try again.",
+      "disableFailed": "Couldn't turn off push",
+      "dismissed": "The browser did not allow notifications. Press the button again and choose Allow."
+    },
+    "devices": {
+      "title": "Your devices",
+      "count": "{count, plural, one {# device} other {# devices}}",
+      "empty": "No device gets push yet",
+      "emptyText": "Turn push on in each browser you use. The hub's phone app adds itself here once it exists.",
+      "kind": {
+        "webpush": "Browser",
+        "apns": "iPhone or iPad app",
+        "fcm": "Android app"
+      },
+      "thisBrowser": "This browser",
+      "added": "Added {date}",
+      "lastPush": "last push <time></time>",
+      "noPush": "no push yet",
+      "test": "Send test",
+      "testLabel": "Send a test push to {device}",
+      "testing": "Sending",
+      "testSent": "Test push sent to {device}",
+      "testSentText": "It should show within a few seconds.",
+      "testRemoved": "{device} no longer gets push",
+      "testRemovedText": "Its push service no longer knows it, so the hub removed it.",
+      "testFailed": "The test push did not go",
+      "testFailedFor": "Couldn't send a test push to {device}",
+      "testOff": "The hub does not send to this kind of device now.",
+      "remove": "Remove",
+      "removeLabel": "Remove {device}",
+      "removeTitle": "Remove {device}?",
+      "removeText": "It gets no more push from the hub. Turn push on again there to add it back.",
+      "removeConfirm": "Remove device",
+      "removing": "Removing",
+      "keep": "Keep it",
+      "removed": "{device} removed",
+      "loadFailed": "Couldn't read your devices from the hub.",
+      "retry": "Try again"
+    },
+    "tiers": {
+      "title": "What pushes",
+      "description": "Push now sends to your devices at once. Today and Inbox waits for Today on Home. Inbox only keeps it in the Inbox. The Inbox, the bell and Telegram get every notification either way.",
+      "choice": {
+        "default": "Default: {tier}",
+        "interrupt": "Push now",
+        "brief": "Today and Inbox",
+        "off": "Inbox only"
+      },
+      "kind": {
+        "decision": "Questions from agents",
+        "proposal": "Proposals of the Curator",
+        "today": "Today's summary"
+      },
+      "hint": {
+        "decision": "By default, pushed when the question is asked of you.",
+        "run_failed": "By default, pushed for the runs you dispatched.",
+        "release": "By default, pushed when a release goes wrong.",
+        "merge_paused": "By default, pushed: it stops the deploys of a repo.",
+        "today": "Sent at the time you choose for it, after you were away."
+      },
+      "more": "{count, plural, one {# more kind} other {# more kinds}}",
+      "fewer": "Fewer kinds",
+      "restLabel": "Other kinds",
+      "saved": "{kind}: {tier}",
+      "failed": "Couldn't change when {kind} pushes"
+    },
+    "schedule": {
+      "title": "Quiet hours and summary",
+      "quiet": "Quiet hours",
+      "quietHint": "Push waits until they end, except a question whose run would park within two hours.",
+      "start": "From",
+      "end": "Until",
+      "overnight": "From {start} tonight until {end} tomorrow.",
+      "timeZone": "Time zone",
+      "timeZoneBrowser": "From this browser. The hub uses {zone} until you save.",
+      "timeZoneHint": "An IANA name, such as Asia/Ho_Chi_Minh.",
+      "digestAt": "Summary push at",
+      "digestHint": "Once a day, when something changed and you were away from the hub for 8 hours.",
+      "save": "Save",
+      "saving": "Saving",
+      "discard": "Discard",
+      "saved": "Quiet hours and summary saved",
+      "refused": "The hub did not take these settings.",
+      "problem": {
+        "time": "Enter a time, such as 22:00.",
+        "sameTime": "Quiet hours end at another time than they start.",
+        "timeZone": "Enter an IANA time zone, such as Asia/Tokyo."
+      }
+    },
+    "privacy": {
+      "title": "Lock screen",
+      "hide": "Hide details on the lock screen",
+      "hideHint": "A push then says only the kind of thing, the project and the link: nothing of the question or the run.",
+      "hidden": "Details hidden on the lock screen",
+      "shown": "Details shown on the lock screen",
+      "failed": "Couldn't change what the lock screen shows"
+    },
+    "notices": {
+      "title": "Notices",
+      "description": "Off, a kind of notice reaches you nowhere, the Inbox included. The questions of your runs always reach you."
+    }
   }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronsUpDown, Keyboard, Languages, Loader2, LogOut, Monitor, Moon, ShieldCheck, Sun, TriangleAlert } from "lucide-react";
+import { BellRing, ChevronsUpDown, Keyboard, Languages, Loader2, LogOut, Monitor, Moon, ShieldCheck, Sun, TriangleAlert } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -40,6 +40,8 @@ import { ShortcutKeys, useOpenShortcuts } from "./shortcuts";
 
 /** The viewer's own autonomy settings (the page lives in components/autonomy, which the shell may not import). */
 const AUTONOMY_HREF = "/settings/autonomy" as Route;
+/** The viewer's notification settings: push on this browser, devices, tiers, quiet hours (components/notifications). */
+const NOTIFICATIONS_HREF = "/settings/notifications" as Route;
 
 const YEAR = 60 * 60 * 24 * 365;
 
@@ -190,6 +192,12 @@ export function UserMenu() {
                   </DropdownMenuRadioGroup>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              <DropdownMenuItem asChild data-testid="user-menu-notifications">
+                <Link href={NOTIFICATIONS_HREF}>
+                  <BellRing aria-hidden="true" />
+                  {t("notifications")}
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild data-testid="user-menu-autonomy">
                 <Link href={AUTONOMY_HREF}>
                   <ShieldCheck aria-hidden="true" />
