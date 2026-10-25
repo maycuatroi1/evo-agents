@@ -66,3 +66,4 @@ RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_
 RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
 RUN_KEYS += ("session_run_id", "session_turn", "session_turns", "session_title")  # a chat run's session; null otherwise
 RUN_KEYS += ("principal", "autonomy")  # whom it acts for, and the autonomy snapshot (docs/autonomy.md)
+RUN_KEYS += ("selector", "tolerations")  # where it goes: the labels it asks of its worker, the taints it tolerates

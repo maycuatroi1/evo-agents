@@ -118,6 +118,9 @@ async def _run(conn: AsyncConnection, run_id: int):
         r.c.worker_id,
         r.c.dispatched_by,
         r.c.requested_runtime,
+        r.c.selector,
+        r.c.tolerations,
+        r.c.pinned_worker_id,
     ).where(r.c.id == run_id)
     return (await conn.execute(query)).one()
 
@@ -176,10 +179,16 @@ def _ready_on(worker_id: int, ready: dict, found) -> list[tuple[int, str]]:
     ]
 
 
+def _placed(run, row) -> dict:
+    """The selector and tolerations of ``run`` for ``worker_problems`` of worker ``row``, as its claim counts them."""
+    return {"selector": run.selector, "tolerations": run.tolerations, "pinned": run.pinned_worker_id == row.id}
+
+
 def _worker_view(row, profile, run, repos, project, accounts, cause):
     """(the candidate of worker ``row``, its sort key): the run's owner's own workers before those shared with them."""
     found, ready, used = accounts
-    reasons = worker_problems(row, profile, run.dispatched_via or "machine", run.kind, run.requested_runtime or "any")
+    via, runtime = run.dispatched_via or "machine", run.requested_runtime or "any"
+    reasons = worker_problems(row, profile, via, run.kind, runtime, **_placed(run, row))
     missing = [name for name in repos if f"{project}/{name}" not in (row.checkouts or {})]
     clones = runs.CLONES_CHECKOUTS in (row.features or ())
     if missing and not clones:
@@ -245,7 +254,9 @@ def _agent_view(profile: Profile, rows, run, cause: str | None, writer: bool, pr
         reasons.append("was deleted")
     via = run.dispatched_via or "machine"
     problems = [
-        f"{row.name} {why}" for row in rows if (why := (worker_problems(row, profile, via, "chat") or [None])[0])
+        f"{row.name} {why}"
+        for row in rows
+        if (why := (worker_problems(row, profile, via, "chat", **_placed(run, row)) or [None])[0])
     ]
     if rows and len(problems) == len(rows):
         reasons.append(f"no worker of yours, nor one shared with you, can take it: {'; '.join(problems)}")

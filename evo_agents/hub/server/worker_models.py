@@ -14,10 +14,12 @@ from evo_agents.hub.credentials import DISPATCH_FROM
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.runs.models import KgSyncReport, NightlyRead, SelfUpdateReport
 from evo_agents.hub.server.runs.models.browser import WORKER_HELP, BrowserReport
+from evo_agents.hub.server.runs.models.placement import PLACEMENT_LABEL, normalized
 from evo_agents.plugins.manifest import PLUGIN_ID
 
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
 LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+TAINT = PLACEMENT_LABEL  # a word or key=value, as a run tolerates it
 LINE = r"^[^\x00-\x1f\x7f]+$"  # one line, without control characters
 MAX_LABELS = 16
 
@@ -139,6 +141,21 @@ class Worker(BaseModel):
     pool: str | None = Field(
         None, description="the pool it joined with a join token; null for one paired or registered"
     )
+    auto_labels: list[str] = Field(
+        [],
+        description="the labels the hub gives it from its heartbeat, which a run's selector may ask too: os=, arch=, "
+        "runtime=<name> for each runtime it has, feature=browser when it has one",
+    )
+    taints: list[str] = Field(
+        [],
+        description="its own taints, then its pool's: it takes only the runs that tolerate each, or those pinned to it",
+    )
+    ready: bool = Field(
+        True,
+        description="whether it takes runs: a worker of no pool always does; a node of a pool while its newest doctor "
+        "report is at most 48 hours old and has no high finding but those the pool accepts",
+    )
+    ready_reason: str | None = Field(None, description="why it takes no run, while ready is false; null when ready")
     plugins: list[str] = Field(
         description="the plugins whose runtimes and environments it takes, as its owner set them"
     )
@@ -212,6 +229,12 @@ class WorkerUpdate(BaseModel):
 
     slots: int | None = Field(None, ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
     labels: list[Annotated[str, Field(pattern=LABEL)]] | None = Field(None, max_length=MAX_LABELS)
+    taints: list[Annotated[str, Field(pattern=TAINT)]] | None = Field(
+        None,
+        max_length=MAX_LABELS,
+        description="its own taints, a word or key=value, the whole list ([] for none): it takes only the runs that "
+        "tolerate each, or those pinned to it",
+    )
     name: str | None = Field(None, pattern=WORKER_NAME, description="unique among the owner's workers not revoked")
     plugins: list[Annotated[str, Field(pattern=PLUGIN_ID)]] | None = Field(
         None,
@@ -238,11 +261,14 @@ class WorkerUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _some_field(self) -> WorkerUpdate:
-        fields = (self.slots, self.labels, self.name, self.plugins, self.version_locked, self.shared, self.projects)
-        if all(value is None for value in fields):
+        fields = (self.slots, self.labels, self.taints, self.name, self.plugins, self.version_locked, self.shared)
+        if all(value is None for value in fields) and self.projects is None:
             raise ValueError(
-                "name at least one of slots, labels, name, plugins, version_locked, shared and projects to change"
+                "name at least one of slots, labels, taints, name, plugins, version_locked, shared and projects to "
+                "change"
             )
+        if self.taints is not None:
+            self.taints = normalized(self.taints)
         return self
 
 

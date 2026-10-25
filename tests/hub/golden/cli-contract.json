@@ -2753,7 +2753,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -13523,7 +13525,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -13560,7 +13564,7 @@
             "--worker"
           ],
           "value": "string",
-          "required": true,
+          "required": false,
           "repeatable": false
         },
         {
@@ -13597,6 +13601,30 @@
             2,
             4
           ]
+        },
+        {
+          "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -13698,7 +13726,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -13806,7 +13836,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -14041,6 +14073,30 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--model"
           ],
           "value": "string",
@@ -14147,7 +14203,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -14255,7 +14313,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -14363,7 +14423,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -14747,6 +14809,30 @@
         },
         {
           "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--account"
           ],
           "value": "string",
@@ -14845,7 +14931,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -14892,6 +14980,30 @@
           "value": null,
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--tolerate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -14977,7 +15089,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -15143,7 +15257,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -15251,7 +15367,9 @@
           "session_turns",
           "session_title",
           "principal",
-          "autonomy"
+          "autonomy",
+          "selector",
+          "tolerations"
         ],
         "schema": "Run"
       }
@@ -28443,7 +28561,7 @@
             "workers"
           ],
           "summary": "Update Worker",
-          "description": "Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner\nonly, from a web session or with their machine token.",
+          "description": "Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its\nowner only, from a web session or with their machine token.",
           "operationId": "update_worker_v1_workers__worker_id__patch",
           "parameters": [
             {
@@ -77166,6 +77284,53 @@
         },
         "AuthorRunDispatch": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "request": {
               "type": "string",
               "maxLength": 16384,
@@ -77174,11 +77339,18 @@
               "description": "what the plan should achieve, in the member's words: at most 16384 bytes of UTF-8"
             },
             "worker_id": {
-              "type": "integer",
-              "maximum": 9.223372036854776e+18,
-              "minimum": 1.0,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Worker Id",
-              "description": "the worker of yours, or one shared with you in the project, the run goes to; an author run is pinned"
+              "description": "pin the run to this worker of yours, or one shared with you in the project; null: a worker its labels and tolerations fit takes it"
             },
             "plan_id": {
               "anyOf": [
@@ -77261,8 +77433,7 @@
           },
           "type": "object",
           "required": [
-            "request",
-            "worker_id"
+            "request"
           ],
           "title": "AuthorRunDispatch"
         },
@@ -87471,6 +87642,53 @@
         },
         "Dispatch": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "plan_id": {
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
@@ -101936,6 +102154,53 @@
         },
         "PlanRunDispatch": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "plan_id": {
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
@@ -104465,6 +104730,24 @@
               "type": "array",
               "title": "Labels",
               "description": "its own labels, its pool's, and pool=<name>"
+            },
+            "ready": {
+              "type": "boolean",
+              "title": "Ready",
+              "description": "whether it takes runs: its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts",
+              "default": true
+            },
+            "ready_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ready Reason",
+              "description": "why it takes no run, while ready is false; null when ready"
             },
             "created_at": {
               "type": "string",
@@ -112917,6 +113200,53 @@
         },
         "Rerun": {
           "properties": {
+            "pool": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool",
+              "description": "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels",
+              "description": "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
+            },
+            "tolerations": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tolerations",
+              "description": "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it"
+            },
             "account": {
               "anyOf": [
                 {
@@ -112953,7 +113283,7 @@
           "additionalProperties": false,
           "type": "object",
           "title": "Rerun",
-          "description": "What a rerun may change of the run it reruns; no body keeps everything."
+          "description": "What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations\nkeep the run's own selector and tolerations."
         },
         "RerunCandidates": {
           "properties": {
@@ -113698,6 +114028,24 @@
         },
         "Run": {
           "properties": {
+            "selector": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Selector",
+              "description": "the labels the worker that takes it must have, every one (pool=<name> for a pool); [] for any",
+              "default": []
+            },
+            "tolerations": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Tolerations",
+              "description": "the taints of a worker it tolerates",
+              "default": []
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -128563,6 +128911,42 @@
               "title": "Pool",
               "description": "the pool it joined with a join token; null for one paired or registered"
             },
+            "auto_labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Auto Labels",
+              "description": "the labels the hub gives it from its heartbeat, which a run's selector may ask too: os=, arch=, runtime=<name> for each runtime it has, feature=browser when it has one",
+              "default": []
+            },
+            "taints": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Taints",
+              "description": "its own taints, then its pool's: it takes only the runs that tolerate each, or those pinned to it",
+              "default": []
+            },
+            "ready": {
+              "type": "boolean",
+              "title": "Ready",
+              "description": "whether it takes runs: a worker of no pool always does; a node of a pool while its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts",
+              "default": true
+            },
+            "ready_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ready Reason",
+              "description": "why it takes no run, while ready is false; null when ready"
+            },
             "plugins": {
               "items": {
                 "type": "string"
@@ -129356,6 +129740,23 @@
                 }
               ],
               "title": "Labels"
+            },
+            "taints": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Taints",
+              "description": "its own taints, a word or key=value, the whole list ([] for none): it takes only the runs that tolerate each, or those pinned to it"
             },
             "name": {
               "anyOf": [

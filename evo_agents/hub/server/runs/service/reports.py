@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import browser_install, update_now
+from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
     NOT_HELD,
@@ -36,7 +36,6 @@ from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.worker_pools import all_labels
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 
@@ -142,7 +141,9 @@ async def record_heartbeat(
                 browser=_browser(body),
             )
             .where(w.c.id == worker_id)
-            .returning(w.c.slots, w.c.name, all_labels(w).label("labels"), w.c.plugins, w.c.version_locked)
+            .returning(
+                w.c.slots, w.c.name, worker_placement.all_labels(w).label("labels"), w.c.plugins, w.c.version_locked
+            )
         )
         wp, projects = tables.worker_projects, tables.projects
         served = (

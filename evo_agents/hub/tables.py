@@ -535,6 +535,7 @@ Index(  # the reaper finds the local runs that went silent (0033)
     runs.c.last_activity_at,
     postgresql_where=(runs.c.kind == "local") & (runs.c.state != "ended"),
 )
+tables_pools.placement_columns(workers, runs)  # 0148
 Index("runs_claim_idx", runs.c.project_id, runs.c.dispatched_by, runs.c.id, postgresql_where=runs.c.state == "queued")
 Index("runs_lease_idx", runs.c.lease_expires_at, postgresql_where=runs.c.state.in_(RUN_HELD))
 Index("runs_worker_idx", runs.c.worker_id, runs.c.id.desc(), postgresql_where=runs.c.worker_id.is_not(None))

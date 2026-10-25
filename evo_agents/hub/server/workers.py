@@ -111,7 +111,8 @@ from evo_agents.hub.server.worker_models import (
     WorkerRegistration,
     WorkerUpdate,
 )
-from evo_agents.hub.server.worker_pools import all_labels, pool_name
+from evo_agents.hub.server.worker_placement import Placement, all_labels, pool_name
+from evo_agents.hub.server.worker_placement import columns as placement_columns
 from evo_agents.hub.server.worker_projects import serve, served
 from evo_agents.hub.server.worker_projects import writable as _writable
 
@@ -284,6 +285,7 @@ def _listed(*where):
             w.c.drained_at,
             w.c.revoked_at,
             func.now().label("now"),
+            *placement_columns(w),
         )
         .join_from(w, users, users.c.id == w.c.owner_id)
         .where(*where)
@@ -292,7 +294,10 @@ def _listed(*where):
 
 
 def _worker(row) -> Worker:
-    fields = dict(row._mapping)
+    placed = Placement.of(row)
+    fields = {key: value for key, value in row._mapping.items() if not key.startswith("place_")}
+    fields |= {"taints": list(placed.taints), "auto_labels": list(placed.auto)}
+    fields |= {"ready": placed.ready, "ready_reason": placed.unready}
     now = fields.pop("now")
     fields["features"] = list(fields["features"] or ())  # NULL: its daemon said none
     fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's
@@ -769,10 +774,10 @@ def _shown(value) -> str:
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
-    """Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner
-    only, from a web session or with their machine token."""
+    """Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its
+    owner only, from a web session or with their machine token."""
     wanted = body.model_dump(exclude_none=True)
-    for field in ("labels", "plugins"):
+    for field in ("labels", "taints", "plugins"):
         if field in wanted:
             wanted[field] = _unique(wanted[field])
     if "projects" in wanted:  # the projects a worker serves are a set: their order says nothing
@@ -784,12 +789,11 @@ async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdat
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         w = tables.workers
-        held = select(w.c.slots, w.c.labels, w.c.name, w.c.plugins, w.c.version_locked, w.c.shared).where(
-            w.c.id == worker_id
-        )
-        row = (await conn.execute(held)).one()
+        held = select(w.c.slots, w.c.labels, w.c.taints, w.c.name, w.c.plugins, w.c.version_locked, w.c.shared)
+        row = (await conn.execute(held.where(w.c.id == worker_id))).one()
         projects = await served(conn, worker_id)
         now = {**row._mapping, "labels": list(row.labels), "plugins": list(row.plugins), "projects": list(projects)}
+        now["taints"] = list(row.taints)
         changed = {field: value for field, value in wanted.items() if value != now[field]}
         if changed:  # the values it has already: nothing changes, nothing is audited
             if "name" in changed and await _name_taken(conn, owner_id, changed["name"], besides=worker_id):

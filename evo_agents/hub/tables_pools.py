@@ -11,6 +11,7 @@ the hex SHA-256 of the ``evj_`` token, never the token, who made it, when it exp
 most and how many joined with it, and when it was revoked.
 
 Their CHECK constraints are the migration's alone. ``pool_tables`` also gives workers ``pool_id``, the pool a node joined, NULL for a worker paired or registered.
+``placement_columns`` gives workers ``taints`` and runs ``selector`` and ``tolerations`` (0148), which place a run.
 """
 
 from __future__ import annotations
@@ -119,3 +120,11 @@ def pool_tables(metadata: MetaData, workers: Table) -> tuple[Table, Table, Table
     )
     Index("workers_pool_idx", workers.c.pool_id, postgresql_where=workers.c.pool_id.is_not(None))
     return pools, pool_projects_table(metadata), join_tokens_table(metadata)
+
+
+def placement_columns(workers: Table, runs: Table) -> None:
+    """The taints of ``workers`` and the selector and tolerations of ``runs`` (0148): the labels a run asks of the
+    worker that claims it and the taints it tolerates."""
+    workers.append_column(_texts("taints"))
+    runs.append_column(_texts("selector"))
+    runs.append_column(_texts("tolerations"))

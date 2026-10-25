@@ -3635,3 +3635,23 @@ def test_0147_adds_worker_pools_and_their_join_tokens_and_going_back_drops_them(
     assert "pool_id" not in columns(hub_db, "workers")
     assert query(hub_db, select(t.workers.c.name)) == [("vps",)]  # the node stays a worker, without its pool
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]
+
+
+def test_0148_adds_worker_taints_and_run_selectors_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0147")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(conn, _token(ids, kind="worker", token_hash="7" * 64, host="vps").returning(t.tokens.c.id))
+        worker = one(conn, _worker_row(ids, token_id, "vps", 1))
+        run_id = one(conn, _author_run(ids))
+    move_to(hub_db, "0148")
+    assert "taints" in columns(hub_db, "workers")
+    assert {"selector", "tolerations"} <= columns(hub_db, "runs")
+    # what was there before places as before: no taint, no selector
+    assert query(hub_db, select(t.workers.c.taints).where(t.workers.c.id == worker)) == [([],)]
+    assert query(hub_db, select(t.runs.c.selector, t.runs.c.tolerations).where(t.runs.c.id == run_id)) == [([], [])]
+    move_to(hub_db, "0147", down=True)
+    assert "taints" not in columns(hub_db, "workers")
+    assert not {"selector", "tolerations"} & columns(hub_db, "runs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]

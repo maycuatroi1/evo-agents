@@ -305,12 +305,13 @@ async def queue_run(
     plugin_config: dict | None = None,
     browser: bool = False,
     identities: list[int] | tuple[int, ...] = (),
+    placed: dict | None = None,
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
     by hand, under the agent profile ``chosen`` (the project's default without one), with its own layer of plugin
     config ``plugin_config`` (checked already), with a Chromium of its own when ``browser`` or browser
-    ``identities`` (resolved already, the run ``pinned`` to their worker); HTTPException when the step may not run
-    now."""
+    ``identities`` (resolved already, the run ``pinned`` to their worker), and the selector and tolerations
+    ``placed`` (``placement``); HTTPException when the step may not run now."""
     body = held.body
     browser = browser or bool(identities)
     try:
@@ -350,6 +351,7 @@ async def queue_run(
         "branch": _short(repo.get("branch")),
         "browser": browser,
         "browser_identities": list(identities),
+        **_listed(placed),
         **({} if plugin_config is None else {"plugin_config": plugin_config}),  # a JSON null is no layer
         **({} if chosen is None else chosen.columns()),
     }
@@ -397,6 +399,17 @@ def _picks(picked: Picked | None) -> tuple[Picked, ...]:
     return () if picked is None else (picked,)
 
 
+def placement(body) -> dict:
+    """The selector and tolerations a dispatch ``body`` (``PlacementFields``) gives its runs, each a tuple: the
+    ``Asked`` fields and the ``placed`` of ``queue_run``."""
+    return {"selector": tuple(body.selector()), "tolerations": tuple(body.tolerations or ())}
+
+
+def _listed(placed: dict | None) -> dict:
+    """The run columns of ``placed`` (``placement``)."""
+    return {name: list(values) for name, values in (placed or {}).items()}
+
+
 async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) -> list[Run]:
     """Queue a run of each step named, all of them or none; each one goes to a worker of the caller, and takes the
     account named by hand, if one is."""
@@ -410,7 +423,8 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
         identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
         picked = await _picked(conn, user, access, body.account, pinned)
-        asked = Asked("step", body.runtime, body.model, pinned, _picks(picked))
+        placed = placement(body)
+        asked = Asked("step", body.runtime, body.model, pinned, _picks(picked), **placed)
         chosen = await choose(conn, user, access, body.profile, asked)
         identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
         layer = await check_run_layer(conn, access.project_id, project, body.plugin_config)
@@ -437,6 +451,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 plugin_config=layer,
                 browser=body.browser,
                 identities=identities,
+                placed=placed,
             )
             target = run_target(project, body.plan_id, key, run_id) + _account_text(picked) + chosen.audit_text()
             await audit.record(
@@ -520,9 +535,9 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         names = [entry["repo"] for entry in repos]
         _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=browser)
         await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
-        chosen = await choose(
-            conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
-        )
+        placed = placement(body)
+        asked = Asked("plan", body.runtime, body.model, pinned, _picks(picked), **placed)
+        chosen = await choose(conn, user, access, body.profile, asked)
         if not identities:
             identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
             if identities:
@@ -547,6 +562,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "session_per_step": body.session_per_step,
             "browser": browser,
             "browser_identities": identities,
+            **_listed(placed),
             **chosen.columns(),
         }
         try:
@@ -579,10 +595,13 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
     return view
 
 
-async def author_repos(conn: AsyncConnection, project_id: int, project: str, checkouts: dict) -> list[dict] | None:
+async def author_repos(
+    conn: AsyncConnection, project_id: int, project: str, checkouts: dict | None
+) -> list[dict] | None:
     """The repos of an author run of ``project`` on a worker with ``checkouts``: the project's harness first, where
-    plans live, then each repo of the project the worker has a checkout of, in name order, each with no branch, since
-    an author run's worktrees are detached. None when the project was registered without its harness."""
+    plans live, then each repo of the project the worker has a checkout of (every one for ``checkouts`` None, a run
+    pinned to no worker, whose worker leaves out those it has no checkout of), in name order, each with no branch,
+    since an author run's worktrees are detached. None when the project was registered without its harness."""
     p, pr = tables.projects, tables.project_repos
     path = (await conn.execute(select(p.c.harness_path).where(p.c.id == project_id))).scalar_one_or_none()
     harness = author.harness_repo(path)
@@ -591,14 +610,15 @@ async def author_repos(conn: AsyncConnection, project_id: int, project: str, che
     names = await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))
     repos = [{"repo": harness, "branch": None}]
     for name in names.scalars():
-        if name != harness and f"{project}/{name}" in checkouts:
+        if name != harness and (checkouts is None or f"{project}/{name}" in checkouts):
             repos.append({"repo": name, "branch": None})
     return repos
 
 
-async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pinned) -> list[dict]:
-    """``author_repos`` on ``worker``; 409 when the project was registered without its harness."""
-    repos = await author_repos(conn, access.project_id, access.name, worker.checkouts)
+async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pinned | None) -> list[dict]:
+    """``author_repos`` on ``worker``, or on any for None; 409 when the project was registered without its
+    harness."""
+    repos = await author_repos(conn, access.project_id, access.name, None if worker is None else worker.checkouts)
     if repos is None:
         raise HTTPException(
             409,
@@ -610,8 +630,8 @@ async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pi
 
 
 async def dispatch_author_run(engine, user: Principal, project: str, body: AuthorRunDispatch) -> Run:
-    """Queue an author run: a plan written from the caller's request, with create-exec-plan, on a worker of the
-    caller's (``evo_agents.hub.author``)."""
+    """Queue an author run: a plan written from the caller's request, with create-exec-plan, on the worker of the
+    caller's it names, or on any that its selector and tolerations let claim it (``evo_agents.hub.author``)."""
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
@@ -620,13 +640,13 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
         if problem:
             raise HTTPException(422, f"{problem}; nothing was dispatched")
         runtime = author.AUTHOR_RUNTIMES[0] if body.runtime == "any" else body.runtime
-        pinned = await pinnable(conn, user, access, body.worker_id)
+        pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
         picked = await _picked(conn, user, access, body.account, pinned)
         repos = await _author_repos(conn, access, pinned)
         _fits(pinned, access, "author", [repos[0]["repo"]], runtime)
-        chosen = await choose(
-            conn, user, access, body.profile, Asked("author", runtime, body.model, pinned, _picks(picked))
-        )
+        placed = placement(body)
+        asked = Asked("author", runtime, body.model, pinned, _picks(picked), **placed)
+        chosen = await choose(conn, user, access, body.profile, asked)
         revision = None
         if body.plan_id is not None:
             held = await plan_routes._visible(conn, access, body.plan_id, None)
@@ -642,7 +662,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
             "plan_revision": revision,
             "dispatched_by": user.user_id,
             "dispatched_via": dispatch_credential(user.kind),
-            "pinned_worker_id": pinned.id,
+            "pinned_worker_id": None if pinned is None else pinned.id,
             "requested_runtime": runtime,
             "runtime": runtime,
             "model": chosen.model,
@@ -651,6 +671,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
             "timeout_s": body.timeout_h * 3600,
             "repos": repos,
             "request": body.request,
+            **_listed(placed),
             **chosen.columns(),
         }
         try:
@@ -671,7 +692,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
         extra={
             "project": project,
             "run_id": run_id,
-            "worker_id": pinned.id,
+            "worker_id": None if pinned is None else pinned.id,
             "repos": len(repos),
             "plan_id": body.plan_id,
         },

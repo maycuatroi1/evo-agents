@@ -25,6 +25,7 @@ from evo_agents.hub.server.runs.service.dispatch import (
     check_seat,
     no_plan_run,
     pinnable,
+    placement,
     queue_run,
     refuse_curator_plan,
 )
@@ -210,6 +211,15 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Re
     return view
 
 
+async def _rerun_placement(conn: AsyncConnection, run_id: int, body: Rerun | None) -> dict:
+    """The selector and tolerations of a rerun of run ``run_id``: those ``body`` names, else the run's own."""
+    if body is not None and body.placed():
+        return placement(body)
+    r = tables.runs
+    row = (await conn.execute(select(r.c.selector, r.c.tolerations).where(r.c.id == run_id))).one()
+    return {"selector": tuple(row.selector or ()), "tolerations": tuple(row.tolerations or ())}
+
+
 async def rerun_in(
     conn: AsyncConnection,
     user: Principal,
@@ -250,7 +260,9 @@ async def rerun_in(
     pin_to = pinned if worker_id is None else worker_id
     worker = None if pin_to is None else await pinnable(conn, user, access, pin_to)
     picked = await rerun_picks(conn, user, access, run_id, body, worker)
-    chosen = await rerun_choice(conn, user, access, run_id, Asked(kind, runtime_now, model, worker, tuple(picked)))
+    placed = await _rerun_placement(conn, run_id, body)
+    asked = Asked(kind, runtime_now, model, worker, tuple(picked), **placed)
+    chosen = await rerun_choice(conn, user, access, run_id, asked)
     await lock_plan(conn, access.project_id, plan_id)
     activity = await plan_activity(conn, access.project_id, plan_id)
     no_plan_run(activity, plan_id)
@@ -274,6 +286,7 @@ async def rerun_in(
         plugin_config=await run_layer_of(conn, run_id),
         browser=browser,
         identities=identities,
+        placed=placed,
     )
     accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
     target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
