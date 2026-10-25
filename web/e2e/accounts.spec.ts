@@ -597,10 +597,11 @@ test("Add provider searches and filters the catalog, tests the key, fetches the 
   await expect(dialog).toBeHidden();
   await expect(toast(page, "Provider account glm added")).toBeVisible();
 
-  // Its card: the mark on the catalog colour, the name, the host, the format, its key and its models.
+  // Its card: the provider's logo, the name, the host, the format, its key and its models.
   const glm = card(page, "glm");
   await expect(glm.getByRole("heading", { name: "GLM Coding" })).toBeVisible();
-  await expect(glm.locator('[data-provider-mark="glm"]')).toHaveText("GL");
+  await expect(glm.locator('[data-provider-mark="glm"] img')).toHaveAttribute("src", "/provider-logos/glm.svg");
+  await expect(glm.locator('[data-provider-mark="glm"] img')).toHaveJSProperty("complete", true);
   await expect(glm.getByTestId("provider-card-host")).toHaveText("api.z.ai");
   await expect(glm.getByTestId("provider-card-format")).toContainText("openai");
   await expect(glm.getByTestId("provider-card-count")).toHaveText("1 key");
