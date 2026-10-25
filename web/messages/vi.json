@@ -3603,6 +3603,13 @@
       "latest": "Tới tin mới nhất",
       "directEmptyBody": "Hãy nói điều bạn cần: mọi tin đều tới {name}, và câu trả lời hiện ngay dưới tin của bạn."
     },
+    "bind": {
+      "lead": "Nhận run của {project} trên:",
+      "button": "Worker {name}",
+      "none": "Bạn chưa có worker nào: ghép một worker ở trang Workers rồi gửi lại tin nhắn.",
+      "done": "Worker {name} đã nhận run của {project}. Hãy gửi lại tin nhắn.",
+      "failed": "Không thêm được {project} vào worker {name}"
+    },
     "message": {
       "hub": "Hub",
       "hubTag": "Tự động",
