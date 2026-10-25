@@ -27,15 +27,8 @@ def profile(*, default: bool = False, runtimes: list[str] | None = None) -> Simp
     )
 
 
-def placement(features, runtimes) -> dict:
-    """The place_* columns of ``worker_placement.columns``, of a worker in no pool with no labels and no taints."""
-    names = ("pool", "labels", "taints", "accepted", "os", "arch", "doctor_at", "doctor_fresh", "findings")
-    return {f"place_{name}": None for name in names} | {"place_runtimes": runtimes, "place_features": features}
-
-
 def worker(features=OLD, runtimes=("claude-code", "codex")) -> SimpleNamespace:
     return SimpleNamespace(
-        _mapping=placement(tuple(features), {name: UP for name in runtimes}),
         id=3,
         name="studio",
         labels=(),
