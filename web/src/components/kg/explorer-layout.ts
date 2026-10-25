@@ -188,8 +188,8 @@ function overlaps(a: Box, b: Box, pad: number): boolean {
  * linked. A label shows when it covers no label already shown and no node already shown with its label; such a node
  * is then drawn above the others (`z`, highest first), so neither its label nor its circle hides under a node drawn
  * after it. The others are `crowded`. Labels keep their size on screen (labelScale), so zooming in makes room and more
- * of them show. A label off the screen takes no room; a dimmed one shows nothing and takes none either. Returns how
- * many are crowded; call it again after a zoom, a pan, a new layout or a change of what is lit.
+ * of them show. A label off the screen is crowded too and takes no room; a dimmed one shows nothing and takes none
+ * either. Returns how many are crowded; call it again after a zoom, a pan, a new layout or a change of what is lit.
  */
 export function declutter(cy: cytoscape.Core, forced: readonly (string | null)[]): number {
   const pinned = new Set(forced.filter((id): id is string => Boolean(id)));
@@ -207,7 +207,11 @@ export function declutter(cy: cytoscape.Core, forced: readonly (string | null)[]
   for (const node of ordered) {
     if (!String(node.data("label") ?? "")) continue;
     const label = node.boundingBox({ includeNodes: false, includeEdges: false, includeLabels: true, includeOverlays: false });
-    if (!overlaps(label, view, 0)) continue;
+    // Off the screen: hidden until a pan brings it in, so no two labels shown ever cover each other.
+    if (!overlaps(label, view, 0) && !pinned.has(node.id())) {
+      crowded.push(node);
+      continue;
+    }
     const covers = shown.some((other) => overlaps(label, other.label, pad) || overlaps(label, other.body, pad));
     if (covers && !pinned.has(node.id())) crowded.push(node);
     else shown.push({ node, label, body: node.boundingBox({ includeLabels: false, includeOverlays: false }) });
