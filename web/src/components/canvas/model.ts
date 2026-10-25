@@ -62,7 +62,7 @@ export const COMPARATORS = [">=", ">", "<=", "<"] as const;
 /** `content.FEEDBACK`: the metric of a test card that counts the feedback judged to support the claim. */
 export const FEEDBACK = "feedback";
 
-/** Limits the hub keeps (evo_agents.hub.tables_canvas and core_plugins.canvas.content). */
+/** Limits the hub keeps (evo_agents.hub.tables_canvas and hub.server.canvas.content). */
 export const LIMITS = {
   name: 200,
   description: 10_000,

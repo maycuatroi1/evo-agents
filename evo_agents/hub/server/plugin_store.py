@@ -307,7 +307,8 @@ def plugin_model(row, versions: list[PluginVersion], manifest: dict) -> dict:
 
 
 async def list_plugins(conn: AsyncConnection, hub_version: str) -> list[Plugin]:
-    rows = (await conn.execute(_plugins_query())).all()
+    """The plugins of the store; the features of the hub (``plugins.builtin``: canvas, srs, tasks) are none of them."""
+    rows = (await conn.execute(_plugins_query().where(tables.plugins.c.builtin.is_(False)))).all()
     by_plugin: dict[int, list] = {}
     for version in (await conn.execute(_versions_query())).all():
         by_plugin.setdefault(version.plugin_id, []).append(version)
@@ -320,9 +321,13 @@ async def list_plugins(conn: AsyncConnection, hub_version: str) -> list[Plugin]:
     return found
 
 
-async def find(conn: AsyncConnection, name: str, *, lock: bool = False):
-    """The row of plugin ``name`` from the plugins query; None when the hub has no such plugin."""
+async def find(conn: AsyncConnection, name: str, *, lock: bool = False, builtin: bool = False):
+    """The row of plugin ``name`` from the plugins query; None when the hub has no such plugin, or when ``name`` is a
+    feature of the hub (``plugins.builtin``) and ``builtin`` is False: the store shows, installs and removes none of
+    them."""
     query = _plugins_query().where(tables.plugins.c.name == name)
+    if not builtin:
+        query = query.where(tables.plugins.c.builtin.is_(False))
     if lock:
         query = query.with_for_update(of=tables.plugins)
     return (await conn.execute(query)).first()
@@ -388,7 +393,7 @@ async def record_version(conn: AsyncConnection, user: Principal, body: PluginPub
     await conn.execute(
         pg_insert(plugins).values(name=manifest.id, publisher=manifest.publisher).on_conflict_do_nothing()
     )
-    row = await find(conn, manifest.id, lock=True)  # versions of one plugin are written one at a time
+    row = await find(conn, manifest.id, lock=True, builtin=True)  # versions of one plugin are written one at a time
     versions = await version_rows(conn, row.id)
     if from_image(versions):
         raise HTTPException(409, FROM_IMAGE.format(name=manifest.id))
@@ -594,10 +599,14 @@ async def _record_image_plugin(conn: AsyncConnection, plugin) -> bool:
             extra={"plugin": manifest.id, "tables": missing},
         )
         return False
+    builtin = bool(getattr(plugin, "builtin", False))  # a feature of the hub (plugin_calls.BUILTIN)
     await conn.execute(
-        pg_insert(plugins).values(name=manifest.id, publisher=manifest.publisher).on_conflict_do_nothing()
+        pg_insert(plugins)
+        .values(name=manifest.id, publisher=manifest.publisher, builtin=builtin)
+        .on_conflict_do_nothing()
     )
-    row = await find(conn, manifest.id, lock=True)
+    await conn.execute(update(plugins).where(plugins.c.name == manifest.id).values(builtin=builtin))
+    row = await find(conn, manifest.id, lock=True, builtin=True)
     held = await version_rows(conn, row.id)
     if row.publisher != manifest.publisher or any(version.signature_kind != IMAGE for version in held):
         log.error("core plugin not recorded: the store holds a plugin of its name", extra={"plugin": manifest.id})
@@ -613,7 +622,7 @@ async def _record_image_plugin(conn: AsyncConnection, plugin) -> bool:
         await conn.execute(
             update(plugins).where(plugins.c.id == row.id).values({**on, "disabled_reason": None, "disabled_at": None})
         )
-        if manifest.per_project():  # one that runs hub-wide ran before the store listed it: nobody did anything
+        if manifest.per_project() and not builtin:  # hub-wide, or a feature of the hub: nobody installed anything
             target = f"plugin:{manifest.id}@{manifest.version} via={IMAGE}"
             await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_INSTALL, target=target)
     return True

@@ -1,4 +1,4 @@
-"""The review of single use cases of a version in review, on the hub (``evo_agents.core_plugins.srs.use_case_reviews``,
+"""The review of single use cases of a version in review, on the hub (``evo_agents.hub.server.srs.use_case_reviews``,
 ``reviews.review_use_case``), as criteria a1 to a4 of the plan srs-use-case-review name them. The sample is
 ``tests/hub/fixtures/srs/demo-shop-srs.md``: chi writes version 1, whose three use cases are all to review."""
 

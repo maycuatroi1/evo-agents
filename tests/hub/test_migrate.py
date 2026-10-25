@@ -143,6 +143,7 @@ TABLES |= pg.INTAKE_TABLES  # migration 0138
 TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
+TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -224,8 +225,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_seventy_nine_tables(hub_db):
-    assert len(TABLES) == 179  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eighty_tables(hub_db):
+    assert len(TABLES) == 180  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3588,3 +3589,72 @@ def test_0146_adds_the_browser_install_of_a_worker_and_going_back_drops_it(hub_d
     move_to(hub_db, "0145", down=True)
     assert not added & columns(hub_db, "workers")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0146") :]
+
+
+def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_the_project_plugins(hub_db):
+    move_to(hub_db, "0146")
+    t = hub_tables
+    plugins, pp, settings = t.plugins, t.project_plugins, t.hub_settings
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        user = ids["user"]
+        lumen = insert(t.projects).values(
+            name="lumen", levels=["internal"], locations=["any"], default_label={"level": "internal"}, created_by=user
+        )
+        ids["lumen"] = one(conn, lumen.returning(t.projects.c.id))
+        plugin = {
+            name: one(conn, insert(plugins).values(name=name, publisher="evo-agents").returning(plugins.c.id))
+            for name in ("canvas", "srs", "tasks", "northwind")
+        }
+        grants = {"canvas": ["runs:read", "signals:read"], "srs": ["notifications:send"], "northwind": ["plans:read"]}
+        for name, permissions in grants.items():
+            values = {"project_id": ids["project"], "plugin_id": plugin[name], "permissions": permissions}
+            conn.execute(insert(pp).values(values | {"enabled_by": user, "granted_by": user}))
+        conn.execute(
+            insert(pp).values(
+                project_id=ids["lumen"], plugin_id=plugin["tasks"], permissions=[], enabled_by=user, granted_by=user
+            )
+        )
+        layer = {"kind": "features", "project_id": ids["project"], "changed_by": user}
+        conn.execute(insert(settings).values(layer | {"version": 1, "values": {"chats": False}}))
+    before = query(
+        hub_db, select(*(pp.c[name] for name in sorted(pp.c.keys()))).order_by(pp.c.project_id, pp.c.plugin_id)
+    )
+    move_to(hub_db, "0147")
+    assert {"retired_project_plugins"} <= tables(hub_db) and "builtin" in columns(hub_db, "plugins")
+    builtin = select(plugins.c.name).where(plugins.c.builtin).order_by(plugins.c.name)
+    assert query(hub_db, builtin) == [("canvas",), ("srs",), ("tasks",)]
+    left = select(pp.c.plugin_id, pp.c.permissions)
+    assert query(hub_db, left) == [(plugin["northwind"], ["plans:read"])]  # a plugin of the store stays a plugin
+    features = (
+        select(settings.c.project_id, settings.c.version, settings.c["values"], settings.c.changed_by)
+        .where(settings.c.kind == "features")
+        .order_by(settings.c.project_id, settings.c.version)
+    )
+    assert query(hub_db, features) == [
+        (ids["project"], 1, {"chats": False}, user),
+        (ids["project"], 2, {"chats": False, "canvas": True, "srs": True}, user),  # its values, and the features on
+        (ids["lumen"], 1, {"tasks": True}, user),
+    ]
+    retired = t.retired_project_plugins
+    kept = select(retired.c.project_id, retired.c.plugin_id, retired.c.permissions, retired.c.settings_version)
+    assert sorted(query(hub_db, kept)) == sorted(
+        [
+            (ids["project"], plugin["canvas"], ["runs:read", "signals:read"], 2),
+            (ids["project"], plugin["srs"], ["notifications:send"], 2),
+            (ids["lumen"], plugin["tasks"], [], 1),
+        ]
+    )
+    with live.connect(hub_db) as conn:  # a later version on top of the one 0147 wrote
+        conn.execute(insert(settings).values(layer | {"version": 3, "values": {"chats": True, "canvas": True}}))
+    move_to(hub_db, "0146", down=True)
+    assert "retired_project_plugins" not in tables(hub_db) and "builtin" not in columns(hub_db, "plugins")
+    after = query(
+        hub_db, select(*(pp.c[name] for name in sorted(pp.c.keys()))).order_by(pp.c.project_id, pp.c.plugin_id)
+    )
+    assert after == before  # each row back with the permissions it had
+    assert query(hub_db, select(settings.c.project_id, settings.c.version, settings.c["values"])) == [
+        (ids["project"], 1, {"chats": False}),
+        (ids["project"], 3, {"chats": True}),  # 0146 knows no feature canvas
+    ]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]

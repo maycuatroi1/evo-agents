@@ -58,8 +58,8 @@ from tests.hub.test_kg import (
 )
 
 CORE = {
-    "srs": EntryPoint("srs", "evo_agents.core_plugins.srs:MANIFEST", ENTRY_POINT_GROUP),
-    "tasks": EntryPoint("tasks", "evo_agents.core_plugins.tasks:MANIFEST", ENTRY_POINT_GROUP),
+    "srs": EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP),
+    "tasks": EntryPoint("tasks", "evo_agents.hub.server.tasks:MANIFEST", ENTRY_POINT_GROUP),
 }
 SAMPLE_SRS = Path(__file__).parent / "fixtures" / "srs" / "demo-shop-srs.md"
 SHA = "4f1c2e7a9b3d5f60718293a4b5c6d7e8f9012345"

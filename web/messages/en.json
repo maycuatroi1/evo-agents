@@ -1214,13 +1214,19 @@
         "chats": "Chats",
         "curator": "Curator",
         "kg": "Knowledge graph",
-        "monitor": "Monitor"
+        "monitor": "Monitor",
+        "canvas": "Canvas",
+        "srs": "Requirements (SRS)",
+        "tasks": "Tasks"
       },
       "descriptions": {
         "chats": "Group chats with people and agents.",
         "curator": "The Curator's night shift, its proposals and its morning brief.",
         "kg": "A project's knowledge graph: its pages, its API and the kg tools of the hub's MCP.",
-        "monitor": "The runs at work in every project, watched live."
+        "monitor": "The runs at work in every project, watched live.",
+        "canvas": "A project's canvas: its claims, their evidence and judging, and @strategist.",
+        "srs": "A project's requirement documents, their reviews and approvals, and @ba.",
+        "tasks": "A project's tasks and their board, made from approved requirements."
       },
       "scopeHub": "Whole hub",
       "scopeProject": "Hub or project",

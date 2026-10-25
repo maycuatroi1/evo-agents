@@ -1,15 +1,19 @@
-# The core plugin srs: BA documents on the hub
+# The hub feature srs: BA documents on the hub
 
 The plugin **srs** keeps a project's BA documents in the hub's database: an SRS written to a template, or a free
 specification, with versions that members approve, and with a code on every use case, business rule, screen and
-requirement that stays the same from version to version. Its code is `evo_agents/core_plugins/srs`; evo-ak ships it as
-a core plugin, so every hub has it (`docs/plugins.md`, Core plugins). It does nothing in a project until an admin of
-the project enables it there. Its agent type `ba` adds @ba, an agent that drafts the documents for the project's
-writers and reviews every version that enters review, comparing it with the other documents and with the knowledge
-graph; a conflict it can show a source for is a finding, and an open finding of level `decide` holds approval until
-members settle it in a settle chat (sections Findings, Settle chats and @ba). The plugin tasks links tasks to its items
-(`docs/tasks-plugin.md`), and an approved version keeps those tasks in step with its use cases (section Tasks when a
-version is approved).
+requirement that stays the same from version to version. Its code is `evo_agents/hub/server/srs`, a feature of the hub,
+so every hub has it. It does nothing in a project until an admin of the project enables it there. Its agent type `ba`
+adds @ba, an agent that drafts the documents for the project's writers and reviews every version that enters review,
+comparing it with the other documents and with the knowledge graph; a conflict it can show a source for is a finding,
+and an open finding of level `decide` holds approval until members settle it in a settle chat (sections Findings, Settle
+chats and @ba). The plugin tasks links tasks to its items (`docs/tasks-plugin.md`), and an approved version keeps those
+tasks in step with its use cases (section Tasks when a version is approved).
+
+A feature of the hub since migration 0147, a core plugin before it, it keeps the plugin's names: the routes under
+`/v1/x/srs/`, its MCP tools, its config (`hub plugin config srs`), and `hub plugin enable srs`, which turns the
+feature on in the project's layer of its features. A hub admin turns it on or off in the administration, Features,
+for the hub or for one project. `hub plugin list` and /admin/plugins do not list it (`docs/plugins.md`, Core plugins).
 
 ## Enabling it
 
@@ -290,7 +294,7 @@ message of its chat; once settled, the message that settled it.
 
 ## Tasks when a version is approved
 
-An approval emits the event `srs.version.approved` in its transaction (`evo_agents/core_plugins/srs/events.py`): the
+An approval emits the event `srs.version.approved` in its transaction (`evo_agents/hub/server/srs/events.py`): the
 document's slug and id, the version's number and id, the version approved before it (null the first time), the
 approver's login and id, and the codes of the items the version added, changed and dropped since that one, by kind.
 Plugins the project granted `srs:read` get it, at least once, and the hub keeps it in `hub_events`, where the Loop
@@ -300,7 +304,7 @@ approval, and the approval's route does nothing more to tasks.
 
 When the project enables the plugin tasks, whether its Loop is on or off, that handler compares the version with the
 version approved before it (none the first time) and keeps the project's tasks in step with its use cases, in the
-delivery's transaction (`evo_agents/core_plugins/srs/auto_tasks.py`):
+delivery's transaction (`evo_agents/hub/server/srs/auto_tasks.py`):
 
 - **A new use case** gets one frame task: `UC ORD-1: Place an order`, linked to the use case, of type `story` when the
   project has it (its first type otherwise), in the first status, carrying the document's label, made by the approver.

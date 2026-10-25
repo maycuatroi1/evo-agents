@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { type DiffHunk, type DiffLine, parseHunks } from "./content-model";
 
 /**
- * An item's text in two versions, line by line (evo_agents.core_plugins.srs.diff): unified, or side by side from the
+ * An item's text in two versions, line by line (evo_agents.hub.server.srs.diff): unified, or side by side from the
  * md breakpoint up. Every changed line says what happened in words for screen readers and with a sign for the eye;
  * the tint is the third cue, never the only one (as a plan's diff, plans/plan-diff.tsx).
  */

@@ -1,4 +1,4 @@
-"""The core plugin canvas on the hub (``evo_agents.core_plugins.canvas``), as criterion a2 of plan living-lean-canvas
+"""The core plugin canvas on the hub (``evo_agents.hub.server.canvas``), as criterion a2 of plan living-lean-canvas
 names it: a writer makes a canvas for a product with the nine cells of a Lean Canvas; each cell holds claims with a
 status, a confidence, a test card, evidence and the provenance of each rev. Every change is a rev; an edit carries the
 rev it was read at and is refused (409) when the claim changed since; an undo writes a new rev with the content of the
@@ -33,7 +33,7 @@ from tests.hub.test_chats import OPEN_SINKS
 from tests.hub.test_plans import registration
 from tests.hub.test_runs import PROJECT
 
-CANVAS = EntryPoint("canvas", "evo_agents.core_plugins.canvas:MANIFEST", ENTRY_POINT_GROUP)
+CANVAS = EntryPoint("canvas", "evo_agents.hub.server.canvas:MANIFEST", ENTRY_POINT_GROUP)
 BASE = f"/v1/x/canvas/{PROJECT}"
 SLUG = "northwind-pantry"
 CELLS = [

@@ -2,11 +2,17 @@
 declares them: each by its id, the layers it may be set on (the hub's own, ``instance``; a project's, ``project``),
 the paths of the API it owns and the tools of the hub's /mcp it answers.
 
-A feature is on unless a layer turns it off. A project's layer, when it sets a feature, wins over the hub's own, so a
+A feature is on unless a layer turns it off, or off unless a layer turns it on when it says so (``default``: canvas, srs
+and tasks, which a project turns on as it enabled them when they were plugins). A project's layer, when it sets a feature, wins over the hub's own, so a
 hub admin may turn a feature off for the whole hub and back on for one project; a feature set for the whole hub only
 (``instance`` alone among its layers) reads the hub's own layer alone. ``evo_agents.hub.server.hub_settings`` keeps
 the layers as versioned settings and answers 404 to the routes and tools of a feature that is off; the web leaves it
 out of its menus and answers 404 to its pages.
+
+canvas, srs and tasks run on the extension points of the plugins (``evo_agents.hub.plugin_calls.BUILTIN``): their
+routes stay under /v1/x/<feature>/<project>/ and their tools on /mcp keep the names ``<feature>__<tool>``
+(``tool_prefixes``), so turning one off answers 404 to both, and the hub reaches its jobs, events and knowledge graph
+source in the projects it is on in only.
 
 The monitor owns no route of its own (it reads the overview Home reads), so turning it off hides a page only.
 
@@ -34,9 +40,14 @@ class Feature:
     layers: tuple[str, ...]  # where it may be set: the hub's own layer, and a project's when it owns project routes
     routes: tuple[re.Pattern, ...] = ()  # the API paths it owns, whole; a group ``project`` names the project's
     tools: frozenset[str] = field(default_factory=frozenset)  # the tools of the hub's /mcp it owns
+    default: bool = True  # whether it is on where no layer sets it
+    tool_prefixes: tuple[str, ...] = ()  # it owns every tool of the hub's /mcp whose name starts with one of these
 
     def per_project(self) -> bool:
         return PROJECT in self.layers
+
+    def owns_tool(self, name: str) -> bool:
+        return name in self.tools or any(name.startswith(prefix) for prefix in self.tool_prefixes)
 
 
 FEATURES = (
@@ -65,6 +76,16 @@ FEATURES = (
         frozenset(tool["name"] for tool in KG_TOOLS),
     ),
     Feature("monitor", (INSTANCE,)),
+    *(
+        Feature(
+            name,
+            LAYERS,
+            (re.compile(rf"/v1/x/{name}/{_PROJECT}(?:/.*)?"),),
+            default=False,
+            tool_prefixes=(f"{name}__",),
+        )
+        for name in ("canvas", "srs", "tasks")
+    ),
 )
 BY_ID = {feature.id: feature for feature in FEATURES}
 IDS = tuple(BY_ID)
@@ -83,15 +104,15 @@ def route_owner(path: str) -> tuple[Feature, str | None] | None:
 
 def tool_owner(name: str) -> Feature | None:
     """The feature that owns tool ``name`` of the hub's /mcp; None when none does."""
-    return next((feature for feature in FEATURES if name in feature.tools), None)
+    return next((feature for feature in FEATURES if feature.owns_tool(name)), None)
 
 
 def enabled(feature: Feature, instance: Mapping, project: Mapping | None = None) -> bool:
     """Whether ``feature`` is on, given the values the hub's own layer sets and those of a project's layer (None
-    outside a project): the project's when it sets the feature, else the hub's, else on."""
+    outside a project): the project's when it sets the feature, else the hub's, else its default."""
     if project is not None and feature.per_project() and feature.id in project:
         return bool(project[feature.id])
-    return bool(instance.get(feature.id, True))
+    return bool(instance.get(feature.id, feature.default))
 
 
 def problems(values: Mapping, layer: str) -> list[str]:

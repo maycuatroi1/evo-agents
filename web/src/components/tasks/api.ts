@@ -7,7 +7,7 @@ import { TASKS_PLUGIN } from "@/lib/core-plugin-links";
 import type { ApiSource } from "@/lib/queries";
 
 /**
- * The reads and writes of the core plugin tasks (evo_agents.core_plugins.tasks.server, under /v1/x/tasks/{project}/),
+ * The reads and writes of the core plugin tasks (evo_agents.hub.server.tasks.server, under /v1/x/tasks/{project}/),
  * as TanStack Query options the server (prefetch) and the browser share, and the writes the browser makes with the
  * session's X-Evo-CSRF header. Every key sits under the project's plugin keys; the lists of tasks share one prefix, so
  * a write reloads every list at once.
@@ -39,7 +39,7 @@ export type Role = keyof Task["roles"];
 export const PLUGIN = TASKS_PLUGIN;
 export const PRIORITIES: readonly Priority[] = ["urgent", "high", "medium", "low"];
 export const ROLES: readonly Role[] = ["ba", "qa", "dev"];
-/** The most tasks one list asks for (evo_agents.core_plugins.tasks.store.MAX_LISTED). */
+/** The most tasks one list asks for (evo_agents.hub.server.tasks.store.MAX_LISTED). */
 export const MAX_LISTED = 2_000;
 
 /** Which tasks a list holds: every task, a sprint's, those of no sprint, or the caller's own. */

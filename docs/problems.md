@@ -14,7 +14,7 @@ plan that names none reads, writes and runs on the Loop as it did.
 | the commands | `evo_agents/hub/cli_problems.py` |
 | the MCP tools `problem_list` and `problem_show` | `evo_agents/hub/mcp_tools.py`, `evo_agents/hub/server/mcp.py` |
 | a goal's problem | `evo_agents/hub/goals.py`, `evo_agents/hub/server/goals.py` |
-| a claim's problems | `evo_agents/core_plugins/canvas/links.py`, `content.py` (schema 0135) |
+| a claim's problems | `evo_agents/hub/server/canvas/links.py`, `content.py` (schema 0135) |
 | a plan's problems | `evo_agents/harness/schemas/plan.schema.json`, `evo_agents/hub/server/plan_problems.py` |
 | the knowledge graph | `evo_agents/hub/kg_problems.py`, `evo_agents/hub/kg_sources.py` |
 | the Loop | `evo_agents/hub/server/loop/rules2.py` (schema 0136, `docs/loop.md`) |
