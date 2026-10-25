@@ -1,5 +1,5 @@
 """The tiers of notifications and the quiet hours of members (plan hub-mobile-phase-0, criterion a3), in SQLAlchemy
-Core on notification_preferences (schema 0149). ``docs/notifications.md`` is the design; ``output_notices`` has the
+Core on notification_preferences (schema 0150). ``docs/notifications.md`` is the design; ``output_notices`` has the
 routes that read and set them (GET and PUT /v1/me/notification-settings).
 
 **Tiers.** Each kind of notification (KINDS: decision, proposal and each kind of notice) is of one tier for a member:

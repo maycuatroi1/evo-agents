@@ -220,7 +220,7 @@ KG_REVIEW_TABLES = frozenset({"kg_review_dismissals"})  # migration 0141 (plan k
 KG_DECISION_TABLES = frozenset({"kg_decisions", "kg_decision_events"})  # migration 0142 (plan kg-map-and-review)
 # migration 0147: the rows of project_plugins of canvas, srs and tasks, once those became features (plan plugin-market)
 RETIRED_PLUGIN_TABLES = frozenset({"retired_project_plugins"})
-# migration 0148: the push devices of members and their notification preferences (plan hub-mobile-phase-0)
+# migration 0149: the push devices of members and their notification preferences (plan hub-mobile-phase-0)
 PUSH_TABLES = frozenset({"push_devices", "notification_preferences"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
