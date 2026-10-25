@@ -30,7 +30,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, PROVIDER_KIND
 from evo_agents.hub.provider_accounts import API_FORMATS, MAX_MODELS, PROVIDER_ID
-from evo_agents.hub.server import audit, route_autonomy
+from evo_agents.hub.server import audit, gateway_sync, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_accounts import (
     MAX_ACCOUNTS_PER_AGENT,
@@ -213,6 +213,7 @@ async def put_agent_provider_account(
         (found,) = await _accounts(conn, profile_id, name)
     log.info("agent provider account written", extra={"project": project, "handle": handle, "created": created})
     response.headers.update(NO_STORE)
+    gateway_sync.poke(request.app)  # the gateway follows the write
     return ProviderAccountWritten(**found.model_dump(), created=created)
 
 
@@ -273,6 +274,7 @@ async def change_agent_provider_account(
         (found,) = await _accounts(conn, profile_id, name)
     log.info("agent provider account changed", extra={"project": project, "handle": handle, "fields": named})
     response.headers.update(NO_STORE)
+    gateway_sync.poke(request.app)  # the gateway follows the write
     return found
 
 
@@ -291,4 +293,5 @@ async def delete_agent_provider_account(
         target = _target(project, handle, row.id, row.provider, row.base_url)
         await record_agent(conn, user, access, audit.PROVIDER_ACCOUNT_DELETE, target)
     log.info("agent provider account deleted", extra={"project": project, "handle": handle})
+    gateway_sync.poke(request.app)  # the gateway follows the write
     return Response(status_code=204)

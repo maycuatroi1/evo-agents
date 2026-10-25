@@ -45,7 +45,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, MAX_SECRETS_PER_OWNER, PROVIDER_KIND, SECRET_NAME
 from evo_agents.hub.provider_accounts import API_FORMATS, MAX_MODELS, PROVIDER_ID
-from evo_agents.hub.server import audit, route_autonomy
+from evo_agents.hub.server import audit, gateway_sync, route_autonomy
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -272,6 +272,7 @@ async def put_provider_account(
         "provider account written", extra={"login": user.login, "provider": body.provider, "replaced": not created}
     )
     response.headers.update(NO_STORE)
+    gateway_sync.poke(request.app)  # the gateway follows the write
     return ProviderAccountWritten(**found.model_dump(), created=created)
 
 
@@ -320,6 +321,7 @@ async def change_provider_account(
         (found,) = await _accounts(conn, user.user_id, name)
     log.info("provider account changed", extra={"login": user.login, "fields": [n for n in named if n != "value"]})
     response.headers.update(NO_STORE)
+    gateway_sync.poke(request.app)  # the gateway follows the write
     return found
 
 
@@ -361,6 +363,7 @@ async def delete_provider_account(request: Request, name: AccountName, user: Cur
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.PROVIDER_ACCOUNT_DELETE, target=target
         )
     log.info("provider account deleted", extra={"login": user.login, "provider": row.provider})
+    gateway_sync.poke(request.app)  # the gateway follows the write
     return Response(status_code=204)
 
 
