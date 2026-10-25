@@ -60,6 +60,7 @@ LOOP_NOTICES = "hub.loop_notices"  # every 5 minutes: the month's review of goal
 OPPORTUNITY_DEADLINES = "hub.opportunity_deadlines"  # hourly: owners told as the window of an open opportunity closes
 MEMORY_UPKEEP = "hub.memory_upkeep"  # daily: agents' memories nobody opened for 30 days archived, stale ones marked
 EXPIRE_SEATS = "hub.expire_seats"  # hourly: org seats past their end date ended, the leases of people at A0 back
+MARKET_REFRESH = "hub.market_refresh"  # every 6 hours: each plugin market's index and its plugins' latest releases
 
 
 def kg_lock(project: str) -> str:
