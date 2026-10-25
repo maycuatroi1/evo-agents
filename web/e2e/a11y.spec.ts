@@ -34,7 +34,6 @@ import {
 import { ceilingOver, prefByApi, stopOwnByApi } from "./support/autonomy";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { promotionNight, seedCurator } from "./support/curator";
-import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { buildsPath, explorerReady, graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
@@ -75,6 +74,7 @@ import { problemsPath, seedProblems } from "./support/problems";
 import { addPushDeviceByApi, fakePush, fakeSubscription } from "./support/push";
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
+import { providerKey, putProviderByApi } from "./support/providers";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import {
@@ -93,7 +93,6 @@ import {
   USE_CASE,
 } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
-import { pmPath, seedPm } from "./support/pm";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -930,12 +929,11 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "accounts in two groups with a merged line open",
+    name: "accounts' service credentials tab with a merged line open",
     open: async ({ page, me }) => {
       await seedAccounts(me);
-      await page.goto("/accounts");
+      await page.goto("/accounts?tab=services");
       const services = page.locator("#main").getByTestId("accounts-group-service");
-      await expect(page.locator("#main").getByTestId("accounts-group-model")).toBeVisible();
       await services.getByTestId("service-group-toggle").click();
       await expect(services.getByTestId("service-variables")).toBeVisible();
     },
@@ -946,7 +944,33 @@ const PAGES: Entry[] = [
       await seedAccounts(me);
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/accounts");
-      await expect(page.locator("#main").getByTestId("accounts-group-service")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("provider-card").first()).toBeVisible();
+    },
+  },
+  {
+    name: "accounts' provider cards with a provider account, and its Models tab",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await putProviderByApi(me, "glm-a11y", { provider: "glm", value: providerKey(), projects: [me.projects[0]], models: ["fake-large"] });
+      await page.goto("/accounts");
+      await expect(page.locator("#main").locator('[data-provider-id="glm"]').getByTestId("provider-card-model")).toBeVisible();
+      await expectNoSeriousViolations(page, "accounts with a provider account");
+      await page.locator("#main").getByTestId("accounts-tab-models").click();
+      await expect(page.locator("#main").getByTestId("runnable-model").first()).toBeVisible();
+    },
+  },
+  {
+    name: "accounts' provider catalog, then the provider form with its errors",
+    open: async ({ page }) => {
+      await page.goto("/accounts");
+      await page.locator("#main").getByTestId("accounts-add").click();
+      const dialog = page.getByTestId("provider-dialog");
+      await expect(dialog.getByTestId("provider-catalog-entry").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "the provider catalog");
+      await dialog.getByTestId("provider-catalog-search").fill("glm");
+      await dialog.getByTestId("provider-catalog-entry").and(page.locator('[data-provider-id="glm"]')).click();
+      await dialog.getByTestId("provider-save").click();
+      await expect(dialog.getByTestId("provider-key-error")).toBeVisible();
     },
   },
   {
@@ -958,7 +982,7 @@ const PAGES: Entry[] = [
       const projects = [me.projects[0]];
       await shareByApi(me, "claude-sub", { grantee_kind: "user", login: lan.login, projects, budget_usd: 40, terms_ack: true });
       await shareByApi(me, "anthropic-key", { grantee_kind: "unit", unit, projects, expires_at: `${dayFromNow(2)}T00:00:00Z` });
-      await page.goto("/accounts");
+      await page.goto("/accounts?tab=sharing");
       const shares = page.locator("#main").getByTestId("account-shares");
       await expect(shares.getByTestId("share-row")).toHaveCount(2);
       await expect(shares.getByTestId("share-ends-soon")).toBeVisible();
@@ -2034,79 +2058,6 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "Tasks backlog");
       await page.locator("#main").getByTestId("sprint-new").click();
       await expect(page.getByTestId("sprint-new-form")).toBeVisible();
-    },
-  },
-  {
-    name: "the PM daily report with its eight sections, and at 375 px",
-    open: async ({ page, me }) => {
-      const project = me.projects[0];
-      await new HubAdmin().grant(project, me.login, "admin", "customer");
-      await seedPm(me, project);
-      await open(page, pmPath(project));
-      await expect(page.locator("#main").getByTestId("pm-report")).toBeVisible();
-      await expectNoSeriousViolations(page, "PM daily");
-      await page.setViewportSize({ width: 375, height: 812 });
-      await expectNoSeriousViolations(page, "PM daily at 375 px");
-    },
-  },
-  {
-    name: "Contacts with the pipeline and a contact's page with its note form and Delete dialog, and at 375 px",
-    open: async ({ page, me }) => {
-      const project = me.projects[0];
-      await new HubAdmin().grant(project, me.login, "admin", "customer");
-      await seedGrowth(me, project, { long: true });
-      await open(page, contactsPath(project));
-      await expect(page.locator("#main").getByTestId("crm-contact-row").first()).toBeVisible();
-      await expectNoSeriousViolations(page, "Contacts");
-      await open(page, contactPath(project, CONTACTS.longLead));
-      await expect(page.locator("#main").getByTestId("crm-note-form")).toBeVisible();
-      await expectNoSeriousViolations(page, "a contact");
-      await page.setViewportSize({ width: 375, height: 812 });
-      await expectNoSeriousViolations(page, "a contact at 375 px");
-      await page.locator("#main").getByTestId("crm-delete").click();
-      await expect(page.getByRole("alertdialog")).toBeVisible();
-    },
-  },
-  {
-    name: "Marketing overview, posts and Growth weekly, the growth decisions, and the kill switch dialog at 375 px",
-    open: async ({ page, me }) => {
-      const project = me.projects[0];
-      await new HubAdmin().grant(project, me.login, "admin", "customer");
-      await seedGrowth(me, project, { spent: 50 });
-      await open(page, marketingPath(project, "posts"));
-      await expect(page.locator("#main").getByTestId("marketing-group-drafts")).toBeVisible();
-      await expectNoSeriousViolations(page, "Marketing posts");
-      await open(page, marketingPath(project, "weekly"));
-      await expect(page.locator("#main").getByTestId("weekly-report")).toBeVisible();
-      await expectNoSeriousViolations(page, "Growth weekly");
-      await open(page, decidePath(project));
-      await expect(page.locator("#main").getByTestId("decide-growth")).toBeVisible();
-      await expectNoSeriousViolations(page, "growth decisions");
-      await open(page, marketingPath(project));
-      await expect(page.locator("#main").getByTestId("marketing-channels")).toBeVisible();
-      await expectNoSeriousViolations(page, "Marketing overview");
-      await page.setViewportSize({ width: 375, height: 812 });
-      await expectNoSeriousViolations(page, "Marketing overview at 375 px");
-      await page.locator("#main").getByTestId("marketing-kill").click();
-      await expect(page.getByRole("alertdialog")).toBeVisible();
-    },
-  },
-  {
-    name: "Contacts and Marketing on a small screen, read as a reader",
-    open: async ({ page, me }) => {
-      const project = me.projects[1];
-      const owner = newAccount("growth-owner");
-      await new HubAdmin().grant(project, owner.login, "admin", "public");
-      await seedGrowth(owner, project);
-      await page.setViewportSize({ width: 375, height: 812 });
-      await open(page, contactsPath(project));
-      await expect(page.locator("#main").getByTestId("crm-read-only")).toBeVisible();
-      await expectNoSeriousViolations(page, "Contacts as a reader at 375 px");
-      await open(page, marketingPath(project, "posts"));
-      await expect(page.locator("#main").getByTestId("marketing-read-only")).toBeVisible();
-      await expectNoSeriousViolations(page, "Marketing posts as a reader at 375 px");
-      await open(page, marketingPath(project));
-      await expect(page.locator("#main").getByTestId("marketing-read-only")).toBeVisible();
     },
   },
   {

@@ -11,7 +11,9 @@
  *
  * A request is `{bridge: "evo-plugin/1", id, method, params}`; the answer `{bridge, id, result}` or
  * `{bridge, id, error: {code, message, status?}}`. The web also posts `{bridge, event: "theme", theme}` when the
- * viewer's theme changes.
+ * viewer's theme changes, and `{bridge, event: "location", location}` when the page's sub path or query changes.
+ * `navigate` and `toast` act on the page around the frame: the first only within the same project, the second with the
+ * hub's own toast, the plugin named under its text.
  */
 
 export const BRIDGE = "evo-plugin/1";
@@ -20,6 +22,11 @@ export const MAX_PARAMS_BYTES = 64 * 1024; // what one request may carry, as JSO
 export const MAX_ROUTE_BODY_BYTES = 1024 * 1024;
 export const MAX_IN_FLIGHT = 16; // requests of one page answered at once; more wait for none and are refused
 export const FRAME_HEIGHT = { min: 240, max: 4000, initial: 560 };
+export const KIT = 1; // the version of the UI kit the hub serves at /v1/plugin-ui/kit/<KIT>/ (evo-ui.css, evo-ui.js)
+export const MAX_TOAST_CHARS = 500;
+export const MAX_NAVIGATE_CHARS = 2048;
+export const TOAST_TONES = ["info", "success", "error"] as const;
+export type PluginToastTone = (typeof TOAST_TONES)[number];
 
 export type ErrorCode =
   | "unsupported_bridge"
@@ -45,6 +52,9 @@ export class BridgeError extends Error {
 
 export type Theme = "light" | "dark";
 
+/** Where the page is: the sub path after the page's name in the hub's URL ("" for none) and the URL's query. */
+export type PageLocation = { path: string; query: Record<string, string> };
+
 export type BridgeContext = {
   bridge: typeof BRIDGE;
   project: string;
@@ -54,6 +64,8 @@ export type BridgeContext = {
   locale: string;
   theme: Theme;
   methods: string[];
+  location: PageLocation;
+  kit: typeof KIT;
 };
 
 export type RouteMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -73,9 +85,15 @@ export type HubReader = {
 export type Host = {
   context: () => BridgeContext;
   resize: (height: number) => void;
+  /** The least height a page that shows something gets; FRAME_HEIGHT.min unless the frame is a panel of a slot. */
+  minHeight?: number;
   /** What the project grants the plugin now, read again from the hub; nothing once it is not on there. */
   granted: () => Promise<readonly string[]>;
   hub: HubReader;
+  /** Opens `to`, a path of the hub's web under /p/<project>/ that `navigateTarget` checked, with the web's router. */
+  navigate: (to: string) => void;
+  /** Shows `text` as the hub's toast, naming the plugin. */
+  toast: (text: string, tone: PluginToastTone) => void;
 };
 
 export type BridgeRequest = { id: string | number; method: string; params: Record<string, unknown> };
@@ -85,6 +103,8 @@ export const METHODS = {
   context: null,
   resize: null,
   route: null,
+  navigate: null,
+  toast: null,
   "runs.list": "runs:read",
   "runs.get": "runs:read",
   "plans.list": "plans:read",
@@ -189,6 +209,38 @@ function routeCall(params: Record<string, unknown>): RouteCall {
 }
 
 /**
+ * The path `to` names in the hub's web, normalised (`..` resolved, as a browser would), when it is one of project
+ * `project`'s pages: under /p/<project>/, with its query and fragment. Anything else, another project, another origin,
+ * a path outside /p/, is refused with invalid_params.
+ */
+export function navigateTarget(to: unknown, project: string): string {
+  const prefix = `/p/${encodeURIComponent(project)}/`;
+  const refused = new BridgeError("invalid_params", `to is a path of this project's pages, such as ${prefix}runs`);
+  if (typeof to !== "string" || to.length > MAX_NAVIGATE_CHARS || /[\\\u0000-\u001f\u007f]/.test(to)) throw refused;
+  if (!to.startsWith(prefix)) throw refused;
+  const base = "http://hub.invalid";
+  let url: URL;
+  try {
+    url = new URL(to, base);
+  } catch {
+    throw refused;
+  }
+  if (url.origin !== base || !url.pathname.startsWith(prefix) || url.pathname.includes("//")) throw refused;
+  return url.pathname + url.search + url.hash;
+}
+
+function toastParams(params: Record<string, unknown>): { text: string; tone: PluginToastTone } {
+  const { text, tone = "info" } = params;
+  if (typeof text !== "string" || text.trim() === "" || text.length > MAX_TOAST_CHARS) {
+    throw new BridgeError("invalid_params", `text is what the toast says, 1 to ${MAX_TOAST_CHARS} characters`);
+  }
+  if (typeof tone !== "string" || !(TOAST_TONES as readonly string[]).includes(tone)) {
+    throw new BridgeError("invalid_params", "tone is info, success or error");
+  }
+  return { text: text.trim(), tone: tone as PluginToastTone };
+}
+
+/**
  * The answer to `request` from a page of the plugin `host` serves; rejects with a BridgeError. A method that needs a
  * permission asks `host.granted()` first, so it goes by the grant of now, not by the one the page opened with.
  */
@@ -208,12 +260,24 @@ export async function answer(request: BridgeRequest, host: Host): Promise<unknow
       if (typeof height !== "number" || !Number.isFinite(height)) {
         throw new BridgeError("invalid_params", "height is the page's height in CSS pixels");
       }
-      const clamped = Math.round(Math.min(FRAME_HEIGHT.max, Math.max(FRAME_HEIGHT.min, height)));
+      // 0 (or less) says the page shows nothing: a panel of a slot then takes no room, a page's frame its least.
+      const least = host.minHeight ?? FRAME_HEIGHT.min;
+      const clamped = height <= 0 ? 0 : Math.round(Math.min(FRAME_HEIGHT.max, Math.max(least, height)));
       host.resize(clamped);
       return { height: clamped };
     }
     case "route":
       return host.hub.route(routeCall(params));
+    case "navigate": {
+      const to = navigateTarget(params.to, host.context().project);
+      host.navigate(to);
+      return { to };
+    }
+    case "toast": {
+      const { text, tone } = toastParams(params);
+      host.toast(text, tone);
+      return { shown: true };
+    }
     case "runs.list":
       return host.hub.runs({
         state: stringList(params.state, "state", RUN_STATES),

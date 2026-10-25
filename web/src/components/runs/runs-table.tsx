@@ -17,10 +17,11 @@ import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadg
 import { hasOtherTurns, isSessionTurn } from "./chat-session";
 import { SessionTurns, TurnsToggle } from "./chat-session-turns";
 import { PlanProgressLine } from "./plan-progress-line";
+import { CostCell } from "./run-cost-duration";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
 import { taskBranch } from "./model";
 import { type Run, runHref } from "./queries";
-import { CostCell, Timing } from "./run-cells";
+import { Timing } from "./run-cells";
 
 /** Who reads the table: a worker links to its page only for the member who owns it (or a hub admin). */
 export type Viewer = { login: string; admin: boolean };

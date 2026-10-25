@@ -55,6 +55,7 @@ from evo_agents.hub.credentials import LEASED_KINDS
 from evo_agents.hub.server import org_store
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
 from evo_agents.hub.server.account_views import month_start, usage_cost
+from evo_agents.hub.server.worker_placement import bound_here, bound_on
 
 ESTIMATE_USD = Decimal("1.00")  # what a run under a share is taken to cost before any of its runs reported a cost
 MIN_ESTIMATE_USD = Decimal("0.01")
@@ -104,17 +105,17 @@ def _live(refreshable: bool):
 
 def _on_worker(project_id: int, worker_id: int):
     s, b = tables.secrets, tables.secret_bindings
-    return exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, b.c.worker_id == worker_id)
+    return exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, bound_here(b, worker_id))
 
 
 def own_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool, refreshable: bool = False):
-    """The owner's secrets bound to the run's project, on any of their workers or on this one, live and not past their
-    end, by name; whether each is bound to this worker. With ``lock`` their rows are shared-locked."""
+    """The owner's secrets bound to the run's project, on any of their workers, on this one or on its pool, live and not
+    past their end, by name; whether each is bound to this worker or its pool. With ``lock`` their rows are shared-locked."""
     s, b = tables.secrets, tables.secret_bindings
     bound = exists().where(
         b.c.secret_id == s.c.id,
         b.c.project_id == project_id,
-        or_(b.c.worker_id.is_(None), b.c.worker_id == worker_id),
+        bound_on(b, worker_id),
     )
     statement = (
         select(*_secret_columns(), _on_worker(project_id, worker_id).label("on_worker"))
@@ -157,11 +158,12 @@ def live_share():
 
 
 async def shared_secrets(
-    conn: AsyncConnection, run, worker_id: int, *, lock: bool, refreshable: bool = False
+    conn: AsyncConnection, run, worker_id: int, *, lock: bool, refreshable: bool = False, kinds=LEASED_KINDS
 ) -> tuple[list, list[Refusal]]:
     """(the rows of the secrets shared with the principal of ``run`` that the hub lends it now, each with its
-    share_id; the refusals of the shares that lend nothing), as the module says. With ``lock`` the rows of the
-    secrets and of their shares are shared-locked, so a share revoked meanwhile waits for these leases and ends them."""
+    share_id; the refusals of the shares that lend nothing), as the module says; of ``kinds``, the provider accounts
+    of a gateway run among them (``gateway_accounts``). With ``lock`` the rows of the secrets and of their shares are
+    shared-locked, so a share revoked meanwhile waits for these leases and ends them."""
     s, b, cs, csp, a = (
         tables.secrets,
         tables.secret_bindings,
@@ -188,7 +190,7 @@ async def shared_secrets(
             exists().where(csp.c.share_id == cs.c.id, csp.c.project_id == run.project_id),
             await grantee_clause(conn, run.principal),
             s.c.owner_id.not_in({run.owner_id, run.principal}),
-            s.c.kind.in_(LEASED_KINDS),
+            s.c.kind.in_(kinds),
             s.c.deleted_at.is_(None),
             _live(refreshable),
             exists().where(b.c.secret_id == s.c.id, b.c.project_id == run.project_id),
@@ -348,7 +350,7 @@ async def end_unlent(conn: AsyncConnection, run_id: int, worker_id: int, lent: s
         .where(
             cl.c.run_id == run_id,
             cl.c.worker_id == worker_id,
-            cl.c.share_id.is_not(None),
+            cl.c.provider != "gateway",  # the accounts a gateway key reaches end with the key (``gateway_leases``)
             cl.c.share_id.not_in(lent) if lent else cl.c.share_id.is_not(None),
             cl.c.revoked_at.is_(None),
         )

@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import browser_install, update_now
+from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
     NOT_HELD,
@@ -141,7 +141,9 @@ async def record_heartbeat(
                 browser=_browser(body),
             )
             .where(w.c.id == worker_id)
-            .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
+            .returning(
+                w.c.slots, w.c.name, worker_placement.all_labels(w).label("labels"), w.c.plugins, w.c.version_locked
+            )
         )
         wp, projects = tables.worker_projects, tables.projects
         served = (
@@ -150,7 +152,9 @@ async def record_heartbeat(
             .where(wp.c.worker_id == worker_id)
             .order_by(projects.c.name)
         )
-        settings = WorkerSettings(**held.one()._mapping, projects=list((await conn.execute(served)).scalars()))
+        fields = dict(held.one()._mapping)
+        fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's (worker_pools)
+        settings = WorkerSettings(**fields, projects=list((await conn.execute(served)).scalars()))
         nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
         asked = await update_now.settle(conn, worker_id, body, nightly)
         install = await browser_install.settle(conn, worker_id, body)
@@ -286,6 +290,9 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         await credentials.revoke_tokens(
             app_state.engine, app_state.sealer, credentials.revoker(app_state), run_id=run_id
         )
+        sync = getattr(app_state, "gateway_sync", None)  # its key of the gateway, if any: taken back now
+        if sync is not None:
+            sync.poke()
     return view
 
 

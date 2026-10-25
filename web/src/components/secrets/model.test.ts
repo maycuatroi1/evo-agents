@@ -23,6 +23,7 @@ const SECRET: Secret = {
   username: "oauth2",
   projects: ["demo"],
   workers: ["mac-mini"],
+  pools: [],
   expires_at: "2027-09-15T00:00:00+00:00",
   created_at: "2026-10-01T00:00:00Z",
   updated_at: "2026-10-02T00:00:00Z",
@@ -43,6 +44,7 @@ describe("secret form", () => {
       env_var: "CLAUDE_CODE_OAUTH_TOKEN",
       projects: ["demo"],
       workers: [],
+      pools: [],
       expires_at: null,
       value: "v",
     });
@@ -89,6 +91,7 @@ describe("secret form", () => {
       url_prefix: "https://gitlab.example.org/group",
       projects: ["demo"],
       workers: [],
+      pools: [],
       expires_at: null,
       value: "v",
     });
@@ -103,6 +106,7 @@ describe("secret form", () => {
       url_prefix: "https://gitlab.example.org/northwind",
       projects: ["demo"],
       workers: [],
+      pools: [],
       expires_at: "2027-01-31T00:00:00.000Z",
       value: "v",
     });
@@ -143,6 +147,7 @@ describe("secret form", () => {
       username: "oauth2",
       projects: ["demo"],
       workers: ["mac-mini"],
+      pools: [],
       expires: "2027-09-15",
       value: "",
     });

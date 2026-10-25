@@ -52,6 +52,7 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probe_report, today_digest
 from evo_agents.hub.server.curator import _due, _owner_access, curator_state, night_figures
 from evo_agents.hub.server.loop import notices as loop_notices
+from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.notifications import notify, one_line
 from evo_agents.hub.server.projects import ProjectAccess
 
@@ -285,6 +286,27 @@ async def _worker(conn: AsyncConnection, worker_id: int, zone: str) -> dict:
     }
 
 
+async def _pool(conn: AsyncConnection, due) -> dict:
+    """The pool on duty: its live nodes, those ready for a run now, and why none is (``night_duty.on_duty``)."""
+    w, p = tables.workers, tables.worker_pools
+    name = (await conn.execute(select(p.c.name).where(p.c.id == due.pool_id))).scalar_one()
+    live = select(func.count()).where(w.c.pool_id == due.pool_id, w.c.revoked_at.is_(None))
+    duty, why = await on_duty(conn, due)
+    return {
+        "id": due.pool_id,
+        "name": name,
+        "nodes": (await conn.execute(live)).scalar_one(),
+        "ready": 0 if duty is None else len(duty.nodes),
+        "why": why,
+    }
+
+
+def _pool_words(pool: dict) -> str:
+    if not pool["ready"]:
+        return f"Pool {pool['name']}: no node ready for a run now: {pool['why']}."
+    return f"Pool {pool['name']}: {pool['ready']} of {_count(pool['nodes'], 'node')} ready."
+
+
 def _worker_words(worker: dict, zone: str) -> str:
     """How the worker on duty stands, its last heartbeat in the charter's time zone."""
     seen = worker["last_heartbeat_local"]
@@ -306,13 +328,15 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     """(title, body in markdown) of a brief with ``facts``, its times in the charter's time zone ``zone``: a paragraph a
     subject, each with its list."""
     counted = facts["runs"]
-    worker = facts["worker"]
+    worker, pool = facts.get("worker"), facts.get("pool")
     cost = f"{curator.money(facts['cost_usd'])} of {curator.money(facts['budget_usd'])}"
     decisions, proposals = facts["decisions"], facts["proposals"]
     waiting = f"{_count(decisions['open'], 'decision')} and {_count(proposals['open'], 'proposal')} waiting"
     title = f"Morning brief of {project}: {_count(counted['total'], 'run')}, {cost}, {waiting}"
-    if not worker["online"]:
+    if worker is not None and not worker["online"]:
         title += f", worker {worker['name']} {'revoked' if worker['revoked'] else 'offline'}"
+    if pool is not None and not pool["ready"]:
+        title += f", pool {pool['name']} has no node ready"
     window = facts["window"]
     ended = ", ".join(
         f"{counted[state]} {state}" for state in ("done", "failed", "cancelled", "active") if counted[state]
@@ -374,7 +398,7 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
             )
         )
     blocks.extend(loop_notices.blocks(project, facts.get("loop")))
-    blocks.append(_worker_words(worker, zone))
+    blocks.append(_worker_words(worker, zone) if worker is not None else _pool_words(pool))
     return title, "\n\n".join(blocks)
 
 
@@ -415,14 +439,17 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
         "planned_changes": {"total": planned_total, "listed": planned},
         "decisions": {"open": decisions_total, "listed": decisions},
         "proposals": {"open": proposals_total, "in_inbox": in_inbox, "listed": proposals},
-        "worker": await _worker(conn, due.worker_id, body["window"]["timezone"]),
     }
+    if due.pool_id is not None:
+        found["pool"] = await _pool(conn, due)
+    else:
+        found["worker"] = await _worker(conn, due.worker_id, body["window"]["timezone"])
     return found if loop is None else {**found, "loop": loop}
 
 
 def _details(facts: dict) -> dict:
     """The facts a brief's notification carries for the web, the counts without the lists."""
-    worker, loop = facts["worker"], facts.get("loop")
+    worker, pool, loop = facts.get("worker"), facts.get("pool"), facts.get("loop")
     found = {
         "night": facts["night"],
         "runs": facts["runs"]["total"],
@@ -433,10 +460,13 @@ def _details(facts: dict) -> dict:
         "planned_changes": facts["planned_changes"]["total"],
         "open_decisions": facts["decisions"]["open"],
         "open_proposals": facts["proposals"]["open"],
-        "worker": worker["name"],
-        "worker_online": worker["online"],
-        "worker_last_heartbeat_at": worker["last_heartbeat_at"],
     }
+    if worker is not None:
+        found.update(
+            worker=worker["name"], worker_online=worker["online"], worker_last_heartbeat_at=worker["last_heartbeat_at"]
+        )
+    else:
+        found.update(pool=pool["name"], pool_nodes=pool["nodes"], pool_ready_nodes=pool["ready"])
     if loop is not None:
         handed, done, waiting = loop_notices.totals(loop)
         found["loop"] = {"handed_out": handed, "done": done, "waiting": waiting}

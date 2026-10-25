@@ -1,11 +1,12 @@
 "use client";
 
-import { Pause, Pencil, Play, RefreshCw } from "lucide-react";
+import { KeyRound, Pause, Pencil, Play, RefreshCw, Share2, Trash2 } from "lucide-react";
 import type { Route } from "next";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { CellMain } from "@/components/data/data-table";
 import { RunRef } from "@/components/data/identifier";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -31,13 +32,17 @@ export type Actions = {
   onEdit: (account: Account) => void;
   onPause: (account: Account) => void;
   onRenew: (account: Account) => void;
+  /** A provider account's Change key and Delete; its Edit opens the provider form instead of weight and priority. */
+  onKey?: (account: Account) => void;
+  onDelete?: (account: Account) => void;
 };
 
 /**
  * The first cell: the provider's logo, the account's name, then its provider's name as text, its variable, and
- * "weight N, priority M" only when `ranked` (the visitor has two or more accounts for the variable).
+ * "weight N, priority M" only when `ranked` (the visitor has two or more accounts for the variable). `shared` adds the
+ * Shared mark of an account the visitor shares with other members or agents.
  */
-export function AccountCell({ account, ranked }: { account: AccountFigures; ranked: boolean }) {
+export function AccountCell({ account, ranked, shared = false }: { account: AccountFigures; ranked: boolean; shared?: boolean }) {
   const t = useTranslations("accounts");
   const sub = [t(`providers.${account.provider}`), account.env_var, ranked ? t("rank", { weight: account.weight, priority: account.priority }) : null]
     .filter(Boolean)
@@ -46,8 +51,16 @@ export function AccountCell({ account, ranked }: { account: AccountFigures; rank
     <div className="flex min-w-0 items-center gap-2.5">
       <ProviderLogo provider={account.provider} />
       <CellMain sub={sub} subTitle={sub} subTestId="account-target">
-        <span className="truncate font-mono text-[13px]" title={account.name} data-account-name={account.name}>
-          {account.name}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate font-mono text-[13px]" title={account.name} data-account-name={account.name}>
+            {account.name}
+          </span>
+          {shared ? (
+            <Badge variant="info" className="shrink-0" data-testid="account-shared-mark">
+              <Share2 aria-hidden="true" />
+              {t("sharedMark")}
+            </Badge>
+          ) : null}
         </span>
       </CellMain>
     </div>
@@ -122,10 +135,14 @@ export function LastUsedCell({ at }: { at: string | null }) {
   return at ? <At value={at} /> : <span className="text-fg-subtle">-</span>;
 }
 
-/** Renew token (a Claude account's), Edit and Pause or Resume of one account. */
-export function ActionButtons({ account, onEdit, onPause, onRenew }: { account: Account } & Actions) {
+/**
+ * Renew token (a Claude account's), Edit and Pause or Resume of one account; a provider account's Edit opens its form,
+ * and it has Change key and Delete besides.
+ */
+export function ActionButtons({ account, onEdit, onPause, onRenew, onKey, onDelete }: { account: Account } & Actions) {
   const t = useTranslations("accounts");
   const paused = account.paused_at !== null;
+  const provider = Boolean(account.gateway);
   return (
     <>
       {isClaudeAccount(account) ? (
@@ -147,13 +164,26 @@ export function ActionButtons({ account, onEdit, onPause, onRenew }: { account: 
         type="button"
         variant="ghost"
         size="sm"
-        aria-label={t("editLabel", { name: account.name })}
+        aria-label={t(provider ? "provider.editLabel" : "editLabel", { name: account.name })}
         onClick={() => onEdit(account)}
         data-testid="account-edit"
       >
         <Pencil aria-hidden="true" />
         <span className="hidden sm:inline">{t("edit")}</span>
       </Button>
+      {provider && onKey ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={t("provider.keyLabel", { name: account.name })}
+          onClick={() => onKey(account)}
+          data-testid="account-change-key"
+        >
+          <KeyRound aria-hidden="true" />
+          <span className="hidden sm:inline">{t("provider.key")}</span>
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -165,6 +195,20 @@ export function ActionButtons({ account, onEdit, onPause, onRenew }: { account: 
         {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
         <span className="hidden sm:inline">{t(paused ? "resume" : "pause")}</span>
       </Button>
+      {provider && onDelete ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-danger hover:text-danger"
+          aria-label={t("provider.deleteLabel", { name: account.name })}
+          onClick={() => onDelete(account)}
+          data-testid="account-delete"
+        >
+          <Trash2 aria-hidden="true" />
+          <span className="hidden sm:inline">{t("provider.delete")}</span>
+        </Button>
+      ) : null}
     </>
   );
 }

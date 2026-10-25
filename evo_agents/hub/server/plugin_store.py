@@ -62,6 +62,7 @@ from evo_agents.plugins import compat, signing
 from evo_agents.plugins.bundle import MAX_BUNDLE, BundleError, read_bundle
 from evo_agents.plugins.environment import MAX_PLUGIN_ID
 from evo_agents.plugins.manifest import PLUGIN_ID, TIERS, Manifest, is_per_project
+from evo_agents.plugins.market import merge_publishers
 from evo_agents.plugins.signing import MAX_SIGNATURE, SIGNATURE_KINDS, SignatureError, SignatureUnavailable
 
 log = logging.getLogger(__name__)
@@ -158,15 +159,25 @@ class Checked:
 # Checks
 
 
-def check_bundle(data: bytes, signature: dict | None, config: HubConfig, sigstore, version: str, doing: str) -> Checked:
+def check_bundle(
+    data: bytes,
+    signature: dict | None,
+    config: HubConfig,
+    sigstore,
+    version: str,
+    doing: str,
+    publishers: tuple[signing.Publisher, ...] | None = None,
+) -> Checked:
     """The manifest of bundle ``data`` and who signed it, or the HTTPException (422, or 503 when the signature cannot
-    be checked here) saying why the hub refuses it; ``doing`` ends the message ("nothing was published")."""
+    be checked here) saying why the hub refuses it; ``doing`` ends the message ("nothing was published").
+    ``publishers`` are those the hub trusts (``trusted_publishers``), EVO_HUB_PLUGIN_PUBLISHERS alone when None."""
     try:
         manifest = read_bundle(data).manifest
     except BundleError as exc:
         raise HTTPException(422, f"refused (malformed): {exc}; {doing}") from None
     try:
-        signed = signing.verify(data, signature, manifest.publisher, config.plugin_publishers, sigstore)
+        trusted = config.plugin_publishers if publishers is None else publishers
+        signed = signing.verify(data, signature, manifest.publisher, trusted, sigstore)
     except SignatureError as exc:
         raise HTTPException(422, f"refused ({exc.reason}): {exc}; {doing}") from None
     except SignatureUnavailable as exc:
@@ -183,6 +194,15 @@ def check_bundle(data: bytes, signature: dict | None, config: HubConfig, sigstor
         what = f"{manifest.id} {manifest.version}"
         raise HTTPException(422, f"refused (incompatible): {what} does not run on this hub: {problem}; {doing}")
     return Checked(manifest, signed)
+
+
+async def trusted_publishers(conn: AsyncConnection, config: HubConfig) -> tuple[signing.Publisher, ...]:
+    """The publishers whose signatures the hub accepts: EVO_HUB_PLUGIN_PUBLISHERS with the signers hub admins trusted
+    and did not remove (``plugin_publishers``, 0154)."""
+    p = tables.plugin_publishers.c
+    query = select(p.publisher, p.signer).where(p.removed_at.is_(None)).order_by(p.id)
+    extra = [(row.publisher, row.signer) for row in await conn.execute(query)]
+    return merge_publishers(config.plugin_publishers, extra)
 
 
 async def fetch_bundle(store: BlobStore, sha256: str, size: int) -> bytes:
@@ -526,7 +546,8 @@ def _installed_query():
     )
 
 
-async def _admin_ids(conn: AsyncConnection, admins: frozenset[str]) -> list[int]:
+async def hub_admin_ids(conn: AsyncConnection, admins: frozenset[str]) -> list[int]:
+    """The ids of the hub admins (EVO_HUB_ADMINS) who have signed in, by id."""
     users = tables.users
     logins = literal(sorted(admins), ARRAY(Text))
     query = select(users.c.id).where(func.lower(users.c.login) == any_(logins)).order_by(users.c.id)
@@ -676,7 +697,7 @@ async def disable_incompatible(engine: AsyncEngine, admins: frozenset[str], hub_
             if problem is None:
                 continue
             if admin_ids is None:
-                admin_ids = await _admin_ids(conn, admins)
+                admin_ids = await hub_admin_ids(conn, admins)
             reason = f"plugin {row.name} {row.installed_version} does not run on evo-agents {hub_version}: {problem}"
             await _turn_off(conn, row, reason, admin_ids, hub_version)
             turned_off.append(row.name)

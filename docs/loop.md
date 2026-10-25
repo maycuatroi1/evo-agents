@@ -115,7 +115,7 @@ is `rules/1`'s.
 | 3b | the same | the project is not in use cases | a `build` straight from the claim, its author run's request the problem, the goal, the claim and its test card; then rows 9 to 11 | `build:claim:<canvas>:<claim>:b<baseline>` |
 | 3c | `canvas.baseline` moves a claim of the Problem cell to testing | the claim serves an active goal with a metric | a `discover` of `@strategist`: a task run that runs the claim's test card, adds what it finds as evidence and proposes what the evidence argues for; done once the run is done | `discover:<canvas>:<claim>:b<baseline>` |
 | 3e | `canvas.baseline` moves a claim of the cell Solution or Unique value proposition to testing | the claim's `delivery` is `action`, and the claim serves an active goal with a metric | an `act` (below), in place of rows 3a and 3b | `act:<canvas>:<claim>:b<baseline>` |
-| 3d | `canvas.baseline` moves a claim of any other cell to testing | | no core work item; a core plugin's rule decides (`docs/marketing-plugin.md` for the cells Channels and Customer segments) | |
+| 3d | `canvas.baseline` moves a claim of any other cell to testing | | no core work item; a core plugin's rule decides (`docs/marketing-plugin.md` of evo-agents-core-plugins for the cells Channels and Customer segments) | |
 
 Each work item of 3a to 3c waits in `watching` (`stable`) until the baseline has been approved `loop.stable_hours`. A
 `discover` whose run fails, is lost or stops on its caps counts a failure as any kind does (below), and one whose claim

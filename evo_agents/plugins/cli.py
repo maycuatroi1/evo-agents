@@ -1,4 +1,5 @@
-"""``evo-agents plugin test|pack|sign|keygen``: what the author of a plugin runs on their own machine.
+"""``evo-agents plugin test|pack|sign|keygen|market-check``: what the author of a plugin, or of a market, runs on
+their own machine.
 
 - ``test DIR``: the conformance checks of ``evo_agents.plugins.conformance``; exit 1 when one fails;
 - ``pack DIR``: the plugin's deterministic bundle, ``<id>-<version>.tar.gz`` in the current directory or ``--output``,
@@ -7,7 +8,11 @@
   ``evo-agents hub plugin publish`` picks up. A bundle a GitHub Actions workflow signs with Sigstore needs no command
   here: ``python -m sigstore sign BUNDLE`` writes ``BUNDLE.sigstore.json``;
 - ``keygen --output FILE``: a new Ed25519 key, its 32-byte seed in base64 in FILE (mode 0600), and the
-  EVO_HUB_PLUGIN_PUBLISHERS entry of its public key.
+  EVO_HUB_PLUGIN_PUBLISHERS entry of its public key;
+- ``market-check FILE [--releases]``: the index of a market, ``market.json``, against plugin-market-v1
+  (``evo_agents.plugins.market``); with ``--releases``, the latest GitHub release of each free isolated plugin it
+  lists carries the bundle and its signature, which the identity the index names signed. It reads GitHub at
+  ``GITHUB_API_URL`` (default https://api.github.com) with ``GITHUB_TOKEN`` when set; exit 1 on any problem.
 
 Signing imports ``cryptography``, which the hub-server extra brings. Standard library otherwise.
 """
@@ -99,6 +104,106 @@ def _keygen(args) -> int:
     return 0
 
 
+class _GitHubReleases:
+    """The releases of GitHub repos over urllib, for ``market-check --releases``."""
+
+    def __init__(self, api: str, token: str | None):
+        self.api = api.rstrip("/")
+        self.token = token
+
+    def _open(self, url: str, accept: str, auth: bool = True):
+        import urllib.request
+
+        class _Redirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                new = super().redirect_request(req, fp, code, msg, headers, newurl)
+                if new is not None:
+                    new.remove_header("Authorization")  # an asset's storage refuses a GitHub token
+                return new
+
+        headers = {"Accept": accept, "User-Agent": "evo-agents-market-check", "X-GitHub-Api-Version": "2022-11-28"}
+        if auth and self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        opener = urllib.request.build_opener(_Redirect())
+        return opener.open(urllib.request.Request(url, headers=headers), timeout=60)
+
+    def release(self, repo: str, tag: str | None) -> dict | None:
+        import urllib.error
+        import urllib.parse
+
+        where = f"tags/{urllib.parse.quote(tag, safe='')}" if tag else "latest"
+        try:
+            with self._open(f"{self.api}/repos/{repo}/releases/{where}", "application/vnd.github+json") as answer:
+                return json.loads(answer.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return None
+            raise OSError(f"GitHub answered {exc.code} for the releases of {repo}") from None
+
+    def download(self, asset: dict) -> bytes:
+        from evo_agents.plugins.bundle import MAX_BUNDLE
+
+        with self._open(str(asset["url"]), "application/octet-stream") as answer:
+            data = answer.read(MAX_BUNDLE + 1)
+        if len(data) > MAX_BUNDLE:
+            raise OSError(f"{asset.get('name')} is larger than a bundle may be")
+        return data
+
+
+def check_releases(market: dict, releases, sigstore=None) -> list[dict]:
+    """For each free isolated plugin of ``market``, whether its latest release proves what the index says."""
+    from evo_agents.plugins.market import ReleaseError, fetch_release
+    from evo_agents.plugins.signing import SignatureError, SignatureUnavailable
+
+    found = []
+    for item in market["plugins"]:
+        if item["tier"] != "isolated" or item["price"]["kind"] != "free":
+            found.append({"id": item["id"], "ok": True, "skipped": "only a free isolated plugin has releases to check"})
+            continue
+        try:
+            checked = fetch_release(releases, item, sigstore=sigstore)
+        except (ReleaseError, SignatureError, SignatureUnavailable, OSError, ValueError) as exc:
+            found.append({"id": item["id"], "ok": False, "problem": str(exc)})
+            continue
+        found.append(
+            {"id": item["id"], "ok": True, "version": checked.manifest.version, "signed_by": checked.signed.signed_by}
+        )
+    return found
+
+
+def _market_check(args) -> int:
+    from evo_agents.plugins.market import MarketError, read_market
+
+    try:
+        market = read_market(Path(args.file).read_bytes())
+        problems: list[str] = []
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except MarketError as exc:
+        market, problems = None, exc.problems
+    checks = []
+    if market is not None and args.releases:
+        api = os.environ.get("GITHUB_API_URL") or "https://api.github.com"
+        checks = check_releases(market, _GitHubReleases(api, os.environ.get("GITHUB_TOKEN") or None))
+    ok = not problems and all(check["ok"] for check in checks)
+    if args.json:
+        print(json.dumps({"ok": ok, "problems": problems, "releases": checks}, ensure_ascii=False, indent=2))
+        return 0 if ok else 1
+    for problem in problems:
+        print(f"FAIL {problem}")
+    if market is not None:
+        print(f"OK   {args.file}: market {market['name']}, {len(market['plugins'])} plugin(s)")
+    for check in checks:
+        if not check["ok"]:
+            print(f"FAIL {check['id']}: {check['problem']}")
+        elif "skipped" in check:
+            print(f"SKIP {check['id']}: {check['skipped']}")
+        else:
+            print(f"OK   {check['id']} {check['version']}, signed by {check['signed_by']}")
+    return 0 if ok else 1
+
+
 def register(sub) -> None:
     plugin = sub.add_parser("plugin", help="test, pack and sign a plugin on this machine")
     psub = plugin.add_subparsers(dest="command", required=True)
@@ -120,3 +225,8 @@ def register(sub) -> None:
     keygen.add_argument("--output", "-o", required=True, metavar="FILE", help="where the private key goes")
     keygen.add_argument("--publisher", default="PUBLISHER", help="the publisher id to print in the entry")
     keygen.set_defaults(func=_keygen)
+    market = psub.add_parser("market-check", help="check a market's market.json, and with --releases its releases")
+    market.add_argument("file", metavar="FILE", help="the market's index, market.json")
+    market.add_argument("--releases", action="store_true", help="check the latest release of each free plugin")
+    market.add_argument("--json", action="store_true", help="machine-readable output")
+    market.set_defaults(func=_market_check)

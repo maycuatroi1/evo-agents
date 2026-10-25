@@ -12,10 +12,10 @@ import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { type Worker, workersQuery } from "@/components/workers/queries";
+import { poolsQuery, type Worker, workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import { plansQuery } from "@/lib/plan-queries";
 
@@ -24,7 +24,7 @@ import { CHARTER_FIELDS, type CharterErrors, type CharterForm, charterBody, char
 import { useCuratorFailure, useWriteCharter } from "./hooks";
 import { TEXT_LINK } from "./parts";
 import { type Charter, curatorHref } from "./queries";
-import { LIMITS } from "./vocab";
+import { LIMITS, POOL_DUTY } from "./vocab";
 
 /** The browser's own time zone once the page has hydrated; null on the server, so both render the same form. */
 function useOwnTimeZone(): string | null {
@@ -57,6 +57,7 @@ export function CharterFormView({ project, charter, login }: { project: string; 
   const router = useRouter();
   const zone = useOwnTimeZone();
   const workers = useQuery(workersQuery(browserApi));
+  const pools = useQuery(poolsQuery(browserApi));
   const plans = useQuery(plansQuery(browserApi, project));
   const mutation = useWriteCharter(project);
   const failure = useCuratorFailure();
@@ -74,7 +75,15 @@ export function CharterFormView({ project, charter, login }: { project: string; 
     worker: form.worker || eligible[0]?.name || "",
   };
   const set = <K extends keyof CharterForm>(key: K, value: CharterForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const workerOptions = [...new Set([...(charter ? [charter.worker] : []), ...eligible.map((worker) => worker.name)])];
+  const workerOptions = [...new Set([...(charter?.worker ? [charter.worker] : []), ...eligible.map((worker) => worker.name)])];
+  // A pool of the visitor's that serves the project: its ready nodes take the night's runs, any of them.
+  const poolOptions = [
+    ...new Set([
+      ...(charter?.pool ? [charter.pool] : []),
+      ...(pools.data ?? []).filter((pool) => pool.owner === login && pool.projects.includes(project)).map((pool) => pool.name),
+    ]),
+  ];
+  const noDuty = workerOptions.length === 0 && poolOptions.length === 0;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -203,7 +212,7 @@ export function CharterFormView({ project, charter, login }: { project: string; 
           label={t("fields.worker")}
           className="md:col-span-2"
           hint={
-            workerOptions.length === 0 && !workers.isPending
+            noDuty && !workers.isPending
               ? t.rich("hints.noWorker", { link: (chunks) => <Link href="/workers" className={TEXT_LINK}>{chunks}</Link> })
               : t("hints.worker")
           }
@@ -215,15 +224,24 @@ export function CharterFormView({ project, charter, login }: { project: string; 
               value={resolved.worker}
               onChange={(event) => set("worker", event.target.value)}
               className="w-full md:w-80"
-              disabled={workerOptions.length === 0}
+              disabled={noDuty}
               data-testid="charter-worker"
             >
-              {workerOptions.length === 0 ? <NativeSelectOption value="">{t("noWorkerOption")}</NativeSelectOption> : null}
+              {noDuty ? <NativeSelectOption value="">{t("noWorkerOption")}</NativeSelectOption> : null}
               {workerOptions.map((name) => (
                 <NativeSelectOption key={name} value={name}>
                   {name}
                 </NativeSelectOption>
               ))}
+              {poolOptions.length > 0 ? (
+                <NativeSelectOptGroup label={t("poolsGroup")}>
+                  {poolOptions.map((name) => (
+                    <NativeSelectOption key={name} value={`${POOL_DUTY}${name}`}>
+                      {t("poolOption", { pool: name })}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelectOptGroup>
+              ) : null}
             </NativeSelect>
           )}
         </Field>

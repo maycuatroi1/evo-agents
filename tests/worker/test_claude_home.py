@@ -67,8 +67,11 @@ class Notes(list):
         self.append((text, extra))
 
 
-def agent(tmp_path: Path, env: dict[str, str], *, runtime: str = "claude-code", leased=(), **spec) -> Agent:
-    """An agent of a run in ``tmp_path / "worktree"`` whose daemon's environment is ``env``."""
+def agent(
+    tmp_path: Path, env: dict[str, str], *, runtime: str = "claude-code", leased=(), gateway=None, **spec
+) -> Agent:
+    """An agent of a run in ``tmp_path / "worktree"`` whose daemon's environment is ``env``; ``gateway`` its gateway
+    lease, if any, whose variables ``leased`` names."""
     worktree = tmp_path / "worktree"
     worktree.mkdir(exist_ok=True)
     run = SimpleNamespace(
@@ -80,7 +83,9 @@ def agent(tmp_path: Path, env: dict[str, str], *, runtime: str = "claude-code", 
             env=env,
             home=SimpleNamespace(root=tmp_path / "home", run_dir=lambda run_id: tmp_path / "runs" / str(run_id)),
         ),
-        credentials=SimpleNamespace(agent_vars={name: "leased-token" for name in leased}, withheld=frozenset(leased)),
+        credentials=SimpleNamespace(
+            agent_vars={name: "leased-token" for name in leased}, withheld=frozenset(leased), gateway=gateway
+        ),
         curator=None,
         venvs={},
         worktree=worktree,

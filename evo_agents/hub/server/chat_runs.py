@@ -38,7 +38,7 @@ from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
-from evo_agents.hub.server import attachment_store, autonomy_hold, run_autonomy
+from evo_agents.hub.server import attachment_store, autonomy_hold, gateway_accounts, run_autonomy
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
@@ -231,6 +231,7 @@ async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
 
 CONTINUED = ("kind", "project_id", "title", "mode", "approval", "timeout_s", "repos", "branch", "model", "chat_id")
 CONTINUED += ("profile_id", "profile_version", "session_id", "runtime", "principal_id", "autonomy")
+CONTINUED += ("gateway_provider",)
 
 
 def _continue_run(previous: int, values: dict):
@@ -380,6 +381,9 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
                 names.append(harness)
         names = [name for name in names if name == harness]
     allow = profiles.allowed(profile.permissions, "model")
+    model = allow[0] if allow else None
+    owner, project = hand.owner_id, profile.project_id
+    asker = gateway_accounts.Asker(0, owner, owner, project, profile.id, project, agent_owned=not profile.is_default)
     title = rules.turn_title(profile.handle, hand.chat.title, hand.body)
     values = {
         "kind": "chat",
@@ -390,7 +394,8 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
         "pinned_worker_id": worker.id,
         "requested_runtime": "any",
         "runtime": "any",
-        "model": allow[0] if allow else None,
+        "model": model,
+        "gateway_provider": await gateway_accounts.prefix_for(conn, asker, "any", model),
         "mode": "headless",
         "approval": "auto",
         "timeout_s": rules.TIMEOUT_MIN * 60,

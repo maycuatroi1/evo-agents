@@ -5,6 +5,7 @@ import { chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { open } from "./support/plans";
+import { providerKey, putProviderByApi } from "./support/providers";
 import {
   claimRun,
   dispatch,
@@ -141,6 +142,32 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
   await open(page, `/workers/${live.worker.id}`);
   await expect(runRow(page, older.id, "worker-runs-table").getByTestId("run-state")).toHaveText("Leased");
   await expect(runRow(page, older.id, "worker-runs-table")).toContainText(`${project}, ${RUN_PLAN}, step 2`);
+});
+
+test("the dispatch form's Model field offers the models of the visitor's provider accounts, and the run asks for one", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  await liveWorker(me, project, uniqueName("laptop"));
+  await putProviderByApi(me, "glm-runs", { provider: "glm", value: providerKey(), projects: [project], models: ["fake-large", "fake-coder"] });
+
+  await open(page, `/p/${project}/runs`);
+  await main(page).getByTestId("runs-empty-dispatch").click();
+  const dialog = page.getByTestId("dispatch-dialog");
+  await dialog.getByTestId("dispatch-step-2").click();
+  const select = dialog.getByTestId("plan-run-model-select");
+  // One group per provider, named by its prefix, with each model as a run asks for it.
+  const group = select.locator('optgroup[data-testid="plan-run-model-provider"]');
+  await expect(group).toHaveAttribute("label", "Provider glm");
+  await expect(group.locator("option")).toHaveText(["glm/fake-coder", "glm/fake-large"]);
+  await select.selectOption({ label: "glm/fake-large" });
+  await expect(select).toHaveValue(/glm\/fake-large$/);
+  // Left to any worker that fits: the one registered here reports no daemon version that runs a model through the gateway.
+  await dialog.getByTestId("dispatch-worker-select").selectOption("any");
+  await dialog.getByTestId("dispatch-submit").click();
+  await expect(dialog).toBeHidden();
+  const [run] = await runsOf(me, project);
+  expect(run).toMatchObject({ step_key: "2", model: "glm/fake-large" });
 });
 
 test("the list filters by state and search, in the URL", async ({ page, member }) => {

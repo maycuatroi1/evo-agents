@@ -18,7 +18,7 @@ import { ExternalLink, LinkedText, useNewTabLabel, useRepoWeb } from "./links";
 import { runTiming } from "./model";
 import { HELD_STATES, isActiveState, type Run, runDiffHref, runHref } from "./queries";
 import { leaseSecondsLeft, readDiffstat, readVerify, type RunViewer, shortSha } from "./run-model";
-import { useDuration } from "./run-cells";
+import { useDuration } from "./run-cost-duration";
 
 /**
  * The run's facts and its result, cards of the side column (its usage is the UsageMeter's, usage-meter.tsx). The repo,

@@ -12,6 +12,7 @@ from sqlalchemy import and_, exists, func, or_, select
 
 from evo_agents.hub import org, profiles, runs, tables
 from evo_agents.hub.access import ROLES, has_role
+from evo_agents.hub.server import worker_placement
 from evo_agents.hub.server.runs.models import available
 
 OFFLINE = func.make_interval(0, 0, 0, 0, 0, 0, runs.OFFLINE_AFTER_SECONDS)
@@ -102,6 +103,7 @@ def workers_of(user_id: int, project_id: int):
             (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
             holding.label("holding"),
             others.label("others"),
+            *worker_placement.columns(w),
         )
         .where(or_(w.c.owner_id == user_id, shared_in(project_id, user_id)), w.c.revoked_at.is_(None), serves)
         .order_by(w.c.owner_id != user_id, w.c.id)
@@ -141,9 +143,13 @@ def lacks_agent_home(row, profile, runtime: str = "any") -> bool:
     return bool(usable) and usable[0] == CLAUDE
 
 
-def worker_problems(row, profile, via: str, kind: str = "chat", runtime: str = "any") -> list[str]:
+def worker_problems(
+    row, profile, via: str, kind: str = "chat", runtime: str = "any", *, selector=(), tolerations=(), pinned=False
+) -> list[str]:
     """Why worker ``row`` (``workers_of``) cannot take a run of ``kind`` of ``profile`` dispatched with ``via`` and
-    asking for ``runtime`` now, each reason once, in the order they are checked; none when it can."""
+    asking for ``runtime`` now, each reason once, in the order they are checked; none when it can. ``selector``,
+    ``tolerations`` and ``pinned`` (the run is pinned to it) place the run as the claim does
+    (``worker_placement``)."""
     packs = profiles.packs_unfit(
         profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
     )
@@ -172,9 +178,11 @@ def worker_problems(row, profile, via: str, kind: str = "chat", runtime: str = "
             "config dir of its own (feature agent_home): update its daemon",
         ),
     )
-    return [why for failed, why in checks if failed]
+    placed = worker_placement.Placement.of(row).problems(selector, tolerations, pinned=pinned)
+    return [why for failed, why in checks if failed] + placed
 
 
 def unfit_worker(row, profile, via: str, kind: str = "chat", runtime: str = "any") -> str | None:
-    """The first of ``worker_problems``, or None when worker ``row`` can take the run."""
+    """The first of ``worker_problems``, or None when worker ``row`` can take the run: a run with no selector and no
+    tolerations, as a chat run is."""
     return next(iter(worker_problems(row, profile, via, kind, runtime)), None)

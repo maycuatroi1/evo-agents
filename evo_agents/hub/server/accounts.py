@@ -6,7 +6,10 @@ several for the same variable. GET /v1/accounts lists the caller's own, live: na
 priority, when it was paused, until when it cools down and why, when a run last took it, its end, its state
 (``accounts.ACCOUNT_STATES``) and its figures (``account_views``: its last usage, its runs and their cost over 24
 hours and 7 days, the runs holding it, the same by principal) and its shares not revoked (``share_views``); never a
-value. GET /v1/accounts/{name} gives one of them; with ``?owner=<login>``, one another member shared with the caller,
+value. A provider account (``provider_accounts``) is listed too, its variable read ``gateway:<prefix>``, with
+``gateway``: its catalog provider, the prefix of its models, the host of its base URL, its API format, how many models
+it serves and what the model gateway last said of it (cooling while a rate limit lasts, failing when its last test
+failed, with the gateway's error code alone as the reason, never its text). GET /v1/accounts/{name} gives one of them; with ``?owner=<login>``, one another member shared with the caller,
 whose figures are those of the caller's own runs alone and whose shares are those that lend it to the caller (a share
 not revoked covers them, or a run of theirs took it). PATCH
 /v1/accounts/{name} changes its weight or priority, or pauses (``paused: true``) or resumes it; a name that is not one
@@ -25,8 +28,10 @@ id, never a login. Each write adds one audit row (``audit.ACCOUNT_SET``, ``ACCOU
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import re
+from datetime import UTC, datetime
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,7 +39,7 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import gateway_runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.account_providers import Category, Provider, category_of, provider_of
 from evo_agents.hub.accounts import (
@@ -51,7 +56,8 @@ from evo_agents.hub.accounts import (
     STRATEGIES,
     account_state,
 )
-from evo_agents.hub.credentials import SECRET_NAME
+from evo_agents.hub.credentials import PROVIDER_KIND, SECRET_NAME
+from evo_agents.hub.gateway_runs import PICK_PREFIX
 from evo_agents.hub.server import audit, org_store, route_autonomy
 from evo_agents.hub.server.account_choice import RELOGIN_REASON
 from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, PrincipalCost, account_figures, figured
@@ -73,6 +79,8 @@ OwnerLogin = Annotated[
     Query(pattern=LOGIN_NAME, description="the member who shared the account with the caller; omit for one's own"),
 ]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
+FAILING = ("error", "unavailable", "expired", "banned", "credits_exhausted")  # testStatus of a connection that fails
+REASON, MAX_REASON = re.compile(r"[^A-Za-z0-9_.:-]+"), 80  # a reason as shown: a code, never the provider's text
 
 router = APIRouter(
     prefix="/v1", tags=["accounts"], dependencies=[route_autonomy.K8], responses={401: {"model": ErrorBody}}
@@ -82,8 +90,22 @@ router = APIRouter(
 # Models
 
 
+class GatewayAccount(BaseModel):
+    """What a provider account calls, through the model gateway (``evo_agents.hub.gateway_runs``)."""
+
+    provider: str = Field(description="the id of its entry in the catalog")
+    prefix: str | None = Field(description="what its models are named with, <prefix>/<model>; null when not served")
+    base_url_host: str | None = Field(description="the host of the endpoint it calls")
+    api_format: str
+    models: int = Field(description="how many models it serves")
+    status: Literal["ok", "cooling", "failing", "unknown"] = Field(
+        description="what the gateway last said of it: ok, cooling after a rate limit, failing, or unknown before any"
+    )
+    reason: str | None = Field(description="the gateway's error code or type when cooling or failing; never its text")
+
+
 class Account(BaseModel):
-    """One of the caller's env secrets as an account: everything but its value."""
+    """One of the caller's env secrets or provider accounts as an account: everything but its value or key."""
 
     name: str
     env_var: str = Field(description="the variable it sets")
@@ -91,6 +113,7 @@ class Account(BaseModel):
     category: Category = Field(description="model: the runtime's own sign-in, whose runs cost; service: any other")
     projects: list[str] = Field(description="the projects whose runs may take it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
+    pools: list[str] = Field([], description="the worker pools it is bound to, each node of each")
     auth: Literal["token", "oauth"] = Field(
         description="oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given"
     )
@@ -119,6 +142,9 @@ class Account(BaseModel):
     shares: list[CredentialShare] = Field(description="its shares not revoked, newest first")
     cost_by_principal: list[PrincipalCost] = Field(
         description="its runs and their cost by the member each was made for; for a member it was shared with, theirs"
+    )
+    gateway: GatewayAccount | None = Field(
+        None, description="a provider account's endpoint and what the model gateway last said of it; null for a secret"
     )
 
 
@@ -155,14 +181,19 @@ class AccountPolicy(AccountPolicyWrite):
 
 
 def _accounts(owner_id: int, name: str | None = None):
-    s, a, b = tables.secrets, tables.accounts, tables.secret_bindings
+    s, a, b, p = tables.secrets, tables.accounts, tables.secret_bindings, tables.provider_accounts
     statement = (
         select(
             s.c.id,
             s.c.name,
             s.c.env_var,
+            p.c.provider.label("gateway_provider"),
+            p.c.base_url,
+            p.c.api_format,
+            func.coalesce(func.jsonb_array_length(p.c.models), 0).label("model_count"),
             bound_names(tables.projects, b.c.project_id).label("projects"),
             bound_names(tables.workers, b.c.worker_id).label("workers"),
+            bound_names(tables.worker_pools, b.c.pool_id).label("pools"),
             case((a.c.oauth_sealed.is_not(None), "oauth"), else_="token").label("auth"),
             func.coalesce(a.c.weight, 1).label("weight"),
             func.coalesce(a.c.priority, 0).label("priority"),
@@ -174,27 +205,80 @@ def _accounts(owner_id: int, name: str | None = None):
             func.now().label("now"),
         )
         .outerjoin_from(s, a, a.c.secret_id == s.c.id)
-        .where(s.c.owner_id == owner_id, s.c.kind == "env", s.c.deleted_at.is_(None))
+        .outerjoin(p, p.c.secret_id == s.c.id)
+        .where(s.c.owner_id == owner_id, s.c.kind.in_(("env", PROVIDER_KIND)), s.c.deleted_at.is_(None))
         .order_by(s.c.env_var, s.c.name)
     )
     return statement if name is None else statement.where(s.c.name == name)
 
 
-def _account(row, figures: Figures | None = None, shares: list[CredentialShare] | None = None) -> Account:
+def _gateway(row, seen: dict | None) -> GatewayAccount:
+    """The gateway part of provider account ``row``, with ``seen``, the gateway's connections by secret id
+    (``gateway_sync.GatewaySync.status``): cooling while its rate limit lasts, failing when its last test failed."""
+    found = (seen or {}).get(row.id)
+    status, reason = ("unknown", None) if found is None else ("ok", None)
+    if found is not None:
+        why = found.error_code or found.error_type
+        if (_until(found.limited_until) or row.now) > row.now:
+            status, reason = "cooling", why or "rate limited"
+        elif found.test_status in FAILING:
+            status, reason = "failing", why or found.test_status
+    return GatewayAccount(
+        provider=row.gateway_provider,
+        prefix=gateway_runs.prefix_of(row.gateway_provider, row.id),
+        base_url_host=urlsplit(row.base_url).hostname,
+        api_format=row.api_format,
+        models=row.model_count,
+        status=status,
+        reason=None if reason is None else REASON.sub("-", str(reason))[:MAX_REASON],
+    )
+
+
+def _until(when: str | None) -> datetime | None:
+    """The moment a connection rests until (ISO 8601, UTC when it names no zone); None when there is none."""
+    try:
+        found = datetime.fromisoformat(when.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return found if found.tzinfo is not None else found.replace(tzinfo=UTC)
+
+
+def _account(
+    row, figures: Figures | None = None, shares: list[CredentialShare] | None = None, seen: dict | None = None
+) -> Account:
     values = dict(row._mapping)
-    del values["id"]
+    for key in ("id", "gateway_provider", "base_url", "api_format", "model_count"):
+        del values[key]
     now = values.pop("now")
     oauth = row.auth == "oauth"
     # The end of an OAuth account is its access token's, which the hub renews when a run leases it: not an expiry.
     state = account_state(row.paused_at, row.cooldown_until, None if oauth else row.expires_at, now)
     if oauth and state == "cooling" and (row.cooldown_reason or "").startswith(RELOGIN_REASON):
         state = "needs-relogin"
-    provider = provider_of(row.env_var)
-    category = category_of(provider)
+    gateway = None if row.gateway_provider is None else _gateway(row, seen)
+    if gateway is not None:
+        values["env_var"] = f"{PICK_PREFIX}{gateway.prefix or row.gateway_provider}"
+        if state == "ready" and gateway.status == "cooling":
+            state, values["cooldown_until"] = "cooling", _until(seen[row.id].limited_until)
+            values["cooldown_reason"] = f"the model gateway: {gateway.reason}"
+    provider = "other" if gateway is not None else provider_of(row.env_var)
+    category = "model" if gateway is not None else category_of(provider)
     shared = shares or []
     return Account(
-        **values, provider=provider, category=category, state=state, shares=shared, **figured(figures, category)
+        **values,
+        provider=provider,
+        category=category,
+        state=state,
+        shares=shared,
+        gateway=gateway,
+        **figured(figures, category),
     )
+
+
+def _seen(request: Request) -> dict | None:
+    """The gateway's connections of the last round, by secret id; None when the hub runs no gateway."""
+    found = getattr(request.app.state, "gateway_sync", None)
+    return None if found is None else found.status
 
 
 @router.get("/accounts", response_model=list[Account])
@@ -206,7 +290,8 @@ async def list_accounts(request: Request, user: CurrentUser, response: Response)
         figures = await account_figures(conn, user.user_id)
         shares = await shares_of(conn, [row.id for row in rows])
     response.headers.update(NO_STORE)
-    return [_account(row, figures.get(row.id), shares.get(row.id)) for row in rows]
+    seen = _seen(request)
+    return [_account(row, figures.get(row.id), shares.get(row.id), seen) for row in rows]
 
 
 @router.get("/accounts/{name}", response_model=Account, responses=REFUSALS)
@@ -216,26 +301,30 @@ async def get_account(
     """The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;
     404 for a name that is neither."""
     async with request.app.state.engine.begin() as conn:
-        found = await (_own_account(conn, user, name) if owner is None else _shared_account(conn, user, owner, name))
+        seen = _seen(request)
+        own = owner is None
+        found = await (_own_account(conn, user, name, seen) if own else _shared_account(conn, user, owner, name, seen))
     response.headers.update(NO_STORE)
     return found
 
 
-async def _own_account(conn: AsyncConnection, user: Principal, name: str) -> Account:
+async def _own_account(conn: AsyncConnection, user: Principal, name: str, seen: dict | None = None) -> Account:
     row = (await conn.execute(_accounts(user.user_id, name))).one_or_none()
     if row is None:
         raise HTTPException(404, NO_ACCOUNT.format(name=name))
     figures = await account_figures(conn, user.user_id, [row.id])
-    return _account(row, figures.get(row.id), (await shares_of(conn, [row.id])).get(row.id))
+    return _account(row, figures.get(row.id), (await shares_of(conn, [row.id])).get(row.id), seen)
 
 
-async def _shared_account(conn: AsyncConnection, user: Principal, owner: str, name: str) -> Account:
+async def _shared_account(
+    conn: AsyncConnection, user: Principal, owner: str, name: str, seen: dict | None = None
+) -> Account:
     """Account ``name`` of ``owner`` as the caller, whom it was shared with, sees it: their runs alone, and the shares
     that lend it to them; 404 when no share not revoked covers them and no run of theirs took it."""
     cs, cl = tables.credential_shares, tables.credential_leases
     member = await org_store.user_by_login(conn, owner)
     if member is not None and member.id == user.user_id:
-        return await _own_account(conn, user, name)
+        return await _own_account(conn, user, name, seen)
     owner_id = None if member is None else member.id
     row = None if owner_id is None else (await conn.execute(_accounts(owner_id, name))).one_or_none()
     refusal = HTTPException(404, f"{owner} shared no account named {name} with you")
@@ -248,7 +337,7 @@ async def _shared_account(conn: AsyncConnection, user: Principal, owner: str, na
         raise refusal
     figures = await account_figures(conn, owner_id, [row.id], principal_id=user.user_id)
     shares = [share for share in (await shares_of(conn, [row.id])).get(row.id, []) if share.id in ids]
-    return _account(row, figures.get(row.id), shares).model_copy(update={"workers": []})
+    return _account(row, figures.get(row.id), shares, seen).model_copy(update={"workers": [], "pools": []})
 
 
 def _paused(change: AccountChange, kept):
@@ -272,7 +361,10 @@ async def change_account(
         figures = await account_figures(conn, user.user_id, [row.id])
         shares = await shares_of(conn, [row.id])
         found = _account(
-            (await conn.execute(_accounts(user.user_id, name))).one(), figures.get(row.id), shares.get(row.id)
+            (await conn.execute(_accounts(user.user_id, name))).one(),
+            figures.get(row.id),
+            shares.get(row.id),
+            _seen(request),
         )
         paused = "yes" if found.paused_at is not None else "no"
         target = f"{audit_target(row.id)} weight={found.weight} priority={found.priority} paused={paused}"
