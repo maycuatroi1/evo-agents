@@ -65,6 +65,7 @@ from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import (
     backup_cli,
     chat_cli,
+    list_cli,
     output_cli,
     playbook_cli,
     probe_cli,
@@ -1207,5 +1208,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    for extra in (*AGENT_PARSERS, projects_cli.register_projects, register_browser):
+    for extra in (*AGENT_PARSERS, projects_cli.register_projects, list_cli.register_list, register_browser):
         extra(wsub)
