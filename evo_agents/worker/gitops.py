@@ -518,13 +518,16 @@ def _own_branches(kind: str) -> tuple[str, str, str, Callable[[str], bool]] | No
     return None
 
 
-def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None) -> bool:
+def check_push(
+    branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None, named_branch: str | None = None
+) -> bool:
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
     a judge run, an author run, a replay run, a history run, a probe run and a question run push nothing at all, a Builder of the Curator (``kind`` curator) only a
     branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, a
-    task run (``kind`` task) only its branch ``task/<run>``, and a release run (``kind`` release) only a branch
+    task run (``kind`` task) only its branch ``task/<run>`` or the branch its task names for the repo
+    (``named_branch``, which is no default branch), and a release run (``kind`` release) only a branch
     ``release/<version>``: never a default branch, and never a tag, since ``push`` sends to refs/heads/ alone."""
     if kind in ("review", "judge", "author", "replay", "history", "probe", "question"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
@@ -533,6 +536,8 @@ def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branc
         who, whose, form, is_own = own
         if branch in protected or branch in PROTECTED:
             raise PushRefused(f"{branch} is a default branch: {who} never pushes it")
+        if kind == "task" and named_branch is not None and branch == named_branch:
+            return False  # the branch the task names for the repo
         if not is_own(branch):
             raise PushRefused(f"{branch} is not a branch of {whose}: {who} pushes {form} alone")
         return False
@@ -636,6 +641,7 @@ async def push(
     env: Mapping[str, str] | None = None,
     options: Collection[str] = (),
     replay: Replay | None = None,
+    named_branch: str | None = None,
 ) -> Pushed:
     """Push HEAD to ``branch`` of the remote, with git in ``env``: a fast-forward or nothing, never forced. A default
     branch of the repo (one of ``protected``) only as ``check_push`` allows, PushRefused before anything is sent
@@ -643,7 +649,7 @@ async def push(
     remote moved past since the run began has nothing to push. With ``replay``, a default branch the remote moved on
     gets the run's own commits on top of its tip, or PushConflict once they are on the replay's side branch (see the
     module's docstring)."""
-    default = check_push(branch, protected, kind=kind, plan_branch=plan_branch)
+    default = check_push(branch, protected, kind=kind, plan_branch=plan_branch, named_branch=named_branch)
     head = await rev(cwd, "HEAD")
     if head is None:
         raise GitError("HEAD names no commit: there is nothing to push")

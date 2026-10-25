@@ -1073,13 +1073,15 @@ class FakeHub:
 
     async def _task_pulls(self, request: web.Request) -> web.Response:
         """The push a task run's daemon tells of: recorded, and answered as the hub would, with a draft pull request
-        of its own; the branch of another run is refused."""
+        of its own; the branch of another run, or of another repo, is refused."""
         run_id, run = self._run(request)
         if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "task":
             raise _refusal(404, f"run {run_id} is not a task run this worker holds")
         body = await request.json()
-        if body.get("branch") != run["spec"]["branch"]:
-            raise _refusal(422, f"run {run_id} pushes {run['spec']['branch']}, not {body.get('branch')}")
+        entries = {entry.get("repo"): entry.get("branch") for entry in run["spec"].get("repos") or []}
+        expected = entries.get(body.get("repo")) or run["spec"]["branch"]  # the branch its task names for the repo
+        if body.get("branch") != expected:
+            raise _refusal(422, f"run {run_id} pushes {expected}, not {body.get('branch')}")
         self.chat_calls.append({"run_id": run_id, "route": "task/pulls", **body})
         number = len(self.chat_calls)
         url = f"https://github.example/demo/{body['repo']}/pull/{number}"
