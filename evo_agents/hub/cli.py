@@ -28,6 +28,7 @@ log = logging.getLogger("evo_agents.hub")
 EXTRA_HINT = "python -m pip install 'evo-ak[hub-server]'"
 EXIT_FAILED = 1
 EXIT_USAGE = 2
+OWN_COMMANDS: set[str] = set()  # the hub commands of the CLI itself, the plugins' left out (cli_plugin_commands)
 
 
 def _server_command(func):
@@ -155,11 +156,18 @@ def cmd_migrate(args) -> int:
         import psycopg
         from sqlalchemy.exc import DBAPIError
 
-        from evo_agents.hub.migrate import MigrationError, migrate
+        from evo_agents.hub.migrate import MigrationError, migrate, status
     except ImportError as exc:
         return _missing_extra(exc, args)
     try:
-        migrate(dsn)
+        if getattr(args, "status", False):
+            return _print_status(status(dsn))
+        done = migrate(dsn, only=getattr(args, "plugin", None))
+        for chain in done.plugins:
+            if chain.error is not None:
+                log.warning(f"plugin chain left as it was: {chain.error}", extra={"plugin": chain.plugin_id})
+            else:
+                log.info("plugin chain migrated", extra={"plugin": chain.plugin_id, "applied": list(chain.applied)})
     except MigrationError as exc:
         log.error(f"migration refused: {exc}", extra={"db": redact_dsn(dsn)})
         return EXIT_FAILED
@@ -167,6 +175,21 @@ def cmd_migrate(args) -> int:
         log.error(f"migration failed: {type(exc).__name__}: {exc}", extra={"db": redact_dsn(dsn)})
         return EXIT_FAILED
     return 0
+
+
+def _print_status(chains) -> int:
+    """Each chain's recorded revision against its head, one line each: 0 when every chain is at its head."""
+    behind = 0
+    for chain in chains:
+        at = ",".join(chain.recorded) or "-"
+        if chain.error is not None:
+            state, behind = f"error: {chain.error}", behind + 1
+        elif chain.head in chain.recorded:
+            state = "at head"
+        else:
+            state, behind = f"behind, head {chain.head}", behind + 1
+        print(f"{chain.chain}\t{chain.version_table}\t{at}\t{state}")
+    return EXIT_FAILED if behind else 0
 
 
 def _register_client_commands(hsub) -> None:
@@ -299,6 +322,17 @@ def register(sub) -> None:
 
     migrate = hsub.add_parser("migrate", help="bring the hub database to this release's schema, then exit")
     migrate.add_argument("--dsn", help=dsn_help)
+    which = migrate.add_mutually_exclusive_group()
+    which.add_argument(
+        "--plugin",
+        metavar="ID",
+        help="run the chain of migrations of core plugin ID alone, on a hub database already at this release's head",
+    )
+    which.add_argument(
+        "--status",
+        action="store_true",
+        help="print where the hub's chain and each core plugin's stand against their heads, and change nothing",
+    )
     migrate.set_defaults(func=cmd_migrate)
 
     plugin_host = hsub.add_parser(
@@ -327,3 +361,9 @@ def register(sub) -> None:
     from evo_agents.hub.contract import register as register_contract
 
     register_contract(hsub)
+    OWN_COMMANDS.clear()
+    OWN_COMMANDS.update(hsub.choices)
+
+    from evo_agents.hub.cli_plugin_commands import register_plugin_commands
+
+    register_plugin_commands(hsub)  # last: a plugin whose id is a command of the CLI's own is left out

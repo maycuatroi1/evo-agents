@@ -112,6 +112,7 @@ def plugin_script_location() -> Path:
 def plugin_alembic_config(chain: PluginChain, metadata) -> Config:
     config = Config()
     config.set_main_option("script_location", str(plugin_script_location()).replace("%", "%%"))
+    config.set_main_option("path_separator", "os")  # version_locations is one directory, which may hold a space
     config.set_main_option("version_locations", str(plugin_schema.versions_directory(chain)).replace("%", "%%"))
     config.attributes["chain"] = chain
     config.attributes["metadata"] = metadata
