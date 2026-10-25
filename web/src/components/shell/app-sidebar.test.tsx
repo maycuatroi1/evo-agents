@@ -145,6 +145,7 @@ describe("AppSidebar", () => {
       "nav-org",
       "nav-myMemories",
       "nav-globalSkills",
+      "nav-market",
       "nav-secrets",
       "nav-accounts",
     ]);
@@ -176,6 +177,7 @@ describe("AppSidebar", () => {
       "nav-org",
       "nav-myMemories",
       "nav-globalSkills",
+      "nav-market",
     ]);
     const folds = within(navigation).getAllByRole("button");
     expect(folds.map((fold) => [fold.getAttribute("data-testid"), fold.textContent, fold.getAttribute("aria-expanded")])).toEqual([

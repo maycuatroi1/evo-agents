@@ -290,6 +290,25 @@ def test_plugin_sign_publishers_and_core_publishers_load_from_the_environment():
         assert caught.value.variable == variable
 
 
+def test_market_default_source_and_publisher_lock_load_from_the_environment():
+    base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    config = load_config(base)
+    assert (config.market_default_source, config.plugin_publishers_locked) == ("maycuatroi1/evo-agents-market", False)
+    config = load_config({**base, "EVO_HUB_MARKET_DEFAULT_SOURCE": " ", "EVO_HUB_PLUGIN_PUBLISHERS_LOCKED": "True"})
+    assert (config.market_default_source, config.plugin_publishers_locked) == (None, True)
+    assert load_config({**base, "EVO_HUB_MARKET_DEFAULT_SOURCE": "None"}).market_default_source is None
+    assert load_config({**base, "EVO_HUB_MARKET_DEFAULT_SOURCE": "northwind/market"}).market_default_source == (
+        "northwind/market"
+    )
+    for variable, value, problem in (
+        ("EVO_HUB_MARKET_DEFAULT_SOURCE", "northwind", "is a GitHub repo OWNER/REPO"),
+        ("EVO_HUB_PLUGIN_PUBLISHERS_LOCKED", "sometimes", "is true or false"),
+    ):
+        with pytest.raises(ConfigError, match=problem) as caught:
+            load_config({**base, variable: value})
+        assert caught.value.variable == variable
+
+
 def test_config_repr_keeps_the_dsns_out():
     config = HubConfig(dsn="postgresql://u:Repr-Secret-1@db/hub", data_dir=Path("/tmp/x"), sentry_dsn="https://k@s/1")
     assert "Repr-Secret-1" not in repr(config) and "https://k@s/1" not in repr(config)

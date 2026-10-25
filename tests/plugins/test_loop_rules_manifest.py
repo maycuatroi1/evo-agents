@@ -26,7 +26,7 @@ CORE = manifest(id="growth", tier="core", permissions=None, config=None, contrib
 
 def test_loop_rules_plugin_manifest_point_has_a_version_and_a_schema():
     assert compat.POINT_VERSIONS["loop_rules"] == (1,)
-    assert list(schema()["$defs"]["contributes"]["properties"])[-1] == "loop_rules"
+    assert "loop_rules" in schema()["$defs"]["contributes"]["properties"]  # cli and notice_kinds came after it
     assert compat.problem(CORE["engines"], 1, contributes={"loop_rules": [{**RULE, "api": 2}]}) is not None
     assert compat.problem(CORE["engines"], 1, contributes={"loop_rules": [RULE]}) is None
 

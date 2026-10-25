@@ -55,12 +55,15 @@ class Clearance:
 @dataclass(frozen=True, eq=False)
 class Session:
     """A live credential of a member, from ``WebSession``, ``Caller``, ``HubAdmin`` or ``redeem_link_code``: ``web``
-    for a web session, which alone links a channel (``Caller`` and ``HubAdmin`` also take a machine token)."""
+    for a web session, which alone links a channel (``Caller`` and ``HubAdmin`` also take a machine token). From
+    ``run_session`` (API 1.3) it is the member a run of the plugin acts for, ``machine`` and without a token of its
+    own (``token_id`` 0)."""
 
     user_id: int
     login: str
     token_id: int
     web: bool = True
+    machine: bool = False
 
 
 @dataclass(frozen=True, eq=False)
@@ -175,6 +178,242 @@ class KgSourceAnswer(_KgSourceItems, total=False):
     cursor: dict
 
 
+# API 1.3: access, the hub's data, the plugin's writes, agents, notices, configs and invites
+
+
+@dataclass(frozen=True)
+class ProjectRef:
+    """A project as a caller reaches it: its id, its name, and the caller's role and highest level there (None for a
+    hub admin without a grant)."""
+
+    id: int
+    name: str
+    role: str | None
+    max_level: str | None = None
+
+
+@dataclass(frozen=True)
+class UserRef:
+    id: int
+    login: str
+    created_at: datetime
+    last_seen_at: datetime | None
+
+
+@dataclass(frozen=True)
+class RunRef:
+    id: int
+    project: str
+    kind: str | None
+    state: str
+    title: str | None
+    plan_id: str | None
+    step_key: str | None
+    dispatched_by: str | None  # the member's login
+    queued_at: datetime
+    finished_at: datetime | None
+
+
+@dataclass(frozen=True)
+class GrantRef:
+    login: str
+    user_id: int
+    role: str
+    max_level: str
+    granted_at: datetime
+
+
+@dataclass(frozen=True)
+class PlanRef:
+    plan_id: str
+    area: str | None
+    revision: int
+    status: str | None  # the plan body's status, when it has one
+    title: str | None
+    label: Mapping[str, Any]
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class StepRef:
+    plan_id: str
+    key: str  # step_key: its id, else its order, else its position
+    index: int
+    title: str | None
+    status: str | None
+    depends_on: tuple[str, ...]
+    data: Mapping[str, Any]  # the step as the plan holds it
+
+
+@dataclass(frozen=True)
+class DecisionRef:
+    id: int
+    run_id: int | None
+    plan_id: str | None
+    step_key: str | None
+    category: str | None
+    question: str
+    state: str
+    answer_option: str | None
+    asked_at: datetime
+    answered_at: datetime | None
+
+
+@dataclass(frozen=True)
+class SignalValue:
+    id: int
+    key: str
+    value: float | None
+    text: str | None
+    source: str | None
+    tenant: str | None
+    measured_at: datetime
+    label: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class GoalRef:
+    id: int
+    code: str  # G-<number>
+    alias: str | None
+    revision: int
+    statement: str
+    metric: Mapping[str, Any] | None
+    metric_text: str  # how the metric reads
+    deadline: Any  # a date, or None
+    status: str
+    owner: str | None
+
+
+@dataclass(frozen=True)
+class ClaimRef:
+    id: int
+    canvas_id: int
+    number: int
+    cell: str
+    text: str
+    status: str
+    confidence: str | None
+    rev: int
+    label: Mapping[str, Any]
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class TaskRef:
+    id: int
+    number: int  # its code is the project's task prefix, -, then this
+    type: str
+    title: str
+    status: str
+    priority: str | None
+    due_on: Any  # a date, or None
+    sprint_id: int | None
+    parent_id: int | None
+    label: Mapping[str, Any]
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class SprintRef:
+    id: int
+    name: str
+    goal: str | None
+    state: str
+    starts_on: Any
+    ends_on: Any
+
+
+@dataclass(frozen=True)
+class TaskLinkRef:
+    task_id: int
+    kind: str
+    srs_item_id: int | None
+    plan_id: str | None
+    step_id: str | None
+    run_id: int | None
+    url: str | None
+
+
+@dataclass(frozen=True)
+class SrsItemRef:
+    id: int
+    document: str  # its document's slug
+    key: str
+    kind: str
+    code: str | None
+    created_in: int | None
+    retired_in: int | None
+
+
+@dataclass(frozen=True)
+class SrsVersionRef:
+    document: str
+    number: int
+    state: str
+    summary: str | None
+    created_at: datetime
+    decided_at: datetime | None
+
+
+@dataclass(frozen=True)
+class AgentTypeRef:
+    """An agent type of the plugin as a project enabled it."""
+
+    name: str
+    handle: str
+    profile_id: int
+    enabled: bool  # on, and its profile not deleted
+
+
+@dataclass(frozen=True)
+class ChatRunRef:
+    """The chat run a tool or a job of the plugin is called in: its chat, the thread it answers in and the member at
+    the origin of the chain, whom it acts for."""
+
+    run_id: int
+    chat_id: int
+    root_id: int
+    profile_id: int
+    dispatcher_id: int
+    dispatcher: str  # their login
+
+
+@dataclass(frozen=True)
+class TaskHanded:
+    """What ``hand_task`` did: the task run it queued, or why it queued none."""
+
+    run_id: int | None
+    refused: str | None
+
+
+@dataclass(frozen=True)
+class SignalPushed:
+    """What ``push_signal`` did with a value: stored it, found it stored already, or refused it, with why."""
+
+    stored: bool
+    duplicate: bool
+    refused: str | None
+
+
+@dataclass(frozen=True)
+class Invite:
+    id: int
+    token: str  # shown this once: the hub keeps its hash
+    url: str | None  # the web's page of it, when the hub knows its public URL
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class ProjectConfig:
+    """The plugin's effective config in one project that enables it."""
+
+    project: str
+    values: Mapping[str, Any]  # x-secret fields unsealed
+    version: int | None  # the version of the project's layer, None without one
+    missing_secrets: tuple[str, ...] = ()
+
+
 # The handles the API made
 
 
@@ -182,6 +421,7 @@ _PLUGINS: dict[str, Plugin] = {}  # plugin id: the handle plugin() gave
 _SESSIONS: weakref.WeakSet[Session] = weakref.WeakSet()
 _ADMINS: weakref.WeakSet[Session] = weakref.WeakSet()
 _MEMBERS: weakref.WeakSet[Member] = weakref.WeakSet()
+_PRINCIPALS: weakref.WeakKeyDictionary[Session, Principal] = weakref.WeakKeyDictionary()  # as the hub checks them
 
 
 def issue_plugin(plugin_id: str, kinds: tuple[str, ...]) -> Plugin:
@@ -193,12 +433,33 @@ def issue_plugin(plugin_id: str, kinds: tuple[str, ...]) -> Plugin:
     return made
 
 
-def issue_session(user_id: int, login: str, token_id: int, web: bool, *, admin: bool = False) -> Session:
-    made = Session(user_id, login, token_id, web)
+def issue_session(
+    user_id: int, login: str, token_id: int, web: bool, *, admin: bool = False, principal: Principal | None = None
+) -> Session:
+    machine = principal is not None and principal.kind == "machine"
+    made = Session(user_id, login, token_id if token_id is not None else 0, web, machine)
     _SESSIONS.add(made)
     if admin:
         _ADMINS.add(made)
+    if principal is not None:
+        _PRINCIPALS[made] = principal
     return made
+
+
+def session_principal(session: Session) -> Principal:
+    """The session as the hub's checks take it: the credential it came from, or, for a session of before 1.3 the API
+    made without one, a member without a token who is no hub admin."""
+    found = _PRINCIPALS.get(session)
+    if found is not None:
+        return found
+    return Principal(
+        user_id=session.user_id,
+        login=session.login,
+        admin=session in _ADMINS,
+        token_id=session.token_id or None,
+        kind="web" if session.web else "machine",
+        token_hash="",
+    )
 
 
 def issue_member(plugin: str, kind: str, user_id: int, login: str, channel_id: int, config: Mapping) -> Member:

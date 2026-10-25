@@ -11,6 +11,7 @@ describe("nav", () => {
       ["chats", "chats"],
       ["kg", "kg"],
       ["curator", "curator"],
+      ["market", "market"],
     ]);
   });
 
@@ -66,6 +67,7 @@ describe("nav", () => {
       ["org", null],
       ["myMemories", null],
       ["globalSkills", null],
+      ["market", null],
       ["secrets", "settings"],
       ["accounts", "settings"],
       ["admin", "settings"],

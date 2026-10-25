@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, LayoutDashboard, Link2, type LucideIcon, Palette, Puzzle, ScrollText, ToggleRight, Users } from "lucide-react";
+import { KeyRound, LayoutDashboard, Link2, type LucideIcon, Palette, Puzzle, ScrollText, Store, ToggleRight, Users } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -12,7 +12,7 @@ import { browserApi } from "@/lib/api/browser";
 import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-export type AdminSection = "overview" | "members" | "tokens" | "audit" | "invites" | "plugins" | "branding" | "features";
+export type AdminSection = "overview" | "members" | "tokens" | "audit" | "invites" | "plugins" | "market" | "branding" | "features";
 
 /** The pages under /admin without a tab of their own: the overview links to them, and its tab stays selected. */
 export const OVERVIEW_PAGES = ["diagnostics"] as const;
@@ -25,6 +25,7 @@ export const ADMIN_SECTIONS: readonly { id: AdminSection; href: Route; icon: Luc
   { id: "audit", href: "/admin/audit", icon: ScrollText },
   { id: "invites", href: "/admin/invites", icon: Link2 },
   { id: "plugins", href: "/admin/plugins", icon: Puzzle },
+  { id: "market", href: "/admin/market", icon: Store },
   { id: "branding", href: "/admin/branding", icon: Palette },
   { id: "features", href: "/admin/features", icon: ToggleRight },
 ];

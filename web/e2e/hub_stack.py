@@ -21,8 +21,7 @@ push their fixture through the same store, and POST /kg/seed and /kg/build run t
 (``merge_seed.py``), since no GitLab answers the stack. POST /loop/seed writes the work items a project's Loop would
 leave after a few weeks of a goal (``loop_seed.py``), since the stack runs no worker to tick it. POST /plugin-notice/seed writes the Inbox notice an isolated plugin sends
 (``plugin_notice_seed.py``). POST /probes/seed writes a probe's weekly probe runs (``probe_seed.py``), since the stack
-runs no probe session. POST /growth/seed writes the contacts, channel accounts, posts and month's budget the core
-plugins crm and marketing would leave (``growth_seed.py``), since the stack runs neither their jobs nor a channel. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
+runs no probe session. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
 self_update_hours, features, browser} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
 reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
 ``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
@@ -87,7 +86,8 @@ Ed25519 key of the Python tests (``tests.plugins.samples``), and POST /plugins/b
 plugin of tests/fixtures/plugins/sample under that id and version and signs it with that key, answering the bundle as
 base64 with its SHA-256 and the signature, which a spec publishes and installs through the real API. The hub runs
 through e2e/hub_serve.py, which puts the core plugin notes (tests/hub/core_notes.py) in its image: its table in the
-chain of migrations and its native page, which the web's end-to-end build carries.
+chain of migrations and its native page, which the web's end-to-end build carries. The market spec seeds a market
+repo and a plugin's releases on the fake GitHub with POST /market/seed and /market/release (``market_seed.py``).
 
 ``pnpm screenshots`` seeds its demo through the API and three routes of ``demo/stack.py``: POST /demo/kg writes the
 demo's repos and harness and pushes and builds their graph, POST /demo/retime sets the times the hub stamped to the
@@ -127,9 +127,9 @@ from fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
 from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
 from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
 from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
-from growth_seed import seed as seed_growth  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
 from loop_seed import seed as seed_loop  # noqa: E402
+from market_seed import MarketRepos  # noqa: E402
 from merge_seed import seed as seed_merge_queue  # noqa: E402
 from plugin_notice_seed import seed as seed_plugin_notice  # noqa: E402
 from probe_seed import seed as seed_probes  # noqa: E402
@@ -149,9 +149,18 @@ _AUTHORIZE_LOCK = threading.Lock()  # _authorize reads the shared browser_accoun
 
 
 class BrowserGitHub(FakeGitHub):
-    """The fake GitHub, with the browser's signed-in account read from a cookie instead of one shared field."""
+    """The fake GitHub, with the browser's signed-in account read from a cookie instead of one shared field, and the
+    market repos and plugin releases of ``market_seed``."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.market = MarketRepos()
 
     def answer(self, method: str, path: str, query: dict, headers: dict, body: str):
+        market = self.market.answer(method, path, query, headers, self.url)
+        if market is not None:
+            self.requests.append(Recorded(method, path, query, headers, body))
+            return market
         if method == "GET" and path == "/login/oauth/authorize":
             self.requests.append(Recorded(method, path, query, headers, body))
             return self._authorize_as(query, _cookie_account(headers.get("cookie", "")))
@@ -760,6 +769,12 @@ def control_server(
                     self._reply(200, plugin_bundle(body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path in ("/market/seed", "/market/release"):
+                try:
+                    seed = github.market.seed if self.path == "/market/seed" else github.market.release
+                    self._reply(200, seed(body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/workers/heartbeat":
                 try:
                     self._reply(200, stamp_heartbeat(dsn, body))
@@ -833,11 +848,6 @@ def control_server(
             elif self.path == "/probes/seed":
                 try:
                     self._reply(200, seed_probes(dsn, body))
-                except Exception as exc:  # the test shows what failed
-                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
-            elif self.path == "/growth/seed":
-                try:
-                    self._reply(200, seed_growth(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/loop/seed":

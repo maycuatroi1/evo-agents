@@ -26,6 +26,7 @@ from sqlalchemy.pool import NullPool
 
 from evo_agents.hub import tables
 from evo_agents.hub.migrate import alembic_config, migrate
+from evo_agents.hub.migrations.owned import PLUGIN_OWNED_TABLES
 from tests.hub.test_migrate import TABLES
 
 # Alembic compares a generated column's expression as text and warns at the casts Postgres adds to it.
@@ -36,16 +37,36 @@ def engine_on(db):
     return create_engine("postgresql+psycopg://", creator=lambda: psycopg.connect(db.dsn), poolclass=NullPool)
 
 
+def _plugins(name: str | None) -> bool:
+    """A table crm, pm or marketing keeps, or the version table of a core plugin's chain (``alembic_version_<id>``),
+    as the migration environment leaves them out (``env.py``)."""
+    return name is not None and (name in PLUGIN_OWNED_TABLES or name.startswith("alembic_version_"))
+
+
 def include_name(name, type_, parent_names) -> bool:
-    return not (type_ == "table" and name.startswith("procrastinate_"))
+    if type_ == "table":
+        return not (name.startswith("procrastinate_") or _plugins(name))
+    return not _plugins(parent_names.get("table_name"))
 
 
-def test_the_metadata_holds_the_one_hundred_and_eighty_hub_tables():
-    assert set(tables.metadata.tables) == TABLES - pg.QUEUE_TABLES
+def include_object(item, name, type_, reflected, compare_to) -> bool:
+    table = name if type_ == "table" else getattr(getattr(item, "table", None), "name", None)
+    return not _plugins(table)
+
+
+def hub_tables() -> set[str]:
+    """The tables of the hub's metadata that are the hub's own: crm, pm and marketing keep theirs (owned.py)."""
+    return set(tables.metadata.tables) - PLUGIN_OWNED_TABLES
+
+
+def test_the_metadata_holds_the_one_hundred_and_sixty_nine_hub_tables():
+    assert hub_tables() == TABLES - pg.QUEUE_TABLES - PLUGIN_OWNED_TABLES
     # the last added: problems, problem_revisions, problem_evidence, intakes, kg_review_dismissals, kg_decisions,
     # kg_decision_events, opportunities (4), retired_project_plugins, worker_pools, worker_pool_projects,
-    # worker_join_tokens, provider_accounts
-    assert len(tables.metadata.tables) == 180
+    # worker_join_tokens, provider_accounts, market_sources, plugin_publishers, market_install_requests; 183 with the
+    # 14 tables of crm, pm and marketing, whose plugins keep them
+    assert len(hub_tables()) == 169
+    assert len(PLUGIN_OWNED_TABLES) == 14 and PLUGIN_OWNED_TABLES <= TABLES
 
 
 def test_the_metadata_matches_the_schema_at_head(hub_db):
@@ -56,7 +77,12 @@ def test_the_metadata_matches_the_schema_at_head(hub_db):
             warnings.simplefilter("always")
             context = MigrationContext.configure(
                 conn,
-                opts={"compare_type": True, "compare_server_default": True, "include_name": include_name},
+                opts={
+                    "compare_type": True,
+                    "compare_server_default": True,
+                    "include_name": include_name,
+                    "include_object": include_object,
+                },
             )
             diff = compare_metadata(context, tables.metadata)
     finally:
