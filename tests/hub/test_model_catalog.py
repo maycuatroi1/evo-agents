@@ -7,6 +7,7 @@ filter is checked on rows without Node; a member reads the catalog by GET /v1/mo
 The data and the generator's filter run without Postgres; the route and the command skip without EVO_HUB_TEST_DSN."""
 
 import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -103,6 +104,61 @@ def test_model_catalog_adds_the_claude_subscription_and_the_two_custom_endpoints
         assert by_id[custom]["api_format"] == api_format and by_id[custom]["base_url"] == ""
     assert [e["id"] for e in model_catalog.providers()][:3] == ["claude", "custom-openai", "custom-anthropic"]
     assert model_catalog.find("zai")["name"] == "Z.AI" and model_catalog.find("nowhere") is None
+
+
+# The logos (scripts/generate_provider_logos.py, drawn by web/src/components/accounts/provider-mark.tsx)
+
+LOGOS = ROOT / "web" / "public" / "provider-logos"
+
+
+def logo_generator():
+    spec = importlib.util.spec_from_file_location(
+        "generate_provider_logos", ROOT / "scripts/generate_provider_logos.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_provider_of_the_catalog_is_mapped_to_a_logo_or_to_none():
+    generator = logo_generator()
+    planned = generator.plan([e["id"] for e in model_catalog.providers()], generator.LOGOS)
+    manifest = json.loads((ROOT / "web/src/components/accounts/provider-logos.json").read_text())
+    assert set(manifest) == set(planned), "the manifest is stale: run scripts/generate_provider_logos.py"
+    assert len(manifest) >= 190 and {"openai", "anthropic", "claude", "gemini", "deepseek", "glm"} <= set(manifest)
+    for id, file in manifest.items():
+        assert re.fullmatch(r"[a-z0-9-]+\.(svg|png)", file) and (LOGOS / file).is_file(), id
+        assert file.split(".")[0] == planned[id][1], id
+    notice = (LOGOS / "NOTICE.md").read_text()
+    for file in set(manifest.values()):
+        assert f"`{file}`" in notice, file
+    on_disk = {path.name for path in LOGOS.iterdir() if path.suffix in {".svg", ".png"}}
+    assert on_disk == set(manifest.values()), "a logo no provider uses, or one missing"
+
+
+def test_logo_plan_refuses_a_catalog_it_does_not_map_and_shares_one_file_per_source():
+    generator = logo_generator()
+    plan = generator.plan(["a", "b", "c", "d"], {"a": "lobe:x", "b": None, "c": "lobe:x", "d": "https://d.test/i.png"})
+    assert plan == {"a": ("lobe:x", "a"), "c": ("lobe:x", "a"), "d": ("https://d.test/i.png", "d")}
+    with pytest.raises(SystemExit, match=r"unmapped \['new'\]"):
+        generator.plan(["a", "new"], {"a": None})
+    with pytest.raises(SystemExit, match=r"not in the catalog \['gone'\]"):
+        generator.plan(["a"], {"a": None, "gone": None})
+
+
+def test_logo_svgs_scale_and_do_not_follow_the_colour_scheme():
+    generator = logo_generator()
+    fixed = generator.check_svg(
+        "t", b'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><path d="M0 0h1"/></svg>'
+    )
+    assert b'<svg viewBox="0 0 32 16" xmlns=' in fixed
+    with pytest.raises(SystemExit, match="colour scheme"):
+        generator.check_svg("t", b'<svg viewBox="0 0 1 1"><style>@media (prefers-color-scheme: dark){}</style></svg>')
+    with pytest.raises(SystemExit, match="neither a viewBox"):
+        generator.check_svg("t", b"<svg><path/></svg>")
+    for path in LOGOS.glob("*.svg"):
+        text = path.read_text()
+        assert "viewBox=" in text and "prefers-color-scheme" not in text and "<script" not in text.lower(), path.name
 
 
 # The generator's filter, on rows

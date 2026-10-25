@@ -10,7 +10,9 @@ with node. The bundle prints one JSON row per provider; ``build`` below, a pure 
 catalog, so the filtering is tested without Node. Needs git, node and npm on the PATH.
 
 The version of the gateway image step 3 pins is evo_agents.hub.model_catalog.GATEWAY_VERSION; a test fails when the
-catalog is of another version, so an upgrade is one change: this script on the new tag, and that constant.
+catalog is of another version, so an upgrade is one change: this script on the new tag, and that constant. The logos
+of the providers follow the catalog: map its new ids in scripts/generate_provider_logos.py and run that script too (a
+test fails on a provider it does not map).
 """
 
 from __future__ import annotations
