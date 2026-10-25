@@ -16,8 +16,13 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
+from evo_agents.hub import runs
+from evo_agents.hub.skill_sync import MARKER
+from evo_agents.hub.skills import pack
 from evo_agents.worker.pool_cli import JOIN_TOKEN_ENV
-from tests.worker.test_daemon import PROJECT, make_stack  # noqa: F401 - the fixture of the daemon tests
+from tests.hub import live
+from tests.hub.test_skills_api import publish, write_skill
+from tests.worker.test_daemon import PROJECT, make_stack, wait_until  # noqa: F401 - the fixture of the daemon tests
 
 
 def _machine(stack, name: str) -> tuple[dict, object]:
@@ -91,3 +96,46 @@ def test_the_owner_makes_a_pool_and_machines_join_it_with_one_token(make_stack):
     assert pools.returncode == 0 and "Pool ci" in pools.stdout
     missing = stack.cli("pool", "show", "nope")
     assert missing.returncode == 1 and "no pool named nope" in missing.stderr
+
+
+def test_a_pool_nodes_daemon_syncs_the_hubs_skills_with_its_worker_token_and_no_hub_login(make_stack, s3, github):
+    """Step 4 (criterion a5): the daemon of a node that joined with a join token writes the hub's global skills
+    into the skills directory of each runtime installed on the machine when it starts, each with its marker, though
+    nobody signed in to the hub there; its heartbeat names the feature skill_sync."""
+    stack = make_stack(**s3.config())
+    admin = live.bearer(live.sign_in(stack.client, github, live.ADMIN, 801)["token"])
+    bundle = pack(write_skill(stack.tmp / "published", "house-style", "house rules"))
+    publish(stack.client, {live.ADMIN: admin}, live.ADMIN, bundle.data, "house-style", None)
+    assert stack.cli("pool", "create", "ci", "--project", PROJECT, "--json").returncode == 0
+    issued = stack.cli("pool", "token", "create", "ci", "--json")
+    assert issued.returncode == 0, issued.stderr
+    env, state = _machine(stack, "node")
+    joined = stack.cli("join", "--url", stack.url, "--token", json.loads(issued.stdout)["token"], env=env)
+    assert joined.returncode == 0, joined.stderr
+    home = state.parents[1]
+    (home / ".claude").mkdir()  # claude-code is installed here
+    assert not (home / ".evo" / "hub" / "token").exists()  # and nobody signed in to the hub
+
+    stack.env, owner_env = env, stack.env
+    try:
+        proc = stack.start_daemon()
+        marker = home / ".claude" / "skills" / "house-style" / MARKER
+        wait_until(marker.is_file, f"{marker} written", explain=stack.daemon_output)
+        written = json.loads(marker.read_text(encoding="utf-8"))
+        assert (written["name"], written["version"], written["sha256"]) == ("house-style", 1, bundle.sha256)
+        skill = (home / ".claude" / "skills" / "house-style" / "SKILL.md").read_text(encoding="utf-8")
+        assert "house rules" in skill
+        stack.wait_log("skills synced", proc)
+        assert not (home / ".evo" / "hub" / "token").exists()
+
+        (worker,) = stack.client.get("/v1/workers", headers=stack.owner).json()
+        wait_until(
+            lambda: (
+                runs.SKILL_SYNC
+                in stack.client.get(f"/v1/workers/{worker['id']}", headers=stack.owner).json()["features"]
+            ),
+            "the heartbeat to name skill_sync",
+        )
+        assert stack.stop_daemon(proc) == 0, stack.daemon_output()
+    finally:
+        stack.env = owner_env
