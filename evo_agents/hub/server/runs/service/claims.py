@@ -30,7 +30,7 @@ from evo_agents.hub import author, autonomy_card, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import attachment_store, principals, run_autonomy, worker_placement
+from evo_agents.hub.server import attachment_store, gateway_accounts, principals, run_autonomy, worker_placement
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -472,6 +472,7 @@ async def _claim_once(
             profile_gate=and_(
                 claim_clause(name, labels, runtimes, features, offered, environments, plugins),
                 browsers.claim_gate(worker_id, features),
+                gateway_accounts.claim_gate(version),
                 node.gate(worker_id),
             ),
         )

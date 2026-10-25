@@ -21,6 +21,9 @@ applies no profile.
 A headless agent whose account hits its usage limit is stopped, and goes on in the same session with another account
 when the hub moves the run to one (``limits``); else the run fails with cause rate_limit. One whose account failed to
 authenticate goes on the same way, else fails with cause account_auth.
+A run whose leases hold one of kind gateway runs its model through the hub's gateway route (``runtimes.gateway``): on
+Claude Code its agent gets none of ``gateway.CLAUDE_DROPPED`` of the daemon's environment, and on this machine a
+config dir of its own without a login (``claude_home``), whatever its profile.
 
 A run of a plugin's runtime (``<plugin>/<name>``) starts its agent through the adapter of ACP made from the declaration
 its claim carries (``acp.adapter_class``), and fails with cause credentials before the agent starts when a variable the
@@ -59,7 +62,7 @@ from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
-from evo_agents.worker.runtimes import claude_home, hub_tools, profiles
+from evo_agents.worker.runtimes import claude_home, gateway, hub_tools, profiles
 from evo_agents.worker.runtimes.acp import adapter_class
 from evo_agents.worker.runtimes.claude_code import compact_window, leased_oauth
 from evo_agents.worker.runtimes.common import with_first_request
@@ -245,6 +248,9 @@ class Agent:
             }
         )
         env.update(run.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
+        route = run.credentials.gateway  # the hub's gateway route: no Claude login, nor key, beside it
+        for key in [key for key in env if gateway.drops(route, key)]:
+            env.pop(key)
         env.pop(browser_session.VARIABLE, None)  # the endpoint of the run's own browser, and of no other
         if self.browser is not None and self.browser.cdp:
             env[browser_session.VARIABLE] = self.browser.cdp
@@ -254,7 +260,7 @@ class Agent:
             env.update(compact_window(env))
         env.update(authorship.author_env(run.spec, authorship.hub_url(run)))  # its own commits name the agent
         env.update(self.trailer_config(env))  # and carry the run's trailers
-        if claude_home.wanted(run.spec, run.runtime) and run.worktree is not None:  # a config dir of its own
+        if claude_home.wanted(run.spec, run.runtime, route is not None) and run.worktree:  # a config dir of its own
             env["CLAUDE_CONFIG_DIR"] = str(claude_home.config_dir(run.worktree))
             env["GH_CONFIG_DIR"] = str(claude_home.gh_dir(run.worktree))  # empty: none of the owner's gh logins
         if run.venvs:  # the .venv/bin of each repo whose environment the worker made, first (runner.venv)
@@ -310,7 +316,8 @@ class Agent:
         if claude_home.keeps_owner_home(run.spec, run.runtime):
             self.note_once(claude_home.OWNER_HOME_NOTE.format(runtime=run.runtime))
         configured = context.env.get("CLAUDE_CONFIG_DIR")
-        if not configured or not claude_home.wanted(run.spec, run.runtime):
+        route = run.credentials.gateway is not None
+        if not configured or not claude_home.wanted(run.spec, run.runtime, route):
             return
         directory = Path(configured)
         server = hub_tools.home_server(context, profiles.Profile.of(run.spec))
@@ -320,6 +327,7 @@ class Agent:
                 directory,
                 owner_env=run.daemon.env,
                 leased=leased_oauth(context),
+                gateway=route,
                 server=server,
                 lock=Path(run.daemon.home.root) / claude_home.REFRESH_LOCK,
             )

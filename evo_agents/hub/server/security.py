@@ -100,6 +100,11 @@ PUBLIC_PATHS = frozenset(
         "/v1/branding",  # the sign-in page shows the hub's branding (evo_agents.hub.server.branding)
         "/v1/branding/logo",
         "/v1/branding/favicon",
+        # the gateway route of runs on a provider account's model: a run's token is the credential (gateway_proxy)
+        "/v1/messages",
+        "/v1/chat/completions",
+        "/v1/responses",
+        "/v1/models",
     }
 )
 HOOKS_PREFIX = "/v1/hooks/"  # the webhooks of core plugins, /v1/hooks/<plugin id>/... (plugin_routes)

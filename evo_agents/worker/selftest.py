@@ -15,6 +15,11 @@ prints ``Run done``.
 A real call spends the owner's quota, so the prompt is short and the reasoning effort of Claude Code and Codex is
 ``low`` unless ``--effort`` says otherwise; ``--model`` names the model (opencode needs one when its configured
 default does not exist). The scratch repository is removed unless ``--keep`` is given.
+
+``--gateway URL`` runs the agent the way a run on a provider account's model goes, through a gateway route at URL
+(``<hub>/v1``, or a fake gateway's) with the token in EVO_SELFTEST_GATEWAY_TOKEN and ``--model`` as the gateway names
+it: the environment ``runtimes.gateway`` builds for the runtime's format from such a lease, and for Claude Code a
+config dir of its own in the scratch repository that holds no login.
 """
 
 from __future__ import annotations
@@ -31,7 +36,10 @@ import time
 from pathlib import Path
 
 from evo_agents.hub import runs
+from evo_agents.hub.credentials import Lease
+from evo_agents.hub.gateway_runs import GATEWAY, RUNTIME_FORMATS
 from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext, load_adapters
+from evo_agents.worker.runtimes import claude_home, gateway
 from evo_agents.worker.runtimes.common import package_version
 
 PROMPT = (
@@ -53,6 +61,7 @@ PACKAGES = {"claude-code": "claude-agent-sdk", "codex": "openai-codex", "opencod
 DEFAULT_TIMEOUT = 300
 END_GRACE = 60.0  # seconds for an interrupted agent to end
 LINE_CHARS = 120
+GATEWAY_TOKEN = "EVO_SELFTEST_GATEWAY_TOKEN"  # the token ``--gateway`` sends to the route
 _GIT = {
     "GIT_AUTHOR_NAME": "evo-agents selftest",
     "GIT_AUTHOR_EMAIL": "selftest@localhost",
@@ -133,6 +142,28 @@ class BackgroundWatch:
         return found
 
 
+def gateway_env(runtime: str, url: str, model: str, token: str, env: dict, repo: Path) -> tuple[dict, frozenset]:
+    """The agent's environment ``env`` of a run of ``runtime`` through gateway route ``url`` with ``token`` on
+    ``model``, and the variables the gateway lease set (``RunContext.leased``)."""
+    lease = Lease(
+        id=0,
+        kind=GATEWAY,
+        provider=GATEWAY,
+        name="gateway:selftest",
+        value=token,
+        base_url=url,
+        model=model,
+        api_format=RUNTIME_FORMATS[runtime],
+    )
+    added = gateway.agent_env(lease, env)
+    env = {key: value for key, value in env.items() if not gateway.drops(lease, key)} | added
+    if runtime == claude_home.RUNTIME:
+        directory = claude_home.config_dir(repo)
+        claude_home.prepare(directory, owner_env=env, leased=False, server=None, gateway=True)
+        env["CLAUDE_CONFIG_DIR"] = str(directory)
+    return env, frozenset(added)
+
+
 def describe(event: AgentEvent) -> str:
     """One event in a line: its kind and what it says."""
     body = event.body
@@ -164,19 +195,24 @@ async def selftest(
     timeout: float,
     keep: bool,
     background: bool = False,
+    route: str | None = None,
 ) -> int:
     repo = scratch_repo()
     run = {"id": 0, "project": "selftest", "plan_id": "selftest", "step_key": "selftest", "title": "worker selftest"}
     run.update({"runtime": runtime, "mode": "headless", "model": model, "effort": effort})
     env = {**os.environ, "EVO_RUN_ID": "0", "EVO_RUN_PROJECT": "selftest", "EVO_RUN_PLAN": "selftest"}
+    leased: frozenset[str] = frozenset()
+    if route:
+        env, leased = gateway_env(runtime, route, str(model), os.environ.get(GATEWAY_TOKEN) or "", env, repo)
     prompt = BACKGROUND_PROMPT if background else PROMPT
-    adapter = cls(RunContext(run=run, worktree=repo, prompt=prompt, env=env))
+    adapter = cls(RunContext(run=run, worktree=repo, prompt=prompt, env=env, leased=leased))
     counts: collections.Counter = collections.Counter()
     watch = BackgroundWatch() if background else None
     print(
         f"Self-test of {runtime} in {repo}"
         + (f", model {model}" if model else "")
         + (f", effort {effort}" if effort else "")
+        + (f", through the gateway route {route}" if route else "")
         + (f", with `{BACKGROUND_COMMAND}` in the background" if background else "")
     )
     try:
@@ -269,6 +305,9 @@ def cmd_selftest(args) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.gateway and not (args.model and os.environ.get(GATEWAY_TOKEN)):
+        print(f"error: --gateway needs --model and the route's token in {GATEWAY_TOKEN}", file=sys.stderr)
+        return 2
     detection = cls.detect()
     if not detection.available:
         print(f"error: {args.runtime} is unavailable here: {detection.reason}", file=sys.stderr)
@@ -283,6 +322,7 @@ def cmd_selftest(args) -> int:
             timeout=args.timeout,
             keep=args.keep,
             background=args.background,
+            route=args.gateway,
         )
     )
 
@@ -311,5 +351,10 @@ def add_parser(wsub) -> None:
             "check that the session waits for a command run in the background: the agent starts "
             f"`{BACKGROUND_COMMAND}` that way, ends its turn, and writes the file once it ended (claude-code only)"
         ),
+    )
+    parser.add_argument(
+        "--gateway",
+        metavar="URL",
+        help=f"run through the gateway route URL (<hub>/v1, or a fake gateway's), its token in {GATEWAY_TOKEN}",
     )
     parser.set_defaults(func=cmd_selftest)

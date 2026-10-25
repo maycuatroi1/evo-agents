@@ -7,7 +7,9 @@ The figures of an account: the last usage a run's CLI reported for it (``account
 and the same split by principal, the member each run was made for (``cost_by_principal``: credential_leases.
 principal_id, else the run's dispatcher), over 24 hours, 7 days and the month so far (UTC, ``month_start``). For a
 member another shared the account with (``principal_id``), the figures are those of their own runs alone. A run took an
-account when it got a lease of it (credential_leases), at its first such lease; its cost is the one its usage reports
+account when it got a lease of it (credential_leases), at its first such lease; a run on a provider account's model
+when its key of the model gateway reached the account (``gateway_leases``), which holds it while that lease is not
+revoked, and whose cost the gateway reports into its usage once it ends; its cost is the one its usage reports
 (``total_cost_usd``, else ``cost``, as ``curator.run_cost`` reads it), so an estimate: a run that failed over counts
 with each account it took, and a session resumed by several runs counts in each.
 
@@ -25,11 +27,13 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import Numeric, case, cast, func, select
+from sqlalchemy import Numeric, case, cast, func, select, union
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.accounts import CHOICES
+from evo_agents.hub.credentials import PROVIDER_KIND
+from evo_agents.hub.gateway_runs import GATEWAY
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -40,6 +44,7 @@ from evo_agents.hub.server.security import CurrentUser
 router = APIRouter(prefix="/v1/projects", tags=["accounts"], responses={401: {"model": ErrorBody}})
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 DAY, WEEK = timedelta(days=1), timedelta(days=7)
+TAKEN_BY = ("secret", GATEWAY)  # the leases that say a run took an account: of its value, or through the gateway
 MAX_SWITCHES = 50  # usage limits of one run the route lists, the latest
 
 
@@ -129,9 +134,10 @@ def usage_cost(usage):
 
 
 def _owned(owner, secret_ids: list[int] | None):
-    """The ids of the live env secrets ``owner`` (a condition on secrets: a member's, or agent profiles') says."""
+    """The ids of the live env secrets and provider accounts ``owner`` (a condition on secrets: a member's, or agent
+    profiles') says."""
     s = tables.secrets
-    found = select(s.c.id).where(owner, s.c.kind == "env", s.c.deleted_at.is_(None))
+    found = select(s.c.id).where(owner, s.c.kind.in_(("env", PROVIDER_KIND)), s.c.deleted_at.is_(None))
     return found if secret_ids is None else found.where(s.c.id.in_(secret_ids))
 
 
@@ -140,7 +146,7 @@ def _taken(owned):
     cl, r = tables.credential_leases, tables.runs
     took = (
         select(cl.c.secret_id, cl.c.run_id, func.min(cl.c.issued_at).label("at"))
-        .where(cl.c.provider == "secret", cl.c.secret_id.in_(owned))
+        .where(cl.c.provider.in_(TAKEN_BY), cl.c.secret_id.in_(owned))
         .group_by(cl.c.secret_id, cl.c.run_id)
         .having(func.min(cl.c.issued_at) >= func.now() - WEEK)
         .subquery()
@@ -167,7 +173,7 @@ def _by_principal(owned, principal_id: int | None):
     took = (
         select(cl.c.secret_id, cl.c.run_id, principal.label("principal_id"), func.min(cl.c.issued_at).label("at"))
         .join_from(cl, r, r.c.id == cl.c.run_id)
-        .where(cl.c.provider == "secret", cl.c.secret_id.in_(owned))
+        .where(cl.c.provider.in_(TAKEN_BY), cl.c.secret_id.in_(owned))
         .group_by(cl.c.secret_id, cl.c.run_id, principal)
         .having(func.min(cl.c.issued_at) >= func.least(month_start(), func.now() - WEEK))
     )
@@ -207,15 +213,21 @@ def _cost(row) -> PrincipalCost:
 
 
 def _held(owned, principal_id: int | None):
-    ra, r, projects = tables.run_accounts, tables.runs, tables.projects
-    statement = (
-        select(ra.c.secret_id, r.c.id, projects.c.name, r.c.state)
-        .join_from(ra, r, r.c.id == ra.c.run_id)
-        .join(projects, projects.c.id == r.c.project_id)
-        .where(ra.c.secret_id.in_(owned), r.c.state.in_(runs.HELD_STATES))
-        .order_by(r.c.id)
-    )
-    return statement if principal_id is None else statement.where(r.c.dispatched_by == principal_id)
+    """The runs a worker holds now with each account: those that took it (run_accounts), and those whose key of the
+    model gateway reaches it (a gateway lease of the account not revoked)."""
+    ra, cl, r, projects = tables.run_accounts, tables.credential_leases, tables.runs, tables.projects
+
+    def holding(table, *more):
+        statement = (
+            select(table.c.secret_id, r.c.id, projects.c.name, r.c.state)
+            .join_from(table, r, r.c.id == table.c.run_id)
+            .join(projects, projects.c.id == r.c.project_id)
+            .where(table.c.secret_id.in_(owned), r.c.state.in_(runs.HELD_STATES), *more)
+        )
+        return statement if principal_id is None else statement.where(r.c.dispatched_by == principal_id)
+
+    found = union(holding(ra), holding(cl, cl.c.provider == GATEWAY, cl.c.revoked_at.is_(None))).subquery()
+    return select(found).order_by(found.c.id, found.c.secret_id)
 
 
 def _usage(stored) -> AccountUsage | None:

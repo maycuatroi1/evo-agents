@@ -145,6 +145,7 @@ TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
 TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
 TABLES |= pg.POOL_TABLES  # migration 0148
+TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0151
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -226,8 +227,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_eighty_three_tables(hub_db):
-    assert len(TABLES) == 183  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eighty_four_tables(hub_db):
+    assert len(TABLES) == 184  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -248,6 +249,7 @@ def test_a_fresh_database_gets_the_one_hundred_and_eighty_three_tables(hub_db):
         ("browser_identities", "sealed_key"),
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
+        ("credential_leases", "token_hash"),
         ("marketing_posts", "screenshot"),
         ("secrets", "nonce"),
         ("secrets", "sealed"),
@@ -3725,3 +3727,86 @@ def test_0149_adds_worker_taints_and_run_selectors_and_going_back_drops_them(hub
     assert "taints" not in columns(hub_db, "workers")
     assert not {"selector", "tolerations"} & columns(hub_db, "runs")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0149") :]
+
+
+def test_0151_keeps_provider_accounts_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0150")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0151")
+    s, p = hub_tables.secrets, hub_tables.provider_accounts
+    key = {"sealed": b"x" * 32, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    made = insert(s).values(owner_id=ids["user"], name="openrouter-main", kind="provider", **key).returning(s.c.id)
+    endpoint = {"provider": "openrouter", "base_url": "https://openrouter.ai/api/v1", "api_format": "openai"}
+    with live.connect(hub_db) as conn:
+        secret_id = one(conn, made)
+        conn.execute(insert(p).values(secret_id=secret_id, **endpoint, models=["a/b"]))
+    bad_rows = (
+        endpoint | {"api_format": "soap"},
+        endpoint | {"base_url": "http://openrouter.ai/api/v1"},
+        endpoint | {"models": {"a": 1}},
+    )
+    for number, bad in enumerate(bad_rows):
+        other = insert(s).values(owner_id=ids["user"], name=f"bad-{number}", kind="provider", **key)
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            new_id = one(conn, other.returning(s.c.id))
+            conn.execute(insert(p).values(secret_id=new_id, **bad))
+    assert query(hub_db, select(p.c.provider, p.c.models)) == [("openrouter", ["a/b"])]
+    move_to(hub_db, "0150", down=True)
+    assert "provider_accounts" not in tables(hub_db)
+    assert query(hub_db, select(func.count()).select_from(s).where(s.c.kind == "provider")) == [(0,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0151") :]
+
+
+def test_0152_takes_gateway_leases_and_runs_and_going_back_refuses_while_one_is_recorded(hub_db):
+    move_to(hub_db, "0151")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0152")
+    run = {
+        "project_id": ids["project"],
+        "kind": "judge",
+        "dispatched_by": ids["user"],
+        "dispatched_via": "machine",
+        "requested_runtime": "claude-code",
+        "runtime": "claude-code",
+        "mode": "headless",
+        "approval": "auto",
+        "timeout_s": 600,
+        "repos": [{"repo": "lumen", "branch": "plan/report"}],
+        "gateway_provider": "openrouter",
+    }
+    cl = t.credential_leases
+    key = {"provider": "gateway", "target": "openrouter/auto", "external_id": "key-1", "worker_id": None}
+    sealed = {"sealed_value": b"x" * 32, "nonce": b"n" * 12, "key_id": "0123abcd", "token_hash": b"h" * 32}
+    with live.connect(hub_db) as conn:
+        worker_id = one(conn, _worker_row(ids, ids["token"], "mac-mini", 1))
+        run_id = one(conn, insert(t.runs).values(run).returning(t.runs.c.id))
+        key["worker_id"] = worker_id
+        made = insert(cl).values(run_id=run_id, **key, **sealed, expires_at=func.now() + timedelta(hours=1))
+        conn.execute(made)
+    for bad in (
+        {"gateway_provider": "Open Router"},  # runs_gateway_provider_check
+    ):
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            conn.execute(insert(t.runs).values(run | bad))
+    for bad in (
+        sealed | {"token_hash": b"short"},  # a SHA-256
+        {"token_hash": b"h" * 32, "provider": "secret"},  # a token is a gateway lease's alone
+    ):
+        row = {"run_id": run_id, **key, **bad, "expires_at": func.now() + timedelta(hours=1)}
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            conn.execute(insert(cl).values(row))
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
+        conn.execute(insert(cl).values(run_id=run_id, **key, **sealed, expires_at=func.now() + timedelta(hours=1)))
+    with pytest.raises(Exception, match="a run of a gateway model or a gateway lease is recorded"):
+        move_to(hub_db, "0151", down=True)
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(cl).where(cl.c.run_id == run_id))
+        conn.execute(update(t.runs).values(gateway_provider=None).where(t.runs.c.id == run_id))
+    move_to(hub_db, "0151", down=True)
+    assert "token_hash" not in columns(hub_db, "credential_leases") and "gateway_provider" not in columns(
+        hub_db, "runs"
+    )
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0152") :]

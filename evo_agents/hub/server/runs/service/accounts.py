@@ -1,11 +1,13 @@
 """The account a member picks by hand for a run (``docs/credentials.md``, section "Accounts"): ``account`` on the body
 of a dispatch of steps, a plan run or an author run, and on a rerun, where none keeps the one picked for the run rerun.
 
-A name is one of the dispatcher's own live env secrets, bound to the run's project: a name that is no env secret of
-theirs is 404, whoever's it is; one past its end, paused, not bound to the project, or bound there only to workers
+A name is one of the dispatcher's own live env secrets, or provider accounts (``provider_accounts``), bound to the
+run's project: a name that is neither of theirs is 404, whoever's it is; one past its end, paused, not bound to the project, or bound there only to workers
 the run might not go to, is 422 saying why. The pick is written to run_accounts with how ``manual`` in the
 transaction that queues the run, and ``account_choice.choose_accounts`` keeps it on every ask for the run's leases;
-an account picked by hand never fails over to another one. Audit rows name it by its secret's id, never its name.
+an account picked by hand never fails over to another one. A provider account picked is written for the variable
+``gateway:<prefix>`` (``gateway_runs.PICK_PREFIX``): the run's model must be one of its prefix, and its gateway key
+reaches that account alone (``gateway_accounts``). Audit rows name it by its secret's id, never its name.
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ from fastapi import HTTPException
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import gateway_runs, tables
+from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.models.placement import POOL_KEY
 from evo_agents.hub.server.security import Principal
@@ -37,7 +40,7 @@ class Picked:
 
 
 def _secret_query(owner_id: int):
-    s = tables.secrets
+    s, p = tables.secrets, tables.provider_accounts
     return (
         select(
             s.c.id,
@@ -48,8 +51,10 @@ def _secret_query(owner_id: int):
             ((s.c.expires_at <= func.now()) & tables.accounts.c.oauth_sealed.is_(None)).label("ended"),
             s.c.expires_at,
             tables.accounts.c.paused_at,
+            p.c.provider,
         )
         .outerjoin_from(s, tables.accounts, tables.accounts.c.secret_id == s.c.id)
+        .outerjoin(p, p.c.secret_id == s.c.id)
         .where(s.c.owner_id == owner_id)
     )
 
@@ -141,12 +146,12 @@ async def pick_account(
     query = _secret_query(user.user_id)
     query = query.where(s.c.id == secret_id) if secret_id is not None else query.where(s.c.name == name)
     row = (await conn.execute(query)).one_or_none()
-    if row is None or row.kind != "env" or row.deleted_at is not None:
+    if row is None or row.kind not in ("env", PROVIDER_KIND) or row.deleted_at is not None:
         label = name if row is None else row.name
         raise HTTPException(
             404,
-            f"you have no env secret named {label} on this hub, and an account is one of your env secrets: see "
-            "`evo-agents hub account list`; nothing was dispatched",
+            f"you have no env secret named {label} on this hub, nor a provider account, and an account is one of "
+            "them: see `evo-agents hub account list`; nothing was dispatched",
         )
     problem = None
     if row.ended:
@@ -159,6 +164,11 @@ async def pick_account(
         problem = _unbound(row.name, access.name, bound, pinned, pool)
     if problem is not None:
         raise HTTPException(422, f"{problem}, or pick another account; nothing was dispatched")
+    if row.kind == PROVIDER_KIND:
+        prefix = gateway_runs.prefix_of(row.provider or "", row.id)
+        if prefix is None:
+            raise HTTPException(422, f"account {row.name} serves no model through the gateway; nothing was dispatched")
+        return Picked(row.id, gateway_runs.PICK_PREFIX + prefix, row.name)
     return Picked(row.id, row.env_var, row.name)
 
 

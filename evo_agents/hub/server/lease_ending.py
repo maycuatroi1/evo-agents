@@ -121,7 +121,10 @@ def _pending_tokens(run_id: int | None, worker_id: int | None, batch: int):
     ``run_id`` and of worker ``worker_id`` when given."""
     cl = tables.credential_leases
     statement = select(cl.c.id).where(
-        cl.c.sealed_value.is_not(None), cl.c.revoked_at.is_not(None), cl.c.expires_at > func.now()
+        cl.c.provider == "github-app",  # a gateway key is the gateway's to revoke (``gateway_leases.sweep``)
+        cl.c.sealed_value.is_not(None),
+        cl.c.revoked_at.is_not(None),
+        cl.c.expires_at > func.now(),
     )
     if run_id is not None:
         statement = statement.where(cl.c.run_id == run_id)
@@ -200,4 +203,5 @@ async def revoke_tokens(
 async def drop_expired(conn: AsyncConnection) -> int:
     """Drop the sealed values of the GitHub tokens past their end, which GitHub no longer takes; how many."""
     cl = tables.credential_leases
-    return (await conn.execute(_drop_sealed(cl.c.sealed_value.is_not(None), cl.c.expires_at <= func.now()))).rowcount
+    ended = (cl.c.provider == "github-app", cl.c.sealed_value.is_not(None), cl.c.expires_at <= func.now())
+    return (await conn.execute(_drop_sealed(*ended))).rowcount

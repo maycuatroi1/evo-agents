@@ -20,8 +20,10 @@ run`` prints is parsed here.
 - The model is the run's ``model``, else ``EVO_WORKER_OPENCODE_MODEL``, else the ``model`` of the owner's opencode
   config, as ``provider/model``, split at its first ``/`` into the ``providerID`` and ``modelID`` of each prompt; a
   model the server does not list fails the start with that reason, since opencode would only answer with an unknown
-  error. The run's ``effort`` goes as the model ``variant``. For the heartbeat, ``models`` lists what ``opencode
-  models`` prints: ``provider/model``, one a line, for the providers the owner set up.
+  error. The run's ``effort`` goes as the model ``variant``. A run whose model goes through the hub's gateway route
+  runs on the provider ``gateway.PROVIDER`` its OPENCODE_CONFIG_CONTENT names (``gateway.opencode_model``). For the
+  heartbeat, ``models`` lists what ``opencode models`` prints: ``provider/model``, one a line, for the providers the
+  owner set up.
 - The turn is over when the session goes idle (``session.status`` ``idle``) and every prompt sent has reached the
   session; ``session.error`` (``MessageAbortedError`` after an abort, a provider error) fails it. The exit code of
   nothing is read.
@@ -62,7 +64,7 @@ from pathlib import Path
 from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.environments import HOST_ENVIRONMENT
-from evo_agents.worker.runtimes import profiles
+from evo_agents.worker.runtimes import gateway, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -411,7 +413,7 @@ class OpencodeAdapter(QueueAdapter):
             return json.loads(text) if text.strip() else None
 
     async def _resolve_model(self) -> tuple[str, str]:
-        name = profiles.session_model(self.context, self.runtime)
+        name = gateway.opencode_model(self.context) or profiles.session_model(self.context, self.runtime)
         hint = "set EVO_WORKER_OPENCODE_MODEL to provider/model (the selftest takes --model)"
         if self._run_model():
             hint = "dispatch it with a model as `opencode models` lists it, provider/model"

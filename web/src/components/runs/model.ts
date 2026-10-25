@@ -216,13 +216,14 @@ export function modelSuggestions(workers: readonly Pick<Worker, "runtimes">[], r
 export type ModelProblem = "line" | "long" | "runtime";
 
 /** The model as the API takes it (trimmed; null for none), or the problem with it. */
-export function readModel(text: string, runtime: RequestedRuntime): { model: string | null; problem: ModelProblem | null } {
+export function readModel(text: string, runtime: RequestedRuntime, gateway: readonly string[] = []): { model: string | null; problem: ModelProblem | null } {
   const model = text.trim();
   if (!model) return { model: null, problem: null };
   // The API's LINE pattern: one line, without control characters.
   if (/[\u0000-\u001f\u007f]/.test(model)) return { model, problem: "line" };
   if ([...model].length > MAX_MODEL_CHARS) return { model, problem: "long" };
-  if (runtime === "any") return { model, problem: "runtime" };
+  // A provider's model (`gateway`) runs through the hub's model gateway, which picks the runtime for any.
+  if (runtime === "any" && !gateway.includes(model)) return { model, problem: "runtime" };
   return { model, problem: null };
 }
 
