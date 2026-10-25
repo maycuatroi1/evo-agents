@@ -60,11 +60,12 @@ test.describe("knowledge graph explorer", () => {
     const drawn = Number(await canvas.getAttribute("data-nodes"));
     expect(drawn).toBeGreaterThan(1);
     await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
-    // Zooming in makes room: labels keep their size on screen, so no fewer show.
-    const before = (await explorerLabels(page)).shown;
+    // Labels keep their size on screen when zoomed in, and still never cover each other.
+    const before = await explorerLabels(page);
+    expect(before.smallest).toBeGreaterThanOrEqual(10);
     await page.getByRole("button", { name: "Phóng to" }).click();
     await page.getByRole("button", { name: "Phóng to" }).click();
-    await expect.poll(async () => (await explorerLabels(page)).shown).toBeGreaterThanOrEqual(before);
+    await expect.poll(async () => (await explorerLabels(page)).smallest).toBe(before.smallest);
     await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
 
     // A relation selects its node; expanding it adds its own neighbours.
