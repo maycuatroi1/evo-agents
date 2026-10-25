@@ -15,13 +15,10 @@ from __future__ import annotations
 import logging
 from datetime import UTC
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.core_plugins.marketing import browser, flow, metrics, push, replies, settings, store, weekly
-from evo_agents.hub import tables
-from evo_agents.hub.config import HubConfig
-from evo_agents.hub.plugin_calls import CoreContext
+from evo_agents.hub.server import core_plugin_api as hub
 
 log = logging.getLogger(__name__)
 
@@ -30,15 +27,16 @@ async def run_project(
     engine: AsyncEngine,
     project: str,
     *,
-    hub_config: HubConfig | None = None,
+    hub_config=None,
     runtime: flow.Runtime | None = None,
     days: int = push.DEFAULT_DAYS,
 ) -> dict:
     """One pass over ``project``; what it did, counted. Nothing at all when the project does not enable the plugin."""
     runtime = runtime or flow.Runtime()
     async with engine.begin() as conn:
-        project_id = await conn.scalar(select(tables.projects.c.id).where(tables.projects.c.name == project))
-        if project_id is None or await settings.enabled(conn, project_id) is None:
+        try:
+            project_id = (await hub.read_project(conn, store.handle(), project)).id
+        except hub.Refused:  # no such project, or it does not enable the plugin
             return {}
         cfg = await settings.config(conn, hub_config, project)
         waiting = [post.id for post in await store.open_posts(conn, project_id)]
@@ -57,7 +55,7 @@ async def run_project(
         done["metrics"] = await metrics.collect(
             conn, cfg, project, project_id, runtime.transport, runtime.now().astimezone(UTC)
         )
-        done["signals"] = await push.push_project(conn, project_id, days)
+        done["signals"] = await push.push_project(conn, project, project_id, days)
     async with engine.begin() as conn:
         done["replies"] = await replies.collect(conn, cfg, project_id, runtime.transport, runtime.now().astimezone(UTC))
     async with engine.begin() as conn:
@@ -65,7 +63,7 @@ async def run_project(
     return done
 
 
-async def run(params: dict, context: CoreContext) -> dict:
+async def run(params: dict, context: hub.Context) -> dict:
     """The job ``advance``: one pass over each project ``params`` names (``projects``)."""
     days = getattr(context.config, "signal_days", None)
     found = {}

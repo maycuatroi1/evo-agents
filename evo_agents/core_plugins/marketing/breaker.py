@@ -19,9 +19,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.marketing import store
-from evo_agents.hub import tables
-from evo_agents.hub.server import audit, notifications
+from evo_agents.core_plugins.marketing import store, tables
+from evo_agents.hub.server import core_plugin_api as hub
 
 AUTO_KILL_CHANNELS = 3  # channels opened within AUTO_KILL_WINDOW
 AUTO_KILL_WINDOW = timedelta(hours=24)
@@ -33,17 +32,11 @@ NOTICE = "plugin_notice"
 
 async def tell(conn: AsyncConnection, project_id: int, project: str, title: str, body: str) -> None:
     """The project's admins read ``title`` in the Inbox, and on Telegram where they linked it."""
-    for user_id in await store.project_admins(conn, project_id):
-        await notifications.notify(
-            conn,
-            user_id=user_id,
-            kind="notice",
-            notice_kind=NOTICE,
-            title=title,
-            body=body,
-            project_id=project_id,
-            details={"plugin": store.PLUGIN, "project": project},
-        )
+    await hub.notify_admins(conn, store.handle(), project, title=title, body=body)
+
+
+async def _audit(conn: AsyncConnection, project: str, action: str, target: str, by) -> None:
+    await hub.record_audit(conn, store.handle(), project, action, target, actor=by)
 
 
 async def trip(
@@ -54,14 +47,7 @@ async def trip(
     if not await store.pause_channel(conn, channel.id, reason):
         return False
     label = f"{channel.channel}/{channel.account}"
-    await audit.record(
-        conn,
-        actor_id=by,
-        token_id=None,
-        action="marketing.breaker.open",
-        target=f"channel:{channel.id}",
-        project_id=project_id,
-    )
+    await _audit(conn, project, "marketing.breaker.open", f"channel:{channel.id}", by)
     await tell(conn, project_id, project, f"Marketing: breaker open on {label}", reason)
     since = datetime.now(UTC) - AUTO_KILL_WINDOW
     if await store.open_channels(conn, project_id, since) >= AUTO_KILL_CHANNELS:
@@ -71,52 +57,30 @@ async def trip(
     return True
 
 
-async def kill(
-    conn: AsyncConnection, project_id: int, project: str, by: int | None, reason: str, *, token_id: int | None = None
-) -> bool:
-    """Set the kill switch of the project; whether it changed."""
-    if not await store.set_killed(conn, project_id, True, reason, by):
+async def kill(conn: AsyncConnection, project_id: int, project: str, by: hub.Session | None, reason: str) -> bool:
+    """Set the kill switch of the project, by the member of session ``by`` or by the plugin itself (None); whether it
+    changed."""
+    if not await store.set_killed(conn, project_id, True, reason, None if by is None else by.user_id):
         return False
-    await audit.record(
-        conn,
-        actor_id=by,
-        token_id=token_id,
-        action="marketing.kill",
-        target=f"project:{project_id}",
-        project_id=project_id,
-    )
+    await _audit(conn, project, "marketing.kill", f"project:{project_id}", by)
     await tell(conn, project_id, project, "Marketing: kill switch set", reason)
     return True
 
 
-async def unkill(conn: AsyncConnection, project_id: int, project: str, by: int, token_id: int | None) -> bool:
+async def unkill(conn: AsyncConnection, project_id: int, project: str, by: hub.Session) -> bool:
     if not await store.set_killed(conn, project_id, False, None, None):
         return False
-    await audit.record(
-        conn,
-        actor_id=by,
-        token_id=token_id,
-        action="marketing.resume",
-        target=f"project:{project_id}",
-        project_id=project_id,
-    )
+    await _audit(conn, project, "marketing.resume", f"project:{project_id}", by)
     await tell(conn, project_id, project, "Marketing: kill switch cleared", "An admin resumed the project's channels.")
     return True
 
 
-async def close(conn: AsyncConnection, project_id: int, channel, by: int, token_id: int | None) -> bool:
+async def close(conn: AsyncConnection, project: str, channel, by: hub.Session) -> bool:
     """Close the breaker of ``channel`` by hand; whether it was open."""
     if channel.paused_at is None:
         return False
     await store.update_channel(conn, channel.id, paused_at=None, paused_reason=None)
-    await audit.record(
-        conn,
-        actor_id=by,
-        token_id=token_id,
-        action="marketing.breaker.close",
-        target=f"channel:{channel.id}",
-        project_id=project_id,
-    )
+    await _audit(conn, project, "marketing.breaker.close", f"channel:{channel.id}", by)
     return True
 
 

@@ -6,11 +6,18 @@ Each document carries the label of its row.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from evo_agents.core_plugins.crm import store
-from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.kg.ids import utc_text
+from evo_agents.hub.server import core_plugin_api as hub
 
 KIND = "contact"  # the kind in an item's id: plugin.crm:contact:<login>
+
+
+def utc_text(value: datetime) -> str:
+    """A time as the graph keeps it (as ``evo_agents.kg.ids.utc_text`` writes it), which sorts as text in time
+    order."""
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def contact_item(source: str, row: store.Contact) -> dict:
@@ -28,11 +35,11 @@ def contact_item(source: str, row: store.Contact) -> dict:
     }
 
 
-async def kg_source(params: dict, context: CoreContext) -> dict:
+async def kg_source(params: dict, context: hub.Context) -> dict:
     """The contribution ``contacts``: ``params`` names the source and the project."""
     if context.engine is None or context.project_id is None:
         return {"items": [], "identifiers": []}
-    async with context.engine.begin() as conn:
+    async with hub.transaction(context) as conn:
         rows = await store.contacts(conn, context.project_id, limit=None)
     return {"items": [contact_item(params["source"], row) for row in rows], "identifiers": []}
 

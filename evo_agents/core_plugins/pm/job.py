@@ -30,26 +30,20 @@ import logging
 from datetime import UTC, date, datetime
 from urllib.parse import quote
 
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.core_plugins.pm import reads, report, settings
+from evo_agents.core_plugins.pm import reads, report, settings, tables
 from evo_agents.core_plugins.pm.facts import Config, Inputs
-from evo_agents.hub import signals, tables
-from evo_agents.hub.plugin_calls import CoreContext, effective_grant, enabled_in
-from evo_agents.hub.server.chat_access import agent_projects
-from evo_agents.hub.server.chat_runs import hub_reply
-from evo_agents.hub.server.notifications import notify
-from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server import core_plugin_api as hub
 
 log = logging.getLogger(__name__)
 
 PLUGIN = settings.PLUGIN
 JOB = "daily"
 CRON = "*/15 * * * *"
-DIGEST, ESCALATION = "digest", "escalation"  # evo_agents.hub.tables_pm.KINDS
-NOTICE_DAILY, NOTICE_ESCALATION = "pm_daily", "pm_escalation"  # evo_agents.hub.runs.NOTICE_KINDS
+DIGEST, ESCALATION = tables.KINDS
+NOTICE_DAILY, NOTICE_ESCALATION = "pm_daily", "pm_escalation"  # the manifest's notice_kinds
 SEND, WRITE = "notifications:send", "chats:write"
 COUNTED = ("done_tasks", "done_use_cases", "late", "review", "stale", "blocked", "escalate")
 CODED = ("late", "stale", "escalate")  # the sections whose task codes the message names
@@ -84,16 +78,10 @@ def digest_text(project: str, day: date, daily: dict) -> str:
     return "\n".join(lines)
 
 
-async def _grants(conn: AsyncConnection, project_id: int) -> dict[str, tuple[int, str, str | None]]:
+async def _grants(conn: AsyncConnection, project: str) -> dict[str, tuple[int, str, str | None]]:
     """login -> (user id, role, max level) of each member with a grant on the project."""
-    g, u = tables.grants, tables.users
-    query = (
-        select(u.c.login, u.c.id, g.c.role, g.c.max_level)
-        .join_from(g, u, u.c.id == g.c.user_id)
-        .where(g.c.project_id == project_id)
-        .order_by(u.c.login)
-    )
-    return {row.login: (row.id, row.role, row.max_level) for row in await conn.execute(query)}
+    found = await hub.read_grants(conn, settings.handle(), project)
+    return {g.login: (g.user_id, g.role, g.max_level) for g in found}
 
 
 def managers(grants: dict, config: Config, project: str) -> list[str]:
@@ -120,61 +108,56 @@ async def _claim(conn: AsyncConnection, project_id: int, day: date, kind: str, k
 class Reach:
     """What each recipient of a project's job may see: their report's facts, read with their own grant, once."""
 
-    def __init__(self, conn: AsyncConnection, project_id: int, rules, config: Config, day: date, grants: dict):
-        self.conn, self.project_id, self.rules = conn, project_id, rules
+    def __init__(
+        self, conn: AsyncConnection, project: str, levels: tuple[str, ...], config: Config, day: date, grants: dict
+    ):
+        self.conn, self.project, self.levels = conn, project, levels
         self.config, self.day, self.grants = config, day, grants
         self._seen: dict[str, Inputs] = {}
 
     async def of(self, login: str) -> Inputs:
         if login not in self._seen:
             _, role, max_level = self.grants[login]
-            access = ProjectAccess(self.project_id, self.rules, role, max_level)
-            self._seen[login] = await reads.load(self.conn, access, None, self.config, self.day)
+            access = await reads.reader_of(self.conn, self.project, role, max_level, None)
+            self._seen[login] = await reads.load(self.conn, access, self.config, self.day)
         return self._seen[login]
 
     async def top(self) -> Inputs:
         """The facts as the project's top grant reads them: what a chat's message counts."""
-        access = ProjectAccess(self.project_id, self.rules, "admin", self.rules.levels[-1])
-        return await reads.load(self.conn, access, None, self.config, self.day)
+        access = await reads.reader_of(self.conn, self.project, "admin", self.levels[-1], None)
+        return await reads.load(self.conn, access, self.config, self.day)
 
 
-async def _tell_digest(conn: AsyncConnection, project_id: int, project: str, reach: Reach, people: list[str]) -> int:
+async def _tell_digest(conn: AsyncConnection, project: str, reach: Reach, people: list[str]) -> int:
     told = 0
     for login in people:
         daily = report.daily(await reach.of(login), reach.day)
-        await notify(
+        await hub.notify(
             conn,
-            user_id=reach.grants[login][0],
-            kind="notice",
-            notice_kind=NOTICE_DAILY,
+            settings.handle(),
+            project,
+            NOTICE_DAILY,
+            users=[reach.grants[login][0]],
             title=f"Daily digest of {project} for {reach.day.isoformat()}",
             body=digest_text(project, reach.day, daily),
-            project_id=project_id,
-            details={"date": reach.day.isoformat(), "counts": counts(daily), "tasks": codes(daily)},
             link=link(project),
+            details={"date": reach.day.isoformat(), "counts": counts(daily), "tasks": codes(daily)},
         )
         told += 1
     return told
 
 
-async def _chat_ready(conn: AsyncConnection, chat_id: int, project_id: int) -> bool:
-    """Whether chat ``chat_id`` is still there with an agent of the project."""
-    if await conn.scalar(select(tables.chats.c.id).where(tables.chats.c.id == chat_id)) is None:
-        return False
-    return any(found.id == project_id for found in await agent_projects(conn, chat_id))
-
-
-async def _post_digest(conn: AsyncConnection, project_id: int, project: str, reach: Reach) -> bool:
+async def _post_digest(conn: AsyncConnection, project: str, reach: Reach) -> bool:
     chat_id = reach.config.digest_chat
     if chat_id is None:
         return False
-    if not await _chat_ready(conn, chat_id, project_id):
+    daily = report.daily(await reach.top(), reach.day)
+    posted = await hub.post_in_chat(conn, settings.handle(), project, chat_id, digest_text(project, reach.day, daily))
+    if posted is None:
         log.warning(
             "the digest chat is gone or has no agent of the project", extra={"project": project, "chat": chat_id}
         )
         return False
-    daily = report.daily(await reach.top(), reach.day)
-    await hub_reply(conn, chat_id, None, digest_text(project, reach.day, daily))
     return True
 
 
@@ -204,15 +187,15 @@ async def _escalate(
         for login in people:
             if not any(t.ref == task.ref and t.visible for t in (await reach.of(login)).tasks):
                 continue
-            await notify(
+            await hub.notify(
                 conn,
-                user_id=reach.grants[login][0],
-                kind="notice",
-                notice_kind=NOTICE_ESCALATION,
+                settings.handle(),
+                project,
+                NOTICE_ESCALATION,
+                users=[reach.grants[login][0]],
                 title=f"{task.ref} has been blocked for {age} working days in {project}",
-                project_id=project_id,
-                details={"task": task.ref, "kind": blocker.kind, "age_days": age, "date": reach.day.isoformat()},
                 link=link(project),
+                details={"task": task.ref, "kind": blocker.kind, "age_days": age, "date": reach.day.isoformat()},
             )
             done["told"] += 1
     return done
@@ -221,13 +204,13 @@ async def _escalate(
 async def run_project(engine: AsyncEngine, project: str, *, now: datetime | None = None) -> dict:
     """One pass of the job over ``project``; what it did, counted, or why it did nothing."""
     async with engine.begin() as conn:
-        project_id = await conn.scalar(select(tables.projects.c.id).where(tables.projects.c.name == project))
-        row = await enabled_in(conn, PLUGIN, project_id) if project_id is not None else None
-        if row is None:
+        try:
+            project_id = (await hub.read_project(conn, settings.handle(), project)).id
+        except hub.Refused:
             return {}
         try:
-            config = await settings.config(conn, project_id, project)
-            await settings.task_groups(conn, project_id, project)
+            config = await settings.config(conn, project)
+            await settings.task_groups(conn, project)
         except settings.PmError as exc:
             log.warning("pm cannot run for the project", extra={"project": project, "why": exc.message})
             return {"skipped": exc.message}
@@ -237,25 +220,27 @@ async def run_project(engine: AsyncEngine, project: str, *, now: datetime | None
             return {"skipped": "not a working day", "date": day.isoformat()}
         if local.time().replace(tzinfo=None) < config.digest_at:
             return {"skipped": "before digest_at", "date": day.isoformat()}
-        granted = effective_grant(row)
-        sending, posting = SEND in granted, WRITE in granted
-        grants = await _grants(conn, project_id)
-        reach = Reach(conn, project_id, await signals.project_rules(conn, project_id), config, day, grants)
+        plugin = settings.handle()
+        sending = await hub.granted(conn, plugin, project, SEND)
+        posting = await hub.granted(conn, plugin, project, WRITE)
+        grants = await _grants(conn, project)
+        levels = (await hub.read_visibility(conn, plugin, project, max_level=None)).levels
+        reach = Reach(conn, project, levels, config, day, grants)
         managing = managers(grants, config, project)
         done: dict = {"date": day.isoformat()}
         if (sending or posting) and await _claim(conn, project_id, day, DIGEST):
             done["digest"] = {"told": 0, "posted": False}
             if sending:
-                done["digest"]["told"] = await _tell_digest(conn, project_id, project, reach, managing)
+                done["digest"]["told"] = await _tell_digest(conn, project, reach, managing)
             if posting:
-                done["digest"]["posted"] = await _post_digest(conn, project_id, project, reach)
+                done["digest"]["posted"] = await _post_digest(conn, project, reach)
         if sending:
             done.update(await _escalate(conn, project_id, project, reach, managing))
     log.info("pm daily", extra={"project": project, **done})
     return done
 
 
-async def run(params: dict, context: CoreContext) -> dict:
+async def run(params: dict, context: hub.Context) -> dict:
     """The job ``daily``: one pass over each project ``params`` names (``projects``)."""
     found = {}
     for project in params.get("projects") or []:

@@ -15,9 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.marketing import adapters, breaker, registry, store
+from evo_agents.core_plugins.marketing import adapters, breaker, registry, store, tables
 from evo_agents.core_plugins.marketing.settings import Config
-from evo_agents.hub import tables
 
 SPANS = {"24h": timedelta(hours=24), "7d": timedelta(days=7)}
 

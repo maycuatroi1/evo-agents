@@ -15,7 +15,8 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from evo_agents.core_plugins.crm import intake
-from evo_agents.hub import tables
+from evo_agents.core_plugins.crm import tables as crm
+from evo_agents.hub.server import core_plugin_api as hub
 
 INVITE, DRAFT = "growth_invite", "growth_draft"
 FIRST_REPLY = ("issue", "pull_request", "discussion")
@@ -49,12 +50,12 @@ def first_reply_task(login: str, kind: str, ref: str, url: str | None) -> str:
 async def _login(context, contact_id) -> str | None:
     if not isinstance(contact_id, int):
         return None
-    c = tables.crm_contacts.c
-    async with context.engine.connect() as conn:
+    c = crm.contacts.c
+    async with hub.transaction(context) as conn:
         return await conn.scalar(select(c.login).where(c.id == contact_id))
 
 
-async def growth(params: dict, context) -> dict:
+async def growth(params: dict, context: hub.Context) -> dict:
     """The handler of rule ``growth``: one work item of @community for a new touch."""
     event = params["event"] or {}
     payload = event.get("payload") or {}

@@ -28,12 +28,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.marketing import breaker, store
+from evo_agents.core_plugins.marketing import breaker, store, tables
 from evo_agents.core_plugins.marketing.outcome import finish
 from evo_agents.core_plugins.marketing.settings import Config
-from evo_agents.hub import tables
-from evo_agents.hub.marketing_browser import OUTCOMES, PROFILES
-from evo_agents.hub.tables_marketing import MAX_SHOT_BYTES
+from evo_agents.core_plugins.marketing.tables import BROWSER_NEEDS_MEDIA, MAX_SHOT_BYTES, OUTCOMES
 
 STUCK = timedelta(minutes=30)  # a claimed post with no report after this has failed
 UNCLAIMED = timedelta(hours=24)  # a queued post no script claimed after this is a draft
@@ -44,18 +42,17 @@ FAILURE_KIND = {"captcha": "locked", "lockout": "locked", "session_expired": "lo
 def fallback(cfg: Config, channel) -> bool:
     """Whether an API channel with no approved credential (Reddit, LinkedIn before their API is approved) posts through
     the browser instead: its account has a sealed session and its page takes text alone."""
-    profile = PROFILES.get(channel.channel)
-    return profile is not None and not profile.needs_media and cfg.session(channel.channel) is not None
+    return BROWSER_NEEDS_MEDIA.get(channel.channel) is False and cfg.session(channel.channel) is not None
 
 
 async def not_ready(conn: AsyncConnection, cfg: Config, post, channel) -> str | None:
     """Why a post that passed the gate cannot be queued for the browser, or None when it can."""
-    profile = PROFILES.get(channel.channel)
+    needs_media = BROWSER_NEEDS_MEDIA.get(channel.channel)
     if post.kind == "reply":
         return "the browser adapter posts original posts only, never a reply"
-    if profile is None:
+    if needs_media is None:
         return f"no browser profile for {channel.channel}: a person posts it"
-    if profile.needs_media:
+    if needs_media:
         return f"{channel.channel} takes a video, which the browser adapter does not upload: a person posts it"
     if channel.session_state == "stale":
         return f"the browser session of {channel.channel} expired: {LOGIN_HINT}"

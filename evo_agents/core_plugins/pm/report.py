@@ -22,7 +22,7 @@ from evo_agents.core_plugins.pm.facts import (
     Task,
 )
 from evo_agents.core_plugins.pm.outcome import outcome_of
-from evo_agents.hub.access import has_role
+from evo_agents.hub.server import core_plugin_api as hub
 
 SECTIONS = ("done_use_cases", "done_tasks", "sprint", "late", "review", "stale", "blocked", "escalate")
 HISTORY, CREATED = "history", "created"
@@ -182,7 +182,7 @@ class Daily:
     def load(self) -> list[dict]:
         config, found = self.data.config, []
         for member in self.data.members:
-            if not has_role(member.role, "writer"):
+            if not hub.has_role(member.role, "writer"):
                 continue
             mine = [t for t in self.data.tasks if member.login in t.assignees]
             doing = [t for t in mine if t.group == DOING]

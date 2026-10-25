@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from evo_agents.hub.tables_crm import STAGES
+from evo_agents.core_plugins.crm.tables import STAGES
 
 RETAIN_FROM_DAYS = 21
 RETAIN_TO_DAYS = 28

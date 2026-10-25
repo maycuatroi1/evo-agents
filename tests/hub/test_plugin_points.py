@@ -696,11 +696,11 @@ def test_core_plugin_page_is_native_and_framed_nowhere(notes):
     (plugin,) = [plugin for plugin in listed.json() if not plugin["builtin"]]  # beside the hub's features
     assert (plugin["name"], plugin["tier"], plugin["title"], plugin["enabled"]) == ("notes", "core", "Notes", False)
     page = {"name": "entries", "title": "Notes", "description": "", "icon": "notebook-pen", "menu": True}
-    assert plugin["pages"] == [{**page, "native": True, "url": None}]
+    assert plugin["pages"] == [{**page, "native": True, "url": None, "slot": None}]
 
     enable(client, notes.owner, "notes", ["plans:read"])
     shown = client.get(f"/v1/projects/{PROJECT}/plugins/notes", headers=notes.reader).json()
-    assert shown["enabled"] and shown["pages"] == [{**page, "native": True, "url": None}]
+    assert shown["enabled"] and shown["pages"] == [{**page, "native": True, "url": None, "slot": None}]
     # the web carries a core plugin's page itself: the hub frames none, a valid ticket included
     secret = live.session_secret()
     client.app.state.config = replace(client.app.state.config, session_secret=secret)

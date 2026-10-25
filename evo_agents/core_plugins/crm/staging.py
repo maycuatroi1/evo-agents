@@ -14,14 +14,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.crm import rules, store
-from evo_agents.hub import tables
+from evo_agents.core_plugins.crm import tables as crm
+from evo_agents.hub.server import core_plugin_api as hub
 
 INVITING = ("invite_link", "grant")  # the touchpoints that make a contact invited
 
 
 async def _seen(conn: AsyncConnection, project_id: int) -> dict[int, tuple[datetime, datetime | None]]:
     """contact id -> (its first touchpoint, its first invite or grant), notes left out."""
-    c, t = tables.crm_contacts, tables.crm_touchpoints
+    c, t = crm.contacts, crm.touchpoints
     invited = func.min(t.c.happened_at).filter(t.c.kind.in_(INVITING))
     query = (
         select(t.c.contact_id, func.min(t.c.happened_at), invited)
@@ -33,37 +34,26 @@ async def _seen(conn: AsyncConnection, project_id: int) -> dict[int, tuple[datet
 
 
 async def _accounts(conn: AsyncConnection, logins: list[str]) -> dict[str, int]:
-    u = tables.users
-    found = await conn.execute(select(func.lower(u.c.login), u.c.id).where(func.lower(u.c.login).in_(logins)))
-    return {login: user_id for login, user_id in found}
+    """login, in lower case -> the id of the member of the hub with that login."""
+    return {user.login.lower(): user.id for user in await hub.match_users(conn, store.handle(), logins)}
 
 
-async def _runs(conn: AsyncConnection, project_id: int, user_ids: list[int]) -> dict[int, datetime]:
+async def _runs(conn: AsyncConnection, project: str, user_ids: list[int]) -> dict[int, datetime]:
     """user id -> the first run the user dispatched in the project."""
-    r = tables.runs.c
-    query = (
-        select(r.dispatched_by, func.min(r.queued_at))
-        .where(r.project_id == project_id, r.dispatched_by.in_(user_ids))
-        .group_by(r.dispatched_by)
-    )
-    return {user_id: first for user_id, first in await conn.execute(query)}
+    return dict(await hub.read_first_runs(conn, store.handle(), project, user_ids))
 
 
-async def _retained(conn: AsyncConnection, project_id: int, user_id: int, first: datetime) -> datetime | None:
-    r = tables.runs.c
+async def _retained(conn: AsyncConnection, project: str, user_id: int, first: datetime) -> datetime | None:
     start, end = rules.window(first)
-    return await conn.scalar(
-        select(func.min(r.queued_at)).where(
-            r.project_id == project_id, r.dispatched_by == user_id, r.queued_at >= start, r.queued_at < end
-        )
-    )
+    found = await hub.read_first_runs(conn, store.handle(), project, [user_id], since=start, before=end)
+    return found.get(user_id)
 
 
-async def facts(conn: AsyncConnection, project_id: int, logins: dict[int, str]) -> dict[int, rules.Facts]:
+async def facts(conn: AsyncConnection, project: hub.EnabledProject, logins: dict[int, str]) -> dict[int, rules.Facts]:
     """The facts of each contact in ``logins`` (id -> login)."""
-    seen = await _seen(conn, project_id)
+    seen = await _seen(conn, project.id)
     accounts = await _accounts(conn, sorted(set(logins.values())))
-    firsts = await _runs(conn, project_id, sorted(set(accounts.values())))
+    firsts = await _runs(conn, project.name, sorted(set(accounts.values())))
     found = {}
     for contact_id, login in logins.items():
         if contact_id not in seen:
@@ -71,17 +61,17 @@ async def facts(conn: AsyncConnection, project_id: int, logins: dict[int, str]) 
         first_seen, invited = seen[contact_id]
         user_id = accounts.get(login)
         first_run = firsts.get(user_id) if user_id is not None else None
-        retained = await _retained(conn, project_id, user_id, first_run) if first_run is not None else None
+        retained = await _retained(conn, project.name, user_id, first_run) if first_run is not None else None
         found[contact_id] = rules.Facts(first_seen, invited, first_run, retained)
     return found
 
 
-async def refresh(conn: AsyncConnection, project_id: int) -> dict[str, int]:
+async def refresh(conn: AsyncConnection, project: hub.EnabledProject) -> dict[str, int]:
     """Compute and keep the stage of every contact of the project; how many moved up."""
-    held = await store.contacts(conn, project_id, limit=None)
+    held = await store.contacts(conn, project.id, limit=None)
     by_id = {c.id: c for c in held}
     moved = 0
-    for contact_id, found in (await facts(conn, project_id, {c.id: c.login for c in held})).items():
+    for contact_id, found in (await facts(conn, project, {c.id: c.login for c in held})).items():
         stage = await store.record_stages(conn, contact_id, by_id[contact_id].stage, rules.reached(found))
         moved += stage != by_id[contact_id].stage
     return {"moved": moved}

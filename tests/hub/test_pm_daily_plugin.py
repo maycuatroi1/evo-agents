@@ -43,7 +43,7 @@ from tests.hub.test_tasks_plugin import (  # noqa: F401 (fixtures)
 
 PM = "/v1/x/pm"
 BASE = f"{PM}/{PROJECT}"
-POINTS = {**CORE, "pm": EntryPoint("pm", "evo_agents.core_plugins.pm:MANIFEST", ENTRY_POINT_GROUP)}
+POINTS = {**CORE, "pm": EntryPoint("pm", "evo_agents.core_plugins.pm:manifest", ENTRY_POINT_GROUP)}
 KEYS = {
     "project",
     "date",

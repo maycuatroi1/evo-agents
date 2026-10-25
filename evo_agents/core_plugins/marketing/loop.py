@@ -21,11 +21,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.marketing import settings, store
-from evo_agents.hub import tables
+from evo_agents.hub.server import core_plugin_api as hub
 
 CELLS = ("channels", "customer_segments")
 TESTING = "testing"
@@ -44,25 +43,20 @@ def _at(text: str) -> datetime:
     return datetime.fromisoformat(text)
 
 
-async def _taken(conn: AsyncConnection, project_id: int, keys: list[str]) -> set[str]:
-    """The keys of ``keys`` the project already has a work item of, finished or not (as stored, ``marketing:``)."""
+async def _taken(conn: AsyncConnection, project: str, keys: list[str]) -> set[str]:
+    """The keys of ``keys`` the project already has a work item of, finished or not (the hub stores them as
+    ``marketing:<key>``)."""
     if not keys:
         return set()
-    i = tables.loop_items.c
-    stored = [f"{store.PLUGIN}:{key}" for key in keys]
-    found = await conn.scalars(select(i.key).where(i.project_id == project_id, i.key.in_(stored)))
-    return {key.removeprefix(f"{store.PLUGIN}:") for key in found}
+    return {item.key for item in await hub.read_work_items(conn, store.handle(), project, keys=keys)}
 
 
 # A campaign
 
 
-async def _claims(conn: AsyncConnection, ids: list[int]) -> list:
-    c = tables.canvas.claims.c
-    found = await conn.execute(
-        select(c.id, c.number, c.cell, c.text, c.test_card, c.signal_keys).where(c.id.in_(ids), c.cell.in_(CELLS))
-    )
-    return list(found)
+async def _claims(conn: AsyncConnection, project: str, ids: list[int]) -> list:
+    found = await hub.read_claim_cards(conn, store.handle(), project, ids=ids)
+    return [claim for claim in found if claim.cell in CELLS]
 
 
 def _channels_text(channels: list) -> str:
@@ -76,7 +70,7 @@ def _channels_text(channels: list) -> str:
 
 def campaign_task(claim, channels: list) -> str:
     """What @marketer is asked for a claim in testing."""
-    card = json.dumps(claim.test_card or {}, ensure_ascii=False, sort_keys=True)
+    card = json.dumps(dict(claim.test_card or {}), ensure_ascii=False, sort_keys=True)
     keys = ", ".join(claim.signal_keys or []) or "none yet: name one per post"
     return (
         f"Claim CL-{claim.number} ({claim.cell}) is in testing: {claim.text}\n\n"
@@ -99,7 +93,7 @@ async def _campaigns(conn: AsyncConnection, params: dict) -> list[dict]:
         return []
     channels = [row for row in await store.channels(conn, params["project_id"]) if row.account_kind == "project"]
     found = []
-    for claim in await _claims(conn, sorted(moved)):
+    for claim in await _claims(conn, params["project"], sorted(moved)):
         detail = {"task": campaign_task(claim, channels), "title": f"Campaign for CL-{claim.number}"}
         detail |= {"claim": f"CL-{claim.number}", "baseline": payload.get("baseline_id")}
         key = f"campaign:{claim.id}:b{payload.get('baseline_id')}"
@@ -110,11 +104,11 @@ async def _campaigns(conn: AsyncConnection, params: dict) -> list[dict]:
 # Publishing at a time, and measuring
 
 
-async def _publish(conn: AsyncConnection, project_id: int, now: datetime, killed: bool) -> list[dict]:
+async def _publish(conn: AsyncConnection, project: str, project_id: int, now: datetime, killed: bool) -> list[dict]:
     if killed:
         return []
     due = await store.due_posts(conn, project_id, now, BATCH)
-    taken = await _taken(conn, project_id, [f"publish:{row.id}" for row in due])
+    taken = await _taken(conn, project, [f"publish:{row.id}" for row in due])
     return [
         {"effect": "work", "kind": PUBLISH, "key": f"publish:{row.id}", "detail": {"post_id": row.id}}
         for row in due
@@ -122,9 +116,9 @@ async def _publish(conn: AsyncConnection, project_id: int, now: datetime, killed
     ]
 
 
-async def _measure(conn: AsyncConnection, project_id: int, now: datetime) -> list[dict]:
+async def _measure(conn: AsyncConnection, project: str, project_id: int, now: datetime) -> list[dict]:
     went = await store.gone_out(conn, project_id, now - timedelta(days=MEASURE_DAYS), BATCH * 5)
-    taken = await _taken(conn, project_id, [f"measure:{row.id}" for row in went])
+    taken = await _taken(conn, project, [f"measure:{row.id}" for row in went])
     fresh = [row for row in went if f"measure:{row.id}" not in taken][:BATCH]
     return [
         {"effect": "work", "kind": REVIEW, "key": f"measure:{row.id}", "detail": {"post_id": row.id}} for row in fresh
@@ -193,22 +187,17 @@ def reply_task(reply) -> str:
     )
 
 
-async def _made_today(conn: AsyncConnection, project_id: int, now: datetime) -> int:
-    i = tables.loop_items.c
-    query = select(func.count()).where(
-        i.project_id == project_id,
-        i.key.like(f"{store.PLUGIN}:reply:%"),
-        i.created_at >= now - timedelta(hours=24),
-    )
-    return int(await conn.scalar(query) or 0)
+async def _made_today(conn: AsyncConnection, project: str, now: datetime) -> int:
+    since = now - timedelta(hours=24)
+    return len(await hub.read_work_items(conn, store.handle(), project, key_prefix="reply:", since=since))
 
 
-async def _replies(conn: AsyncConnection, project_id: int, now: datetime, per_day: int) -> list[dict]:
-    room = per_day - await _made_today(conn, project_id, now)
+async def _replies(conn: AsyncConnection, project: str, project_id: int, now: datetime, per_day: int) -> list[dict]:
+    room = per_day - await _made_today(conn, project, now)
     if room <= 0:
         return []
     seen = await store.new_replies(conn, project_id, now - timedelta(days=REPLY_DAYS), BATCH * 5)
-    taken = await _taken(conn, project_id, [f"reply:{row.id}" for row in seen])
+    taken = await _taken(conn, project, [f"reply:{row.id}" for row in seen])
     fresh = [row for row in seen if f"reply:{row.id}" not in taken][: min(room, BATCH)]
     return [
         {
@@ -222,19 +211,19 @@ async def _replies(conn: AsyncConnection, project_id: int, now: datetime, per_da
 
 
 async def _clock(conn: AsyncConnection, params: dict, context) -> list[dict]:
-    project_id, now = params["project_id"], _at(params["now"])
+    project, project_id, now = params["project"], params["project_id"], _at(params["now"])
     killed = await store.killed(conn, project_id) is not None
-    cfg = await settings.config(conn, getattr(context, "config", None), params["project"])
+    cfg = await settings.config(conn, getattr(context, "config", None), project)
     effects = await _running(conn, project_id, params["items"], now, killed)
-    effects += await _publish(conn, project_id, now, killed)
-    effects += await _measure(conn, project_id, now)
-    effects += await _replies(conn, project_id, now, cfg.replies_per_day)
+    effects += await _publish(conn, project, project_id, now, killed)
+    effects += await _measure(conn, project, project_id, now)
+    effects += await _replies(conn, project, project_id, now, cfg.replies_per_day)
     return effects
 
 
 async def growth(params: dict, context) -> dict:
     """The handler of rule ``growth``: a campaign on a baseline, the rest on the clock."""
-    async with context.engine.begin() as conn:
+    async with hub.transaction(context) as conn:
         if params["event"] is None:
             effects = await _clock(conn, params, context)
         else:

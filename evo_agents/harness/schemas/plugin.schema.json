@@ -559,6 +559,12 @@
         "menu": {
           "description": "Whether the page has an item in the project's menu; true when left out. A page without one is reached by a link.",
           "type": "boolean"
+        },
+        "slot": {
+          "description": "Where the hub's web shows the page instead of on a page of its own: decide, as a panel of the project's Decisions page, framed like the plugin's other pages, for what waits for a person in the plugin; the page hides itself (evo.resize(0)) while nothing waits. A page with a slot has no item in the project's menu.",
+          "enum": [
+            "decide"
+          ]
         }
       }
     },
@@ -1102,6 +1108,33 @@
         "help": {
           "type": "string",
           "maxLength": 300
+        },
+        "default": {
+          "description": "The value an argument left out takes; the route gets it as if it was given.",
+          "type": [
+            "string",
+            "integer",
+            "number"
+          ]
+        },
+        "metavar": {
+          "description": "The word that stands for the value in the help, the name in capitals when left out.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_-]{0,40}$"
+        },
+        "values": {
+          "description": "The flag takes one value for each of these names (--add KIND VALUE), each sent as a field of that name instead of one field of the argument's name.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$"
+          }
+        },
+        "group": {
+          "description": "Flags of the same group exclude each other: a command line gives at most one of them.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,40}$"
         }
       }
     },
@@ -1181,8 +1214,95 @@
             "text": {
               "type": "string",
               "maxLength": 60
+            },
+            "render": {
+              "description": "text: without --json the CLI asks the route for its own words (query render=text) and prints the text of the answer as it is, nothing when it is empty.",
+              "enum": [
+                "text"
+              ]
+            },
+            "keys": {
+              "description": "The keys of what --json prints (of each object when json is array), for the CLI's contract.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 60
+              }
+            },
+            "schema": {
+              "description": "The OpenAPI component the route answers with, for the CLI's contract.",
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z0-9]{0,80}$"
             }
           }
+        },
+        "when": {
+          "description": "Other routes of the command: the first entry whose argument arg is given (not left out, a switch on) calls its http instead of the command's own.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "arg",
+              "http"
+            ],
+            "properties": {
+              "arg": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,40}$"
+              },
+              "http": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "method",
+                  "path"
+                ],
+                "properties": {
+                  "method": {
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ]
+                  },
+                  "path": {
+                    "description": "The route's path below the plugin's prefix, {name} for a path argument.",
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_{}./-]{0,200}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "confirm": {
+          "description": "The command acts only when the switch flag is given; without it the CLI prints text on stderr, with {name} for an argument's value and {project} for the project, and exits with status 2, calling nothing.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "flag",
+            "text"
+          ],
+          "properties": {
+            "flag": {
+              "type": "string",
+              "pattern": "^--[a-z][a-z0-9-]{0,40}$"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "client": {
+          "description": "A command the CLI runs with a client of its own instead of one call of http: browser_post claims the oldest post queued for a browser, posts it with the CLI's browser script and reports it (routes browser/claim and browser/{post_id}/result); browser_login opens a visible browser on the login page of a channel and seals the session the member makes (routes channels, channels/{channel_id}/session and the plugin's config field <channel>_session). Both need Playwright with Chromium where the CLI runs.",
+          "enum": [
+            "browser_post",
+            "browser_login"
+          ]
         }
       }
     },

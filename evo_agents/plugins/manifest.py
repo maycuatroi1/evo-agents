@@ -390,26 +390,42 @@ def _mount_problems(where: str, mount: dict) -> list[str]:
 
 def _command_problems(where: str, item: dict) -> list[str]:
     """What is wrong with command ``item``: an argument named twice, a positional with a flag or a flag twice, a path
-    argument the route's path lacks, or a ``{name}`` of the path no argument fills."""
+    argument no route's path has, a ``{name}`` of a path no argument fills, a ``when`` or ``confirm`` that names no
+    argument or a flag taken, or ``values`` and ``group`` on a positional."""
     found = []
     args = item.get("args") or ()
     names = [arg["name"] for arg in args]
     flags = [arg["flag"] for arg in args if "flag" in arg]
+    confirm = (item.get("confirm") or {}).get("flag")
     for name in sorted({name for name in names if names.count(name) > 1}):
         found.append(f"{where}.args: {name!r} is named twice")
     for flag in sorted({flag for flag in flags if flags.count(flag) > 1}):
         found.append(f"{where}.args: {flag} is given twice")
-    path = item["http"]["path"]
-    holes = set(re.findall(r"{([a-z][a-z0-9_]*)}", path))
+    if confirm is not None and confirm in {arg.get("flag") or "--" + arg["name"].replace("_", "-") for arg in args}:
+        found.append(f"{where}.confirm.flag: {confirm} is the flag of an argument")
+    routes = [("http.path", item["http"]["path"])]
+    routes += [(f"when[{i}].http.path", entry["http"]["path"]) for i, entry in enumerate(item.get("when") or ())]
+    holes = {key: set(re.findall(r"{([a-z][a-z0-9_]*)}", path)) for key, path in routes}
+    every_hole = set().union(*holes.values())
+    paths = " or ".join(repr(path) for _, path in routes)
     for index, arg in enumerate(args):
         if arg.get("positional") and "flag" in arg:
             found.append(f"{where}.args[{index}]: a positional argument has no flag")
-        if arg["in"] == "path" and arg["name"] not in holes:
-            found.append(f"{where}.args[{index}]: path argument {arg['name']!r} is not {{{arg['name']}}} of {path!r}")
+        if arg.get("positional") and ("values" in arg or "group" in arg):
+            found.append(f"{where}.args[{index}]: values and group are for a flag, not a positional argument")
+        if "values" in arg and (arg["in"] != "body" or arg.get("repeatable") or arg["type"] != "string"):
+            found.append(f"{where}.args[{index}]: an argument with values is one string per name, sent in the body")
+        if arg["in"] == "path" and arg["name"] not in every_hole:
+            found.append(f"{where}.args[{index}]: path argument {arg['name']!r} is not {{{arg['name']}}} of {paths}")
         if arg["in"] == "path" and (arg.get("repeatable") or arg["type"] in ("boolean", "file")):
             found.append(f"{where}.args[{index}]: a path argument is one string or number")
-    for hole in sorted(holes - {arg["name"] for arg in args if arg["in"] == "path"}):
-        found.append(f"{where}.http.path: {{{hole}}} is filled by no path argument")
+    filled = {arg["name"] for arg in args if arg["in"] == "path"}
+    for key, _ in routes:
+        for hole in sorted(holes[key] - filled):
+            found.append(f"{where}.{key}: {{{hole}}} is filled by no path argument")
+    for index, entry in enumerate(item.get("when") or ()):
+        if entry["arg"] not in names:
+            found.append(f"{where}.when[{index}].arg: {entry['arg']!r} is not one of the command's arguments")
     return found
 
 

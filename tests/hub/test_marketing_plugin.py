@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select
 
 from evo_agents.core_plugins.marketing import flow, job, store
+from evo_agents.core_plugins.marketing import tables as marketing_tables
 from evo_agents.core_plugins.marketing.adapters.base import HttpResponse
 from evo_agents.hub import plugin_calls, tables
 from evo_agents.hub.server import core_plugin_api as hub_api
@@ -34,7 +35,7 @@ from tests.hub import live
 from tests.hub.live import sql
 from tests.hub.test_tasks_plugin import PROJECT, configure, enable, members  # noqa: F401 (fixtures)
 
-CORE = {"marketing": EntryPoint("marketing", "evo_agents.core_plugins.marketing:MANIFEST", ENTRY_POINT_GROUP)}
+CORE = {"marketing": EntryPoint("marketing", "evo_agents.core_plugins.marketing:manifest", ENTRY_POINT_GROUP)}
 BASE = f"/v1/x/marketing/{PROJECT}"
 RELEASE = "https://github.com/maycuatroi1/evo-agents/releases/tag/v1"
 GOOD = f"evo-agents ships the loop {RELEASE}"
@@ -207,7 +208,7 @@ def test_marketing_personal_account_is_made_draft_only_and_a_post_command_to_it_
     assert (
         c.put(f"{BASE}/channels/{other['id']}/mode", json={"mode": "autonomous"}, headers=h["alice"]).status_code == 422
     )
-    assert sql(mk.db, select(func.count()).select_from(tables.marketing_posts))[0][0] == 1
+    assert sql(mk.db, select(func.count()).select_from(marketing_tables.marketing_posts))[0][0] == 1
 
 
 def test_marketing_personal_account_goes_autonomous_only_for_its_owner_and_posts_originals_only(mk):
@@ -230,9 +231,12 @@ def test_marketing_personal_account_goes_autonomous_only_for_its_owner_and_posts
 
 def test_marketing_an_agent_cannot_change_a_mode(mk):
     from evo_agents.core_plugins.marketing import server
+    from evo_agents.hub.server.core_plugin_api._types import issue_session
+    from evo_agents.hub.server.security import MACHINE, Principal, RunScope
 
     row = SimpleNamespace(account_kind="project", owner_id=None)
-    agent = SimpleNamespace(scope=object(), user_id=1)
+    scope = RunScope(7, "northwind", "writer", "internal")
+    agent = issue_session(1, "lumen", 0, False, principal=Principal(1, "lumen", False, 0, MACHINE, "", scope=scope))
     with pytest.raises(store.MarketingError) as refused:
         server._may_switch(SimpleNamespace(), agent, row, "autonomous")
     assert refused.value.status == 403 and "agent" in refused.value.message
@@ -481,7 +485,9 @@ def test_marketing_audit_each_post_keeps_its_channel_account_content_link_run_la
     assert "marketing.post.posted" in actions(mk.db)
     target = sql(mk.db, select(tables.audit.c.target).where(tables.audit.c.action == "marketing.post.posted"))[0][0]
     assert target == f"post:{sent['id']}"
-    stored = sql(mk.db, select(tables.marketing_posts.c.proposed_by, tables.marketing_posts.c.external_id))[0]
+    stored = sql(
+        mk.db, select(marketing_tables.marketing_posts.c.proposed_by, marketing_tables.marketing_posts.c.external_id)
+    )[0]
     assert stored[0] and stored[1]
 
 
@@ -501,7 +507,7 @@ def test_marketing_a_credential_never_comes_back_in_an_answer_a_reason_or_the_au
     seen = [propose(mk, chan, "one"), status(mk)]
     seen.append(mk.client.get(f"{BASE}/channels", headers=mk.h["alice"]).json())
     seen.append(mk.client.get(f"{BASE}/posts", headers=mk.h["alice"]).json())
-    stored = sql(mk.db, select(tables.marketing_posts.c.reason, tables.marketing_posts.c.layers))
+    stored = sql(mk.db, select(marketing_tables.marketing_posts.c.reason, marketing_tables.marketing_posts.c.layers))
     assert TOKEN not in json.dumps([seen, stored, actions(mk.db)], default=str)
     assert mk.platform.sent and TOKEN not in repr(mk.platform.sent[0])
 
@@ -581,7 +587,12 @@ def test_marketing_metrics_of_facebook_and_tiktok_posts_are_never_read(mk):
 def test_marketing_a_project_that_does_not_enable_it_writes_nothing_and_its_routes_answer_404(client, members, hub_db):  # noqa: F811
     engine = client.app.state.engine
     assert client.portal.call(lambda: job.run_project(engine, PROJECT)) == {}
-    for table in (tables.marketing_channels, tables.marketing_posts, tables.marketing_budget, tables.marketing_state):
+    for table in (
+        marketing_tables.marketing_channels,
+        marketing_tables.marketing_posts,
+        marketing_tables.marketing_budget,
+        marketing_tables.marketing_state,
+    ):
         assert sql(hub_db, select(func.count()).select_from(table))[0][0] == 0
     assert sql(hub_db, select(func.count()).select_from(tables.signal_ingest_keys))[0][0] == 0
     for headers in (members["owner"], members["alice"]):
@@ -611,3 +622,17 @@ def test_marketing_the_manifest_declares_the_tables_the_job_the_judge_and_the_se
     assert MANIFEST["config"]["properties"]["budget_usd"]["default"] == 50
     assert [a["name"] for a in MANIFEST["contributes"]["agent_types"]] == ["marketing-judge", "marketer"]
     assert hub_api.plugin("evo_agents.core_plugins.marketing.settings").id == "marketing"
+
+
+def test_marketing_tables_are_the_plugins_own_adopted_as_the_hub_made_them(hub_db):
+    """The seven marketing tables live in the plugin's own metadata; its chain adopts the tables the hub's migrations
+    made, which compare equal."""
+    from evo_agents.core_plugins.marketing import MANIFEST
+
+    assert MANIFEST["schema"] == {
+        "metadata": "evo_agents.core_plugins.marketing.tables:metadata",
+        "migrations": "evo_agents.core_plugins.marketing.migrations",
+        "adopts": list(marketing_tables.NAMES),
+    }
+    with live.engine(hub_db).begin() as conn:
+        assert hub_api.adopt_tables(conn, marketing_tables.metadata, list(marketing_tables.NAMES)) == []

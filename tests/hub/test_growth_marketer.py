@@ -20,6 +20,7 @@ if not pg.DSN:
 from sqlalchemy import insert, select
 
 from evo_agents.core_plugins.marketing import MANIFEST, loop, store, tools
+from evo_agents.core_plugins.marketing import tables as marketing_tables
 from evo_agents.core_plugins.marketing.adapters.base import HttpResponse
 from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext
@@ -73,7 +74,7 @@ def running(kind: str, post_id: int, item_id: int = 1) -> dict:
 
 
 def post(world, post_id: int):
-    t = tables.marketing_posts
+    t = marketing_tables.marketing_posts
     return sql(world.db, select(t.c.state, t.c.released_at, t.c.claim_id, t.c.signal_key).where(t.c.id == post_id))[0]
 
 
@@ -160,7 +161,10 @@ def test_growth_marketer_a_post_that_went_out_is_measured_and_done_after_its_7d_
     assert work["key"] == f"measure:{made['id']}"
     item = running(loop.REVIEW, made["id"])
     assert [e for e in clock(mk, now, [item]) if e["effect"] == "move"] == []
-    sql(mk.db, insert(tables.marketing_metrics).values(post_id=made["id"], span="7d", metric="stars", value=12))
+    sql(
+        mk.db,
+        insert(marketing_tables.marketing_metrics).values(post_id=made["id"], span="7d", metric="stars", value=12),
+    )
     (moved,) = [e for e in clock(mk, now, [item]) if e["effect"] == "move"]
     assert moved["state"] == "done"
     assert moved["detail"]["signal_key"] == "gh.stars" and moved["detail"]["numbers"] == {"7d": {"stars": 12.0}}
@@ -207,7 +211,7 @@ def test_growth_marketer_tools_are_for_a_marketer_run_alone_and_tie_a_post_to_it
     assert unknown["is_error"] and "no claim CL-9" in unknown["content"][0]["text"]
     done = call(mk, tools.propose, run_id, {**arguments, "signal_key": "gh.stars"})
     assert not done["is_error"] and "is posted" in done["content"][0]["text"]
-    t = tables.marketing_posts
+    t = marketing_tables.marketing_posts
     (row,) = sql(mk.db, select(t.c.proposed_by, t.c.run_id, t.c.signal_key))
     owner = sql(mk.db, select(tables.users.c.id).where(tables.users.c.login == "owner"))[0][0]
     assert row == (owner, run_id, "gh.stars")

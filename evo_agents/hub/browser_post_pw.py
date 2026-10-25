@@ -1,4 +1,4 @@
-"""Playwright behind the ``Page`` of ``evo_agents.hub.marketing_browser``: the one module that imports it, and only when a
+"""Playwright behind the ``Page`` of ``evo_agents.hub.browser_post``: the one module that imports it, and only when a
 page is opened, so a machine without Playwright installs and runs everything else. The tests of the script use a fake page;
 nothing here is run by them (a real Chromium and a real platform are the member's to try, ``docs/marketing-plugin.md``).
 """

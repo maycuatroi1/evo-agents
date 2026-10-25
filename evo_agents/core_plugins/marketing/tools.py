@@ -17,18 +17,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.marketing import campaign, flow, settings, store
 from evo_agents.core_plugins.marketing.models import MarketingPostIn
-from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
-from evo_agents.hub.plugin_calls import CoreContext, enabled_in
-from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server import core_plugin_api as hub
 
 log = logging.getLogger(__name__)
 
@@ -51,41 +45,33 @@ def _text(text: str, *, error: bool = False) -> dict:
     return {"content": [{"type": "text", "text": text}], "is_error": error}
 
 
-async def _typed(conn: AsyncConnection, project_id: int, profile_id: int | None) -> bool:
+async def _typed(conn: AsyncConnection, project: str, profile_id: int | None) -> bool:
     """Whether ``profile_id`` is the profile of an enabled @marketer or @community of the project."""
-    # Imported here: agent_types goes round a cycle of the server's modules when a tool's module loads first.
-    from evo_agents.hub.server.agent_types import enabled_type
-
-    for plugin, name in CALLERS:
-        row = await enabled_in(conn, plugin, project_id)
-        kind = await enabled_type(conn, project_id, row.id, name) if row is not None else None
-        if kind is not None and kind.disabled_at is None and kind.profile_id == profile_id:
-            return True
-    return False
+    found = await hub.read_agent_types(conn, store.handle(), project, profile_id=profile_id)
+    return any(kind.enabled and (kind.plugin, kind.name) in CALLERS for kind in found)
 
 
-async def caller(conn: AsyncConnection, context: CoreContext) -> Caller:
+async def caller(conn: AsyncConnection, context: hub.Context) -> Caller:
     """The run of @marketer or @community the tool is called from; 403 for any other caller, or for a member without
     the writer role now."""
     refused = store.MarketingError(403, "only the agent of a run of @marketer or @community posts through these tools")
     if context.run_id is None or context.project_id is None:
         raise refused
-    r = tables.runs.c
-    run = (
-        await conn.execute(select(r.project_id, r.profile_id, r.dispatched_by).where(r.id == context.run_id))
-    ).first()
-    if run is None or run.project_id != context.project_id or not await _typed(conn, run.project_id, run.profile_id):
-        raise refused
-    login = await conn.scalar(select(tables.users.c.login).where(tables.users.c.id == run.dispatched_by))
     try:
-        access = await project_access(
-            conn, Principal(run.dispatched_by, login, False, None, MACHINE, ""), context.project
-        )
-    except HTTPException:
+        run = await hub.read_run(conn, store.handle(), context.run_id)
+        if run is None or run.project != context.project or not await _typed(conn, run.project, run.profile_id):
+            raise refused
+        member = await hub.run_member(conn, store.handle(), run.project, run.id)
+        if member is None:
+            raise refused
+        access = await hub.project_access(conn, member, context.project)
+    except hub.Refused:
         raise refused from None
-    if not has_role(access.role, "writer"):
-        raise store.MarketingError(403, f"{login} needs the writer role on project {context.project} to post")
-    return Caller(context.run_id, run.dispatched_by, run.project_id, context.project)
+    if access.id != context.project_id:
+        raise refused
+    if not hub.has_role(access.role, "writer"):
+        raise store.MarketingError(403, f"{member.login} needs the writer role on project {context.project} to post")
+    return Caller(context.run_id, member.user_id, access.id, context.project)
 
 
 async def _channel(conn: AsyncConnection, who: Caller, channel_id: int):
@@ -106,22 +92,22 @@ def _shown(post) -> str:
     return f"post {post.id} on {post.channel} {post.account} is {post.state}{when}{reason}"
 
 
-async def _gate(conn: AsyncConnection, context: CoreContext, who: Caller, body: MarketingPostIn, row) -> str:
-    values = await campaign.values_of(conn, who.project_id, who.user_id, body, row)
-    cfg = await settings.config(conn, context.config, who.project)
+async def _gate(conn: AsyncConnection, context: hub.Context, who: Caller, body: MarketingPostIn, row) -> str:
+    values = await campaign.values_of(conn, who.project, who.project_id, who.user_id, body, row)
+    cfg = await settings.config(conn, getattr(context, "config", None), who.project)
     post_id = await campaign.submit(conn, RUNTIME or flow.Runtime(), cfg, who.project, who.project_id, values)
     return _shown(await store.post(conn, post_id))
 
 
 async def _draft(conn: AsyncConnection, who: Caller, body: MarketingPostIn, row, reason: str) -> str:
-    values = await campaign.values_of(conn, who.project_id, who.user_id, body, row)
+    values = await campaign.values_of(conn, who.project, who.project_id, who.user_id, body, row)
     post_id = await store.add_post(conn, **{**values, "scheduled_at": None}, state="draft", reason=reason)
     return _shown(await store.post(conn, post_id))
 
 
-async def _call(context: CoreContext, work) -> dict:
+async def _call(context: hub.Context, work) -> dict:
     try:
-        async with context.engine.begin() as conn:
+        async with hub.transaction(context) as conn:
             return _text(await work(conn, await caller(conn, context)))
     except store.MarketingError as exc:
         return _text(f"error: {exc.message}", error=True)
@@ -129,7 +115,7 @@ async def _call(context: CoreContext, work) -> dict:
         return _text(f"error: the arguments do not read: {exc.errors(include_url=False)}", error=True)
 
 
-async def propose(params: dict, context: CoreContext) -> dict:
+async def propose(params: dict, context: hub.Context) -> dict:
     """``marketing__propose``: a post or a reply through the gate, at once or at ``scheduled_at``."""
     arguments = params.get("arguments") or {}
 
@@ -144,7 +130,7 @@ async def propose(params: dict, context: CoreContext) -> dict:
     return await _call(context, work)
 
 
-async def draft(params: dict, context: CoreContext) -> dict:
+async def draft(params: dict, context: hub.Context) -> dict:
     """``marketing__draft``: a draft a person posts; it goes through no gate and posts nothing."""
     arguments = params.get("arguments") or {}
 
@@ -169,7 +155,7 @@ def blog_proposal(arguments: dict, channel: str, sources: list[str]) -> str:
     )
 
 
-async def personal(params: dict, context: CoreContext) -> dict:
+async def personal(params: dict, context: hub.Context) -> dict:
     """``marketing__personal``: content for a member's personal channel. It goes through the gate when its owner made
     the account autonomous on facebook_profile or tiktok, and is a draft otherwise; either way the answer holds the
     proposal to send to the blog project (config ``proposals_project``)."""
@@ -184,7 +170,7 @@ async def personal(params: dict, context: CoreContext) -> dict:
         done = await _draft(conn, who, body, row, refused) if refused else await _gate(conn, context, who, body, row)
         sources = [source.url for source in body.sources] + list(body.links)
         proposal = blog_proposal(arguments, f"{row.channel} {row.account}", sources)
-        blog = (await settings.config(conn, context.config, who.project)).proposals_project
+        blog = (await settings.config(conn, getattr(context, "config", None), who.project)).proposals_project
         if not blog:
             return f"{done}\n\nNo blog project is set (config proposals_project); keep this proposal:\n\n{proposal}"
         return (

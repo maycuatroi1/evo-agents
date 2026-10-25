@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.marketing import store
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import core_plugin_api as hub
 
 
 async def finish(
@@ -16,12 +16,8 @@ async def finish(
     await store.save_post(
         conn, post.id, state=state, reason=reason, layers=layers, decided_at=datetime.now(UTC), **more
     )
-    await audit.record(
-        conn,
-        actor_id=post.proposed_by,
-        token_id=None,
-        action=f"marketing.post.{state}",
-        target=f"post:{post.id}",
-        project_id=project_id,
+    project = await hub.read_project(conn, store.handle(), project_id)
+    await hub.record_audit(
+        conn, store.handle(), project.name, f"marketing.post.{state}", f"post:{post.id}", actor=post.proposed_by
     )
     return state

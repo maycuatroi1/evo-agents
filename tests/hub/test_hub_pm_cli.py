@@ -1,4 +1,4 @@
-"""``evo-agents hub pm daily`` (``evo_agents.hub.cli_pm``), as criterion a4 of plan pm-daily-tracking names it: the
+"""``evo-agents hub pm daily`` (a manifest command of the core plugin pm, ``evo_agents/core_plugins/pm/cli.json``), as criterion a4 of plan pm-daily-tracking names it: the
 command and its ``--json`` keys are in the contract (seam hub-cli-v1), and a member runs it against a hub that serves
 the core plugin pm: the report of a day as a table and as the JSON the route answers, a refusal as an error line.
 

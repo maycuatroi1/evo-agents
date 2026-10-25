@@ -17,6 +17,7 @@ from psycopg import errors
 from sqlalchemy import insert, select
 
 from evo_agents.core_plugins.marketing import MANIFEST, settings, weekly
+from evo_agents.core_plugins.marketing import tables as marketing_tables
 from evo_agents.hub import tables
 from tests.hub import live, pg
 from tests.hub.live import sql
@@ -128,15 +129,18 @@ def test_growth_facebook_group_is_a_members_draft_and_never_goes_out(mk):
     assert mk.platform.sent == []
 
 
-def test_growth_pages_of_crm_and_marketing_are_native_and_named():
+def test_growth_pages_of_crm_and_marketing_are_framed_and_named():
     from evo_agents.core_plugins.crm import MANIFEST as CRM
 
-    assert [page["name"] for page in MANIFEST["contributes"]["pages"]] == ["overview", "posts", "weekly"]
-    # Posts and Growth weekly are tabs of the Marketing page: one menu item for the plugin.
-    assert [page["name"] for page in MANIFEST["contributes"]["pages"] if page.get("menu", True)] == ["overview"]
+    pages = MANIFEST["contributes"]["pages"]
+    assert [page["name"] for page in pages] == ["overview", "posts", "weekly", "decide"]
+    # Posts and Growth weekly are tabs of the Marketing page, and decide fills the hub's decide slot: one menu item.
+    assert [page["name"] for page in pages if page.get("menu", True)] == ["overview"]
+    decide = next(page for page in pages if page["name"] == "decide")
+    assert decide["slot"] == "decide" and decide["menu"] is False
     assert [page["name"] for page in CRM["contributes"]["pages"]] == ["contacts"]
-    for page in [*MANIFEST["contributes"]["pages"], *CRM["contributes"]["pages"]]:
-        assert "entry" not in page and page["title"] and page["description"]
+    for page in [*pages, *CRM["contributes"]["pages"]]:
+        assert page["entry"] == f"pages/{page['name']}.html" and page["title"] and page["description"]
 
 
 @pytest.mark.empty_db
@@ -146,7 +150,7 @@ def test_0128_takes_facebook_group_for_a_personal_draft_only_account_and_going_b
     move_to(hub_db, "0127")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    t = tables.marketing_channels
+    t = marketing_tables.marketing_channels
     group = {"project_id": ids["project"], "channel": "facebook_group", "account": "g", "account_kind": "personal"}
     group = {**group, "owner_id": ids["user"]}
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):

@@ -26,6 +26,7 @@ from sqlalchemy import func, insert, null, select, update
 
 from evo_agents.core_plugins.crm import MANIFEST, job, rules
 from evo_agents.core_plugins.crm import kg as crm_kg
+from evo_agents.core_plugins.crm import tables as crm_tables
 from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext
 from tests.hub.live import sql
@@ -178,7 +179,7 @@ def test_crm_manifest_declares_no_permission_the_contacts_page_and_the_six_table
     contributes = MANIFEST["contributes"]
     assert MANIFEST["id"] == "crm" and MANIFEST["permissions"] == []
     assert [(page["name"], page["icon"]) for page in contributes["pages"]] == [("contacts", "kanban")]
-    assert all("entry" not in page for page in contributes["pages"])  # native: a page of the hub's web
+    assert [page["entry"] for page in contributes["pages"]] == ["pages/contacts.html"]  # framed: the plugin's page
     assert [j["name"] for j in contributes["jobs"]] == ["intake"] and contributes["jobs"][0]["cron"]
     assert {t["name"] for t in contributes["tables"]} == {
         "crm_contacts",
@@ -231,11 +232,11 @@ def test_crm_github_gives_contacts_from_the_issue_form_issues_pull_requests_and_
 def test_crm_a_replier_is_not_a_contact_and_a_second_pass_adds_nothing(client, crm, hub_db):
     fetcher = Fake([issue(1, "Dung")])
     run(client, fetcher)
-    first = sql(hub_db, select(func.count()).select_from(tables.crm_touchpoints))[0][0]
+    first = sql(hub_db, select(func.count()).select_from(crm_tables.touchpoints))[0][0]
     fetcher.found.append({**issue(1, "Replier"), "number": 99, "pull_request": None} | {"user": {"login": "x" * 50}})
     run(client, fetcher)
     run(client, fetcher)
-    assert sql(hub_db, select(func.count()).select_from(tables.crm_touchpoints))[0][0] == first
+    assert sql(hub_db, select(func.count()).select_from(crm_tables.touchpoints))[0][0] == first
     assert "replier" not in stages(client, crm["eve"])
 
 
@@ -315,7 +316,7 @@ def test_crm_the_counts_go_to_signal_under_crm_keys_only_once_an_admin_declared_
 
 def test_crm_a_project_that_does_not_enable_it_writes_nothing_and_its_routes_answer_404(client, members, hub_db):
     assert run(client, Fake([issue(1, "Dung")])) == {}
-    for table in (tables.crm_contacts, tables.crm_touchpoints, tables.crm_cursors, tables.crm_stage_history):
+    for table in (crm_tables.contacts, crm_tables.touchpoints, crm_tables.cursors, crm_tables.stage_history):
         assert sql(hub_db, select(func.count()).select_from(table))[0][0] == 0
     assert sql(hub_db, select(func.count()).select_from(tables.signal_ingest_keys))[0][0] == 0
     assert client.get(BASE, headers=members["alice"]).status_code == 404
@@ -360,8 +361,8 @@ def test_crm_the_list_filters_by_stage_and_source_and_a_label_above_the_grant_hi
     assert listed(client, crm["eve"])["counts"] == {"lead": 2, "invited": 4, "activated": 0, "retained": 0}
     sql(
         hub_db,
-        update(tables.crm_contacts)
-        .where(tables.crm_contacts.c.login == "dung")
+        update(crm_tables.contacts)
+        .where(crm_tables.contacts.c.login == "dung")
         .values(label={"level": "restricted", "location": "any"}),
     )
     blind = listed(client, crm["eve"])
@@ -382,14 +383,14 @@ def test_crm_a_deletion_removes_the_touchpoints_and_the_audit_and_the_record_hol
     assert (
         "dung" not in stages(client, crm["eve"]) and client.get(f"{BASE}/dung", headers=crm["eve"]).status_code == 404
     )
-    gone_id = sql(hub_db, select(tables.crm_deletions.c.contact_id))[0][0]
-    for table in (tables.crm_touchpoints, tables.crm_stage_history):
+    gone_id = sql(hub_db, select(crm_tables.deletions.c.contact_id))[0][0]
+    for table in (crm_tables.touchpoints, crm_tables.stage_history):
         assert sql(hub_db, select(func.count()).select_from(table).where(table.c.contact_id == gone_id)) == [(0,)]
     contact = sql(
-        hub_db, select(func.count()).select_from(tables.crm_contacts).where(tables.crm_contacts.c.login == "dung")
+        hub_db, select(func.count()).select_from(crm_tables.contacts).where(crm_tables.contacts.c.login == "dung")
     )
     assert contact == [(0,)]
-    deletions = sql(hub_db, select(tables.crm_deletions))
+    deletions = sql(hub_db, select(crm_tables.deletions))
     audit = sql(hub_db, select(tables.audit).where(tables.audit.c.action == "crm.delete"))
     assert len(deletions) == 1 and len(audit) == 1
     dump = json.dumps([[str(x) for x in row] for row in deletions + audit])
@@ -399,7 +400,7 @@ def test_crm_a_deletion_removes_the_touchpoints_and_the_audit_and_the_record_hol
     assert "dung" not in stages(client, crm["eve"])
     assert sql(
         hub_db,
-        select(func.count()).select_from(tables.crm_touchpoints).where(tables.crm_touchpoints.c.ref == "issue#8"),
+        select(func.count()).select_from(crm_tables.touchpoints).where(crm_tables.touchpoints.c.ref == "issue#8"),
     ) == [(0,)]
 
 

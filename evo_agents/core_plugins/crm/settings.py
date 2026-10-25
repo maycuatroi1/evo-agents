@@ -9,11 +9,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.crm import github
-from evo_agents.core_plugins.crm.store import PLUGIN
-from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.plugins import config as plugin_config
+from evo_agents.core_plugins.crm import github, store
+from evo_agents.hub.server import core_plugin_api as hub
 
 DEFAULT_LINKS_PER_WEEK = 3
 DEFAULT_MIN_AGE_DAYS = 30
@@ -30,20 +27,14 @@ def _count(value, default: int) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else default
 
 
-async def config(conn: AsyncConnection, row, project_id: int) -> Config:
-    """The config of the plugin in the project (``row`` is its ``enabled_in`` row); a repo that is no owner/name is
-    left out."""
-    stacks = await stored_stacks(conn, [row.id], project_id, None)
-    merged = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, []))
-    values = {name: item.value for name, item in merged.fields.items() if not item.secret}
+async def config(conn: AsyncConnection, project: str) -> Config:
+    """The config of the plugin in ``project``, which enables it (404 otherwise); a repo that is no owner/name is left
+    out. The plugin has no secret field, so it unseals nothing."""
+    found = await hub.plugin_config(conn, store.handle(), None, project=project)
+    values = found.values
     repo = values.get("repo")
     return Config(
         repo if isinstance(repo, str) and re.fullmatch(github.REPO, repo) else None,
         _count(values.get("invite_links_per_week"), DEFAULT_LINKS_PER_WEEK),
         _count(values.get("invite_min_github_age_days"), DEFAULT_MIN_AGE_DAYS),
     )
-
-
-async def enabled(conn: AsyncConnection, project_id: int):
-    """The ``enabled_in`` row of the plugin in the project, or None when it is not enabled there."""
-    return await enabled_in(conn, PLUGIN, project_id)

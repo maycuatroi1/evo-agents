@@ -261,7 +261,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
 | `agent_packs` | `name`, `title`, `description` | a directory `packs/<name>/` of the bundle laid out as a Claude Code plugin, which an agent profile attaches at a version of the plugin; a plugin of the hub's image has no bundle to build it from | the same (section Agent packs) |
 | `agent_types` | `name`, `title`, `description`, `profile`, `packs`, `environment`, `jobs`, `events`, `pages` | a template of an agent profile with the plugin's own packs, environment, jobs, events and pages it uses, which a project enables and the plugin hands tasks to | the same (section Agent types) |
-| `cli` | `name`, `help`, `http` (`method`, `path`), `project`, `args` (each `name`, `type`, `in`, `flag`, `positional`, `choices`, `required`, `repeatable`, `help`), `output` (`json`, `table`, `text`) | a command `evo-agents hub <id> <name>`, which the CLI reads from the hub and runs as a call of the plugin's route (section Commands of the CLI) | the same |
+| `cli` | `name`, `help`, `http` (`method`, `path`), `project`, `args` (each `name`, `type`, `in`, `flag`, `positional`, `choices`, `required`, `repeatable`, `help`, `default`, `metavar`, `values`, `group`), `when` (each `arg`, `http`), `confirm` (`flag`, `text`), `client`, `output` (`json`, `table`, `text`, `render`, `keys`, `schema`) | a command `evo-agents hub <id> <name>`, which the CLI reads from the hub and runs as a call of the plugin's route (section Commands of the CLI) | the same |
 | `notice_kinds` | `name` (the plugin's table prefix, then a word), `title`, `description` | a kind of notice the plugin sends with `core_plugin_api.notify`, which members' notification settings list | (core only) |
 
 **Commands of the CLI** (`cli`, version 1). A plugin adds commands to `evo-agents hub <id> <command>` without a
@@ -288,6 +288,25 @@ northwind-ledger has `list`, `add` and `remind`:
 
 `evo-agents hub northwind-ledger add --project acme rent --amount-cents 1500` then posts `{"memo": "rent",
 "amount_cents": 1500}` to `/v1/x/northwind-ledger/acme/entries`.
+
+A command can say more without a release of the CLI either. An argument's `default` is sent when it is left out,
+`metavar` is the word of the help, `values` makes a flag take one value per name (`--add KIND VALUE` sends `kind` and
+`value`), and flags of the same `group` exclude each other. `when` lists other routes: the first entry whose argument
+`arg` is given calls its `http` instead (`resume` with a channel id resumes that channel, without one the whole
+project). `confirm` makes the command call nothing unless its switch `flag` is given: the CLI prints `text` on stderr,
+`{name}` an argument's value and `{project}` the project, and exits with status 2. With `output.render` `text` the CLI
+asks the route for its own words, the query `render=text`, unless `--json` is given, and prints the answer's `text` as it
+is (nothing when it is empty), so a plugin words its tables and sentences itself. `output.keys` and `output.schema` name
+what `--json` prints and the OpenAPI component of the answer, for the CLI's contract (`evo-agents hub contract print`).
+`client` names a client of the CLI's own that runs the command instead of one call: `browser_post` claims the oldest
+post queued for a browser, posts it with the CLI's deterministic browser script (`evo_agents/hub/browser_post.py`) and
+reports it; `browser_login` opens a visible browser on a channel's login page and seals the session the member makes
+(section Browser adapter of `docs/marketing-plugin.md`). Both need Playwright with Chromium where the CLI runs.
+
+The core plugins installed with the CLI (entry point group `evo_agents.plugins`) ship their commands in `cli.json`
+beside their package's `__init__`, which their manifest's `contributes.cli` also reads. The CLI reads the file without
+importing the plugin and needs no hub to list them; over the list it kept they win, so `evo-agents hub crm|pm|marketing`
+is the same on every machine and in the CLI's contract.
 
 **Loop rules** (`loop_rules`, version 1; core plugins only). A core plugin adds rules to the Loop beside the core table
 of `docs/loop.md`, never in its place. A rule names its handler (`python`), the events it reads (`on`: events of the hub,

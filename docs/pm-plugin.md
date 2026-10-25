@@ -77,7 +77,8 @@ evo-agents hub pm daily --project evo-agents                 # today
 evo-agents hub pm daily --project evo-agents --date 2026-10-19 --json
 ```
 
-The command speaks HTTP only (`evo_agents/hub/cli_pm.py`).
+The command speaks HTTP only: it is a command of the plugin's manifest (`evo_agents/core_plugins/pm/cli.json`), and the
+route words the report for it (`render=text`, `evo_agents/core_plugins/pm/cli_text.py`).
 
 ## The morning job
 
@@ -111,7 +112,7 @@ The manifest has one native page, `daily`, in the project's menu (`/p/{project}/
 link of the digest, redirects to it). It shows the eight sections of one day (`?date=YYYY-MM-DD`, today in the project's
 timezone by default): done, sprint, late, review, stale, blocked, escalate and load. Each task links to its page in tasks;
 each blocker names who it waits on and its age. A 409 (tasks not enabled, or a config of pm the hub refuses) shows the
-hub's reason with links to the plugins' pages. Code: `web/src/components/pm`, `web/src/app/(app)/p/[project]/x/pm`.
+hub's reason with links to the plugins' pages. Code: `evo_agents/core_plugins/pm/ui/pages`, framed by the web.
 
 ## Code
 

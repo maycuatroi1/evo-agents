@@ -26,6 +26,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     Plugin,
     PluginConfig,
     ProjectConfig,
+    ProjectRef,
     Refused,
     Session,
     issue_plugin,
@@ -241,10 +242,18 @@ async def restricted(conn: AsyncConnection, project: str | None, cleared: Cleara
 # The audit log
 
 
-async def audit(conn: AsyncConnection, plugin: Plugin, actor: Session, action: str, target: str) -> None:
+async def audit(
+    conn: AsyncConnection,
+    plugin: Plugin,
+    actor: Session,
+    action: str,
+    target: str,
+    *,
+    project: ProjectRef | None = None,
+) -> None:
     """Record in the hub's audit log that ``actor`` (from ``WebSession``, ``Caller`` or ``HubAdmin``) did ``action``,
     ``<the plugin's id or one of its kinds>.<word>``, to ``target``, one line of at most 1 KiB that holds no secret:
-    hub admins read it."""
+    hub admins read it. With ``project`` (from ``project_access``) the row is of that project."""
     own_plugin(plugin)
     own_session(actor)
     family, _, word = action.partition(".") if isinstance(action, str) else ("", "", "")
@@ -253,4 +262,13 @@ async def audit(conn: AsyncConnection, plugin: Plugin, actor: Session, action: s
     if not isinstance(target, str) or len(target) > MAX_AUDIT_TARGET or "\n" in target or "\r" in target:
         raise ValueError(f"an audit target is one line of at most {MAX_AUDIT_TARGET} characters")
     principal = session_principal(actor)
-    await audit_log.record(conn, actor_id=actor.user_id, token_id=principal.token_id, action=action, target=target)
+    if project is not None and not isinstance(project, ProjectRef):
+        raise ValueError("an audit's project comes from project_access")
+    await audit_log.record(
+        conn,
+        actor_id=actor.user_id,
+        token_id=principal.token_id,
+        action=action,
+        target=target,
+        project_id=None if project is None else project.id,
+    )

@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.marketing import adapters, breaker, browser, budget, gate, judge, registry, store
 from evo_agents.core_plugins.marketing.outcome import finish as _finish
 from evo_agents.core_plugins.marketing.settings import Config
-from evo_agents.hub.tables_marketing import PERSONAL_AUTONOMOUS
+from evo_agents.core_plugins.marketing.tables import PERSONAL_AUTONOMOUS
 
 log = logging.getLogger(__name__)
 

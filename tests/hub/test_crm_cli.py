@@ -1,4 +1,4 @@
-"""``evo-agents hub crm list|show|delete`` (``evo_agents.hub.cli_crm``): the commands and their ``--json`` keys are in the
+"""``evo-agents hub crm list|show|delete`` (manifest commands of the core plugin crm, ``evo_agents/core_plugins/crm/cli.json``): the commands and their ``--json`` keys are in the
 contract (seam hub-cli-v1), and a member runs them against a hub that serves the core plugin crm: the contacts with
 the count of each stage, one contact with its touchpoints, and a deletion that an admin makes and a writer is refused.
 
@@ -21,6 +21,7 @@ if pg.DSN:
     import httpx
     from sqlalchemy import insert, select
 
+    from evo_agents.core_plugins.crm import tables as crm_tables
     from evo_agents.hub import tables
     from tests.hub.live import sql
 
@@ -72,7 +73,7 @@ def enable_crm(hub) -> None:
 
 def contact(db, login: str, stage: str, source: str, ref: str, url: str) -> None:
     project_id = sql(db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
-    made = insert(tables.crm_contacts).values(
+    made = insert(crm_tables.contacts).values(
         project_id=project_id,
         login=login,
         profile_url=f"https://github.com/{login}",
@@ -80,12 +81,12 @@ def contact(db, login: str, stage: str, source: str, ref: str, url: str) -> None
         stage=stage,
         label={"level": "internal", "location": "any"},
     )
-    contact_id = sql(db, made.returning(tables.crm_contacts.c.id))[0][0]
+    contact_id = sql(db, made.returning(crm_tables.contacts.c.id))[0][0]
     sql(
         db,
-        insert(tables.crm_touchpoints).values(contact_id=contact_id, kind=source, ref=ref, url=url, happened_at=NOW),
+        insert(crm_tables.touchpoints).values(contact_id=contact_id, kind=source, ref=ref, url=url, happened_at=NOW),
     )
-    sql(db, insert(tables.crm_stage_history).values(contact_id=contact_id, stage="lead", reached_at=NOW))
+    sql(db, insert(crm_tables.stage_history).values(contact_id=contact_id, stage="lead", reached_at=NOW))
 
 
 def crm(hub, monkeypatch, capsys, who: str, *args: str):

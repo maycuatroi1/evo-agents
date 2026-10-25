@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.marketing import budget, store
+from evo_agents.core_plugins.marketing import budget, store, tables
 from evo_agents.core_plugins.marketing.models import (
     MarketingBudget,
     MarketingGoalSignal,
@@ -24,15 +24,12 @@ from evo_agents.core_plugins.marketing.models import (
     MarketingWeekProposal,
 )
 from evo_agents.core_plugins.marketing.settings import Config
-from evo_agents.hub import goals, tables
-from evo_agents.hub.server import notifications
-from evo_agents.hub.server.loop import view
+from evo_agents.hub.server import core_plugin_api as hub
 
 WEEK = timedelta(days=7)
 SEND_HOUR = 8  # Monday, UTC
 NOTICE = "plugin_notice"
 MAX_ROWS = 200
-ACTIVE = "active"
 
 
 def week_of(now: datetime) -> str:
@@ -41,30 +38,18 @@ def week_of(now: datetime) -> str:
     return f"{year:04d}-W{week:02d}"
 
 
-async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> list[MarketingGoalSignal]:
-    g, r = tables.goals, tables.goal_revisions
-    query = (
-        select(g.c.number, r.c.statement, r.c.metric)
-        .join_from(g, r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
-        .where(g.c.project_id == project_id, r.c.status == ACTIVE, r.c.metric.is_not(None))
-        .order_by(r.c.rank, g.c.number)
-    )
-    found = []
-    for row in await conn.execute(query):
-        value = await view.measure(conn, project_id, row.metric, now)
-        target, comparator = row.metric.get("target"), row.metric.get("comparator")
-        hit = None if value is None or comparator not in view.COMPARE else view.COMPARE[comparator](value, target)
-        found.append(
-            MarketingGoalSignal(
-                code=goals.code(row.number),
-                statement=row.statement,
-                metric=goals.metric_text(row.metric),
-                value=value,
-                target=float(target) if isinstance(target, (int, float)) else None,
-                reached=hit,
-            )
+async def _goals(conn: AsyncConnection, project: str, now: datetime) -> list[MarketingGoalSignal]:
+    return [
+        MarketingGoalSignal(
+            code=goal.code,
+            statement=goal.statement,
+            metric=goal.metric_text,
+            value=goal.value,
+            target=goal.target,
+            reached=goal.reached,
         )
-    return found
+        for goal in await hub.measure_goals(conn, store.handle(), project, now)
+    ]
 
 
 async def read(conn: AsyncConnection, cfg: Config, project: str, project_id: int, now: datetime) -> MarketingWeekly:
@@ -98,7 +83,7 @@ async def read(conn: AsyncConnection, cfg: Config, project: str, project_id: int
         project=project,
         since=since,
         until=now,
-        goals=await _goals(conn, project_id, now),
+        goals=await _goals(conn, project, now),
         posted=[MarketingWeekPost(**{**row._mapping, "cost_usd": float(row.cost_usd)}) for row in posted],
         counts={state: count for state, count in states},
         breakers=[
@@ -148,26 +133,17 @@ async def send(conn: AsyncConnection, cfg: Config, project: str, project_id: int
     if utc.weekday() != 0 or utc.hour < SEND_HOUR:
         return False
     week = week_of(utc)
-    n = tables.notifications.c
-    told = await conn.scalar(
-        select(n.id)
-        .where(n.project_id == project_id, n.notice_kind == NOTICE, n.details["weekly"].astext == week)
-        .limit(1)
-    )
-    if told is not None:
+    if await hub.admins_notified(conn, store.handle(), project, "weekly", week):
         return False
     found = await read(conn, cfg, project, project_id, utc)
     body = text(found)
-    for user_id in await store.project_admins(conn, project_id):
-        await notifications.notify(
-            conn,
-            user_id=user_id,
-            kind="notice",
-            notice_kind=NOTICE,
-            title=f"Growth weekly of {project}, {week}",
-            body=body,
-            project_id=project_id,
-            details={"plugin": store.PLUGIN, "project": project, "weekly": week},
-            link=f"/p/{project}/x/marketing/weekly",
-        )
+    await hub.notify_admins(
+        conn,
+        store.handle(),
+        project,
+        title=f"Growth weekly of {project}, {week}",
+        body=body,
+        link=f"/p/{project}/x/marketing/weekly",
+        details={"weekly": week},
+    )
     return True

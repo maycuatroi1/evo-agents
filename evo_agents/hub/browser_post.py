@@ -1,5 +1,6 @@
-"""The script of the browser adapter of the core plugin marketing: it posts one text the gate passed to a channel that has
-no posting API, in the logged-in browser session of the account (``docs/marketing-plugin.md``, Browser adapter).
+"""The browser script of the CLI (``client`` browser_post of a plugin's command, ``evo_agents.hub.cli_plugin_commands``):
+it posts one text a plugin's gate passed to a channel that has no posting API, in the logged-in browser session of the
+account. The core plugin marketing is the one that uses it (``docs/marketing-plugin.md``, Browser adapter).
 
 It is deterministic code and no model drives the browser: a ``Profile`` names the page, the fields and the button of one
 channel, and ``run_post`` goes to the page, fills the text, presses the button and reads the address of the page it ends
@@ -8,7 +9,7 @@ a 403 or 429, the login page. Any of them ends the run with the outcome ``captch
 and a screenshot; the script never tries again, never solves a captcha and never types a password. It only posts: it
 opens the compose page, the page of the post and nothing else, so it reads no feed, no comment and no number.
 
-``Page`` is what the script needs of a browser; ``evo_agents.hub.marketing_browser_pw`` wraps Playwright in it, a test
+``Page`` is what the script needs of a browser; ``evo_agents.hub.browser_post_pw`` wraps Playwright in it, a test
 passes a fake page that plays a local site. The selectors and addresses of ``PROFILES`` are [Unverified] against the live
 sites. Standard library only: nothing here imports Playwright.
 """
@@ -89,7 +90,7 @@ class Profile:
     submit: str  # selector of the button that posts
     done: str  # regular expression the address of the page after posting matches
     domains: tuple[str, ...]  # the cookies of these domains are the session
-    login: str = "/login"  # where `evo-agents hub marketing login` opens the browser
+    login: str = "/login"  # where `evo-agents hub <plugin> login` opens the browser
     title: str | None = None  # selector of the title field, when the form has one
     needs_media: bool = False  # the form takes a file and no text alone
 
