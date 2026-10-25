@@ -171,7 +171,7 @@ test("a plugin's page opens in a sandbox from the project's menu and reaches the
 
   const inside = frameOf(page);
   await expect(inside.locator("#context")).toHaveText(`${id} in ${project} for ${me.login}`);
-  await expect(inside.locator("#methods")).toHaveText("context, resize, route, runs.list, runs.get");
+  await expect(inside.locator("#methods")).toHaveText("context, resize, route, navigate, toast, runs.list, runs.get");
   // runs:read was granted: the page reads the project's runs with the viewer's session.
   await expect(inside.locator("#runs")).toHaveText("allowed: 0 runs");
   // plans:read was not: the bridge refuses before the hub is asked.
