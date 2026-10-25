@@ -25,6 +25,7 @@ import { useProblemViewer } from "./problem-hooks";
 import { byStatusThenRank, readStatusFilter, statusCounts } from "./problem-model";
 import { useProblemMetricText } from "./problem-parts";
 import { PROBLEM_LOOKS, ProblemStatusBadge } from "./problem-status";
+import { WaitingProposals } from "./waiting-proposals";
 
 const NARROW_HIDDEN = { metric: "hidden md:table-cell", owner: "hidden lg:table-cell", changed: "hidden xl:table-cell" };
 
@@ -184,7 +185,8 @@ function Problems({ project, problems, writer, onNew }: { project: string; probl
 /**
  * A project's problems (/p/{project}/problems), for any member with a grant on it: what hurts, before any solution,
  * the open ones first and each status by rank, filtered by status. A writer adds one here (New problem) or with
- * `evo-agents hub problem set`; goals, claims and plans point back to them.
+ * `evo-agents hub problem set`; goals, claims and plans point back to them. Above the list, a writer answers the
+ * proposed problems that wait for them, an intake's among them.
  */
 export function ProblemsPage({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("problems.list");
@@ -206,6 +208,7 @@ export function ProblemsPage({ project, initialError }: { project: string; initi
           ) : null
         }
       />
+      {writer ? <WaitingProposals project={project} kind="problem" /> : null}
       <QueryView state={state} loading={<TableSkeleton rows={3} toolbar />}>
         {(problems) => <Problems project={project} problems={problems} writer={writer} onNew={() => setCreating(true)} />}
       </QueryView>

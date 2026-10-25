@@ -197,7 +197,9 @@ class BuilderProposal(BaseModel):
         None, description="an approved plugin or plugin_listing: the chat run of @builder that took its task"
     )
     outcome: str | None = Field(None, description="an approved action: what approving it did")
-    link: str | None = Field(description="the hub's message that shows it in its thread; none for a review run's")
+    link: str | None = Field(
+        description="the hub's message that shows it in its thread; none for a review run's or an intake's"
+    )
 
 
 # Reading
@@ -246,13 +248,15 @@ def view(row) -> BuilderProposal:
 
 
 async def listed(
-    conn: AsyncConnection, project_id: int, state: str | None = None, limit: int = 100
+    conn: AsyncConnection, project_id: int, state: str | None = None, limit: int = 100, kinds: list[str] | None = None
 ) -> list[BuilderProposal]:
-    """The proposals of the project, the newest first; those in ``state`` alone when given."""
+    """The proposals of the project, the newest first; those in ``state``, and of ``kinds``, alone when given."""
     b = tables.builder_proposals
     query = _select().where(b.c.project_id == project_id)
     if state is not None:
         query = query.where(b.c.state == state)
+    if kinds is not None:
+        query = query.where(b.c.kind.in_(kinds))
     return [view(row) for row in await conn.execute(query.order_by(b.c.id.desc()).limit(limit))]
 
 

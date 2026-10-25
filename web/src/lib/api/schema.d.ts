@@ -5153,6 +5153,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/builder/{project}/proposals/waiting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Waiting Proposals
+         * @description The project's pending proposals that the caller may decide, the newest first; those of ``kind`` alone when
+         *     given. A writer has those of a problem and an opportunity, an intake's among them, which have no thread to answer
+         *     in; an admin of the project has the project's others too, a hub admin those of the branding and the features; a
+         *     reader, and the agent of a run, none.
+         */
+        get: operations["waiting_proposals_v1_x_builder__project__proposals_waiting_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals/{proposal_id}": {
         parameters: {
             query?: never;
@@ -12969,7 +12992,7 @@ export interface components {
             outcome?: string | null;
             /**
              * Link
-             * @description the hub's message that shows it in its thread; none for a review run's
+             * @description the hub's message that shows it in its thread; none for a review run's or an intake's
              */
             link: string | null;
         };
@@ -55462,6 +55485,48 @@ export interface operations {
         parameters: {
             query?: {
                 state?: ("pending" | "applied" | "rejected" | "failed" | "rolled_back") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    waiting_proposals_v1_x_builder__project__proposals_waiting_get: {
+        parameters: {
+            query?: {
+                kind?: ("branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity" | "plugin" | "plugin_install" | "plugin_listing") | null;
             };
             header?: never;
             path: {

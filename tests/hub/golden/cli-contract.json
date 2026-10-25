@@ -7329,6 +7329,230 @@
         "schema": "Intake"
       }
     },
+    "hub intake proposal approve": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "kind",
+          "target",
+          "change",
+          "summary",
+          "base_version",
+          "state",
+          "approver",
+          "proposed_by",
+          "proposed_at",
+          "decided_by",
+          "decided_at",
+          "applied_version",
+          "rollback_version",
+          "error",
+          "run_id",
+          "opened_run_id",
+          "outcome",
+          "link"
+        ],
+        "schema": "BuilderProposal"
+      }
+    },
+    "hub intake proposal list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "problem",
+            "opportunity"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "project",
+          "kind",
+          "target",
+          "change",
+          "summary",
+          "base_version",
+          "state",
+          "approver",
+          "proposed_by",
+          "proposed_at",
+          "decided_by",
+          "decided_at",
+          "applied_version",
+          "rollback_version",
+          "error",
+          "run_id",
+          "opened_run_id",
+          "outcome",
+          "link"
+        ],
+        "schema": "BuilderProposal"
+      }
+    },
+    "hub intake proposal reject": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "kind",
+          "target",
+          "change",
+          "summary",
+          "base_version",
+          "state",
+          "approver",
+          "proposed_by",
+          "proposed_at",
+          "decided_by",
+          "decided_at",
+          "applied_version",
+          "rollback_version",
+          "error",
+          "run_id",
+          "opened_run_id",
+          "outcome",
+          "link"
+        ],
+        "schema": "BuilderProposal"
+      }
+    },
+    "hub intake proposal show": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "kind",
+          "target",
+          "change",
+          "summary",
+          "base_version",
+          "state",
+          "approver",
+          "proposed_by",
+          "proposed_at",
+          "decided_by",
+          "decided_at",
+          "applied_version",
+          "rollback_version",
+          "error",
+          "run_id",
+          "opened_run_id",
+          "outcome",
+          "link"
+        ],
+        "schema": "BuilderProposal"
+      }
+    },
     "hub intake put": {
       "positionals": [
         {
@@ -49546,6 +49770,93 @@
           }
         }
       },
+      "/v1/x/builder/{project}/proposals/waiting": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Waiting Proposals",
+          "description": "The project's pending proposals that the caller may decide, the newest first; those of ``kind`` alone when\ngiven. A writer has those of a problem and an opportunity, an intake's among them, which have no thread to answer\nin; an admin of the project has the project's others too, a hub admin those of the branding and the features; a\nreader, and the agent of a run, none.",
+          "operationId": "waiting_proposals_v1_x_builder__project__proposals_waiting_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "kind",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "branding",
+                      "features",
+                      "plugin_config",
+                      "agent",
+                      "policy",
+                      "problem",
+                      "goal",
+                      "opportunity",
+                      "plugin",
+                      "plugin_install",
+                      "plugin_listing"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Kind"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/BuilderProposal"
+                    },
+                    "title": "Response Waiting Proposals V1 X Builder  Project  Proposals Waiting Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/x/builder/{project}/proposals/{proposal_id}": {
         "get": {
           "tags": [
@@ -86716,7 +87027,7 @@
                 }
               ],
               "title": "Link",
-              "description": "the hub's message that shows it in its thread; none for a review run's"
+              "description": "the hub's message that shows it in its thread; none for a review run's or an intake's"
             }
           },
           "type": "object",

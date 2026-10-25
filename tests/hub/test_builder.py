@@ -27,7 +27,9 @@ import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 
-from evo_agents.hub import plugin_calls, plugin_events, tables
+from evo_agents.cli import build_parser
+from evo_agents.hub import cli_intake, plugin_calls, plugin_events, tables
+from evo_agents.hub.client import HubError
 from evo_agents.hub.server.app import create_app
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
@@ -842,39 +844,108 @@ def test_builder_proposals_table_refuses_a_row_whose_state_and_columns_disagree(
 
 # Proposals an intake made (plan problem-intake): no run, no chat; approving one writes the problem and its lines
 
+INTAKE_LINE = {
+    "source_kind": "messenger",
+    "source_uri": "messenger://shop-group/1",
+    "excerpt": "We ring the depot every morning.",
+    "signal": "workaround",
+    "label": "internal",
+}
+INTAKE_CANDIDATE = {
+    "statement": "Shops cannot tell when a delivery comes",
+    "who": "shop owners",
+    "when": "before the delivery",
+    "workaround": "they ring the depot",
+    "basis": {
+        "statement": {"quote": "we ring the depot"},
+        "who": "inferred",
+        "when": "inferred",
+        "workaround": "inferred",
+    },
+    "evidence": [INTAKE_LINE, {**INTAKE_LINE, "source_kind": "email", "source_uri": "email://depot/42"}],
+}
 
-def test_builder_proposals_of_an_intake_are_approved_like_any_other(client, hub):
+
+def intake_proposal(client, hub) -> int:
+    """The writer someone-else starts intake I-1 and puts one new candidate problem; the id of its pending proposal."""
     base = f"/v1/projects/{PROJECT}/intakes"
     sources = [{"kind": "messenger", "label": "internal", "name": "Shop group"}]
     assert client.post(base, json={"sources": sources}, headers=hub["other"]).status_code == 201
-    line = {
-        "source_kind": "messenger",
-        "source_uri": "messenger://shop-group/1",
-        "excerpt": "We ring the depot every morning.",
-        "signal": "workaround",
-        "label": "internal",
-    }
-    candidate = {
-        "statement": "Shops cannot tell when a delivery comes",
-        "who": "shop owners",
-        "when": "before the delivery",
-        "workaround": "they ring the depot",
-        "basis": {
-            "statement": {"quote": "we ring the depot"},
-            "who": "inferred",
-            "when": "inferred",
-            "workaround": "inferred",
-        },
-        "evidence": [line, {**line, "source_kind": "email", "source_uri": "email://depot/42"}],
-    }
-    result = {"schema": "evo-intake/1", "candidates": [candidate], "promises": [], "questions": []}
+    result = {"schema": "evo-intake/1", "candidates": [INTAKE_CANDIDATE], "promises": [], "questions": []}
     put = client.put(f"{base}/I-1", json=result, headers=hub["other"])
     assert put.status_code == 200, put.text
-    proposal_id = put.json()["outcome"]["proposals"][0]["proposal_id"]
+    return put.json()["outcome"]["proposals"][0]["proposal_id"]
+
+
+def test_builder_proposals_of_an_intake_are_approved_like_any_other(client, hub):
+    proposal_id = intake_proposal(client, hub)
     assert shown(client, hub["reader"], proposal_id)["state"] == "pending"
     assert answer(client, hub["owner"], proposal_id, "approve").json()["state"] == "applied"
     found = problem(client, hub["reader"], "P-1")
-    assert (found["statement"], found["evidence_count"], found["source_count"]) == (candidate["statement"], 2, 2)
+    assert (found["statement"], found["evidence_count"], found["source_count"]) == (INTAKE_CANDIDATE["statement"], 2, 2)
+
+
+def test_builder_waiting_proposals_show_an_intake_s_to_a_writer_and_not_to_a_reader(client, hub):
+    proposal_id = intake_proposal(client, hub)
+    waiting = f"{PROPOSALS}/waiting"
+    found = client.get(waiting, headers=hub["other"]).json()
+    assert [(p["id"], p["kind"], p["state"], p["approver"], p["link"]) for p in found] == [
+        (proposal_id, "problem", "pending", "project_writer", None)
+    ]
+    assert client.get(f"{waiting}?kind=problem", headers=hub["other"]).json() == found
+    assert client.get(f"{waiting}?kind=opportunity", headers=hub["other"]).json() == []
+    assert [p["id"] for p in client.get(waiting, headers=hub["owner"]).json()] == [proposal_id]
+    assert client.get(waiting, headers=hub["reader"]).json() == []  # a reader decides no proposal
+    assert client.get(f"{waiting}?kind=nothing", headers=hub["other"]).status_code == 422
+    assert answer(client, hub["reader"], proposal_id, "approve").status_code == 403
+    assert answer(client, hub["other"], proposal_id, "approve").json()["state"] == "applied"
+    assert problem(client, hub["reader"], "P-1")["statement"] == INTAKE_CANDIDATE["statement"]
+    assert client.get(waiting, headers=hub["other"]).json() == []
+
+
+class MemberHub:
+    """``evo_agents.hub.client.Hub`` over the in-process app, as the member whose headers it has."""
+
+    def __init__(self, client, headers: dict):
+        self.client, self.headers = client, headers
+
+    def call(self, method: str, path: str, body=None):
+        response = self.client.request(method, path, json=body, headers=self.headers)
+        payload = response.json() if response.content else None
+        if response.status_code >= 400:
+            raise HubError(payload["message"], response.status_code, payload["error"])
+        return payload
+
+
+def intake_cli(monkeypatch, member: MemberHub, *argv: str) -> int:
+    """``evo-agents hub intake ARGV --project PROJECT`` as ``member``; its exit status."""
+    monkeypatch.setattr(cli_intake, "signed_in", lambda: (member, None))
+    args = build_parser().parse_args(["hub", "intake", *argv, "--project", PROJECT])
+    return args.func(args)
+
+
+def test_builder_proposals_of_an_intake_are_listed_and_answered_with_the_cli(client, hub, monkeypatch, capsys):
+    proposal_id = intake_proposal(client, hub)
+    reader, writer = MemberHub(client, hub["reader"]), MemberHub(client, hub["other"])
+    assert intake_cli(monkeypatch, reader, "proposal", "list") == 0
+    assert "No proposal of problem or opportunity waits for your answer" in capsys.readouterr().out
+    assert intake_cli(monkeypatch, reader, "proposal", "approve", str(proposal_id)) != 0
+    assert "writer role" in capsys.readouterr().err
+    assert intake_cli(monkeypatch, writer, "proposal", "list", "--kind", "problem") == 0
+    listed = capsys.readouterr().out
+    assert listed.splitlines()[1].split()[:5] == [str(proposal_id), "new", "problem", "P-1", OTHER]
+    assert "Intake I-1: a new problem" in listed
+    assert intake_cli(monkeypatch, writer, "proposal", "show", str(proposal_id)) == 0
+    printed = capsys.readouterr().out
+    assert f"Proposal {proposal_id} of project {PROJECT}: new problem P-1, pending" in printed
+    assert f"statement: {INTAKE_CANDIDATE['statement']}" in printed
+    assert f"evidence: [workaround] messenger messenger://shop-group/1: {INTAKE_LINE['excerpt']}" in printed
+    assert intake_cli(monkeypatch, writer, "proposal", "approve", str(proposal_id)) == 0
+    assert capsys.readouterr().out.strip() == f"Approved proposal {proposal_id}: new problem P-1 is made."
+    found = problem(client, hub["reader"], "P-1")
+    assert (found["statement"], found["evidence_count"]) == (INTAKE_CANDIDATE["statement"], 2)
+    assert intake_cli(monkeypatch, writer, "proposal", "reject", str(proposal_id)) != 0  # applied already: 409
+    assert "applied already" in capsys.readouterr().err
 
 
 # Proposals of an opportunity (plan opportunity-intake, criteria a1 and a2)
