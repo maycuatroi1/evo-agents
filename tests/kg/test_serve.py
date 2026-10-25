@@ -626,6 +626,27 @@ def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg
     assert hidden["mentioned_by"] == {} and all(not r["id"].startswith("app:") for r in hidden["results"])
 
 
+def test_search_says_how_many_words_each_result_holds_and_quotes_a_document(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    write(tmp_path / "demo-app" / "docs/quarry.md", "The zephyr quarry closed after the flood of March.\n")
+    commit(tmp_path / "demo-app", "a note without a heading")
+    sync_project(project)
+    assert build_project(project).ok
+    session = Session(project, "agent")
+    result = session.call("kg_search", {"query": "zephyr quarry tuesday", "limit": 3})
+    lines = result["content"][0]["text"].splitlines()
+    assert "no result holds all 3 words of the query" in lines
+    first = lines.index(next(line for line in lines if line.startswith("[app:docs/quarry.md] Document")))
+    assert lines[first].endswith(" words=2/3")
+    assert lines[first + 1] == "    > The zephyr quarry closed after the flood of March."
+    assert result["structuredContent"]["matched"]["app:file:docs/quarry.md"]["words"] == 2
+    # every word held: no note; one word: no count, the document still quoted
+    both = session.call("kg_search", {"query": "zephyr quarry"})["content"][0]["text"]
+    assert "no result holds" not in both and " words=2/2" in both
+    one = session.call("kg_search", {"query": "zephyr"})["content"][0]["text"].splitlines()
+    assert not any("words=" in line for line in one) and "    > The zephyr quarry closed" in "\n".join(one)
+
+
 def test_context_keeps_nodes_and_edges_within_its_budget_and_counts_the_rest(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
     session = Session(project, "agent")
