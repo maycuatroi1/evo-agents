@@ -375,6 +375,9 @@ they never wait on the network. When uvx cannot run that release (uvx missing, t
 never published: the plugins follow `main`, and a release reaches PyPI only once its tag's CI passes), the server and
 each hook run `evo-agents` from the PATH with the same arguments and say so in one line on stderr. With no
 `evo-agents` there either, the server exits 1 and a hook exits 0, each with a line on stderr saying it did not run.
+The server is marked `alwaysLoad`, so Claude Code loads its seven tools with the session instead of deferring them
+behind ToolSearch: a session's first search no longer waits a turn for the tool to be loaded. The evo-hub server's
+many tools stay deferred.
 
 ### The team hub
 

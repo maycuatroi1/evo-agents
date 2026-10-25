@@ -61,8 +61,15 @@ def mcp_launcher(name: str) -> tuple[str, list[str]]:
     servers = load(PLUGINS / name / ".mcp.json")["mcpServers"]
     assert list(servers) == [name] and servers[name]["command"] == "sh"
     flag, script, *args = servers[name]["args"]
-    assert flag == "-c" and set(servers[name]) == {"command", "args"}
+    assert flag == "-c" and set(servers[name]) - {"alwaysLoad"} == {"command", "args"}
     return script, args
+
+
+def test_only_the_kg_tools_load_upfront():
+    # Claude Code defers MCP tools behind ToolSearch; a session then spent a turn loading kg_search before its first
+    # search. evo-kg's seven tools load with the session, evo-hub's many stay deferred.
+    assert load(PLUGINS / "evo-kg" / ".mcp.json")["mcpServers"]["evo-kg"]["alwaysLoad"] is True
+    assert "alwaysLoad" not in load(PLUGINS / "evo-hub" / ".mcp.json")["mcpServers"]["evo-hub"]
 
 
 @pytest.mark.parametrize("name", NAMES)

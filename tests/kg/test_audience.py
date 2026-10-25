@@ -292,6 +292,16 @@ def test_a_message_ranks_with_the_idf_the_rows_without_an_audience_give_its_word
     ]
 
 
+def test_kg_search_quotes_a_message_only_to_a_reader_in_its_chat(tmp_path, kg_env):
+    said = {"key": "m0", "title": "#0 alice", "text": "the kiwi rollout slipped a week", "audience": [C5]}
+    handbook = {"key": "handbook", "title": "Handbook", "text": "The kiwi handbook."}
+    project = make(tmp_path, kg_env, [handbook, said])
+    inside = data(reading(project, [C5]), "kg_search", query="kiwi rollout")["matched"]
+    assert "kiwi rollout slipped" in inside["chat:text:m0"]["snippet"]
+    outside = data(reading(project, [C6]), "kg_search", query="kiwi rollout")["matched"]
+    assert set(outside) == {"chat:text:handbook"}
+
+
 def test_a_reader_who_joined_after_project_b_left_sees_later_messages_only(chats):
     late, early = reading(chats, LATE), reading(chats, EARLY)
     assert ids(data(late, "kg_search", query="kiwi rollout")) == {M2, PLAN}  # and what it mentions

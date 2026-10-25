@@ -1194,6 +1194,55 @@ class Store:
         idf = math.log((totals[table] - held + 0.5) / (held + 0.5))
         return idf if idf > 0 else 1e-6
 
+    def matched(self, ids: list[str], query: str, snippets: set[str] = frozenset()) -> dict[str, dict]:
+        """What the full-text index says of each node of ``ids`` against ``query``: ``words``, how many of the
+        query's words (``search.query_words``) its name, path or body holds whole, of ``of``; and for a node of
+        ``snippets``, ``snippet``: the passage of its body where those words gather (FTS5's ``snippet``, about
+        ``search.SNIPPET_TOKENS`` words, white space run together). A node the index holds no row for is left out.
+        The rows of ``node_fts_aud`` are read only for a reader with an audience, and only those within it, as
+        ``search`` reads them."""
+        words = text_search.query_words(query)
+        if not ids or not words:
+            return {}
+        whole = [next(text_search.fts_queries([w])) for w in words]  # each word as the all-words way matches it
+        marks = ", ".join("?" for _ in ids)
+        rows = self.db.execute(f"SELECT node_id, fts_rowid, aud FROM node_fts_rows WHERE node_id IN ({marks})", ids)
+        by_table: dict[int, dict[int, str]] = defaultdict(dict)
+        for node_id, rowid, aud in rows:
+            by_table[aud][rowid] = node_id
+        out: dict[str, dict] = {}
+        for aud, table in enumerate(FTS_TABLES):
+            of_table = by_table.get(aud)
+            if not of_table or (aud and not self.reader):
+                continue
+            seen = " AND aud_seen(aud)" if aud else ""
+            within = f"rowid IN ({', '.join('?' for _ in of_table)}){seen}"
+            held: dict[int, int] = dict.fromkeys(of_table, 0)
+            try:
+                for phrase in whole:
+                    for (rowid,) in self.db.execute(
+                        f"SELECT rowid FROM {table} WHERE {table} MATCH ? AND {within}", (phrase, *of_table)
+                    ):
+                        held[rowid] += 1
+                wanted = [rowid for rowid, node_id in of_table.items() if node_id in snippets]
+                passages = {}
+                if wanted:
+                    passages = dict(
+                        self.db.execute(
+                            f"SELECT rowid, snippet({table}, 4, '', '', '…', {text_search.SNIPPET_TOKENS}) FROM {table}"
+                            f" WHERE {table} MATCH ? AND rowid IN ({', '.join('?' for _ in wanted)}){seen}",
+                            (" OR ".join(whole), *wanted),
+                        )
+                    )
+            except sqlite3.OperationalError:
+                continue
+            for rowid, node_id in of_table.items():
+                out[node_id] = {"words": held[rowid], "of": len(words)}
+                passage = " ".join(str(passages.get(rowid) or "").split())
+                if passage:
+                    out[node_id]["snippet"] = passage
+        return out
+
     def derivations(self, elem_id: str, b: int) -> list[dict]:
         rows = self.db.execute(
             f"SELECT units, needs FROM derivations WHERE elem_id = :e AND {LIVE} ORDER BY deriv_id",
