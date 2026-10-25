@@ -86,6 +86,7 @@ class Connection:
     error_code: str | None = None
     error_type: str | None = None
     limited_until: str | None = None
+    base_url: str | None = None  # its providerSpecificData.baseUrl, which overrides its registry's URL when set
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,7 @@ def _connection(data: dict) -> Connection:
         _text(data.get("errorCode")),
         _text(data.get("lastErrorType")),
         _text(data.get("rateLimitedUntil")),
+        _text((data.get("providerSpecificData") or {}).get("baseUrl")),
     )
 
 
