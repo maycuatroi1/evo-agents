@@ -14,11 +14,11 @@ const CHIP =
  * mentioned took the work in (or why it took none), and the pull requests it links, the agent's draft ones above all.
  * Square chips, since each names a thing.
  */
-export function MessageLinks({ message, chat }: { message: GroupMessage; chat: Pick<Chat, "agents"> }) {
+export function MessageLinks({ message, chat, hideOwnRun = false }: { message: GroupMessage; chat: Pick<Chat, "agents">; hideOwnRun?: boolean }) {
   const t = useTranslations("chats.message");
   const projects = new Map(chat.agents.map((agent) => [agent.handle, agent.project]));
   const author = message.author;
-  const own = author.kind === "agent" && author.project && message.run_id ? { project: author.project, run: message.run_id } : null;
+  const own = !hideOwnRun && author.kind === "agent" && author.project && message.run_id ? { project: author.project, run: message.run_id } : null;
   const handed = message.mentions.filter((mention) => mention.handle && (mention.run_id || mention.refusal));
   const pulls = author.kind === "person" ? [] : pullLinks(message.body);
   if (!own && !handed.length && !pulls.length) return null;
