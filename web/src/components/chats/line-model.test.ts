@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Chat, ChatAuthor, ChatPage, GroupMessage } from "@/lib/chats";
 
 import { feedOf, readInto, withMessage } from "./feed-model";
-import { authorKey, lineMessages, preview, quotes, runsOn, threadOf } from "./line-model";
+import { authorKey, continuesRun, lineMessages, preview, quotes, runsOn, threadOf } from "./line-model";
 
 const OCTO: ChatAuthor = { kind: "person", login: "octo", name: "octo", deleted: false };
 const REVIEWER: ChatAuthor = { kind: "agent", handle: "reviewer", project: "demo", name: "Reviewer", color: "#2563eb", deleted: false };
@@ -95,5 +95,17 @@ describe("a chat's line", () => {
     expect(preview("```ts\nconst a = 1;\n```")).toBe("const a = 1;");
     expect(preview("__init__.py stays")).toBe("__init__.py stays");
     expect(preview("x".repeat(200), 10)).toBe(`${"x".repeat(9)}…`);
+  });
+});
+
+describe("continuesRun", () => {
+  const msg = (id: number, run: number | null, handle = "a"): GroupMessage =>
+    ({ id, run_id: run, author: { kind: "agent", handle }, created_at: "2026-10-25T10:00:00Z" }) as unknown as GroupMessage;
+  it("is true for the same author and run only", () => {
+    expect(continuesRun(msg(1, 7), msg(2, 7))).toBe(true);
+    expect(continuesRun(msg(1, 7), msg(2, 8))).toBe(false);
+    expect(continuesRun(msg(1, 7, "b"), msg(2, 7))).toBe(false);
+    expect(continuesRun(null, msg(2, 7))).toBe(false);
+    expect(continuesRun(msg(1, null), msg(2, null))).toBe(false);
   });
 });

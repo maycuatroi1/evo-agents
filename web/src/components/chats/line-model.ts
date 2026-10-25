@@ -46,6 +46,11 @@ export function runsOn(before: GroupMessage | null | undefined, message: GroupMe
   return gap >= 0 && gap <= RUN_ON_MS;
 }
 
+/** Whether the message above came from the same run by the same author: its run chip is already shown there. */
+export function continuesRun(before: GroupMessage | null | undefined, message: GroupMessage): boolean {
+  return !!before && !!message.run_id && before.run_id === message.run_id && authorKey(before.author) === authorKey(message.author);
+}
+
 /** A reply of a direct chat that does not sit right under its thread: the message it answers, when the page holds it. */
 export type Quote = { root: number; message: GroupMessage | null };
 

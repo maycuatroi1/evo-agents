@@ -45,6 +45,8 @@ type Props = MessageActions & {
   thread?: { count: number; last: GroupMessage | null; authors: ChatAuthor[] } | null;
   /** The message above is by the same author a moment before: no face and no name again. */
   runOn?: boolean;
+  /** The message above is of the same run: its own-run chip is shown once, there. */
+  sameRun?: boolean;
   /** In a direct chat, what an answer answers when it does not sit right under it. */
   quote?: Quote | null;
   highlighted?: boolean;
@@ -75,7 +77,7 @@ const ACTIONS = {
  * Reply sit beside it from 768 px, shown while the pointer is over it or a key is in it, and under it on phones.
  */
 export function MessageItem(props: Props) {
-  const { message, chat, me, thread, runOn = false, quote = null, highlighted = false, domId, onReact, onThread, onReply, onQuote, reacting, under, ref } = props;
+  const { message, chat, me, thread, runOn = false, sameRun = false, quote = null, highlighted = false, domId, onReact, onThread, onReply, onQuote, reacting, under, ref } = props;
   const t = useTranslations("chats.message");
   const tFiles = useTranslations("outputs.strip");
   const tAttach = useTranslations("attachments");
@@ -136,7 +138,7 @@ export function MessageItem(props: Props) {
         <OutputStrip outputs={attached} label={tAttach("files")} className={cn(mine && "justify-end")} testId="message-attachments" />
         <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
         <DocButtons message={message} className={cn(mine && "justify-end")} />
-        <MessageLinks message={message} chat={chat} />
+        <MessageLinks message={message} chat={chat} hideOwnRun={sameRun} />
         <MessageProgress progress={message.progress} />
         {under?.(message)}
         {/* The reactions, then React and Reply: in the same row under 768 px; from 768 px those two sit beside the
