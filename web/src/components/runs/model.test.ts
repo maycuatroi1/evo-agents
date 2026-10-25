@@ -136,15 +136,17 @@ describe("filters", () => {
     expect(readFilters(params("state=active&q=%20queue%20&page=3"))).toEqual({ facet: "active", kind: null, account: "", q: "queue", page: 3 });
     expect(readFilters(params("kind=local&account=%20Ana@Example.com%20&kind=x"))).toMatchObject({ kind: "local", account: "Ana@Example.com" });
     expect(readFilters(params("kind=plan")).kind).toBeNull();
-    expect(readFilters(params("state=running&page=0"))).toEqual({ facet: null, kind: null, account: "", q: "", page: 1 });
+    expect(readFilters(params("state=bogus&page=0"))).toEqual({ facet: "running", kind: null, account: "", q: "", page: 1 });
     expect(readFilters(params(`q=${"x".repeat(300)}&page=1.5`)).q).toHaveLength(200);
     expect(readFilters(params("page=999999")).page).toBe(1);
+    expect(readFilters(params("")).facet).toBe("running");
+    expect(readFilters(params("state=all")).facet).toBeNull();
   });
 
   it("writes only what is set, and pages from 2 on", () => {
-    expect(filtersSearch({ facet: null, kind: null, account: "", q: "", page: 1 })).toBe("");
+    expect(filtersSearch({ facet: "running", kind: null, account: "", q: "", page: 1 })).toBe("");
     expect(filtersSearch({ facet: "ended", kind: null, account: "", q: "lab ws", page: 2 })).toBe("?state=ended&q=lab+ws&page=2");
-    expect(filtersSearch({ facet: null, kind: "local", account: "a@b.c", q: "", page: 1 })).toBe("?kind=local&account=a%40b.c");
+    expect(filtersSearch({ facet: "running", kind: "local", account: "a@b.c", q: "", page: 1 })).toBe("?kind=local&account=a%40b.c");
   });
 
   it("asks the API for the states of the facet, one page at a time, each chat session once", () => {
@@ -157,7 +159,9 @@ describe("filters", () => {
       limit: 50,
       offset: 100,
     });
-    expect(listQuery({ facet: null, kind: null, account: "", q: "", page: 1 }).states).toEqual([]);
+    expect(filtersSearch({ facet: null, kind: null, account: "", q: "", page: 1 })).toBe("?state=all");
+    expect(listQuery({ facet: null, kind: null, account: "", q: "", page: 1 }).states).not.toContain("idle");
+    expect(listQuery({ facet: "running", kind: null, account: "", q: "", page: 1 }).states).toContain("running");
   });
 
   it("counts a facet from the counts of its states", () => {
@@ -166,6 +170,8 @@ describe("filters", () => {
     expect(facetCount({ ...counts, waiting: 1, parked: 1 }, "active")).toBe(6);
     expect(facetCount(counts, "ended")).toBe(3);
     expect(facetCount(counts, null)).toBe(12);
+    expect(facetCount({ ...counts, idle: 5 }, null)).toBe(12);
+    expect(facetCount({ ...counts, idle: 5 }, "idle")).toBe(5);
   });
 });
 
