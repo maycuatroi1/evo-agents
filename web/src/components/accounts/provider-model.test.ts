@@ -193,6 +193,7 @@ const account = (name: string, extra: Partial<Account>): Account => ({
   auth: "token",
   projects: ["demo"],
   workers: [],
+  pools: [],
   weight: 1,
   priority: 0,
   paused_at: null,

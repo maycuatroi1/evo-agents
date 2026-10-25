@@ -269,6 +269,33 @@ async def _woken_title(conn: AsyncConnection, run_id: int, text: str) -> str | N
     return None if row is None else rules.turn_title(row.handle, row.title, text)
 
 
+MISSED_MESSAGES = 5  # messages of the person in the thread that woke no agent, which the next run of the session takes
+
+
+async def _missed(conn: AsyncConnection, previous_id: int, hand: Hand) -> list[Hand]:
+    """The messages ``hand``'s person wrote in its thread after the one that started chat run ``previous_id`` and
+    before ``hand``'s, that handed no agent work (a reply without an @ in a chat of more people), oldest first, at most
+    MISSED_MESSAGES: the run that goes on in the session takes them before ``hand``'s, so "merge it" then a bare
+    "@agent" is one request."""
+    r, m, mn = tables.runs, tables.chat_messages, tables.chat_mentions
+    started = select(r.c.chat_message_id).where(r.c.id == previous_id).scalar_subquery()
+    handed = select(mn.c.message_id).where(mn.c.message_id == m.c.id, mn.c.profile_id.is_not(None)).exists()
+    query = (
+        select(m.c.id, m.c.body)
+        .where(
+            m.c.thread_root_id == hand.root_id,
+            m.c.author_user_id == hand.dispatcher_id,
+            m.c.id > started,
+            m.c.id < hand.message_id,
+            ~handed,
+        )
+        .order_by(m.c.id.desc())
+        .limit(MISSED_MESSAGES)
+    )
+    rows = (await conn.execute(query)).all()
+    return [replace(hand, message_id=row.id, body=row.body) for row in reversed(rows)]
+
+
 async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
     """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``, its title;
     ``autonomy_hold.Stopped`` while a stop of autonomy holds its principal."""
@@ -282,6 +309,8 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
     }
     values = _titled(values, rules.turn_title(hand.profile.handle, hand.chat.title, hand.body))
     new_id = (await conn.execute(_continue_run(previous.id, values))).scalar_one()
+    for missed in await _missed(conn, previous.id, hand):
+        await _to_inbox(conn, new_id, missed)
     await _to_inbox(conn, new_id, hand)
     failed = f" (failed: {previous.failure_cause})" if previous.state == "failed" else ""
     shown = f"goes on in the session of run #{previous.id}{failed}, as {hand.author} wrote in the thread"
@@ -766,13 +795,20 @@ async def run_clearers(conn: AsyncConnection, run_id: int) -> list[int] | None:
 
 
 async def chat_prompt(
-    conn: AsyncConnection, run_id: int, branch: str | None, repos: list, features: tuple[str, ...] = ()
+    conn: AsyncConnection,
+    run_id: int,
+    branch: str | None,
+    repos: list,
+    features: tuple[str, ...] = (),
+    *,
+    ships: bool = False,
 ) -> str:
     """The prompt of chat run ``run_id`` as its worker claims it (``chat_runs.build_chat_prompt``): the snapshot holds
     the messages its dispatcher clears the label of, and the member whose worker runs it too. Before the thread it
     shows the messages that start no thread, or in a direct chat the latest turns (``chat_runs.snapshot``). On a daemon
     that lists ``runs.LAZY_CHAT_REPOS`` among its ``features``, every repo of the project, those the message that woke
-    it or a message of the thread the prompt shows names before the others not open (``_listing``)."""
+    it or a message of the thread the prompt shows names before the others not open (``_listing``). With ``ships``, its
+    principal's card leaves merging to the agent, and its rules say so."""
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
@@ -828,6 +864,7 @@ async def chat_prompt(
         repos=repos,
         listing=listing,
         harness=harness,
+        ships=ships,
     )
 
 

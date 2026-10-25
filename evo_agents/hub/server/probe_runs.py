@@ -44,7 +44,7 @@ from evo_agents.hub.server.night_cost import usage_cost
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.dispatch import insert_run, unfit
+from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -225,7 +225,7 @@ def _values(due, gate, probe, held, runtime: str, model: str | None, budget: dic
         "plan_revision": held.revision,
         "dispatched_by": due.owner_id,
         "dispatched_via": "schedule",
-        "pinned_worker_id": gate.worker.id,
+        **gate.duty.columns(),
         "requested_runtime": runtime,
         "runtime": runtime,
         "model": model,
@@ -290,7 +290,7 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
     left = min(gate.budget["max_usd"], cap - spent)
     for found in pairs:
         probe, runtime, model, _ = found
-        if unfit(gate.worker, due.project, "probe", [item["repo"] for item in _repos(probe)], runtime):
+        if gate.duty.unfit(due.project, "probe", [item["repo"] for item in _repos(probe)], runtime):
             continue
         held = await plan_routes._held(conn, gate.access, probe.plan_id)
         if held is None:

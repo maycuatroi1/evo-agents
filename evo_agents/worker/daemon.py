@@ -57,6 +57,9 @@
 - When it starts and every 24 hours it runs the checks of ``worker doctor`` in a thread and sends the findings, each
   detail redacted, to the hub (``doctor_report``, feature doctor_report): a worker narrowed to units of the org chart
   needs a fresh report with no high finding.
+- A daemon of a worker pool node (labels with ``pool=<name>``) writes the hub's global skills its owner reads into the
+  skills directories of its runtimes when it starts and every 6 hours, with its worker token and no ``hub login``
+  (``skill_sync_loop``, feature skill_sync), each with its ``.evo-hub.json`` marker.
 - After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``Run.watch``,
   ``runner.watchdog``): a file of the charter's protected paths changed in its worktrees, or its time or cost cap
   passed, stops it.
@@ -94,7 +97,16 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import checkouts, doctor_report, gitops, interactive, kg_sync, orphans, verify_jobs
+from evo_agents.worker import (
+    checkouts,
+    doctor_report,
+    gitops,
+    interactive,
+    kg_sync,
+    orphans,
+    skill_sync_loop,
+    verify_jobs,
+)
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.browser import install as browser_install
 from evo_agents.worker.browser import session as browser_session
@@ -326,6 +338,9 @@ class Daemon:
             background = [leftovers, heartbeat, cleanup, updates, asyncio.create_task(doctoring)]
             if self.kg_on:
                 background.append(asyncio.create_task(self._kg_sync_loop()))
+            if self._in_pool():
+                syncing = skill_sync_loop.sync_loop(self.config.url, self.token, self.env, self.stopping)
+                background.append(asyncio.create_task(syncing))
             await self.stopping.wait()
             claims.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -501,11 +516,17 @@ class Daemon:
             body["browser_install"] = {key: value for key, value in self.install_asked.items() if value is not None}
         return body
 
+    def _in_pool(self) -> bool:
+        """Whether this daemon is a node of a worker pool, which syncs the hub's skills (``skill_sync_loop``)."""
+        return skill_sync_loop.pool_of(self.config.labels or ()) is not None
+
     def _says(self, feature: str) -> bool:
         """Whether the heartbeat names ``feature``: the night shift unless turned off, the browser once Chromium is
-        installed, every other one always."""
+        installed, the skill sync on a pool node, every other one always."""
         if feature == runs.KG_SYNC:
             return self.kg_on
+        if feature == runs.SKILL_SYNC:
+            return self._in_pool()
         return feature != runs.BROWSER or self.browser_report is not None
 
     def _take_worker_state(self, answer: dict) -> None:

@@ -144,7 +144,8 @@ TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
 TABLES |= pg.RETIRED_PLUGIN_TABLES  # migration 0147
-TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0148
+TABLES |= pg.POOL_TABLES  # migration 0148
+TABLES |= pg.PROVIDER_ACCOUNT_TABLES  # migration 0151
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -226,8 +227,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_eighty_one_tables(hub_db):
-    assert len(TABLES) == 181  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eighty_four_tables(hub_db):
+    assert len(TABLES) == 184  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3662,11 +3663,77 @@ def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_t
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]
 
 
-def test_0148_keeps_provider_accounts_and_going_back_drops_them(hub_db):
+def test_0148_adds_worker_pools_and_their_join_tokens_and_going_back_drops_them(hub_db):
     move_to(hub_db, "0147")
+    t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
+        token_id = one(conn, _token(ids, kind="worker", token_hash="7" * 64, host="vps").returning(t.tokens.c.id))
+        worker = one(conn, _worker_row(ids, token_id, "vps", 1))
     move_to(hub_db, "0148")
+    assert pg.POOL_TABLES <= tables(hub_db)
+    assert "pool_id" in columns(hub_db, "workers")
+    assert query(hub_db, select(t.workers.c.pool_id).where(t.workers.c.id == worker)) == [(None,)]
+    pools, tokens = t.worker_pools, t.worker_join_tokens
+    with live.connect(hub_db) as conn:
+        pool = one(conn, insert(pools).values(owner_id=ids["user"], name="CI").returning(pools.c.id))
+        conn.execute(insert(t.worker_pool_projects).values(pool_id=pool, project_id=ids["project"]))
+        made = {"pool_id": pool, "created_by": ids["user"], "expires_at": func.now() + DAY, "max_uses": 2}
+        join_token = one(conn, insert(tokens).values(token_hash="8" * 64, **made).returning(tokens.c.id))
+        conn.execute(update(t.workers).values(pool_id=pool).where(t.workers.c.id == worker))
+    defaults = select(pools.c.slots, pools.c.labels, pools.c.taints, pools.c.accepted_findings, pools.c.reap_after_days)
+    assert query(hub_db, defaults) == [(1, [], [], [], 7)]
+    assert query(hub_db, select(tokens.c.uses, tokens.c.revoked_at)) == [(0, None)]
+    bad_pools = ({"name": "ci"}, {"name": "x", "slots": 17}, {"name": "y", "reap_after_days": 0})
+    bad_pools += ({"name": "z", "reap_after_days": 91}, {"name": ""})
+    for bad in bad_pools:
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+            conn.execute(insert(pools).values(owner_id=ids["user"], **bad))
+    bad_tokens = (
+        {"token_hash": "8" * 64},  # one hash, one token
+        {"token_hash": "9" * 64, "max_uses": 101},
+        {"token_hash": "9" * 64, "max_uses": 0},
+        {"token_hash": "9" * 64, "uses": 3},  # more uses than it takes
+        {"token_hash": "9" * 64, "expires_at": func.now() - DAY},
+    )
+    for bad in bad_tokens:
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+            conn.execute(insert(tokens).values({**made, **bad}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):  # not deleted under its nodes
+        conn.execute(delete(pools).where(pools.c.id == pool))
+    assert query(hub_db, select(tokens.c.id)) == [(join_token,)]
+    move_to(hub_db, "0147", down=True)
+    assert not pg.POOL_TABLES & tables(hub_db)
+    assert "pool_id" not in columns(hub_db, "workers")
+    assert query(hub_db, select(t.workers.c.name)) == [("vps",)]  # the node stays a worker, without its pool
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]
+
+
+def test_0149_adds_worker_taints_and_run_selectors_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0148")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(conn, _token(ids, kind="worker", token_hash="7" * 64, host="vps").returning(t.tokens.c.id))
+        worker = one(conn, _worker_row(ids, token_id, "vps", 1))
+        run_id = one(conn, _author_run(ids))
+    move_to(hub_db, "0149")
+    assert "taints" in columns(hub_db, "workers")
+    assert {"selector", "tolerations"} <= columns(hub_db, "runs")
+    # what was there before places as before: no taint, no selector
+    assert query(hub_db, select(t.workers.c.taints).where(t.workers.c.id == worker)) == [([],)]
+    assert query(hub_db, select(t.runs.c.selector, t.runs.c.tolerations).where(t.runs.c.id == run_id)) == [([], [])]
+    move_to(hub_db, "0148", down=True)
+    assert "taints" not in columns(hub_db, "workers")
+    assert not {"selector", "tolerations"} & columns(hub_db, "runs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0149") :]
+
+
+def test_0151_keeps_provider_accounts_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0150")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0151")
     s, p = hub_tables.secrets, hub_tables.provider_accounts
     key = {"sealed": b"x" * 32, "nonce": b"n" * 12, "key_id": "0123abcd"}
     made = insert(s).values(owner_id=ids["user"], name="openrouter-main", kind="provider", **key).returning(s.c.id)
@@ -3685,18 +3752,18 @@ def test_0148_keeps_provider_accounts_and_going_back_drops_them(hub_db):
             new_id = one(conn, other.returning(s.c.id))
             conn.execute(insert(p).values(secret_id=new_id, **bad))
     assert query(hub_db, select(p.c.provider, p.c.models)) == [("openrouter", ["a/b"])]
-    move_to(hub_db, "0147", down=True)
+    move_to(hub_db, "0150", down=True)
     assert "provider_accounts" not in tables(hub_db)
     assert query(hub_db, select(func.count()).select_from(s).where(s.c.kind == "provider")) == [(0,)]
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0151") :]
 
 
-def test_0149_takes_gateway_leases_and_runs_and_going_back_refuses_while_one_is_recorded(hub_db):
-    move_to(hub_db, "0148")
+def test_0152_takes_gateway_leases_and_runs_and_going_back_refuses_while_one_is_recorded(hub_db):
+    move_to(hub_db, "0151")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    move_to(hub_db, "0149")
+    move_to(hub_db, "0152")
     run = {
         "project_id": ids["project"],
         "kind": "judge",
@@ -3734,12 +3801,12 @@ def test_0149_takes_gateway_leases_and_runs_and_going_back_refuses_while_one_is_
     with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
         conn.execute(insert(cl).values(run_id=run_id, **key, **sealed, expires_at=func.now() + timedelta(hours=1)))
     with pytest.raises(Exception, match="a run of a gateway model or a gateway lease is recorded"):
-        move_to(hub_db, "0148", down=True)
+        move_to(hub_db, "0151", down=True)
     with live.connect(hub_db) as conn:
         conn.execute(delete(cl).where(cl.c.run_id == run_id))
         conn.execute(update(t.runs).values(gateway_provider=None).where(t.runs.c.id == run_id))
-    move_to(hub_db, "0148", down=True)
+    move_to(hub_db, "0151", down=True)
     assert "token_hash" not in columns(hub_db, "credential_leases") and "gateway_provider" not in columns(
         hub_db, "runs"
     )
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0149") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0152") :]

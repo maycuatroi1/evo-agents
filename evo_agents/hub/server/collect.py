@@ -76,9 +76,11 @@ from evo_agents.hub.server import audit, facet_figures, kg_health, memory_promot
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
+from evo_agents.hub.server.night_duty import Duty
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, unfit
+from evo_agents.hub.server.runs.service.kg_duties import keeper_of
 from evo_agents.hub.server.runs.service.views import visible_plans
 
 log = logging.getLogger(__name__)
@@ -456,8 +458,8 @@ async def compute_figures(
     return (await _counted(conn, access, since, until, owner_id))[0]
 
 
-async def kg_sync_figures(conn: AsyncConnection, worker_id: int, project: str) -> dict | None:
-    """What the worker on duty last said of keeping the project's graph fresh (workers.kg_sync): when it looked, what
+async def kg_sync_figures(conn: AsyncConnection, worker_id: int | None, project: str) -> dict | None:
+    """What the worker on duty (the pool's node that keeps the graph, ``kg_duties.keeper``) last said of keeping the project's graph fresh (workers.kg_sync): when it looked, what
     stopped it, each git source with its commit, how far behind it was, when it was read and pushed and the error of a
     sync that failed, and how many failed; None when it said nothing of the project."""
     w = tables.workers
@@ -505,7 +507,7 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
         "since": since.isoformat(),
         "until": until.isoformat(),
         **figures,
-        "kg_sync": await kg_sync_figures(conn, due.worker_id, due.project),
+        "kg_sync": await kg_sync_figures(conn, await keeper_of(conn, due.id), due.project),
         "weekly": await facet_figures.weekly(conn, access, plans, until, due.owner_id, waiting),
         "facets": {**await facet_job.coverage(conn, access.project_id), "llm": read["llm"]},
         "clusters": read["clusters"],
@@ -523,13 +525,14 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
 @dataclass(frozen=True)
 class Gate:
     """What the night shift found when it may queue a run now: the night, its runs and cost, the caps of the next
-    run, the owner's access and the worker on duty."""
+    run, the owner's access and where its runs go: the worker on duty, or the ready nodes of the pool
+    (``night_duty.Duty``)."""
 
     night: date
     figures: object  # curator NightFigures
     budget: dict
     access: ProjectAccess
-    worker: Pinned
+    duty: Duty
     inside: bool = True  # inside the window; outside it, the gate is for the Curator's changes alone (shift_hours)
 
 
@@ -554,6 +557,24 @@ async def _review_repos(conn: AsyncConnection, project_id: int, project: str, wo
     return [{"repo": name, "branch": None} for (name,) in names]
 
 
+async def _review_place(conn: AsyncConnection, due, duty: Duty, runtime: str) -> tuple[list[dict], list[str]]:
+    """The repos of the review run and what keeps it from a worker on duty: the repos of the first one that fits it,
+    else the problems of the first one (``dispatch.unfit``), none fitting."""
+    found = []
+    for worker in duty.nodes:
+        repos = await _review_repos(conn, due.project_id, due.project, worker)
+        problems = unfit(worker, due.project, "review", [entry["repo"] for entry in repos], runtime)
+        if not repos:
+            problems.append(f"it has no checkout of a repo of project {due.project}")
+        if not problems:
+            return repos, []
+        found.append((worker, repos, problems))
+    worker, repos, problems = found[0]
+    if duty.pool is not None:
+        problems = [f"no ready node of pool {duty.pool} fits it: {worker.name}: {'; '.join(problems)}"]
+    return repos, problems
+
+
 async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
     """Queue the night's review run of schedule ``due`` when it has none yet, counting the night's figures first;
     its id, or None when there is nothing to queue (reviewed already, a worker that runs no review run, no repo to
@@ -567,12 +588,9 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
         return None
     if row.run_id is not None:
         return None
-    charter, worker = due.body, gate.worker
-    repos = await _review_repos(conn, due.project_id, due.project, worker)
+    charter, duty = due.body, gate.duty
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    problems = unfit(worker, due.project, "review", [entry["repo"] for entry in repos], runtime)
-    if not repos:
-        problems.append(f"it has no checkout of a repo of project {due.project}")
+    repos, problems = await _review_place(conn, due, duty, runtime)
     budget = _review_budget(charter, gate.budget)
     if problems or budget is None:
         why = "; ".join(problems) or "the night has too little money left"
@@ -588,7 +606,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
         "plan_revision": None,
         "dispatched_by": due.owner_id,
         "dispatched_via": "schedule",
-        "pinned_worker_id": worker.id,
+        **duty.columns(),
         "requested_runtime": runtime,
         "runtime": runtime,
         "model": (charter.get("reviewer") or {}).get("model"),
@@ -615,7 +633,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
     )
     text = (
         f"Queued by the night shift of project {due.project} (charter revision {due.revision}) as the review of the "
-        f"night of {gate.night.isoformat()}, as {due.owner} on worker {worker.name}: lenses {', '.join(lenses)}; "
+        f"night of {gate.night.isoformat()}, as {due.owner} on {duty.where}: lenses {', '.join(lenses)}; "
         f"{caps}."
     )
     event = {"text": text, "schedule_id": due.id, "night": gate.night.isoformat(), "lenses": lenses, **budget}

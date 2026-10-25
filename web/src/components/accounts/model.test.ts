@@ -24,6 +24,7 @@ const ACCOUNT: Account = {
   auth: "token",
   projects: ["demo", "docs"],
   workers: [],
+  pools: [],
   weight: 2,
   priority: 1,
   paused_at: null,

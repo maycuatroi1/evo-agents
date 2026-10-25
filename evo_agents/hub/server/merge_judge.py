@@ -5,7 +5,7 @@ and its verdict. ``evo_agents.hub.merge_gate`` holds the rules, ``evo_agents.hub
 A judge run of the queue is a run of kind ``judge`` on no plan and no schedule (schema 0081), which the merge request
 it judges names (merge_queue.judge_run_id). The admin who wrote the policy's newest revision dispatches it, so it
 reads the repo with that admin's git secret and the project's graph as them; it is pinned to the policy's
-``judge.worker``, else to the worker on duty of the project's charter, whose daemon must say it judges merge requests
+``judge.worker``, else to the worker on duty of the project's charter (or a ready node of its pool), whose daemon must say it judges merge requests
 (``runs.MERGE_JUDGE``); it runs on Claude Code with the model ``judges.merge_judge_model`` picks, and never reads the
 Builder's transcript. A project has one judge run active at a time, the Curator's included: another waits for it.
 
@@ -41,6 +41,7 @@ from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.changes import HiddenResult, JudgeKey, Sign
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId, VerifyResult
@@ -77,11 +78,18 @@ async def _judge_worker(conn: AsyncConnection, project) -> tuple[int | None, str
         if found is None:
             return None, f"no live worker {name} (the policy's judge.worker) serves project {project.name}"
         return found.id, None
-    query = select(s.c.worker_id).where(s.c.project_id == project.id, s.c.kind == NIGHT_SHIFT).order_by(s.c.id)
-    found = (await conn.execute(query.limit(1))).first()
+    query = select(s.c.worker_id, s.c.pool_id, s.c.project_id).where(
+        s.c.project_id == project.id, s.c.kind == NIGHT_SHIFT
+    )
+    found = (await conn.execute(query.order_by(s.c.id).limit(1))).first()
     if found is None:
         return None, "the policy names no judge.worker and the project has no charter with a worker on duty"
-    return found.worker_id, None
+    if found.pool_id is None:
+        return found.worker_id, None
+    duty, why = await on_duty(conn, found)  # a pool on duty: a ready node of it, one that judges merge requests first
+    if duty is None:
+        return None, why
+    return next((node for node in duty.nodes if runs.MERGE_JUDGE in node.features), duty.nodes[0]).id, None
 
 
 async def queue_judge(conn: AsyncConnection, project, row, *, second: bool) -> str | None:

@@ -1,7 +1,7 @@
 """Runs on a provider account's model through the hub's gateway route: runs.gateway_provider and gateway leases.
 
-Revision ID: 0149
-Revises: 0148
+Revision ID: 0152
+Revises: 0151
 Create Date: 2026-10-25
 
 runs.gateway_provider is the prefix of the run's model, ``<alias>/<model>``, when the run goes through the model
@@ -13,14 +13,14 @@ external_id the same key id, share_id the share it came under), so a gateway row
 value. The checks of 0011 that said otherwise are replaced by named ones; the names below are those Postgres gave the
 inline checks of 0011.
 
-Going back refuses while a gateway lease or a run of a gateway model is recorded, as 0148's hub would not know them.
+Going back refuses while a gateway lease or a run of a gateway model is recorded, as 0151's hub would not know them.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0149"
-down_revision = "0148"
+revision = "0152"
+down_revision = "0151"
 branch_labels = None
 depends_on = None
 
@@ -82,7 +82,7 @@ def downgrade() -> None:
     )
     if found is not None:
         raise RuntimeError(
-            "a run of a gateway model or a gateway lease is recorded: revision 0148 knows neither, so going back would "
+            "a run of a gateway model or a gateway lease is recorded: revision 0151 knows neither, so going back would "
             "lose them; end and prune those runs first"
         )
     op.drop_index(TOKEN_INDEX, LEASES)

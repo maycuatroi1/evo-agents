@@ -27,6 +27,7 @@ const ACCOUNT: Account = {
   auth: "token",
   projects: ["demo", "docs"],
   workers: ["mac-mini"],
+  pools: [],
   weight: 2,
   priority: 1,
   paused_at: null,
@@ -54,7 +55,7 @@ describe("the day a new token ends", () => {
     expect(defaultExpiryDay(Date.parse("2026-12-31T23:59:00Z"))).toBe("2027-12-30");
     // A leap day a year on is no day: the 1st of March less a day.
     expect(defaultExpiryDay(Date.parse("2028-02-29T12:00:00Z"))).toBe("2029-02-28");
-    expect(emptyLoginForm(NOW)).toEqual({ name: "", projects: [], workers: [], expires: "2027-10-13" });
+    expect(emptyLoginForm(NOW)).toEqual({ name: "", projects: [], workers: [], pools: [], expires: "2027-10-13" });
   });
 
   it("is sent as 00:00 UTC of the day, and a text that is no day is refused", () => {
@@ -64,7 +65,8 @@ describe("the day a new token ends", () => {
   });
 
   it("starts a renewal from the account's name and bindings, and a new year", () => {
-    expect(renewForm(ACCOUNT, NOW)).toEqual({ name: "claude-a", projects: ["demo", "docs"], workers: ["mac-mini"], expires: "2027-10-13" });
+    expect(renewForm(ACCOUNT, NOW)).toEqual({ name: "claude-a", projects: ["demo", "docs"], workers: ["mac-mini"], pools: [], expires: "2027-10-13" });
+    expect(renewForm({ ...ACCOUNT, workers: [], pools: ["lab"] }, NOW).pools).toEqual(["lab"]);
   });
 });
 
@@ -120,9 +122,11 @@ describe("the form", () => {
       env_var: "CLAUDE_CODE_OAUTH_TOKEN",
       projects: ["demo"],
       workers: ["mac-mini"],
+      pools: [],
       expires_at: "2027-10-13T00:00:00.000Z",
       value: TOKEN,
     });
+    expect(loginBody(form({ pools: ["lab"] }), TOKEN)).toMatchObject({ workers: [], pools: ["lab"] });
   });
 });
 
@@ -135,6 +139,7 @@ describe("the hub account login command", () => {
     expect(loginCommand(form({ projects: ["demo", "docs"], workers: ["Mac mini"], expires: "2027-06-01" }), { renewing: false, now: NOW }).text).toBe(
       "evo-agents hub account login claude-work --project demo --project docs --worker 'Mac mini' --expires 2027-06-01",
     );
+    expect(loginCommand(form({ pools: ["lab"] }), { renewing: false, now: NOW }).text).toBe("evo-agents hub account login claude-work --project demo --pool lab");
   });
 
   it("shows placeholders while a field it needs is missing", () => {

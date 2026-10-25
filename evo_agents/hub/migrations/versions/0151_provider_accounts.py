@@ -1,7 +1,7 @@
 """Provider accounts: an API key of a model provider with the endpoint it calls and the models it serves.
 
-Revision ID: 0148
-Revises: 0147
+Revision ID: 0151
+Revises: 0150
 Create Date: 2026-10-25
 
 A provider account is a row of secrets of the new kind provider, whose sealed value is the API key, and a row of
@@ -12,15 +12,15 @@ models, a JSON array of names. A secret of kind provider has no env_var, url_pre
 revision, never an import, so a later change to it takes a new revision.
 
 Going back drops provider_accounts and deletes the secrets of kind provider, with their bindings, accounts rows and
-shares (ON DELETE CASCADE); it refuses while a run or a lease names one of them, as 0147's hub would not know it.
+shares (ON DELETE CASCADE); it refuses while a run or a lease names one of them, as 0150's hub would not know it.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0148"
-down_revision = "0147"
+revision = "0151"
+down_revision = "0150"
 branch_labels = None
 depends_on = None
 
@@ -79,7 +79,7 @@ def downgrade() -> None:
         found = op.get_bind().execute(sa.select(held.c.secret_id).where(held.c.secret_id.in_(providers)).limit(1))
         if found.first() is not None:
             raise RuntimeError(
-                f"{name} names a provider account: revision 0147 has no provider accounts, so going back would lose "
+                f"{name} names a provider account: revision 0150 has no provider accounts, so going back would lose "
                 "what those runs took; end and prune those runs first"
             )
     op.drop_table("provider_accounts")

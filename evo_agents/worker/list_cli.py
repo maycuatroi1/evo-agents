@@ -39,6 +39,8 @@ def describe(worker: dict, now: datetime) -> str:
     if worker.get("agent_commit"):
         version += f" at {worker['agent_commit'][:7]}"
     shared = ", shared" if worker.get("shared") else ""
+    if worker.get("ready") is False:  # a node of a pool that takes no run now; an older hub says nothing of it
+        shared += f", not ready: {worker.get('ready_reason') or '?'}"
     return (
         f"#{worker['id']} {worker['owner']}/{worker['name']} on {worker.get('hostname') or '?'}: {worker['status']}"
         f"{shared}, evo-agents {version}, {_updating(worker)}, {worker.get('held_runs', 0)} of "

@@ -107,6 +107,7 @@ evo_agents = [
     "core_plugins/*/packs/**/.mcp.json",  # a dotfile no star matches
     "hub/server/*/packs/**/*",  # the agent packs of the features canvas and srs (@strategist, @ba)
     "hub/server/*/packs/**/.mcp.json",
+    "worker/bootstrap.sh",  # a link to deploy/worker/bootstrap.sh, copied in as a file (`worker pool user-data`)
 ]
 
 [tool.ruff]

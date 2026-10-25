@@ -8,7 +8,8 @@ session secret (EVO_HUB_SESSION_SECRET; without it pairing and joining answer 50
 characters in clear, the selector, which no two unused pairings share. A code lasts PAIRING_TTL, and a member has at
 most MAX_LIVE_PAIRINGS codes that are neither used nor expired; a locked code counts until it expires, so locking codes
 on purpose cannot take more selectors. The web follows a pairing with GET /v1/workers/pairings/{id}. On the machine,
-the daemon sends the code and its host facts to POST /v1/worker/join, the one public worker route: the hub finds the
+the daemon sends the code and its host facts to POST /v1/worker/join (``worker_join``), the one public worker route,
+which takes a pool's join token instead of a code too (``worker_pools``): the hub finds the
 pairing by the selector and compares the HMAC of the whole code, so a wrong rest counts against that pairing, and
 MAX_WRONG_TRIES wrong tries lock it for good. Unknown, wrong, expired, used and locked codes all get the same 403,
 which names none of them, and an address with JOIN_REFUSALS of them within JOIN_WINDOW gets 429 with Retry-After
@@ -98,12 +99,10 @@ from evo_agents.hub.server.security import (
     Principal,
     issue_token,
     keyed_digest,
-    same,
 )
 from evo_agents.hub.server.worker_models import (
     DispatchFrom,
     HostFacts,
-    JoinRequest,
     Pairing,
     PairingRequest,
     PairingState,
@@ -112,6 +111,8 @@ from evo_agents.hub.server.worker_models import (
     WorkerRegistration,
     WorkerUpdate,
 )
+from evo_agents.hub.server.worker_placement import Placement, all_labels, pool_name
+from evo_agents.hub.server.worker_placement import columns as placement_columns
 from evo_agents.hub.server.worker_projects import serve, served
 from evo_agents.hub.server.worker_projects import writable as _writable
 
@@ -139,7 +140,6 @@ NO_WORKER = "you have no worker {id} on this hub: see GET /v1/workers"
 NO_SECRET = "pairing codes need EVO_HUB_SESSION_SECRET, which this hub does not have: ask its operator to set it"
 
 router = APIRouter(prefix="/v1/workers", tags=["workers"], responses={401: {"model": ErrorBody}})
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"])
 
 WorkerId = Annotated[int, Path(ge=1, le=MAX_ID)]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
@@ -172,7 +172,7 @@ def code_hash(secret: str, code: str) -> str:
     return keyed_digest(secret, PAIRING_PURPOSE, code)
 
 
-def _pairing_secret(request: Request) -> str:
+def pairing_secret(request: Request) -> str:
     secret = request.app.state.config.session_secret
     if not secret:
         raise HTTPException(503, NO_SECRET)
@@ -260,7 +260,8 @@ def _listed(*where):
             w.c.agent_version,
             w.c.agent_commit,
             w.c.slots,
-            w.c.labels,
+            all_labels(w).label("labels"),
+            pool_name(w).label("pool"),
             w.c.plugins,
             w.c.version_locked,
             w.c.shared,
@@ -284,6 +285,7 @@ def _listed(*where):
             w.c.drained_at,
             w.c.revoked_at,
             func.now().label("now"),
+            *placement_columns(w),
         )
         .join_from(w, users, users.c.id == w.c.owner_id)
         .where(*where)
@@ -292,9 +294,13 @@ def _listed(*where):
 
 
 def _worker(row) -> Worker:
-    fields = dict(row._mapping)
+    placed = Placement.of(row)
+    fields = {key: value for key, value in row._mapping.items() if not key.startswith("place_")}
+    fields |= {"taints": list(placed.taints), "auto_labels": list(placed.auto)}
+    fields |= {"ready": placed.ready, "ready_reason": placed.unready}
     now = fields.pop("now")
     fields["features"] = list(fields["features"] or ())  # NULL: its daemon said none
+    fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's
     report, since = fields.pop("self_update"), fields.pop("self_update_since")
     fields["self_update"] = None if report is None else {**report, "since": since}
     update_now.shown(fields)
@@ -379,7 +385,7 @@ def _name_conflict(name: str) -> HTTPException:
     return HTTPException(409, f"there is a worker named {name} already: revoke it first, or choose another name")
 
 
-async def _create_worker(
+async def create_worker(
     conn: AsyncConnection,
     owner_id: int,
     *,
@@ -389,8 +395,10 @@ async def _create_worker(
     allow_web_terminal: bool,
     project_ids,
     host: HostFacts,
+    pool_id: int | None = None,
 ):
-    """A new worker of ``owner_id`` and its token, in the caller's transaction; (Issued, worker id)."""
+    """A new worker of ``owner_id`` and its token, in the caller's transaction, a node of pool ``pool_id`` if one is
+    given; (Issued, worker id)."""
     if await _name_taken(conn, owner_id, name):
         raise _name_conflict(name)
     issued = await issue_token(conn, owner_id, WORKER, host.hostname)
@@ -404,6 +412,7 @@ async def _create_worker(
             slots=slots,
             labels=labels,
             allow_web_terminal=allow_web_terminal,
+            pool_id=pool_id,
             **host.model_dump(include={"hostname", "os", "arch", "agent_version"}),
         )
         .returning(w.c.id)
@@ -428,7 +437,7 @@ def _unique(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-async def _credential(conn: AsyncConnection, issued, worker_id: int) -> WorkerCredential:
+async def credential_of(conn: AsyncConnection, issued, worker_id: int) -> WorkerCredential:
     worker = await _one_worker(conn, worker_id)
     return WorkerCredential(token=issued.token, token_id=issued.token_id, expires_at=issued.expires_at, worker=worker)
 
@@ -482,7 +491,7 @@ def _insert_pairing(code: str, secret: str, owner_id: int, body: PairingRequest,
 async def create_pairing(request: Request, body: PairingRequest, user: CurrentUser, response: Response) -> Pairing:
     """A code a machine joins with as a worker of the caller; shown once."""
     projects, labels = _unique(body.projects), _unique(body.labels)
-    secret = _pairing_secret(request)
+    secret = pairing_secret(request)
     async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects)
         # One pairing of a member at a time, so two of them cannot both pass the count.
@@ -578,114 +587,6 @@ async def pairing_state(request: Request, pairing_id: WorkerId, user: CurrentUse
     )
 
 
-def _find_pairing(selector: str):
-    """The unused pairing that holds ``selector``, its row locked, and whether it has not expired."""
-    wp = tables.worker_pairings
-    return (
-        select(
-            wp.c.id,
-            wp.c.code_hash,
-            wp.c.owner_id,
-            wp.c.name,
-            wp.c.projects,
-            wp.c.slots,
-            wp.c.labels,
-            wp.c.allow_web_terminal,
-            wp.c.attempts,
-            (wp.c.expires_at > func.now()).label("live"),
-        )
-        .where(wp.c.code_selector == selector, wp.c.used_at.is_(None))
-        .with_for_update()
-    )
-
-
-@worker_router.post(
-    "/join",
-    status_code=201,
-    response_model=WorkerCredential,
-    responses={
-        403: {"model": ErrorBody},
-        409: {"model": ErrorBody},
-        422: {"model": ErrorBody},
-        429: {"model": ErrorBody, "description": "too many refused codes from this address; see Retry-After"},
-        503: {"model": ErrorBody},
-    },
-)
-async def join(request: Request, body: JoinRequest, response: Response) -> WorkerCredential:
-    """Trade a pairing code for the token of a new worker; the token is shown once."""
-    limit: RefusalLimit = request.app.state.join_refusals
-    client = client_address(request)
-    wait = limit.retry_after(client)
-    if wait is not None:
-        raise HTTPException(
-            429,
-            f"too many refused pairing codes from this address: try again in {wait} seconds",
-            headers={"Retry-After": str(wait)},
-        )
-    code = normal_code(body.code)
-    if code is None:
-        raise HTTPException(422, f"a pairing code is {CODE_LENGTH} characters of Crockford base32, written XXXX-XXXX")
-    secret = _pairing_secret(request)
-    refused = False
-    async with request.app.state.engine.begin() as conn:
-        row = (await conn.execute(_find_pairing(code[:SELECTOR_LENGTH]))).one_or_none()
-        if row is None or row.attempts >= MAX_WRONG_TRIES or not row.live:
-            refused = True
-        elif not same(code_hash(secret, code), row.code_hash):
-            # Counted in this transaction, which commits: a refusal must not roll the wrong try back.
-            wp = tables.worker_pairings
-            await conn.execute(update(wp).values(attempts=wp.c.attempts + 1).where(wp.c.id == row.id))
-            refused = True
-            tries_left = MAX_WRONG_TRIES - row.attempts - 1
-            log.warning("wrong pairing code", extra={"pairing_id": row.id, "tries_left": tries_left})
-        else:
-            credential = await _join(conn, row, body)
-    if refused:
-        limit.refuse(client)
-        if limit.retry_after(client) is not None:
-            log.warning("pairing joins limited", extra={"refusals": limit.limit, "window_s": limit.window})
-        raise HTTPException(403, REFUSED_CODE)
-    response.headers.update(NO_STORE)
-    return credential
-
-
-async def _join(conn: AsyncConnection, pairing, host: JoinRequest) -> WorkerCredential:
-    pairing_id, owner_id, name, project_ids = pairing.id, pairing.owner_id, pairing.name, pairing.projects
-    grants = tables.grants
-    owner_writes = (
-        select(func.count())
-        .select_from(grants)
-        .where(
-            grants.c.user_id == owner_id,
-            grants.c.project_id == any_(literal(list(project_ids), ARRAY(BigInteger))),
-            grants.c.role.in_(WRITER_ROLES),
-        )
-    )
-    writes = (await conn.execute(owner_writes)).scalar_one()
-    if writes != len(set(project_ids)):
-        raise HTTPException(
-            409,
-            "the member who made this pairing no longer holds the writer role on every project it names: "
-            "they need to create a new pairing",
-        )
-    issued, worker_id = await _create_worker(
-        conn,
-        owner_id,
-        name=name,
-        slots=pairing.slots,
-        labels=list(pairing.labels),
-        allow_web_terminal=pairing.allow_web_terminal,
-        project_ids=project_ids,
-        host=host,
-    )
-    wp = tables.worker_pairings
-    await conn.execute(update(wp).values(used_at=func.now(), worker_id=worker_id).where(wp.c.id == pairing_id))
-    target = f"worker:{worker_id} name={name} pairing:{pairing_id}"
-    await audit.record(conn, actor_id=owner_id, token_id=issued.token_id, action=audit.WORKER_JOIN, target=target)
-    log.info("worker joined", extra={"worker_id": worker_id, "pairing_id": pairing_id, "token_id": issued.token_id})
-    return await _credential(conn, issued, worker_id)
-
-
 # Registering with a machine token
 
 
@@ -704,7 +605,7 @@ async def register(
     projects = _unique(body.projects)
     async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects)
-        issued, worker_id = await _create_worker(
+        issued, worker_id = await create_worker(
             conn,
             user.user_id,
             name=body.name,
@@ -717,7 +618,7 @@ async def register(
         target = f"worker:{worker_id} name={body.name}"
         action = audit.WORKER_REGISTER
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
-        credential = await _credential(conn, issued, worker_id)
+        credential = await credential_of(conn, issued, worker_id)
     log.info("worker registered", extra={"worker_id": worker_id, "login": user.login, "token_id": issued.token_id})
     response.headers.update(NO_STORE)
     return credential
@@ -873,10 +774,10 @@ def _shown(value) -> str:
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
-    """Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner
-    only, from a web session or with their machine token."""
+    """Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its
+    owner only, from a web session or with their machine token."""
     wanted = body.model_dump(exclude_none=True)
-    for field in ("labels", "plugins"):
+    for field in ("labels", "taints", "plugins"):
         if field in wanted:
             wanted[field] = _unique(wanted[field])
     if "projects" in wanted:  # the projects a worker serves are a set: their order says nothing
@@ -888,12 +789,11 @@ async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdat
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         w = tables.workers
-        held = select(w.c.slots, w.c.labels, w.c.name, w.c.plugins, w.c.version_locked, w.c.shared).where(
-            w.c.id == worker_id
-        )
-        row = (await conn.execute(held)).one()
+        held = select(w.c.slots, w.c.labels, w.c.taints, w.c.name, w.c.plugins, w.c.version_locked, w.c.shared)
+        row = (await conn.execute(held.where(w.c.id == worker_id))).one()
         projects = await served(conn, worker_id)
         now = {**row._mapping, "labels": list(row.labels), "plugins": list(row.plugins), "projects": list(projects)}
+        now["taints"] = list(row.taints)
         changed = {field: value for field, value in wanted.items() if value != now[field]}
         if changed:  # the values it has already: nothing changes, nothing is audited
             if "name" in changed and await _name_taken(conn, owner_id, changed["name"], besides=worker_id):
@@ -948,23 +848,36 @@ async def lock_worker_of_token(
 
 
 async def end_worker(
-    conn: AsyncConnection, actor: Principal, worker_id: int, name: str, owner: str, token_id: int
+    conn: AsyncConnection,
+    actor: Principal | None,
+    worker_id: int,
+    name: str,
+    owner: str,
+    token_id: int,
+    *,
+    why: str = "was revoked",
+    by: str | None = None,
 ) -> int:
     """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds, give back
     every lease it still has and add the worker.revoke audit row, all in the caller's transaction; the caller revokes
-    their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released."""
+    their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released. ``actor``
+    None is the hub itself (the pool node reaper): the audit row has no actor and its target ends ``by=<by>``, and
+    ``why`` is what the released runs' events say happened to the worker."""
     w, tokens = tables.workers, tables.tokens
+    actor_id, actor_token = (None, None) if actor is None else (actor.user_id, actor.token_id)
     await conn.execute(update(w).values(revoked_at=func.now()).where(w.c.id == worker_id))
     await conn.execute(
         update(tokens).values(revoked_at=func.now()).where(tokens.c.id == token_id, tokens.c.revoked_at.is_(None))
     )
-    released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
+    released = await release_runs(conn, worker_id, f"its worker {name} {why}")
     # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
     await credentials.end_leases(
-        conn, worker_id=worker_id, actor_id=actor.user_id, token_id=actor.token_id, by="worker-revoked"
+        conn, worker_id=worker_id, actor_id=actor_id, token_id=actor_token, by="worker-revoked"
     )
     target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
-    await audit.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
+    if by is not None:
+        target = f"{target} by={by}"
+    await audit.record(conn, actor_id=actor_id, token_id=actor_token, action=action, target=target)
     return released
 
 
