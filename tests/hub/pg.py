@@ -220,9 +220,28 @@ KG_REVIEW_TABLES = frozenset({"kg_review_dismissals"})  # migration 0141 (plan k
 KG_DECISION_TABLES = frozenset({"kg_decisions", "kg_decision_events"})  # migration 0142 (plan kg-map-and-review)
 # migration 0147: the rows of project_plugins of canvas, srs and tasks, once those became features (plan plugin-market)
 RETIRED_PLUGIN_TABLES = frozenset({"retired_project_plugins"})
+# migration 0154: the markets a hub reads, the publishers its admins trusted, install requests (plan plugin-market)
+MARKET_TABLES = frozenset({"market_sources", "plugin_publishers", "market_install_requests"})
 # migration 0148: worker pools, the projects of each and their join tokens (plan worker-pools)
 POOL_TABLES = frozenset({"worker_pools", "worker_pool_projects", "worker_join_tokens"})
 PROVIDER_ACCOUNT_TABLES = frozenset({"provider_accounts"})  # migration 0151 (plan model-providers)
+
+
+def plugin_version_tables() -> frozenset[str]:
+    """The version tables of the installed core plugins' chains (``plugin_schema.chains``), which ``migrate`` runs after
+    the hub's own: crm, pm and marketing of evo-agents-core-plugins make one each and adopt their tables."""
+    from evo_agents.hub import plugin_schema
+
+    return frozenset(chain.version_table for chain in plugin_schema.chains())
+
+
+def plugin_revision_count() -> int:
+    """How many revisions the installed core plugins' chains hold: ``migrate`` logs one upgrade line for each."""
+    from evo_agents.hub import plugin_schema
+
+    return sum(len(list(plugin_schema.versions_directory(chain).glob("[0-9]*.py"))) for chain in plugin_schema.chains())
+
+
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

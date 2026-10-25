@@ -18,6 +18,15 @@ const api = vi.hoisted(() => ({
   plugin: null as Record<string, unknown> | null,
 }));
 
+// The web's router and the page URL's query, which navigate and the context's location use.
+const router = vi.hoisted(() => ({ push: vi.fn(), search: "tab=open&q=northwind" }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: router.push, replace: vi.fn() }),
+  usePathname: () => "/p/demo/x/sample/board/items/12",
+  useSearchParams: () => new URLSearchParams(router.search),
+}));
+
 vi.mock("@/lib/api/browser", () => ({
   browserApi: () =>
     createApiClient({
@@ -55,11 +64,11 @@ const PLUGIN = {
   pages: [PAGE],
 } as unknown as ProjectPlugin;
 
-function setup() {
+function setup(path?: string, panel = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   renderVi(
     <QueryClientProvider client={client}>
-      <PluginFrame project="demo" plugin={PLUGIN} page={PAGE} />
+      <PluginFrame project="demo" plugin={PLUGIN} page={PAGE} path={path} panel={panel} />
     </QueryClientProvider>,
   );
   const frame = screen.getByTestId("plugin-frame") as HTMLIFrameElement;
@@ -73,6 +82,8 @@ function send(source: MessageEventSource | null, data: unknown, origin = "null")
 }
 
 beforeEach(() => {
+  router.push.mockReset();
+  router.search = "tab=open&q=northwind";
   api.calls = [];
   api.named = [];
   api.plugin = { ...PLUGIN };
@@ -146,5 +157,62 @@ describe("PluginFrame", () => {
         "*",
       ),
     );
+  });
+
+  it("gives the page its sub path, the URL's query and the kit in its context", async () => {
+    const { frame, posted } = setup("items/12");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 6, method: "context" });
+    await waitFor(() =>
+      expect(posted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 6,
+          result: expect.objectContaining({
+            location: { path: "items/12", query: { tab: "open", q: "northwind" } },
+            kit: 1,
+            methods: expect.arrayContaining(["navigate", "toast"]),
+          }),
+        }),
+        "*",
+      ),
+    );
+  });
+
+  it("navigates the hub's page within the project with the router, and refuses another project", async () => {
+    const { frame, posted } = setup();
+    send(frame.contentWindow, { bridge: BRIDGE, id: 7, method: "navigate", params: { to: "/p/demo/x/sample/board/items/3" } });
+    await waitFor(() =>
+      expect(posted).toHaveBeenCalledWith({ bridge: BRIDGE, id: 7, result: { to: "/p/demo/x/sample/board/items/3" } }, "*"),
+    );
+    expect(router.push).toHaveBeenCalledWith("/p/demo/x/sample/board/items/3");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 8, method: "navigate", params: { to: "/p/lumen/runs" } });
+    await refused(posted, 8, "invalid_params");
+    expect(router.push).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the page's toast as the hub's, naming the plugin", async () => {
+    const { frame, posted } = setup();
+    send(frame.contentWindow, { bridge: BRIDGE, id: 9, method: "toast", params: { text: "Lumen saved", tone: "success" } });
+    await waitFor(() => expect(posted).toHaveBeenCalledWith({ bridge: BRIDGE, id: 9, result: { shown: true } }, "*"));
+    const toast = await screen.findByTestId("toast");
+    expect(toast).toHaveAttribute("data-tone", "success");
+    expect(toast).toHaveTextContent("Lumen saved");
+    expect(toast).toHaveTextContent("Từ plugin Sample");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 10, method: "toast", params: { text: "x", tone: "loud" } });
+    await refused(posted, 10, "invalid_params");
+  });
+
+  it("as a panel takes no room until its page reports a height above 0, and none again at 0", async () => {
+    const { frame, posted } = setup(undefined, true);
+    expect(frame).toHaveAttribute("data-panel", "empty");
+    expect(frame).toHaveAttribute("aria-hidden", "true");
+    expect(frame).toHaveAttribute("tabindex", "-1");
+    expect(frame.style.height).toBe("0px");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 11, method: "resize", params: { height: 96 } });
+    await waitFor(() => expect(posted).toHaveBeenCalledWith({ bridge: BRIDGE, id: 11, result: { height: 96 } }, "*"));
+    await waitFor(() => expect(frame).toHaveAttribute("data-panel", "shown"));
+    expect(frame.style.height).toBe("96px"); // no floor of FRAME_HEIGHT.min for a panel
+    expect(frame).not.toHaveAttribute("aria-hidden");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 12, method: "resize", params: { height: 0 } });
+    await waitFor(() => expect(frame).toHaveAttribute("data-panel", "empty"));
   });
 });

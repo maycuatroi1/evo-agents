@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Ago } from "@/components/data/ago";
 import { cn } from "@/lib/utils";
 
-import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
+import { isNoticeKind, NOTICE_LOOK, NoticeKindBadge } from "./badges";
 import { isBranchNotice, isOpenProposal, isWaiting, mergeAsk } from "./model";
 import { BranchFacts, PluginNoticeFacts } from "./notice-facts";
 import type { Notification } from "./queries";
@@ -81,7 +81,7 @@ export function NotificationIcon({ notification, className }: { notification: No
       ? MessageCircleQuestionMark
       : notification.kind === "proposal" && notification.proposal_id != null
         ? Lightbulb
-        : notification.notice_kind
+        : notification.notice_kind && isNoticeKind(notification.notice_kind)
           ? NOTICE_LOOK[notification.notice_kind].icon
           : MessageCircleQuestionMark;
   return <Icon className={className} aria-hidden="true" />;

@@ -327,11 +327,23 @@ def test_core_install_check_keeps_the_root_logger_quiet_and_restores_the_core_lo
 
 def test_core_install_check_in_a_process_of_its_own_exits_1_on_a_plugin_that_does_not_load(tmp_path):
     """The build runs ``python -I -m ...``, which reads no PYTHONPATH; here the fake distributions come in through
-    PYTHONPATH, so the command runs without -I, with the entry points of this Python and the fake's."""
+    PYTHONPATH, so the command runs without -I, with the entry points of this Python and the fake's. A distribution
+    of this Python that does not load on this hub's API (as evo-agents-core-plugins may lag a minor of the API) is
+    a problem of the run without the fakes too: the check then answers with the fakes as it does without them."""
     site = tmp_path / "site"
     site.mkdir()
-    core_fakes.write_dist(site, "lumen-bridge", core_fakes.WRONG_API, module="lumen_bridge_process")
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(site), str(ROOT)])}
+    alone = subprocess.run(
+        [sys.executable, "-m", "evo_agents.plugins.core_install", "check"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        timeout=120,
+    )
+    lagging = [line for line in alone.stderr.splitlines() if " does not load: " in line]
+    assert alone.returncode == (1 if lagging else 0), alone.stdout + alone.stderr
+    core_fakes.write_dist(site, "lumen-bridge", core_fakes.WRONG_API, module="lumen_bridge_process")
     done = subprocess.run(
         [sys.executable, "-m", "evo_agents.plugins.core_install", "check"],
         capture_output=True,
@@ -354,5 +366,6 @@ def test_core_install_check_in_a_process_of_its_own_exits_1_on_a_plugin_that_doe
         cwd=tmp_path,
         timeout=120,
     )
-    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.returncode == alone.returncode, done.stdout + done.stderr
+    assert [line for line in done.stderr.splitlines() if " does not load: " in line] == lagging
     assert "core plugin lumen-relay 1.0.0: entry point lumen-relay of lumen-relay 1.0.0" in done.stdout

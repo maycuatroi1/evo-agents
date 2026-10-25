@@ -256,11 +256,57 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
 | `loop_rules` | `name`, `python`, `on`, `emits`, `schedule`, `kinds` (each `kind`, `run` `task` or `job`, `agent_type` for a task) | an async function of `{project, project_id, rule, event, now, items, goals}` that answers the work items and moves a rule of the Loop makes (section Loop rules) | (core only) |
 | `kg_sources` | `name` (at most one) | an async function of `{source, project}` that answers the kg/1 items and code patterns of the source `plugin.<id>` of each build of the project's knowledge graph, and optionally its cursor (`evo_agents.hub.kg_sources`). An item's label is its row's, as the hub stores labels: one naming another project in `projects` leaves the item out, and its `audience` is kept, so only a reader who is every principal of it sees the item | (core only) |
-| `pages` | `name`, `title`, `icon`, `menu`, `entry` (isolated) | a native page of the hub's web, at `/p/<project>/x/<id>/<name>` | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
+| `pages` | `name`, `title`, `icon`, `menu`, `entry` | a native page of the hub's web, at `/p/<project>/x/<id>/<name>`; with `ui` in the manifest and an `entry`, an HTML file of the plugin's package, framed in the sandbox as an isolated plugin's (section Pages) | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
 | `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
 | `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
 | `agent_packs` | `name`, `title`, `description` | a directory `packs/<name>/` of the bundle laid out as a Claude Code plugin, which an agent profile attaches at a version of the plugin; a plugin of the hub's image has no bundle to build it from | the same (section Agent packs) |
 | `agent_types` | `name`, `title`, `description`, `profile`, `packs`, `environment`, `jobs`, `events`, `pages` | a template of an agent profile with the plugin's own packs, environment, jobs, events and pages it uses, which a project enables and the plugin hands tasks to | the same (section Agent types) |
+| `cli` | `name`, `help`, `http` (`method`, `path`), `project`, `args` (each `name`, `type`, `in`, `flag`, `positional`, `choices`, `required`, `repeatable`, `help`, `default`, `metavar`, `values`, `group`), `when` (each `arg`, `http`), `confirm` (`flag`, `text`), `client`, `output` (`json`, `table`, `text`, `render`, `keys`, `schema`) | a command `evo-agents hub <id> <name>`, which the CLI reads from the hub and runs as a call of the plugin's route (section Commands of the CLI) | the same |
+| `notice_kinds` | `name` (the plugin's table prefix, then a word), `title`, `description` | a kind of notice the plugin sends with `core_plugin_api.notify`, which members' notification settings list | (core only) |
+
+**Commands of the CLI** (`cli`, version 1). A plugin adds commands to `evo-agents hub <id> <command>` without a
+release of the CLI. `GET /v1/cli/plugins` answers any member signed in with `{"version": 1, "plugins": [{"id",
+"version", "commands"}]}`, the commands of each plugin installed and turned on, as their manifests declare them, with
+an `ETag` (the SHA-256 of the answer) and 304 for a matching `If-None-Match`. The CLI keeps the answer in
+`cli-plugins.json` of its login directory (`~/.evo/hub`, `EVO_HUB_HOME`) and builds a parser for each plugin from it;
+a `hub` command it has no parser for (a plugin, or a command of a plugin it knows, added since) makes it ask the hub
+again before it parses, and a hub it cannot ask leaves the list it kept (`evo_agents.hub.cli_plugin_commands`). A
+plugin whose id is a command of the CLI's own is left out. A command is a call of one route of the plugin with the
+member's own token: `http.path` below `/v1/x/<id>/`, or below `/v1/x/<id>/<project>/` with `project` true, which adds
+`--project`; each argument goes in the path (`{name}`), the query or the JSON body as `in` says, a `file` argument as
+the file's text. The answer prints as JSON with `--json`, else as the table of `output.table` (the keys of the objects
+of an array answer, or of the array in an object answer with `output.json` `array`), else as the key `output.text` of
+an object answer, else as JSON. The list grants nothing: the route checks the caller as any other call. The sample
+northwind-ledger has `list`, `add` and `remind`:
+
+```json
+{"name": "add", "help": "add an entry to a project's ledger", "http": {"method": "POST", "path": "entries"},
+ "project": true, "output": {"text": "id"},
+ "args": [{"name": "memo", "type": "string", "in": "body", "positional": true, "required": true},
+          {"name": "amount_cents", "type": "integer", "in": "body", "required": true}]}
+```
+
+`evo-agents hub northwind-ledger add --project acme rent --amount-cents 1500` then posts `{"memo": "rent",
+"amount_cents": 1500}` to `/v1/x/northwind-ledger/acme/entries`.
+
+A command can say more without a release of the CLI either. An argument's `default` is sent when it is left out,
+`metavar` is the word of the help, `values` makes a flag take one value per name (`--add KIND VALUE` sends `kind` and
+`value`), and flags of the same `group` exclude each other. `when` lists other routes: the first entry whose argument
+`arg` is given calls its `http` instead (`resume` with a channel id resumes that channel, without one the whole
+project). `confirm` makes the command call nothing unless its switch `flag` is given: the CLI prints `text` on stderr,
+`{name}` an argument's value and `{project}` the project, and exits with status 2. With `output.render` `text` the CLI
+asks the route for its own words, the query `render=text`, unless `--json` is given, and prints the answer's `text` as it
+is (nothing when it is empty), so a plugin words its tables and sentences itself. `output.keys` and `output.schema` name
+what `--json` prints and the OpenAPI component of the answer, for the CLI's contract (`evo-agents hub contract print`).
+`client` names a client of the CLI's own that runs the command instead of one call: `browser_post` claims the oldest
+post queued for a browser, posts it with the CLI's deterministic browser script (`evo_agents/hub/browser_post.py`) and
+reports it; `browser_login` opens a visible browser on a channel's login page and seals the session the member makes
+(section Browser adapter of `docs/marketing-plugin.md` of evo-agents-core-plugins). Both need Playwright with Chromium where the CLI runs.
+
+The core plugins installed with the CLI (entry point group `evo_agents.plugins`) ship their commands in `cli.json`
+beside their package's `__init__`, which their manifest's `contributes.cli` also reads. The CLI reads the file without
+importing the plugin and needs no hub to list them; over the list it kept they win, so `evo-agents hub crm|pm|marketing`
+is the same on every machine and in the CLI's contract.
 
 **Loop rules** (`loop_rules`, version 1; core plugins only). A core plugin adds rules to the Loop beside the core table
 of `docs/loop.md`, never in its place. A rule names its handler (`python`), the events it reads (`on`: events of the hub,
@@ -359,6 +405,30 @@ in the hub's one chain of migrations, applied under the hub's lock with the rest
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
 
+**A core plugin from outside evo-agents carries its own tables** (`schema`, API 1.3), with no revision in the hub's
+chain. Its manifest names a `sqlalchemy.MetaData` of its tables (`schema.metadata`, `module:attribute`, made with
+`core_plugin_api.plugin_metadata()`, which holds the hub's keys `HUB_KEYS` as stub tables so its foreign keys resolve:
+`projects.id`, `users.id`, `canvas_claims.id` and `runs.id`), the package of its Alembic revisions (`schema.migrations`,
+files `NNNN_<name>.py` in one straight chain, each revision id starting with the table prefix, such as
+`northwind_ledger_0001`), and the tables it may find made already (`schema.adopts`). Every table starts with the
+prefix and points its keys at its own tables or the hub's keys alone. `evo-agents hub migrate` runs the hub's chain,
+then each installed plugin's in a transaction of its own under the same lock, recorded in `alembic_version_<prefix>`
+(`alembic_version_northwind_ledger`), the env `evo_agents/hub/plugin_migrations` comparing the plugin's own tables
+only. A chain that does not read or whose revision fails is logged and left as it was, nothing of it committed, and
+the hub and the other plugins' chains still run; `--plugin <id>` runs that one chain alone and fails on its error,
+`--status` prints where each chain stands (`docs/hub-deployment.md`).
+
+A plugin's first revision adopts a table that an older chain of the hub made, when the plugin moved out of
+evo-agents, with `core_plugin_api.adopt_tables(op.get_bind(), metadata, names)`: it creates each table missing, and
+compares those that exist with the metadata (Alembic's comparison, types and server defaults included), raising
+`PluginSchemaError` with each difference. It writes, changes or deletes no row. The plugin reads and writes its own
+tables with SQLAlchemy Core (`insert`, `select`, `update` of its `Table`s on the connection of `hub.begin` or
+`hub.transaction`) and reaches the hub's tables only through the API: `tests/plugins/test_core_plugin_imports.py`
+lets it import `sqlalchemy` but refuses `text`, `TextClause` and `exec_driver_sql`. The hub's metadata no longer has
+to hold a plugin's tables: the hub's chain compares none of the tables core plugins own
+(`evo_agents/hub/migrations/owned.py`, and those of the installed plugins' metadata), and
+`tests/hub/test_schema_metadata.py` requires none of them.
+
 evo-ak ships its core plugins builder, pm, crm, marketing and browser in `evo_agents.core_plugins`, declared in its own
 entry points, so every install has them, the hub's image among them. No package of evo_agents imports them
 (import-linter contract core-plugins-by-entry-point): the hub reaches them through their manifests.
@@ -375,7 +445,7 @@ admin in Features or by an admin of the project on its Plugins page, where each 
 on, it may do what its manifest asks for, with no grant of its own to keep. Going back below 0147 puts back the rows of
 `project_plugins` that 0147 kept in `retired_project_plugins`.
 
-telegram and chats are core plugins of another repository,
+telegram, chats, crm, pm and marketing are core plugins of another repository,
 [maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as
 the distribution `evo-agents-core-plugins` (package `evo_core_plugins`). `deploy/hub/core-plugins.txt` pins the release
 of it that matches the API of each commit of evo-agents, by version and wheel hash, and the hub's image installs it
@@ -477,36 +547,18 @@ project's features, or its Plugins page):
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, nor canvas,, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
 
-### PM
+### crm, pm and marketing
 
-**pm** (`evo_agents/core_plugins/pm`, `docs/pm-plugin.md`) answers the daily report of a project that enabled it and
-tasks: what was done on the last working day, the sprint against what it held when it opened, the tasks that are late,
-in review, stale or blocked, what to escalate and the load of each member, counted in working days of the project's
-time zone. It reads the tables of tasks, srs, plans, runs and decisions and writes nothing. It contributes the route
-`GET /v1/x/pm/{project}/daily` and the MCP tools `pm__daily` and `pm__member`, and asks for `notifications:send` and
-`chats:write`. Import-linter keeps it in its own package (contract pm-plugin-own-package): it imports no other core
-plugin.
-
-### CRM
-
-**crm** (`evo_agents/core_plugins/crm`, `docs/crm-plugin.md`) keeps the people who found the project themselves as
-contacts: a GitHub login, its public profile link, the source, a stage (lead, invited, activated, retained) computed from
-hub data and kept with its history, and touchpoints. The job `intake` reads the invites and grants of the hub and the
-issues, pull requests and discussions of the project's `repo`, and pushes the stage counts to Signal as `crm.*`. It
-contributes the routes under `/v1/x/crm/{project}/contacts`, the source `contacts` of the knowledge graph and the five
-`crm_*` tables, asks for no permission, and a contact can be deleted on request with all its touchpoints
-(`evo-agents hub crm delete`). Import-linter keeps it in its own package (contract crm-plugin-own-package).
-
-### Marketing
-
-**marketing** (`evo_agents/core_plugins/marketing`, `docs/marketing-plugin.md`) keeps the channel accounts of a project
-(github, hackernews, reddit, x, linkedin, viblo, facebook_page, facebook_profile, tiktok) and puts every post through a
-gate: deny-list, source rule, caps and gap, a Judge in a fresh context, then the month's budget. A post that passes goes
-out with no human; one that fails is a draft with its reason. Each channel has a breaker, the project a kill switch, and
-every post an audit. The credentials are `x-secret` fields of the plugin's config. It contributes the routes under
-`/v1/x/marketing/{project}`, the job `advance`, the agent type `marketing-judge` and the six `marketing_*` tables, and
-asks for no permission (`evo-agents hub marketing channels|posts|pause|resume|kill|login|browser-post`); channels with no posting API post through a deterministic browser script on a worker (`login` once, `browser-post` on a schedule). Import-linter keeps it in its own
-package (contract marketing-plugin-own-package).
+**pm** (the daily report of a project's delivery), **crm** (the people who found the project themselves, with a stage
+pushed to Signal as `crm.*`) and **marketing** (the posts of a project's channels behind a gate, a breaker per channel
+and a kill switch, with counts pushed as `marketing.*`) are core plugins of the distribution evo-agents-core-plugins
+(repository maycuatroi1/evo-agents-core-plugins, `evo_core_plugins.pm|crm|marketing`), as telegram and chats are. They
+use the core plugin API alone (section The core plugin API): their own tables and Alembic chains (version tables
+`alembic_version_pm`, `alembic_version_crm` and `alembic_version_marketing`), whose first revision adopts the tables
+the hub's migrations 0086 and 0124 to 0129 made (`evo_agents.hub.migrations.owned`), their framed pages, the commands
+of `evo-agents hub pm|crm|marketing` (a `cli.json` each), their MCP tools, jobs, Loop rules and signals. The hub's image
+installs them from `deploy/hub/core-plugins.txt`. Their docs are `docs/pm-plugin.md`, `docs/crm-plugin.md` and
+`docs/marketing-plugin.md` of that repository.
 
 ### Notifications from a plugin
 
@@ -595,10 +647,12 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.2, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.3, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
-`tests/plugins/test_core_plugin_api.py` drives through a fake chat service.
+`tests/plugins/test_core_plugin_api.py` drives through a fake chat service; `tests/fixtures/core_plugins/northwind_ledger`
+is a plugin of the market built on 1.3 alone, with its tables and chain, a framed page, CLI commands and a notice kind,
+which `tests/plugins/test_core_plugin_ledger.py` and `tests/hub/test_plugin_migrations.py` drive on a live hub.
 
 The API is no sandbox. A core plugin runs in the api and the job worker, holds the hub's connection and reads every
 variable of their environment: installing one is trusting it (`docs/hub-deployment.md`). The API makes the right code
@@ -606,7 +660,7 @@ easy to write and keeps it working from one release to the next.
 
 **Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
 point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
-("northwind_chat needs core plugin API 1.3; this hub serves 1.2"), and `core_plugins()` leaves the plugin out with that
+("northwind_chat needs core plugin API 1.4; this hub serves 1.3"), and `core_plugins()` leaves the plugin out with that
 reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
 for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
 
@@ -628,6 +682,27 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | 1.0 | the pull request of branch `feat/core-plugin-api`, after 0.23.1 | the release after 0.23.1 | none: telegram and chats moved to 1.1 first |
 | 1.1 | the pull request of branch `feat/core-plugins-on-api`: `Caller`, `linked_channel`, `unlink_by_login`, `audit`, `Clearance.below`, `NOT_YOURS`, `RESTRICTED_ANSWER` | the release after 0.23.1 | 1.0.0 |
 | 1.2 | the pull request of branch `feat/core-plugin-agent-questions`: `ask_agent_type`, `read_agent_answer`, `AgentQuestion`, `AgentAnswer`, `ANSWER_EVENT`, `MAX_QUESTION_BYTES`, `MAX_ASKER_CHARS`, `MAX_REF_CHARS`, `MAX_ANSWER_CHARS` | the release after 0.35.1 | 1.2.0 |
+| 1.3 | the pull request of branch `feat/lean-core-features` (plan plugin-market): a plugin's own tables (`plugin_metadata`, `adopt_tables`, `own_tables`, `HUB_KEYS`, `PluginSchemaError`), a caller's access (`project_access`, `has_role`, `ROLES`, `ProjectRef`), the hub's reads (`read_*`, `step_key` and their refs), writes (`emit_event`, `push_signal`, `create_invite`, `queue_kg_build`, `notify`), agents and chat runs (`enabled_agent_type`, `hand_task`, `chat_run_of`, `run_session`, `reply_in_chat`), `project_configs`, `Session.machine` | the release after 0.44.2 | none yet: 1.2.0 does not load on 1.3 |
+
+**A plugin of the market (1.3).** Each function takes the connection of the caller's transaction and the plugin's
+handle (`plugin(__name__)`), and works only in a project that enables the plugin: another project, or one that does not
+exist, is `Refused` 404, as the plugin's routes are. A read answers frozen refs, at most 5000 rows (`limit` lower),
+newest first where they have a time; the plugin decides what of them its caller may see (`project_access` gives the
+caller's role and highest level).
+
+| Name | What it does |
+| --- | --- |
+| `project_access(conn, caller, project, role=)` | the caller's (`Session`) access to the project as the hub's routes check it: 404 without a grant (a hub admin passes as admin), 403 below `role` (`reader`, `writer`, `admin`); a `ProjectRef` (id, name, role, max_level). `has_role(held, needed)` compares two roles |
+| `read_users`, `read_grants`, `read_runs`, `read_plans`, `read_plan_steps`, `read_decisions`, `read_signals`, `read_goals`, `read_claims`, `read_tasks`, `read_sprints`, `read_task_links`, `read_srs_items`, `read_srs_versions` | the hub's members, a project's grants, runs, plans and their steps (`step_key(step, index)` their key), decisions, values of a signal, goals at their current revision, claims of the canvas, tasks, sprints and their links, the items and versions of an SRS document |
+| `emit_event(conn, plugin, project, name, payload)` | the event `plugin.<id, - as _>.<name>` on the project's stream, which loop rules read; its id |
+| `push_signal(conn, plugin, project, key, value, text=, measured_at=, tenant=, external_id=)` | a value of a signal an admin declared, pushed as the project's ingest key named after the plugin, made on first use and owned by the project's first admin (409 without an admin, or when an admin revoked it); stored once per `external_id`. A `SignalPushed` (stored, duplicate, refused) |
+| `create_invite(conn, plugin, config, project, created_by=, for_login=, role=, days=)` | a join link of the project at the lowest level of its ladder, valid 1 to 30 days, audited as `invite.create` of member `created_by`, whom the plugin checked may (an admin of the project). An `Invite` whose token is shown once |
+| `queue_kg_build(conn, plugin, project)` | a build of the project's knowledge graph, in the caller's transaction, when the project has a knowledge config |
+| `notify(conn, plugin, project, notice_kind, users=, title=, body=, link=)` | a notice of a kind the manifest contributes (`notice_kinds`) to each of `users` (500 at most) who holds a grant on the project, on each channel of theirs that is on; `link` a path of the hub's web. The ids of the notices |
+| `enabled_agent_type(conn, plugin, project, name)`, `hand_task(conn, plugin, project, agent_type, task, title=, for_user=)` | the plugin's agent type as the project enabled it (`AgentTypeRef`), or None; a task run of it queued in the caller's transaction, for a member when given, or why none was (`TaskHanded`) |
+| `chat_run_of(conn, plugin, run_id)`, `run_session(conn, plugin, run_id)`, `reply_in_chat(conn, plugin, run, text)` | the chat run a tool of the plugin was called in (`Context.run_id`); the member it acts for as a `Session` (`machine`, no token) that `project_access` checks; a message of the hub in the thread it answers in |
+| `project_configs(conn, plugin, config)` | the plugin's effective config in each project that enables it (`ProjectConfig`: project, values with secrets unsealed, version of the project's layer) |
+| `plugin_metadata()`, `adopt_tables(connection, metadata, names)`, `own_tables(plugin)`, `HUB_KEYS`, `PluginSchemaError` | the plugin's own tables (section Core plugins) |
 
 **The ground.**
 
@@ -715,8 +790,9 @@ at once, with the reason in `last_error`; the web's and every other kind's go on
 
 **What a plugin imports.** `tests/plugins/test_core_plugin_imports.py` reads every `.py` of a plugin built on the API
 with `ast`: an import of `evo_agents` names `evo_agents.hub.server.core_plugin_api` alone and takes names of its
-`__all__`, nothing imports `sqlalchemy`, and no `importlib.import_module` or `__import__` names a module of
-`evo_agents`. import-linter cannot keep this for a package outside `evo_agents`. A repository of core plugins copies the
+`__all__`, nothing takes `text` or `TextClause` from `sqlalchemy` or calls `sqlalchemy.text` or `exec_driver_sql` (1.3:
+SQLAlchemy Core on the plugin's own tables is allowed, raw SQL is not), and no `importlib.import_module` or
+`__import__` names a module of `evo_agents`. import-linter cannot keep this for a package outside `evo_agents`. A repository of core plugins copies the
 file into its own checks, with its packages in `PACKAGES`.
 
 ## Runtimes
@@ -1078,12 +1154,19 @@ an item in the project's menu after the project's own areas (`menu: false` leave
 enabled the plugin, where the hub turned it off, or for a page it lacks, the page is a 404, as its routes are. A plugin
 with a page is enabled per project.
 
-**A core plugin's page is native**, a page of the hub's web itself: a feature folder of its own under
+**A core plugin's page is native unless the plugin has `ui`**, a page of the hub's web itself: a feature folder of its own under
 `web/src/components` (the web's ESLint rules keep it from importing another feature), a route under
 `web/src/app/(app)/p/[project]/x/<id>/` whose layout calls `requirePlugin` (`web/src/lib/plugins-server.ts`) so the
 page answers 404 where the plugin is not on, and the plugin's own routes for its data. Its manifest names no `entry`.
 The web of the image carries it; web/DESIGN.md, section Plugins, says how to add one. The tests' core plugin `notes`
 (`tests/hub/core_notes.py`) has one, which only the web's end-to-end build carries (`EVO_WEB_FIXTURES=1`).
+
+**A core plugin with `ui` frames its pages from its package** (API 1.3), so a plugin from outside evo-agents needs no
+code of the hub's web. `ui` names a directory of the plugin's package (`module:directory`, read with
+`importlib.resources`), whose `pages/` holds the built files, as an isolated plugin's bundle does; a page that names an
+`entry` (`pages/<file>.html`) is framed in the same sandbox, served by the same `/v1/plugin-ui/` route with the same
+ticket (signed on the SHA-256 the store recorded for the image's version), CSP and bridge, and checked again on each
+file. A path with an empty, hidden or `..` part is a 404. A page of it without `entry` stays native.
 
 **An isolated plugin's page is an HTML file of its bundle under `pages/`** (`entry`, such as `pages/board.html`, which
 the bundle must hold: `evo-agents plugin pack` and the store refuse it otherwise). The page loads its scripts, styles,
@@ -1167,6 +1250,22 @@ A minimal page:
 The sample plugin of the tests (`tests/fixtures/plugins/sample/pages`) does the same and records what its sandbox
 refuses.
 
+**The bridge's sub path, navigation and toasts.** A page has a sub path: `/p/<project>/x/<id>/<page>/<sub>?<query>`
+frames the same page, and `context` gives it as `location` (`{path, query}`), with an event `{"bridge", "event":
+"location", "location"}` when it changes. Two methods need no permission: `navigate` (`to`: a path of this project's
+part of the hub, `/p/<project>/...`, which the web opens) and `toast` (`text`, 500 characters at most, and `tone` `info`,
+`success` or `error`, which the web shows).
+
+**The hub's UI kit.** `GET /v1/plugin-ui/kit/1/evo-ui.css` and `/v1/plugin-ui/kit/1/evo-ui.js` serve the kit 1 to any
+origin, cached for an hour, so a page looks like the hub without bringing a style of its own: the hub's tokens, light
+and dark, type and components (`evo-btn`, `evo-card`, `evo-table`, `evo-input`, `evo-badge`, `evo-empty`, `evo-row`,
+`evo-stack`), laid out for 375 px and up. `evo-ui.js` gives `window.evo`: `ready` (a promise of the context), `call`,
+`route(path, {method, query, body})`, `navigate`, `href`, `toast`, `resize`, `on("theme" | "location", listener)`,
+`t(key, vars)` and `messages(locale, words)`. It keeps the viewer's theme on `<html>` (class `dark`), the locale as
+`<html lang>` (`en` or `vi`), loads the page's words from `i18n/en.js` and `i18n/<locale>.js` beside it (each calls
+`evo.messages`: `connect-src 'none'` reads no JSON), and keeps the frame's height to the page's. The sample
+northwind-ledger's `ui/pages/ledger.html` uses it.
+
 ## Writing and checking a plugin
 
 The author builds and checks a plugin on their own machine with `evo-agents plugin`:
@@ -1238,3 +1337,22 @@ another standalone build, not from `actions/setup-python`. The plugin host build
 nothing, so it has no `LD_LIBRARY_PATH`, and the Python that setup-python installs on a self-hosted runner finds its
 `libpython` only through that variable: `plugin test` fails at the environment check. Making the host pass the
 variable on would open the environment it builds from nothing, so the runner adapts instead.
+
+### Publishing through a market
+
+To be installed from a hub's market (`docs/market.md`), a plugin publishes each version as a GitHub release of its
+repository, tagged `vX.Y.Z`, with two assets: the bundle `plugin pack` writes, `ID-X.Y.Z.tar.gz`, and its signature
+beside it, `ID-X.Y.Z.tar.gz.sigstore.json` from the sign job above or `ID-X.Y.Z.tar.gz.sig.json` from `plugin sign`.
+The market's index, `market.json` (plugin-market-v1, `evo_agents/harness/schemas/plugin-market.schema.json`), lists
+the plugin with its repository and its publisher's signer, `sigstore:OWNER/REPO/.github/workflows/ci.yml` or
+`ed25519:<public key>`, which the hub checks the release against. The market's owner checks the index, and with
+`--releases` the latest release of each free plugin, before publishing it:
+
+```sh
+evo-agents plugin market-check market.json
+evo-agents plugin market-check market.json --releases   # downloads and verifies each free plugin's latest release
+```
+
+A hub admin may also install a release without any market, naming the signer when it is not the repository's
+`ci.yml`: `evo-agents hub plugin install --github acme/my-plugin@v1.0.0 --signer ed25519:<public key>`. The manifest
+does not change for a market: plugin-v1 stays as it is.

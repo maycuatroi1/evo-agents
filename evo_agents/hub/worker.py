@@ -237,6 +237,16 @@ async def expire_seats(context: JobContext, timestamp: int | None = None) -> dic
     return await expire(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
+@queue.periodic(cron="41 */6 * * *")
+@queue.task(name=jobs.MARKET_REFRESH, pass_context=True, queueing_lock=jobs.MARKET_REFRESH)
+async def market_refresh(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.market_refresh import refresh
+
+    found = hub(context)
+    done = await refresh(found.engine, found.config, found.sealer)
+    return {"sources": len(done), "failed": sum(1 for item in done if item["error"])}
+
+
 @queue.periodic(cron="47 * * * *")
 @queue.task(name=jobs.REAP_POOL_NODES, pass_context=True, queueing_lock=jobs.REAP_POOL_NODES)
 async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> dict:

@@ -542,7 +542,10 @@ class NoticeIn(BaseModel):
 class Notification(BaseModel):
     id: int
     kind: Literal[runs.NOTIFICATION_KINDS]
-    notice_kind: Literal[runs.NOTICE_KINDS] | None = Field(description="a notice's kind; null for a decision")
+    notice_kind: str | None = Field(
+        description="a notice's kind: one of the hub's, or one a core plugin declares (contributes.notice_kinds, its "
+        "table prefix first); null for a decision"
+    )
     project: str | None
     run_id: int | None
     decision_id: int | None

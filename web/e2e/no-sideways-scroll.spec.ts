@@ -4,11 +4,9 @@ import { createAgentByApi } from "./support/agents";
 import { ceilingOver } from "./support/autonomy";
 import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
-import { CONTACTS, contactPath, contactsPath, marketingPath, seedGrowth } from "./support/growth";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { buildsPath, grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
-import { decidePath } from "./support/loop";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { seatByApi, unitByApi } from "./support/org";
@@ -32,7 +30,6 @@ import {
   startRun,
   uploadDiff,
 } from "./support/runs";
-import { pmPath, seedPm } from "./support/pm";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
@@ -81,6 +78,13 @@ async function noSidewaysScroll(page: Page, widths: number[], visits: Visit[]) {
       await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect.soft(overflow, `${visit.path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
+      // A plugin's page draws inside its frame, so the frame's own document must not scroll sideways either.
+      for (const handle of await page.locator('#main [data-testid="plugin-frame"]').elementHandles()) {
+        const inner = await handle.contentFrame();
+        if (!inner) continue;
+        const inside = await inner.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect.soft(inside, `the framed page of ${visit.path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
+      }
     }
   }
 }
@@ -122,31 +126,6 @@ for (const width of WIDTHS) {
   test(`plans, memories and skills pages never scroll sideways at ${width} px`, async ({ page, member }) => {
     const me = await member([{ role: "writer", maxLevel: "customer" }]);
     await noSidewaysScroll(page, [width], await seedProject(me));
-  });
-}
-
-for (const width of WIDTHS) {
-  test(`PM daily never scrolls sideways at ${width} px`, async ({ page, member }) => {
-    const me = await member([{ role: "admin", maxLevel: "internal" }]);
-    const project = me.projects[0];
-    await seedPm(me, project, { long: LONG });
-    await noSidewaysScroll(page, [width], [{ path: pmPath(project), ready: shown("pm-report") }]);
-  });
-}
-
-for (const width of WIDTHS) {
-  test(`Contacts, Marketing and the growth decisions never scroll sideways at ${width} px`, async ({ page, member }) => {
-    const me = await member([{ role: "admin", maxLevel: "internal" }]);
-    const project = me.projects[0];
-    await seedGrowth(me, project, { long: true, spent: 50 });
-    await noSidewaysScroll(page, [width], [
-      { path: contactsPath(project), ready: shown("crm-contacts") },
-      { path: contactPath(project, CONTACTS.longLead), ready: shown("crm-touchpoint") },
-      { path: marketingPath(project), ready: shown("marketing-channels") },
-      { path: marketingPath(project, "posts"), ready: shown("marketing-group-drafts") },
-      { path: marketingPath(project, "weekly"), ready: shown("weekly-report") },
-      { path: decidePath(project), ready: shown("decide-growth") },
-    ]);
   });
 }
 
