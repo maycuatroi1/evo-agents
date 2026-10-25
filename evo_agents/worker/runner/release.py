@@ -18,6 +18,7 @@ hub that does not take the push fails the run, and its cycle stops.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -153,17 +154,39 @@ class ReleaseRun:
         )
 
     def prompt(self) -> str:
-        """The run's prompt, with where the worktree is when its folder is not named as its repo."""
+        """The run's prompt, with where the worktree is when its folder is not named as its repo, and the absolute path
+        of the result file: an agent that changed into the repo's worktree otherwise writes it there."""
         prompt = self.run.spec.get("prompt") or ""
         moved = self.directory.moved()
         extra = ["", "Worktree folders that are not named as their repo:", *moved] if moved else []
-        return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
+        result = self.directory.path / runs.RESULT_FILE
+        extra += ["", f"Write the result file at {result}, in the run's directory, not in the repo's worktree."]
+        return runs.clip(prompt + "\n".join(extra) + "\n", runs.MAX_PROMPT_BYTES)
+
+    def result_path(self) -> Path:
+        """Where the agent wrote .evo-run/result.json: the run's directory, or else the repo's worktree, whose copy
+        is moved out so the daemon's commit does not take it."""
+        path = self.directory.path / runs.RESULT_FILE
+        if path.exists() or path.is_symlink():
+            return path
+        for workspace in self.directory.workspaces.values():
+            stray = workspace.worktree / runs.RESULT_FILE
+            if stray.is_file() and not stray.is_symlink() and not stray.parent.is_symlink():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                stray.replace(path)
+                with contextlib.suppress(OSError):
+                    stray.parent.rmdir()
+                self.run.note(
+                    f"The agent wrote {runs.RESULT_FILE} in the worktree of {workspace.repo}; it is read there."
+                )
+                break
+        return path
 
     def read_version(self) -> tuple[str, str | None]:
         """The version and the Decision line the agent wrote in .evo-run/result.json; RunFailed without a version
         X.Y.Z, so nothing is pushed."""
         run = self.run
-        path = self.directory.path / runs.RESULT_FILE
+        path = self.result_path()
         if path.is_symlink() or not path.is_file():
             raise RunFailed(f"the agent did not write {runs.RESULT_FILE}: no version, nothing is pushed")
         try:
