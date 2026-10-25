@@ -7,7 +7,7 @@ import { pluginKeys } from "@/lib/plugin-queries";
 import type { ApiSource } from "@/lib/queries";
 
 /**
- * The reads and writes of the core plugin srs (evo_agents.core_plugins.srs.server, under /v1/x/srs/{project}/), as
+ * The reads and writes of the core plugin srs (evo_agents.hub.server.srs.server, under /v1/x/srs/{project}/), as
  * TanStack Query options the server (prefetch) and the browser share, and the writes the browser makes with the
  * session's X-Evo-CSRF header. Every key sits under the project's plugin keys, so one invalidation of a document
  * reloads its versions, comparisons and comments.

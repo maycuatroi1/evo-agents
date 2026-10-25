@@ -1,5 +1,5 @@
 """The knowledge graph of a project on the hub that enables the core plugin canvas beside srs and tasks, as criterion
-a7 of plan living-lean-canvas names it: the worker's build reads the plugin's source (``evo_agents.core_plugins.canvas.
+a7 of plan living-lean-canvas names it: the worker's build reads the plugin's source (``evo_agents.hub.server.canvas.
 kg``) beside those of srs and tasks and the runs machines push.
 
 Checked here, end to end on the hub: making a canvas and editing a claim each queue a build, which joins the one that
@@ -34,9 +34,9 @@ from tests.hub.test_kg import PROJECT, build_rows, call_tool, grant, open_hub, p
 from tests.hub.test_srs_tasks_plugin_kg import PLAN, STEP, TICKET, USE_CASE, approve_sample, machine, node, queued
 
 CORE = {
-    "srs": EntryPoint("srs", "evo_agents.core_plugins.srs:MANIFEST", ENTRY_POINT_GROUP),
-    "tasks": EntryPoint("tasks", "evo_agents.core_plugins.tasks:MANIFEST", ENTRY_POINT_GROUP),
-    "canvas": EntryPoint("canvas", "evo_agents.core_plugins.canvas:MANIFEST", ENTRY_POINT_GROUP),
+    "srs": EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP),
+    "tasks": EntryPoint("tasks", "evo_agents.hub.server.tasks:MANIFEST", ENTRY_POINT_GROUP),
+    "canvas": EntryPoint("canvas", "evo_agents.hub.server.canvas:MANIFEST", ENTRY_POINT_GROUP),
 }
 SLUG = "northwind-pantry"
 CANVAS = f"plugin.canvas:canvas:{SLUG}"

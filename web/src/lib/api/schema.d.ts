@@ -24239,6 +24239,12 @@ export interface components {
             /** Enabled */
             enabled: boolean;
             /**
+             * Builtin
+             * @description a feature of the hub (canvas, srs, tasks), not a plugin of the store: the project's features turn it on and off, and it may do what it asks for while on
+             * @default false
+             */
+            builtin: boolean;
+            /**
              * Permissions
              * @description what the installed version asks for, granted or not
              */

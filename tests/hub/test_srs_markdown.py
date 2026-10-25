@@ -1,4 +1,4 @@
-"""The core plugin srs reads and writes Markdown (``evo_agents.core_plugins.srs.markdown``) and checks a document
+"""The core plugin srs reads and writes Markdown (``evo_agents.hub.server.srs.markdown``) and checks a document
 (``checks``), without the hub: the sample SRS of tests/hub/fixtures/srs, written for these tests and holding no content
 of any client, imports to the items its headings and tables name, with the same codes, and exports back to its source
 (criterion a2 of plan srs-tasks-plugins). Each check finds what it is for.
@@ -14,9 +14,9 @@ import pytest
 # srs.template imports code_key from evo_agents.hub.tables_srs, whose tables need SQLAlchemy.
 pytest.importorskip("sqlalchemy", reason="the core plugin srs needs the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.core_plugins.srs import USE_CASE_FIELDS, checks, markdown
-from evo_agents.core_plugins.srs.diff import diff
-from evo_agents.core_plugins.srs.template import TemplateError, code_key, template_of
+from evo_agents.hub.server.srs import USE_CASE_FIELDS, checks, markdown
+from evo_agents.hub.server.srs.diff import diff
+from evo_agents.hub.server.srs.template import TemplateError, code_key, template_of
 
 SAMPLE = Path(__file__).parent / "fixtures" / "srs" / "demo-shop-srs.md"
 CODE_LINE = re.compile(r"\b(?:UC [A-Z]+-\d+|BR [A-Z]+\d+-\d+)\b")

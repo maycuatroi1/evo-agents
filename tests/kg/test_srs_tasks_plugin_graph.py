@@ -1,6 +1,6 @@
 """The knowledge graph of a project that enables the core plugins srs and tasks, as criterion a4 of plan
 srs-tasks-plugins names it, built on this machine from what the plugins' sources answer (``evo_agents.core_plugins.
-srs.kg``, ``evo_agents.core_plugins.tasks.kg``, made into a build's sources by ``evo_agents.hub.kg_sources``).
+srs.kg``, ``evo_agents.hub.server.tasks.kg``, made into a build's sources by ``evo_agents.hub.kg_sources``).
 
 Checked here: the approved version of a document gives a Document with a Section per heading, UseCase and Requirement
 nodes with the ids a mention of their codes gets, declared ``defines``, ``child_of`` and ``mentions`` edges, and the
@@ -27,16 +27,16 @@ import yaml
 # The plugins' sources and evo_agents.hub.kg_sources run in the hub and query its database through SQLAlchemy.
 pytest.importorskip("sqlalchemy", reason="the kg sources of srs and tasks need the hub-server extra")
 
-from evo_agents.core_plugins.srs import kg as srs_kg
-from evo_agents.core_plugins.srs import markdown
-from evo_agents.core_plugins.srs.store import DocumentRow, Snapshot, VersionRow
-from evo_agents.core_plugins.srs.template import template_of
-from evo_agents.core_plugins.tasks import DEFAULT_STATUSES
-from evo_agents.core_plugins.tasks import kg as tasks_kg
-from evo_agents.core_plugins.tasks.settings import Settings, Status
-from evo_agents.core_plugins.tasks.store import People, TaskRow
 from evo_agents.hub import kg_sources
 from evo_agents.hub.kg_sources import SourceFailure, checked, keep_sources, knowledge_with
+from evo_agents.hub.server.srs import kg as srs_kg
+from evo_agents.hub.server.srs import markdown
+from evo_agents.hub.server.srs.store import DocumentRow, Snapshot, VersionRow
+from evo_agents.hub.server.srs.template import template_of
+from evo_agents.hub.server.tasks import DEFAULT_STATUSES
+from evo_agents.hub.server.tasks import kg as tasks_kg
+from evo_agents.hub.server.tasks.settings import Settings, Status
+from evo_agents.hub.server.tasks.store import People, TaskRow
 from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import finalize_item

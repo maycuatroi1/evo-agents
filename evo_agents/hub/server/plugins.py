@@ -214,7 +214,7 @@ async def remove_plugin(request: Request, name: PluginName, user: AdminUser) -> 
 async def _installed(conn, name: str, *, lock: bool = False):
     """(Place of the instance layer, the config schema of the installed version) of plugin ``name``; 404 when it is
     not installed."""
-    row = await find(conn, name, lock=lock)
+    row = await find(conn, name, lock=lock, builtin=True)  # the hub's layer of a feature's config too
     if row is None or row.installed_version is None:
         raise HTTPException(404, f"no plugin {name} is installed on this hub: see `evo-agents hub plugin list`")
     version = next(v for v in await version_rows(conn, row.id) if v.version == row.installed_version)
