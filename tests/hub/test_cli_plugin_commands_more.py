@@ -7,6 +7,7 @@ core plugins installed with the CLI ship theirs in ``cli.json``, which win over 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 
 import pytest
@@ -89,6 +90,8 @@ def test_plugin_cli_render_text_prints_the_routes_words_and_json_the_answer(monk
 
 
 def test_plugin_cli_core_plugins_ship_their_commands_and_win_over_the_list_kept(monkeypatch, tmp_path):
+    if importlib.util.find_spec("evo_core_plugins") is None:  # the macOS and Windows jobs install '.[test,graphify]'
+        pytest.skip("install deploy/hub/core-plugins.txt: crm, pm and marketing are plugins of evo-agents-core-plugins")
     shipped = {plugin["id"]: plugin for plugin in cpc.bundled()}
     assert {"crm", "pm", "marketing"} <= set(shipped)
     assert {c["name"] for c in shipped["crm"]["commands"]} == {"list", "show", "delete"}
