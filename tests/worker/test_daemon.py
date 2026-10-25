@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 from contextlib import ExitStack
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,7 @@ from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.mirror import render
 from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
+from evo_agents.worker import list_cli
 from tests.hub.live import ADMIN, bearer
 from tests.hub.test_plans import registration
 from tests.hub.test_runs import OWNER, PLAN, PROJECT, WRITER, plan_body
@@ -750,6 +752,28 @@ def test_join_with_a_pairing_code_then_status_drain_and_revoke(make_stack):
     assert not (stack.state / "token").exists() and not (stack.state / "config.json").exists()
     no_worker = stack.cli("status")
     assert no_worker.returncode == 1 and "evo-agents worker join" in no_worker.stderr
+
+
+def test_worker_list_shows_the_workers_of_the_hub_this_machine_is_signed_in_to(make_stack):
+    stack = make_stack()
+    config = stack.register(slots=2)
+    listed = stack.cli("list")
+    assert listed.returncode == 0, listed.stderr
+    assert listed.stdout.startswith(f"Workers on {stack.url}")
+    line = next(line for line in listed.stdout.splitlines() if f"#{config['worker_id']} " in line)
+    assert f"{OWNER}/{WORKER}" in line and "0 of 2 slot(s) held" in line and "last heartbeat never" in line, line
+    rows = json.loads(stack.cli("list", "--json").stdout)
+    assert [row["name"] for row in rows] == [WORKER]
+
+    assert stack.cli("revoke").returncode == 0
+    assert stack.cli("list").stdout.startswith("No worker of yours")
+    assert f"{OWNER}/{WORKER} " in stack.cli("list", "--revoked").stdout
+
+    locked = {**rows[0], "version_locked": True, "last_heartbeat_at": "2026-10-25T07:00:00Z"}
+    waiting = {**rows[0], "self_update": {"state": "waiting", "reason": "it holds 1 run(s)"}}
+    now = datetime.fromisoformat("2026-10-25T09:30:00Z")
+    assert "version locked" in list_cli.describe(locked, now) and "2h ago" in list_cli.describe(locked, now)
+    assert "self-update waiting (it holds 1 run(s))" in list_cli.describe(waiting, now)
 
 
 def test_worker_projects_changes_the_projects_in_place_here_or_by_name_and_the_daemon_takes_them(
