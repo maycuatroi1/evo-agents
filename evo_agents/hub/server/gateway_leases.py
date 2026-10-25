@@ -158,7 +158,7 @@ async def prepare(app, engine: AsyncEngine, run, worker_id: int, base_url: str) 
             return found
         found.expires_at = datetime.now(UTC) + timedelta(seconds=row.timeout_s + GRACE)
         reach = [connections[account.secret_id] for account in found.accounts]
-        made = await client.create_key(f"evo-run-{run.id}", reach, found.expires_at.isoformat())
+        made = await client.create_key(f"evo-run-{run.id}", reach, found.expires_at)
     except (GatewayOff, GatewayError) as exc:
         found.accounts = []
         found.reasons.append(f"the model gateway made no key: {exc}")
