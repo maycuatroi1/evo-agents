@@ -273,5 +273,10 @@ networks:
     name: ${EVO_HUB_PLATFORM_NETWORK:-dokploy-network}
     external: true
   # The model gateway's own: the gateway and the api, nothing else. Not internal, since the gateway calls the
-  # providers' APIs on the internet.
-  gateway: {}
+  # providers' APIs on the internet. Its subnet is stated, outside Docker's default pools (172.17.0.0/12 and
+  # 192.168.0.0/16), because a host whose pools are all taken refuses to create a network without one; set
+  # EVO_HUB_GATEWAY_SUBNET when the default overlaps a network of the host.
+  gateway:
+    ipam:
+      config:
+        - subnet: ${EVO_HUB_GATEWAY_SUBNET:-10.231.128.0/28}
