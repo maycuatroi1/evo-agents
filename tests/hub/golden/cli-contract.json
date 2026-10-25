@@ -35579,6 +35579,97 @@
           }
         }
       },
+      "/v1/me/today": {
+        "get": {
+          "tags": [
+            "today"
+          ],
+          "summary": "Today",
+          "description": "What waits for you, and what changed since you last looked, over the projects you hold a grant on.",
+          "operationId": "today_v1_me_today_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Today"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/me/today/seen": {
+        "post": {
+          "tags": [
+            "today"
+          ],
+          "summary": "Today Seen",
+          "description": "Move your seen mark forward to what you saw: Today counts what changes after it.",
+          "operationId": "today_seen_v1_me_today_seen_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TodaySeenIn"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TodaySeen"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/curator/charter": {
         "get": {
           "tags": [
@@ -98603,7 +98694,8 @@
                     "worker_doctor",
                     "browser_needs_login",
                     "curator_probe_report",
-                    "opportunity_window"
+                    "opportunity_window",
+                    "today"
                   ]
                 },
                 {
@@ -98928,7 +99020,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 28,
+              "maxItems": 29,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -100119,7 +100211,7 @@
               "type": "array",
               "maxItems": 20,
               "title": "Open Decisions",
-              "description": "at most 20: yours first, then the oldest first"
+              "description": "at most 20: those asked of you first, then the oldest first"
             },
             "author_waiting": {
               "items": {
@@ -100276,7 +100368,7 @@
             "waiting_on_you": {
               "type": "integer",
               "title": "Waiting On You",
-              "description": "open decisions of the runs you dispatched, which only you may answer"
+              "description": "open decisions asked of you, which you answer"
             },
             "running": {
               "type": "integer",
@@ -100415,12 +100507,17 @@
             "owner": {
               "type": "string",
               "title": "Owner",
-              "description": "the login of the run's owner, the one member who may answer"
+              "description": "the login of the run's owner, who dispatched it"
+            },
+            "asked_of": {
+              "type": "string",
+              "title": "Asked Of",
+              "description": "the login of the member it is asked of, who answers it: the person the agent asked, else the run's owner (the principal of an autonomy gate's run)"
             },
             "yours": {
               "type": "boolean",
               "title": "Yours",
-              "description": "whether you are that owner"
+              "description": "whether it is asked of you"
             },
             "asked_at": {
               "type": "string",
@@ -100453,6 +100550,7 @@
             "category",
             "question",
             "owner",
+            "asked_of",
             "yours",
             "asked_at",
             "parks_at"
@@ -126029,7 +126127,8 @@
                 "worker_doctor",
                 "browser_needs_login",
                 "curator_probe_report",
-                "opportunity_window"
+                "opportunity_window",
+                "today"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -126091,7 +126190,8 @@
                 "worker_doctor",
                 "browser_needs_login",
                 "curator_probe_report",
-                "opportunity_window"
+                "opportunity_window",
+                "today"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -126119,6 +126219,290 @@
             "chosen"
           ],
           "title": "TierSetting"
+        },
+        "Today": {
+          "properties": {
+            "summary": {
+              "type": "string",
+              "title": "Summary",
+              "description": "one sentence of what waits and what changed, from a template"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since",
+              "description": "the start of the window the items are counted from"
+            },
+            "seen_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seen At",
+              "description": "your seen mark; null before your first POST /v1/me/today/seen"
+            },
+            "seen_until": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Seen Until",
+              "description": "the seen mark to post once every item listed was shown: the moment of this answer when it is caught up, else the moment of the last item"
+            },
+            "needs_you": {
+              "items": {
+                "$ref": "#/components/schemas/TodayDecision"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Needs You",
+              "description": "at most 20 open decisions asked of you, the oldest first"
+            },
+            "needs_you_count": {
+              "type": "integer",
+              "title": "Needs You Count",
+              "description": "all the open decisions asked of you"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/TodayItem"
+              },
+              "type": "array",
+              "maxItems": 8,
+              "title": "Items",
+              "description": "at most 8 things that changed since the window's start, the first in the order they happened"
+            },
+            "caught_up": {
+              "type": "boolean",
+              "title": "Caught Up",
+              "description": "whether the items are everything that changed in the window"
+            }
+          },
+          "type": "object",
+          "required": [
+            "summary",
+            "since",
+            "seen_at",
+            "seen_until",
+            "needs_you",
+            "needs_you_count",
+            "items",
+            "caught_up"
+          ],
+          "title": "Today"
+        },
+        "TodayDecision": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the run the decision belongs to"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id",
+              "description": "the run's plan when its agent asked; null for a run on none"
+            },
+            "plan_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Title"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step it is about, when the agent named one"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "deploy",
+                "delete_data",
+                "live_migration",
+                "external_send",
+                "spend_money",
+                "architecture",
+                "scope",
+                "merge",
+                "credential",
+                "access",
+                "question",
+                "triage",
+                "release",
+                "loop",
+                "autonomy",
+                "login",
+                "wait"
+              ],
+              "title": "Category"
+            },
+            "question": {
+              "type": "string",
+              "title": "Question"
+            },
+            "asked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Asked At"
+            },
+            "parks_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parks At",
+              "description": "when the run parks for want of an answer: EVO_HUB_DECISION_WAIT_SECONDS after it started waiting, or when it parked; null while its agent still works, and for a local run"
+            },
+            "link": {
+              "type": "string",
+              "title": "Link",
+              "description": "the web page that shows it and its answer form"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "plan_id",
+            "plan_title",
+            "step_key",
+            "category",
+            "question",
+            "asked_at",
+            "parks_at",
+            "link"
+          ],
+          "title": "TodayDecision"
+        },
+        "TodayItem": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "release",
+                "step_done",
+                "run_failed",
+                "run_parked",
+                "problem",
+                "cost",
+                "proposal"
+              ],
+              "title": "Kind",
+              "description": "release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At",
+              "description": "when it happened"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "link": {
+              "type": "string",
+              "title": "Link",
+              "description": "the web page it is on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "title",
+            "body",
+            "at",
+            "project",
+            "link"
+          ],
+          "title": "TodayItem"
+        },
+        "TodaySeen": {
+          "properties": {
+            "seen_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Seen At",
+              "description": "your seen mark now, which only moves forward"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seen_at"
+          ],
+          "title": "TodaySeen"
+        },
+        "TodaySeenIn": {
+          "properties": {
+            "seen_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seen At",
+              "description": "what you saw up to, as seen_until gave it; now when left out; a moment past now is now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "TodaySeenIn"
         },
         "TokenCounts": {
           "properties": {

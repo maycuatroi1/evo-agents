@@ -73,8 +73,12 @@ CLOSED_MERGE = "closed"  # merge_gate.STATES: it left the queue; merged by a per
 # Goals
 
 
-async def measure(conn: AsyncConnection, project_id: int, metric: dict, now: datetime) -> float | None:
-    """The value of ``metric`` now; None when its key is no number key of the project or no signal is in its window."""
+async def measure(
+    conn: AsyncConnection, project_id: int, metric: dict, now: datetime, *, bounded: bool = False
+) -> float | None:
+    """The value of ``metric`` now; None when its key is no number key of the project or no signal is in its window.
+    ``bounded`` leaves out the signals measured after ``now``, so a moment in the past gets the value it had then
+    (Today compares a problem's metric with its value seven days ago)."""
     k, s = tables.signal_keys, tables.signals
     key_id = await conn.scalar(
         select(k.c.id).where(k.c.project_id == project_id, k.c.name == metric.get("key"), k.c.kind == NUMBER)
@@ -83,6 +87,8 @@ async def measure(conn: AsyncConnection, project_id: int, metric: dict, now: dat
         return None
     window = timedelta(days=metric.get("window_days") or goals.DEFAULT_WINDOW_DAYS)
     where = [s.c.key_id == key_id, s.c.value.is_not(None), s.c.measured_at > now - window]
+    if bounded:
+        where.append(s.c.measured_at <= now)
     if metric.get("tenant"):
         where.append(s.c.tenant == metric["tenant"])
     aggregate = metric.get("aggregate") or "last"

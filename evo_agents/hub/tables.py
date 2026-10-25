@@ -979,6 +979,7 @@ triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
 push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0149)
+today_marks = tables_push.today_table(metadata)  # what Today keeps of a member (0151)
 attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
