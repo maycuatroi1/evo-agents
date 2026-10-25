@@ -580,6 +580,10 @@ decisions = Table(
     _when("wake_at"),  # a wait (category wait, 0140): when the hub answers it at the latest
     Column("wake_on", JSONB),  # and the event of hub_events it wakes on sooner: kind, contains, after (0140)
     _when("held_at"),  # when the person asked last chose an option that leaves it open (0140)
+    Column("recommended_reason", Text),  # why the agent recommends its option (0147)
+    Column("reversible", Boolean),  # whether the act it asks about can be undone (0147)
+    Column("undo", Text),  # and how (0147)
+    Column("evidence", JSONB(none_as_null=True)),  # the refs it rests on, an array of texts; None is SQL NULL (0147)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),

@@ -859,7 +859,8 @@ def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_wai
     context = machine.tmp / "context.md"
     context.write_text("## Why\n\nStaging is shared with the other team.\n", encoding="utf-8")
     question = ask()
-    question["cli"] += ["--context-file", str(context)]
+    question["cli"] += ["--context-file", str(context), "--recommended-reason", "Staging is shared.", "--reversible"]
+    question["cli"] += ["no", "--evidence", "run:7", "--evidence", "https://example.org/staging"]
     machine.scenarios(
         {
             f"plan:{PLAN}": [
@@ -897,6 +898,11 @@ def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_wai
             {"key": "no", "label": "Wait"},
         ]
         assert decision["recommended"] == "no" and "Staging is shared" in decision["context"]
+        assert (decision["recommended_reason"], decision["reversible"], decision["evidence"]) == (
+            "Staging is shared.",
+            False,
+            ["run:7", "https://example.org/staging"],
+        )
         await asyncio.sleep(1.0)  # a few heartbeats: the run keeps waiting, its agent does not start again
         assert hub.runs[run_id]["state"] == "waiting" and len(machine.starts()) == 1
         hub.answer(1, "yes")
@@ -909,6 +915,7 @@ def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_wai
     asked = machine.commands()[1]
     assert asked["exit"] == 0, asked
     assert "Decision #1 is open" in asked["stdout"] and "end your turn" in asked["stdout"]
+    assert "warning" not in asked["stderr"], "it recommends an option"
     assert json.loads(machine.home.decisions_path(run_id).read_text(encoding="utf-8"))["id"] == 1
     first, second = machine.starts()
     assert second["resume"] == first["session"], "the answer goes to the agent in the same session"

@@ -58,6 +58,13 @@ OPTIONS = (
     ("manual", "Leave it to a person", "the work item is cancelled and a person does the work by hand"),
 )
 ANSWERED = {"drop": "dropped", "manual": "manual"}  # the reason a cancelling answer leaves
+# The option the hub recommends at the third failure, and why (``decision_asks``): nothing more is spent on a run that
+# keeps failing, and the work is not lost.
+RECOMMENDED = "manual"
+REASON = (
+    "It failed {failures} times: unless its triage thread found and fixed the cause, another run is likely to fail "
+    "too, and a person can carry its chain on by hand. Run it again when the cause is fixed."
+)
 SHOWN_FAILURES = 5
 
 
@@ -161,7 +168,8 @@ async def _triage(conn: AsyncConnection, project_id: int, project: str, item: It
 
 
 def _options() -> list[dict]:
-    return [{"key": key, "label": label, "description": text} for key, label, text in OPTIONS]
+    options = [{"key": key, "label": label, "description": text} for key, label, text in OPTIONS]
+    return [{**option, "recommended": True} if option["key"] == RECOMMENDED else option for option in options]
 
 
 async def _ask(conn: AsyncConnection, project_id: int, project: str, item: ItemView, view: View) -> bool:
@@ -181,6 +189,7 @@ async def _ask(conn: AsyncConnection, project_id: int, project: str, item: ItemV
     d = tables.decisions
     values = {"run_id": run_id, "project_id": project_id, "category": runs.LOOP_DECISION_CATEGORY}
     values |= {"question": question, "context": "\n".join(lines), "options": _options()}
+    values["recommended_reason"] = REASON.format(failures=item.failures)
     decision_id = await conn.scalar(insert(d).values(**values).returning(d.c.id))
     kept = {"id": decision_id, **_round(item), "run_id": run_id}
     if not await _keep(conn, item, WAITING_HUMAN, "loop_decision", "decision", kept):

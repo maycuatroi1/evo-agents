@@ -258,8 +258,11 @@ def _asking(tools: str, decisions: bool) -> str:
         told + " Ask what only the member can answer, and decide the rest yourself. A question with 2 to 6 natural "
         f"options is a decision: ask each with {command} (scope for the scope, outcome, "
         "compatibility and rollout of the plan; architecture for a choice of design), its options as `--option "
-        f"KEY=LABEL[:DESCRIPTION]`, the one you recommend with `--recommended KEY`, and a short context with "
-        f"`--context-file` under {RESULT_DIR}/; the member answers it with a click. Ask the decisions of a turn "
+        f"KEY=LABEL[:DESCRIPTION]`, the one you recommend with `--recommended KEY` and why with "
+        "`--recommended-reason TEXT`, for an act `--reversible yes` with `--undo TEXT` (how to undo it) or "
+        "`--reversible no`, `--evidence REF` for each thing it rests on (run:ID, output:ID, P-3/E-2, code:REPO:PATH, "
+        f"an https URL), and a short context with `--context-file` under {RESULT_DIR}/; the member answers it with a "
+        "click, on the web or a phone. Ask the decisions of a turn "
         "together, then end the turn with your message in the chat: what you found, what you decided yourself, and "
         "the decisions you asked. An open question, without options, goes in that message. The run waits until the "
         "member answered every decision you asked or replied in the chat, and your next turn takes all of it. When "
@@ -272,8 +275,9 @@ def _loop_rules(tools: str, decisions: bool) -> list[str]:
     first, *others = ASK_CATEGORIES
     command = " or ".join([f"`{ASK_COMMAND} --category {first}`", *(f"`--category {name}`" for name in others)])
     ask = (
-        f"ask it as a decision with {command}, its options as `--option KEY=LABEL[:DESCRIPTION]` and the one you "
-        "recommend with `--recommended KEY`, or, when that command refuses, "
+        f"ask it as a decision with {command}, its options as `--option KEY=LABEL[:DESCRIPTION]`, the one you "
+        "recommend with `--recommended KEY` and why with `--recommended-reason TEXT`, and `--evidence REF` for what "
+        "it rests on, or, when that command refuses, "
         if decisions
         else ""
     )

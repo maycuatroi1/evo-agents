@@ -59,7 +59,7 @@ from datetime import UTC, datetime
 from urllib.parse import quote
 
 from evo_agents import __version__
-from evo_agents.hub import runs
+from evo_agents.hub import decision_asks, runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import (
@@ -75,6 +75,7 @@ from evo_agents.worker import (
 )
 from evo_agents.worker.agent_input import (
     attest,
+    decision_extras,
     decision_option,
     evidence_items,
     payload_contains,
@@ -98,6 +99,10 @@ from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
+NO_RECOMMENDED = (
+    "warning: no --recommended: the person may answer on a phone with one tap when you recommend an option "
+    "(--recommended KEY) and say why (--recommended-reason TEXT). The decision is asked without one."
+)
 EXTRA_HINT = "uv tool install 'evo-ak[worker]' (or python -m pip install 'evo-ak[worker]')"
 MAX_SLOTS = runs.MAX_SLOTS  # 16, as the hub bounds workers.slots
 
@@ -716,9 +721,12 @@ def cmd_ask(args) -> int:
         body["context"] = context
     if args.recommended is not None:
         body["recommended"] = args.recommended
+    body.update(decision_extras(args.recommended, args.recommended_reason, args.reversible, args.undo, args.evidence))
     if args.step is not None:
         body["step_key"] = args.step
     body.update(output_cli.attached(agent.home, agent.run_id, args.attach))  # the outputs the question carries
+    if args.recommended is None:
+        print(NO_RECOMMENDED, file=sys.stderr)
 
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
@@ -954,6 +962,53 @@ def _slots(value: str) -> int:
     return number
 
 
+def _register_ask(wsub) -> None:
+    """The parser of `evo-agents worker ask`."""
+    ask = wsub.add_parser(
+        "ask", help="inside a plan run or an author run: ask the run's owner a decision; prints its id"
+    )
+    ask.add_argument("--category", required=True, choices=runs.ASKED_DECISION_CATEGORIES, help="what kind of decision")
+    ask.add_argument("--question", required=True, help="the question, in a sentence or two")
+    ask.add_argument("--context-file", help="a markdown file of context for the owner, at most 16 KiB (- for stdin)")
+    ask.add_argument(
+        "--option",
+        action="append",
+        required=True,
+        metavar="KEY=LABEL[:DESCRIPTION]",
+        help="an option; repeat it, 2 to 6 times",
+    )
+    ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
+    ask.add_argument(
+        "--recommended-reason",
+        metavar="TEXT",
+        help=f"why you recommend that option, at most {decision_asks.MAX_REASON_CHARS} characters; needs --recommended",
+    )
+    ask.add_argument(
+        "--reversible",
+        choices=("yes", "no"),
+        help="for an act: whether it can be undone (--undo says yes)",
+    )
+    ask.add_argument(
+        "--undo", metavar="TEXT", help=f"how to undo the act, at most {decision_asks.MAX_UNDO_CHARS} characters"
+    )
+    ask.add_argument(
+        "--evidence",
+        action="append",
+        metavar="REF",
+        help=f"what the question rests on, repeat it (at most {decision_asks.MAX_EVIDENCE}): {decision_asks.FORMS}",
+    )
+    ask.add_argument(
+        "--wait-option",
+        action="append",
+        metavar="KEY",
+        help="an option that says not yet: choosing it leaves the decision open and the run waiting, and you hear "
+        "nothing; repeat it for another",
+    )
+    ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
+    output_cli.attach_option(ask, "the question")
+    ask.set_defaults(func=cmd_ask)
+
+
 def _register_step(wsub) -> None:
     """The parser of `evo-agents worker step`."""
     step = wsub.add_parser(
@@ -1121,31 +1176,7 @@ def register(sub) -> None:
 
     # The agent of a plan run runs these, and of an author run ask and plan; outside one they refuse.
     _register_step(wsub)
-
-    ask = wsub.add_parser(
-        "ask", help="inside a plan run or an author run: ask the run's owner a decision; prints its id"
-    )
-    ask.add_argument("--category", required=True, choices=runs.ASKED_DECISION_CATEGORIES, help="what kind of decision")
-    ask.add_argument("--question", required=True, help="the question, in a sentence or two")
-    ask.add_argument("--context-file", help="a markdown file of context for the owner, at most 16 KiB (- for stdin)")
-    ask.add_argument(
-        "--option",
-        action="append",
-        required=True,
-        metavar="KEY=LABEL[:DESCRIPTION]",
-        help="an option; repeat it, 2 to 6 times",
-    )
-    ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
-    ask.add_argument(
-        "--wait-option",
-        action="append",
-        metavar="KEY",
-        help="an option that says not yet: choosing it leaves the decision open and the run waiting, and you hear "
-        "nothing; repeat it for another",
-    )
-    ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
-    output_cli.attach_option(ask, "the question")
-    ask.set_defaults(func=cmd_ask)
+    _register_ask(wsub)
 
     wait = wsub.add_parser(
         "wait",

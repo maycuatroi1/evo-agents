@@ -123,6 +123,9 @@ def test_loop_stall_a_task_run_failing_is_tried_again_then_triaged_then_its_pers
     d, n = tables.decisions, tables.notifications
     ((decision_id, run_id, category, options),) = sql(hub_db, select(d.c.id, d.c.run_id, d.c.category, d.c.options))
     assert (run_id, category, [option["key"] for option in options]) == (last, "loop", ["retry", "drop", "manual"])
+    # the hub recommends leaving it to a person, and says why: nothing more is spent on a run that keeps failing
+    shown = client.get(f"/v1/projects/{PROJECT}/decisions/{decision_id}", headers=hub["owner"]).json()
+    assert shown["recommended"] == "manual" and shown["recommended_reason"].startswith("It failed 3 times")
     assert asked["detail"]["decision"] == {"id": decision_id, "failures": 3, "attempts": 3, "run_id": last}
     assert sql(hub_db, select(n.c.kind).where(n.c.decision_id == decision_id)) == [("decision",)]
     assert "dispatched" not in ticked(client, hub_db), "it waits for the answer"

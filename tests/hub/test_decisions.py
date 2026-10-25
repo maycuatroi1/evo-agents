@@ -260,6 +260,78 @@ def test_the_decision_list_is_newest_first_filtered_paged_and_holds_the_plans_th
     assert listed(public_reader, plan_id=PLAN) == ([], 0)
 
 
+GROUNDS = {
+    "recommended_reason": "Postgres is what the other services read already.",
+    "reversible": True,
+    "undo": "Point DATABASE_URL back at the SQLite file.",
+    "evidence": [
+        " run:12 ",
+        "run:12:4",
+        "output:7",
+        "P-3/E-2",
+        "https://example.org/notes",
+        "code:fleet:./api/db.py:9",
+    ],
+}
+
+
+def test_a_decision_keeps_its_recommended_reason_reversible_undo_and_decision_evidence_on_every_view(
+    client, hub, hub_db
+):
+    worker, run = started(client, hub)
+    found = asked(client, worker, run["id"], **GROUNDS)
+    refs = ["run:12", "run:12:4", "output:7", "P-3/E-2", "https://example.org/notes", "code:fleet:api/db.py:9"]
+    shown = {"recommended": "postgres", **GROUNDS, "evidence": refs}
+    assert {key: found[key] for key in shown} == shown, "each ref as the command line writes it"
+    assert {key: decision(client, hub["reader"], found["id"])[key] for key in shown} == shown
+    listed = client.get(f"/v1/projects/{PROJECT}/decisions", headers=hub["reader"]).json()["decisions"]
+    assert {key: listed[0][key] for key in shown} == shown
+    d = tables.decisions
+    stored = select(d.c.recommended_reason, d.c.reversible, d.c.undo, d.c.evidence).where(d.c.id == found["id"])
+    assert sql(hub_db, stored) == [(GROUNDS["recommended_reason"], True, GROUNDS["undo"], refs)]
+    # a question without them is asked as before, and shows none
+    plain = asked(client, worker, run["id"])
+    assert (plain["recommended_reason"], plain["reversible"], plain["undo"], plain["evidence"]) == (
+        None,
+        None,
+        None,
+        [],
+    )
+    one_way = asked(client, worker, run["id"], reversible=False)
+    assert (one_way["reversible"], one_way["undo"]) == (False, None)
+    stored = select(d.c.recommended_reason, d.c.reversible, d.c.undo, d.c.evidence).where(d.c.id == plain["id"])
+    assert sql(hub_db, stored) == [(None, None, None, None)]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"recommended": None, "recommended_reason": "Postgres scales."},  # a reason of no recommended option
+        {"recommended_reason": "   "},
+        {"recommended_reason": "x" * 501},
+        {"undo": "Revert it."},  # how to undo, without saying it can be
+        {"reversible": False, "undo": "Revert it."},
+        {"reversible": True, "undo": "x" * 501},
+        {"evidence": [f"run:{n}" for n in range(1, 22)]},
+        {"evidence": ["run:0"]},
+        {"evidence": ["P-3"]},
+        {"evidence": ["http://example.org"]},
+        {"evidence": ["https://"]},
+        {"evidence": ["output:seven"]},
+        {"evidence": ["code:fleet:../outside.py"]},
+        {"evidence": [""]},
+        {"evidence": "run:12"},
+    ],
+)
+def test_a_recommended_reason_reversible_undo_or_decision_evidence_the_route_does_not_take_gets_422(
+    client, hub, hub_db, extra
+):
+    worker, run = started(client, hub)
+    response = ask(client, worker, run["id"], **extra)
+    assert response.status_code == 422, response.text
+    assert sql(hub_db, select(func.count()).select_from(tables.decisions)) == [(0,)]
+
+
 @pytest.mark.parametrize(
     "extra",
     [

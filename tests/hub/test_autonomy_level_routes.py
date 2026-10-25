@@ -75,6 +75,7 @@ def test_autonomy_level_routes_k12_ask_refuses_a_runs_write_to_a_rule_and_says_t
     detail = refused.json()["message"]
     assert detail.startswith("PUT /v1/autonomy/prefs: K12 (") and "is ask for the run's principal" in detail
     assert f"set by pref:{OWNER}" in detail and "ask your principal with ask_member" in detail
+    assert "recommended_reason" in detail and "undo" in detail
     ((target, *_),) = audit_rows(hub_db, "autonomy.refused")
     assert target == f"run:{as_run} K12 PUT /v1/autonomy/prefs mode=ask source=pref:{OWNER}"
 

@@ -3588,3 +3588,45 @@ def test_0146_adds_the_browser_install_of_a_worker_and_going_back_drops_it(hub_d
     move_to(hub_db, "0145", down=True)
     assert not added & columns(hub_db, "workers")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0146") :]
+
+
+def test_0147_keeps_the_recommended_reason_reversible_undo_and_decision_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0146")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        before = one(conn, _decision_row(ids, run_id, "wait-helper"))
+    move_to(hub_db, "0147")
+    added = {"recommended_reason", "reversible", "undo", "evidence"}
+    assert added <= columns(hub_db, "decisions")
+    d = t.decisions
+    shown = select(d.c.recommended_reason, d.c.reversible, d.c.undo, d.c.evidence).where(d.c.id == before)
+    assert query(hub_db, shown) == [(None, None, None, None)], "a decision made before carries none of them"
+    recommended = [{"key": "a", "label": "A", "recommended": True}, {"key": "b", "label": "B"}]
+    full = {"options": recommended, "recommended_reason": "A is cheaper.", "reversible": True, "undo": "Revert it."}
+    full |= {"evidence": ["run:12", "P-3/E-2", "https://example.org/x"]}
+    with live.connect(hub_db) as conn:
+        kept = one(conn, _decision_row(ids, run_id, "wait-helper").values(**full))
+        one(conn, _decision_row(ids, run_id, "wait-helper").values(reversible=False))
+        for bad in (
+            {"recommended_reason": "A is cheaper."},  # a reason without a recommended option
+            {**full, "recommended_reason": ""},
+            {**full, "recommended_reason": "x" * 501},
+            {**full, "undo": "Revert it.", "reversible": False},  # how to undo what cannot be undone
+            {**full, "undo": "Revert it.", "reversible": None},
+            {**full, "undo": "x" * 501},
+            {**full, "evidence": []},
+            {**full, "evidence": [f"run:{n}" for n in range(1, 22)]},
+            {**full, "evidence": ["run:1", 2]},
+            {**full, "evidence": [""]},
+            {**full, "evidence": {"ref": "run:1"}},
+            {**full, "evidence": "run:1"},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(_decision_row(ids, run_id, "wait-helper").values(**bad))
+    found = select(d.c.recommended_reason, d.c.reversible, d.c.undo, d.c.evidence).where(d.c.id == kept)
+    assert query(hub_db, found) == [("A is cheaper.", True, "Revert it.", full["evidence"])]
+    move_to(hub_db, "0146", down=True)
+    assert not added & columns(hub_db, "decisions")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]

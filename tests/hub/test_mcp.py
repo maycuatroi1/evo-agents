@@ -2156,6 +2156,28 @@ def test_ask_member_asks_the_local_run_s_member_and_returns_the_first_answer(hub
 
 
 @needs_pg
+def test_ask_member_passes_on_the_recommended_reason_reversible_undo_and_decision_evidence(hub, monkeypatch):
+    from evo_agents.hub.server import mcp
+
+    monkeypatch.setattr(mcp, "ASK_WAIT_SECONDS", 0)
+    header = {mcp_tools.LOCAL_RUN_HEADER: str(register_local_run(hub, "alice"))}
+    given = {"recommended_reason": "The demo is tomorrow.", "reversible": True, "undo": "Ship it on Monday."}
+    given |= {"evidence": ["P-2/E-1", "code:fleet:api/db.py"]}
+    asked = {"question": "Wait?", "options": [{"label": "Ship"}, {"key": "wait", "label": "Wait"}]}
+    open_ = ok(hub, "alice", "ask_member", {**asked, "recommended": "wait", **given}, headers=header)
+    decision = open_["structuredContent"]["decision"]
+    assert {key: decision[key] for key in given} == given
+    listed = ok(hub, "alice", "decision_list", {"state": "open"}, headers=header)
+    (item,) = listed["structuredContent"]["decisions"]
+    assert {key: item[key] for key in given} == given
+    assert "recommends wait" in listed["content"][0]["text"]
+    refused = failed(hub, "alice", "ask_member", {**asked, "evidence": ["somewhere"]}, headers=header)
+    assert "nothing was asked" in refused and "run:ID" in refused
+    refused = failed(hub, "alice", "ask_member", {**asked, "recommended_reason": "Why not."}, headers=header)
+    assert "recommended_reason" in refused
+
+
+@needs_pg
 def test_ask_member_is_refused_outside_a_local_session_and_for_bad_arguments(hub):
     asked = {"question": "Ship it?", "options": [{"label": "Yes"}, {"label": "No"}]}
     assert "AskUserQuestion" in failed(hub, "alice", "ask_member", asked)

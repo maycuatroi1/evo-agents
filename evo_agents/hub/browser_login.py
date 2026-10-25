@@ -34,6 +34,11 @@ LOGIN_OPTIONS = (
     (LOGIN_DONE, "Done: I signed in", "The browser holds the session now. The profile is saved to the identity."),
     (LOGIN_SKIP, "Skip", "Do not sign in. The agent goes on without it and nothing is saved."),
 )
+# Why the hub recommends LOGIN_DONE on a login decision (``decision_asks``): the run asked for the login to go on.
+LOGIN_REASON = (
+    "The run asked for this login to go on with its work; once you sign in, the identity keeps the session for its "
+    "later runs too."
+)
 CHOSEN = re.compile(r"Chosen option: ([A-Za-z0-9][A-Za-z0-9_-]{0,31}),")
 
 

@@ -8,6 +8,7 @@ and the WHERE of a partial index, which the migrations alone hold (``tests.hub.t
 ``tests.hub.test_run_tables`` exercise them).
 """
 
+import gc
 import warnings
 
 import pytest
@@ -50,6 +51,9 @@ def test_the_metadata_holds_the_one_hundred_and_seventy_five_hub_tables():
 def test_the_metadata_matches_the_schema_at_head(hub_db):
     migrate(hub_db.dsn)
     engine = engine_on(hub_db)
+    # what earlier tests of this worker left for the collector (an sqlite connection of a knowledge graph) is
+    # collected now, so its ResourceWarning is not recorded as one of the comparison's
+    gc.collect()
     try:
         with engine.connect() as conn, warnings.catch_warnings(record=True) as warned:
             warnings.simplefilter("always")
