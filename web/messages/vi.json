@@ -3909,7 +3909,7 @@
       "renewLabel": "Gia hạn token của {name}"
     },
     "empty": {
-      "title": "Chưa có tài khoản nào",
+      "title": "Chưa có tài khoản mô hình",
       "description": "Một tài khoản là một env secret của bạn, chẳng hạn token của <code>claude setup-token</code> cho <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Thêm ở đây hoặc bằng <code>evo-agents hub account login</code>; có vài cái cho cùng một biến thì các run lần lượt dùng chúng."
     },
     "errors": {
@@ -4202,6 +4202,181 @@
         "forbidden": "Hub từ chối: chỉ admin của dự án mới đổi tài khoản của agent.",
         "conflict": "Hub từ chối: agent đã có số tài khoản tối đa. Xoá bớt một tài khoản trước."
       }
+    },
+    "addProvider": "Thêm nhà cung cấp",
+    "sharedMark": "Được chia sẻ",
+    "provider": {
+      "editLabel": "Sửa tài khoản nhà cung cấp {name}",
+      "keyLabel": "Đổi khóa của {name}",
+      "key": "Đổi khóa",
+      "deleteLabel": "Xóa tài khoản nhà cung cấp {name}",
+      "delete": "Xóa",
+      "loadFailed": "Không tải được các tài khoản nhà cung cấp.",
+      "tabs": {
+        "label": "Tài khoản",
+        "providers": "Nhà cung cấp",
+        "models": "Mô hình",
+        "services": "Thông tin dịch vụ",
+        "rotation": "Luân phiên",
+        "sharing": "Chia sẻ"
+      },
+      "card": {
+        "keys": "{count, plural, other {# khóa}}",
+        "login": "Đăng nhập trên worker",
+        "envKey": "Khóa đặt làm env secret",
+        "format": "Định dạng API",
+        "addLabel": "Thêm một khóa của {name}",
+        "add": "Thêm khóa",
+        "models": "{count, plural, other {# mô hình}}",
+        "moreModels": "và {count} mô hình khác",
+        "loginModels": "Các lần chạy dùng mô hình riêng của Claude Code.",
+        "caption": "Các khóa của {name}"
+      },
+      "gateway": {
+        "offTitle": "Hub này không chạy model gateway",
+        "offText": "Các lần chạy chưa dùng được tài khoản nhà cung cấp cho đến khi quản trị viên hub bật model gateway. Tài khoản Claude vẫn hoạt động.",
+        "errorTitle": "Model gateway không phản hồi",
+        "errorText": "Các lần chạy cần mô hình của nhà cung cấp sẽ chờ đến khi nó phản hồi lại. Tài khoản Claude vẫn hoạt động."
+      },
+      "models": {
+        "servedBy": "Tài khoản: {accounts}. Dự án: {projects}.",
+        "runtimes": "Runtime",
+        "unknown": "Không rõ",
+        "loadFailed": "Không tải được các mô hình mà lần chạy của bạn có thể dùng.",
+        "emptyTitle": "Chưa có mô hình nào để chạy",
+        "emptyText": "Thêm một nhà cung cấp: các mô hình của nó hiện ở đây và trong ô Mô hình của các biểu mẫu chạy.",
+        "add": "Thêm nhà cung cấp",
+        "count": "{count, plural, other {# mô hình}}",
+        "claudeTitle": "Claude Code",
+        "claudeText": "Lần chạy đăng nhập bằng tài khoản Claude dùng mô hình của Claude Code, do runtime chọn."
+      },
+      "catalog": {
+        "title": "Thêm nhà cung cấp",
+        "description": "Chọn nhà cung cấp của khóa. Claude đăng nhập trên worker; nhà cung cấp khác cần một khóa và một base URL.",
+        "search": "Tìm nhà cung cấp theo tên hoặc id",
+        "groups": "Nhóm nhà cung cấp",
+        "filters": {
+          "all": "Tất cả",
+          "popular": "Phổ biến",
+          "gateways": "Gateway và tổng hợp",
+          "inference": "Dịch vụ suy luận",
+          "regional": "Khu vực",
+          "local": "Cục bộ",
+          "custom": "Tùy chỉnh"
+        },
+        "count": "{count, plural, other {# nhà cung cấp}}",
+        "loading": "Đang tải nhà cung cấp",
+        "loadFailed": "Không tải được danh mục.",
+        "retry": "Thử lại",
+        "noMatch": "Không có nhà cung cấp nào khớp. Thử tên khác, hoặc chọn Tùy chỉnh để nhập base URL.",
+        "more": "Hiện thêm {count}",
+        "free": "Miễn phí",
+        "login": "Đăng nhập trên worker",
+        "custom": "Endpoint của bạn"
+      },
+      "form": {
+        "back": "Quay lại danh mục",
+        "addTitle": "Thêm {provider}",
+        "editTitle": "Sửa {name}",
+        "addDescription": "Khóa được mã hóa và giữ trên hub. Lần chạy của các dự án bạn chọn gọi nhà cung cấp qua model gateway.",
+        "editDescription": "Khóa giữ nguyên: Đổi khóa sẽ thay nó. Chỉ những gì bạn thay đổi được gửi đi.",
+        "name": "Tên",
+        "nameHint": "Chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới. Lần chạy và nhật ký hiện tên này, không bao giờ hiện khóa.",
+        "nameLocked": "Tên không đổi được. Hãy thêm tài khoản khác nếu cần tên khác.",
+        "baseUrl": "Base URL",
+        "baseUrlHint": "Gốc API của nhà cung cấp, qua HTTPS.",
+        "format": "Định dạng API",
+        "formats": {
+          "openai": "OpenAI chat",
+          "anthropic": "Anthropic messages",
+          "openai-responses": "OpenAI responses",
+          "gemini": "Gemini"
+        },
+        "key": "Khóa",
+        "keySource": "Nguồn của khóa",
+        "sourcePaste": "Dán khóa",
+        "sourceSecret": "Dùng secret có sẵn",
+        "keyValue": "Khóa API",
+        "keyHint": "Gửi một lần lên hub, rồi trang này quên nó.",
+        "keyHintOf": "Gửi một lần lên hub, rồi trang này quên nó. {hint}",
+        "noSecrets": "Bạn chưa có env secret nào. Hãy dán khóa, hoặc thêm nó ở trang Secrets trước.",
+        "secret": "Secret",
+        "secretPick": "Chọn một secret",
+        "secretHint": "Hub sao chép giá trị của nó; trang này không bao giờ thấy giá trị đó.",
+        "test": "Kiểm tra kết nối",
+        "testHint": "Gọi endpoint bằng khóa này và không lưu gì.",
+        "testSaved": "Gọi endpoint bằng khóa đã lưu.",
+        "probeOk": "Endpoint đã phản hồi và liệt kê {count, plural, =0 {không mô hình nào} other {# mô hình}}.",
+        "probeFailed": "Endpoint từ chối (mã {status}): {error}",
+        "models": "Mô hình",
+        "modelsSearch": "Tìm mô hình",
+        "fetchModels": "Lấy danh sách mô hình",
+        "modelsPicked": "Đã chọn {count} trên {total}",
+        "modelsNone": "Chưa có mô hình. Lấy danh sách từ endpoint, hoặc thêm theo id.",
+        "modelsNoMatch": "Không có mô hình nào khớp.",
+        "modelAdd": "Thêm mô hình theo id",
+        "modelAddPlaceholder": "Id mô hình, đúng như nhà cung cấp viết",
+        "modelAddButton": "Thêm",
+        "modelsHint": "Lần chạy gọi mô hình theo dạng tiền-tố/tên-mô-hình. Không chọn mô hình nào: tài khoản phục vụ mọi mô hình endpoint liệt kê.",
+        "projects": "Dự án",
+        "projectsHint": "Lần chạy của các dự án này có thể dùng tài khoản.",
+        "noProjects": "Bạn không có quyền writer ở dự án nào.",
+        "workers": "Worker",
+        "workersHint": "Không chọn: mọi worker của các dự án. Nếu chọn: chỉ các worker đó.",
+        "noWorkers": "Bạn chưa có worker nào đang hoạt động.",
+        "expires": "Hết hạn vào",
+        "expiresHint": "Không bắt buộc. Từ ngày này, không lần chạy nào dùng nó.",
+        "requestId": "Mã yêu cầu: {id}",
+        "keyForgotten": "Khóa chưa được lưu và trang này đã quên nó: hãy dán lại.",
+        "cancel": "Hủy",
+        "add": "Thêm tài khoản",
+        "save": "Lưu",
+        "saving": "Đang lưu",
+        "added": "Đã thêm tài khoản nhà cung cấp {name}",
+        "addedText": "Lần chạy gọi mô hình của nó với tiền tố {alias}, theo dạng {alias}/tên-mô-hình.",
+        "saved": "Đã đổi tài khoản nhà cung cấp {name}",
+        "savedText": "Lần chạy kế tiếp dùng nó sẽ đọc thay đổi.",
+        "problems": {
+          "nameRequired": "Nhập tên.",
+          "nameInvalid": "Dùng chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới, bắt đầu bằng chữ hoặc số.",
+          "nameTaken": "Bạn đã có một secret hoặc tài khoản tên {name}.",
+          "urlRequired": "Nhập base URL.",
+          "urlInvalid": "Nhập URL đầy đủ, ví dụ https://api.example.com/v1.",
+          "urlHttps": "Base URL phải dùng HTTPS.",
+          "keyRequired": "Dán khóa.",
+          "keyLine": "Khóa là một dòng, không có khoảng trắng hay ký tự điều khiển.",
+          "keyTooLong": "Khóa dài tối đa {max} byte.",
+          "secretRequired": "Chọn secret chứa khóa.",
+          "projectsRequired": "Chọn ít nhất một dự án.",
+          "expiresInvalid": "Nhập một ngày hợp lệ.",
+          "expiresPast": "Chọn một ngày sau hôm nay.",
+          "modelInvalid": "Id mô hình gồm chữ, số và . _ : / @ + -, tối đa 200 ký tự.",
+          "modelsTooMany": "Một tài khoản liệt kê tối đa {max} mô hình."
+        }
+      },
+      "keyForm": {
+        "title": "Đổi khóa của {name}",
+        "description": "Khóa mới thay khóa cũ cho mọi lần chạy dùng tài khoản này từ bây giờ.",
+        "save": "Đổi khóa",
+        "saved": "Đã đổi khóa của {name}",
+        "savedText": "Lần chạy kế tiếp dùng nó sẽ dùng khóa mới."
+      },
+      "deleteForm": {
+        "title": "Xóa {name}?",
+        "description": "Khóa của nó bị xóa theo, và không lần chạy nào dùng nó nữa. Lần chạy đang giữ nó sẽ chạy xong.",
+        "confirm": "Xóa tài khoản",
+        "pending": "Đang xóa",
+        "cancel": "Hủy",
+        "deleted": "Đã xóa tài khoản nhà cung cấp {name}",
+        "deletedText": "Khóa của nó không còn trên hub."
+      },
+      "errors": {
+        "forbidden": "Hub từ chối: bạn cần quyền writer ở mọi dự án đã chọn.",
+        "notFound": "Tài khoản hoặc secret không còn. Danh sách đã được tải lại.",
+        "conflict": "Tên này thuộc một loại secret khác của bạn. Hãy chọn tên khác.",
+        "invalid": "Hub từ chối một giá trị: kiểm tra base URL, mô hình và dự án.",
+        "unavailable": "Hub không gọi được endpoint. Kiểm tra base URL rồi thử lại."
+      }
     }
   },
   "runs": {
@@ -4455,7 +4630,8 @@
         "placeholderOpencode": "provider/model",
         "line": "Tên model chỉ gồm một dòng, không có ký tự điều khiển.",
         "long": "Tên model dài tối đa {max} ký tự.",
-        "runtime": "Chọn runtime cho model này: tên model chỉ có nghĩa với runtime mà nó được viết cho."
+        "runtime": "Chọn runtime cho model này: tên model chỉ có nghĩa với runtime mà nó được viết cho.",
+        "provider": "Nhà cung cấp {prefix}"
       },
       "summary": {
         "title": "Run này sẽ làm gì",

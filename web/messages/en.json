@@ -3909,7 +3909,7 @@
       "renewLabel": "Renew the token of {name}"
     },
     "empty": {
-      "title": "No account yet",
+      "title": "No model account yet",
       "description": "An account is one of your env secrets, such as a token of <code>claude setup-token</code> for <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Add one here or with <code>evo-agents hub account login</code>; with several for the same variable, runs take them in turn."
     },
     "errors": {
@@ -4202,6 +4202,181 @@
         "forbidden": "The hub refused: only an admin of the project changes its agents' accounts.",
         "conflict": "The hub refused: the agent keeps as many accounts as it may. Delete one first."
       }
+    },
+    "addProvider": "Add provider",
+    "sharedMark": "Shared",
+    "provider": {
+      "editLabel": "Edit provider account {name}",
+      "keyLabel": "Change the key of {name}",
+      "key": "Change key",
+      "deleteLabel": "Delete provider account {name}",
+      "delete": "Delete",
+      "loadFailed": "The provider accounts could not be loaded.",
+      "tabs": {
+        "label": "Accounts",
+        "providers": "Providers",
+        "models": "Models",
+        "services": "Service credentials",
+        "rotation": "Rotation",
+        "sharing": "Sharing"
+      },
+      "card": {
+        "keys": "{count, plural, one {# key} other {# keys}}",
+        "login": "Signs in on the worker",
+        "envKey": "Key set as an env secret",
+        "format": "API format",
+        "addLabel": "Add a key of {name}",
+        "add": "Add key",
+        "models": "{count, plural, one {# model} other {# models}}",
+        "moreModels": "and {count} more",
+        "loginModels": "Runs take Claude Code's own models.",
+        "caption": "Keys of {name}"
+      },
+      "gateway": {
+        "offTitle": "This hub runs no model gateway",
+        "offText": "Runs cannot take provider accounts until a hub admin turns on the model gateway. Claude accounts still work.",
+        "errorTitle": "The model gateway does not answer",
+        "errorText": "Runs that ask for a provider model wait until it answers again. Claude accounts still work."
+      },
+      "models": {
+        "servedBy": "Accounts: {accounts}. Projects: {projects}.",
+        "runtimes": "Runtimes",
+        "unknown": "Unknown",
+        "loadFailed": "The models your runs may ask for could not be loaded.",
+        "emptyTitle": "No model to run yet",
+        "emptyText": "Add a provider: its models show here, and in the Model field of the run forms.",
+        "add": "Add provider",
+        "count": "{count, plural, one {# model} other {# models}}",
+        "claudeTitle": "Claude Code",
+        "claudeText": "Runs signed in with a Claude account take Claude Code's models, chosen by the runtime."
+      },
+      "catalog": {
+        "title": "Add provider",
+        "description": "Pick the provider your key is for. Claude signs in on a worker; any other provider takes a key and a base URL.",
+        "search": "Search providers by name or id",
+        "groups": "Provider groups",
+        "filters": {
+          "all": "All",
+          "popular": "Popular",
+          "gateways": "Gateways and aggregators",
+          "inference": "Inference hosts",
+          "regional": "Regional",
+          "local": "Local",
+          "custom": "Custom"
+        },
+        "count": "{count, plural, one {# provider} other {# providers}}",
+        "loading": "Loading providers",
+        "loadFailed": "The catalog could not be loaded.",
+        "retry": "Try again",
+        "noMatch": "No provider matches. Try another name, or pick Custom to give a base URL.",
+        "more": "Show {count} more",
+        "free": "Free",
+        "login": "Sign in on a worker",
+        "custom": "Your own endpoint"
+      },
+      "form": {
+        "back": "Back to the catalog",
+        "addTitle": "Add {provider}",
+        "editTitle": "Edit {name}",
+        "addDescription": "The key stays on the hub, encrypted. Runs of the projects you pick reach the provider through the model gateway.",
+        "editDescription": "The key stays as it is: Change key replaces it. Only what you change is sent.",
+        "name": "Name",
+        "nameHint": "Lowercase letters, digits, dot, dash and underscore. Runs and logs show it, never the key.",
+        "nameLocked": "A name does not change. Add another account to use another one.",
+        "baseUrl": "Base URL",
+        "baseUrlHint": "The provider's API root, over HTTPS.",
+        "format": "API format",
+        "formats": {
+          "openai": "OpenAI chat",
+          "anthropic": "Anthropic messages",
+          "openai-responses": "OpenAI responses",
+          "gemini": "Gemini"
+        },
+        "key": "Key",
+        "keySource": "Where the key comes from",
+        "sourcePaste": "Paste a key",
+        "sourceSecret": "Use an existing secret",
+        "keyValue": "API key",
+        "keyHint": "Sent once to the hub, then forgotten by this page.",
+        "keyHintOf": "Sent once to the hub, then forgotten by this page. {hint}",
+        "noSecrets": "You have no env secret. Paste the key, or add it on the Secrets page first.",
+        "secret": "Secret",
+        "secretPick": "Pick a secret",
+        "secretHint": "The hub copies its value; this page never sees it.",
+        "test": "Test connection",
+        "testHint": "Asks the endpoint with this key, and saves nothing.",
+        "testSaved": "Asks the endpoint with the saved key.",
+        "probeOk": "The endpoint answered and lists {count, plural, =0 {no model} one {# model} other {# models}}.",
+        "probeFailed": "The endpoint refused (status {status}): {error}",
+        "models": "Models",
+        "modelsSearch": "Search models",
+        "fetchModels": "Fetch models",
+        "modelsPicked": "{count} of {total} picked",
+        "modelsNone": "No model yet. Fetch the endpoint's models, or add one by its id.",
+        "modelsNoMatch": "No model matches the search.",
+        "modelAdd": "Add a model by its id",
+        "modelAddPlaceholder": "Model id, as the provider writes it",
+        "modelAddButton": "Add",
+        "modelsHint": "Runs ask for a model as prefix/model-name. None picked: the account serves any model the endpoint lists.",
+        "projects": "Projects",
+        "projectsHint": "Runs of these projects may take this account.",
+        "noProjects": "You are a writer of no project.",
+        "workers": "Workers",
+        "workersHint": "None picked: any worker of the projects. Otherwise only the workers you pick.",
+        "noWorkers": "You have no live worker of your own.",
+        "expires": "Ends on",
+        "expiresHint": "Optional. From this day on, no run takes it.",
+        "requestId": "Request id: {id}",
+        "keyForgotten": "The key was not saved and this page forgot it: paste it again.",
+        "cancel": "Cancel",
+        "add": "Add account",
+        "save": "Save",
+        "saving": "Saving",
+        "added": "Provider account {name} added",
+        "addedText": "Runs ask for its models with the prefix {alias}, as {alias}/model-name.",
+        "saved": "Provider account {name} changed",
+        "savedText": "The next run that takes it reads the change.",
+        "problems": {
+          "nameRequired": "Enter a name.",
+          "nameInvalid": "Use lowercase letters, digits, dot, dash and underscore, starting with a letter or digit.",
+          "nameTaken": "You already have a secret or an account named {name}.",
+          "urlRequired": "Enter the base URL.",
+          "urlInvalid": "Enter a whole URL, such as https://api.example.com/v1.",
+          "urlHttps": "The base URL must use HTTPS.",
+          "keyRequired": "Paste the key.",
+          "keyLine": "A key is one line, without spaces or control characters.",
+          "keyTooLong": "A key is at most {max} bytes.",
+          "secretRequired": "Pick the secret that holds the key.",
+          "projectsRequired": "Pick at least one project.",
+          "expiresInvalid": "Enter a whole day.",
+          "expiresPast": "Pick a day after today.",
+          "modelInvalid": "A model id is letters, digits and . _ : / @ + -, at most 200 characters.",
+          "modelsTooMany": "An account lists at most {max} models."
+        }
+      },
+      "keyForm": {
+        "title": "Change the key of {name}",
+        "description": "The new key replaces the old one for every run that takes this account from now on.",
+        "save": "Change key",
+        "saved": "Key of {name} changed",
+        "savedText": "The next run that takes it uses the new key."
+      },
+      "deleteForm": {
+        "title": "Delete {name}?",
+        "description": "Its key goes with it, and no run takes it any more. Runs that hold it now finish.",
+        "confirm": "Delete account",
+        "pending": "Deleting",
+        "cancel": "Cancel",
+        "deleted": "Provider account {name} deleted",
+        "deletedText": "Its key is gone from the hub."
+      },
+      "errors": {
+        "forbidden": "The hub refused: you need the writer role on every project you picked.",
+        "notFound": "The account or the secret is gone. The lists were reloaded.",
+        "conflict": "That name belongs to another kind of secret of yours. Pick another name.",
+        "invalid": "The hub refused a value: check the base URL, the models and the projects.",
+        "unavailable": "The hub could not reach the endpoint. Check the base URL and try again."
+      }
     }
   },
   "runs": {
@@ -4455,7 +4630,8 @@
         "placeholderOpencode": "provider/model",
         "line": "A model is one line, without control characters.",
         "long": "A model name is at most {max} characters.",
-        "runtime": "Pick a runtime for this model: a model name means something only to the runtime it is written for."
+        "runtime": "Pick a runtime for this model: a model name means something only to the runtime it is written for.",
+        "provider": "Provider {prefix}"
       },
       "summary": {
         "title": "What this run does",

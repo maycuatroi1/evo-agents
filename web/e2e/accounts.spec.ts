@@ -7,6 +7,7 @@ import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { revealNavItem } from "./support/nav";
 import { claimRun, dispatch, leaseCredentials, type LiveWorker, liveWorker, openRunDetails, runPath, seedRunPlan, startRun } from "./support/runs";
+import { FAKE_MODELS, providerKey, providersOf, putProviderByApi } from "./support/providers";
 import { putSecretByApi, recordResponses, secretsOf, secretValue } from "./support/secrets";
 import { otherMember, shareByApi } from "./support/sharing";
 import { toast } from "./support/toast";
@@ -79,7 +80,7 @@ test("the sidebar leads to Accounts, which points to the Secrets page while ther
   await expect(page.getByRole("heading", { level: 1, name: "Accounts" })).toBeVisible();
   await expect(page.getByTestId("nav-accounts")).toHaveAttribute("aria-current", "page");
   const empty = main(page).getByTestId("state-empty");
-  await expect(empty).toContainText("No account yet");
+  await expect(empty).toContainText("No model account yet");
   await expect(empty).toContainText(VAR);
   await expect(main(page).getByTestId("accounts-secrets-link")).toHaveAttribute("href", "/secrets");
 });
@@ -96,7 +97,11 @@ test("Add Claude account writes a token the list then shows without it, and Rene
 
   await page.goto("/accounts");
   await expect(main(page).getByTestId("accounts-add")).toBeVisible();
+  // Add provider opens the catalog, whose Claude entry is the Claude sign-in.
   await main(page).getByTestId("accounts-empty-add").click();
+  const catalog = page.getByTestId("provider-dialog");
+  await catalog.getByTestId("provider-catalog-entry").and(page.locator('[data-provider-id="claude"]')).click();
+  await expect(catalog).toBeHidden();
   let dialog = page.getByTestId("login-dialog");
   await expect(dialog.getByRole("heading", { name: "Add Claude account" })).toBeVisible();
   await expect(dialog.getByTestId("login-steps")).toContainText("claude setup-token");
@@ -267,7 +272,8 @@ test("the rotation policy of a project is set on the page and reset to the defau
   const project = me.projects[0];
   await twoAccounts(me);
 
-  await page.goto("/accounts");
+  await page.goto("/accounts?tab=rotation");
+  await expect(main(page).getByTestId("accounts-tab-rotation")).toHaveAttribute("aria-selected", "true");
   const policy = policyRow(page, project);
   await expect(policy.getByTestId("policy-origin")).toHaveText("Defaults");
   await expect(policy.getByTestId("policy-strategy-text")).toHaveText("Round robin");
@@ -336,7 +342,10 @@ async function overflow(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 }
 
-test("accounts are listed in two groups by provider, with the cost of the model accounts alone", async ({ page, member }) => {
+test("model accounts are a card per provider and service credentials their own tab, with the cost of the model accounts alone", async ({
+  page,
+  member,
+}) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await putSecretByApi(me, "claude-sub", { kind: "env", env_var: VAR, projects: [project], value: secretValue("sub") });
@@ -346,12 +355,16 @@ test("accounts are listed in two groups by provider, with the cost of the model 
   await putSecretByApi(me, "gitlab-token", { kind: "env", env_var: "GITLAB_TOKEN", projects: [project], value: secretValue("gl") });
 
   await page.goto("/accounts");
-  const models = main(page).getByTestId("accounts-group-model");
-  const services = main(page).getByTestId("accounts-group-service");
-  await expect(models.getByRole("heading", { level: 2, name: "Model accounts" })).toBeVisible();
-  await expect(models.getByTestId("accounts-group-model-count")).toHaveText("2");
-  await expect(services.getByRole("heading", { level: 2, name: "Service credentials" })).toBeVisible();
-  await expect(services.getByTestId("accounts-group-service-count")).toHaveText("3");
+  await expect(main(page).getByTestId("accounts-tab-providers")).toHaveAttribute("aria-selected", "true");
+  // Claude first, as a card like any other, then Anthropic, its key set as an env secret.
+  const cards = main(page).getByTestId("provider-card");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.locator("h3")).toHaveText(["Claude subscription", "Anthropic"]);
+  const claude = cards.and(page.locator('[data-provider-id="claude"]'));
+  const anthropic = cards.and(page.locator('[data-provider-id="anthropic"]'));
+  await expect(claude.getByTestId("provider-card-count")).toHaveText("1 key");
+  await expect(claude.getByTestId("provider-card-host")).toHaveText("Signs in on the worker");
+  await expect(anthropic.getByTestId("provider-card-host")).toHaveText("Key set as an env secret");
 
   // Model accounts: the provider's name as text with its logo, and a cost, or an API value for the subscription.
   await expect(row(page, "claude-sub").getByTestId("account-target")).toContainText("Claude");
@@ -360,12 +373,19 @@ test("accounts are listed in two groups by provider, with the cost of the model 
   await row(page, "claude-sub").getByTestId("account-cost-label").hover();
   await expect(page.getByRole("tooltip")).toContainText("not billed per run");
   await expect(row(page, "anthropic-key").getByTestId("account-cost-label")).toHaveText("Cost");
-  await expect(models.getByRole("columnheader", { name: "Runs 24 h / 7 d" })).toBeVisible();
-  await expect(models.getByTestId("account-renew")).toHaveCount(1);
+  await expect(claude.getByRole("columnheader", { name: "Runs 24 h / 7 d" })).toBeVisible();
+  await expect(main(page).getByTestId("account-renew")).toHaveCount(1);
   // "weight N, priority M" is for a variable with two accounts: here there is none.
-  await expect(models.getByTestId("account-target").filter({ hasText: "weight" })).toHaveCount(0);
+  await expect(main(page).getByTestId("account-target").filter({ hasText: "weight" })).toHaveCount(0);
+  await expect(main(page).getByTestId("accounts-group-service")).toHaveCount(0);
 
-  // Service credentials: no cost, no usage bars; the two Lark variables are one line that opens.
+  // Service credentials: their own tab, kept in the URL; no cost, no usage bars; the two Lark variables are one line.
+  await main(page).getByTestId("accounts-tab-services").click();
+  await expect(page).toHaveURL(/[?&]tab=services/);
+  const services = main(page).getByTestId("accounts-group-service");
+  await expect(services.getByRole("heading", { level: 2, name: "Service credentials" })).toBeVisible();
+  await expect(services.getByTestId("accounts-group-service-count")).toHaveText("3");
+  await expect(main(page).getByTestId("provider-card")).toHaveCount(0);
   await expect(services.getByTestId("account-cost")).toHaveCount(0);
   await expect(services.getByTestId("account-usage-window")).toHaveCount(0);
   await expect(services.getByRole("columnheader", { name: "Last used" })).toBeVisible();
@@ -385,6 +405,15 @@ test("accounts are listed in two groups by provider, with the cost of the model 
   await expect(variables.locator("li").filter({ hasText: "lark-secret" }).getByTestId("account-state")).toHaveAttribute("data-state", "paused");
   await expect(variables.locator("li").filter({ hasText: "lark-id" }).getByTestId("account-state")).toHaveAttribute("data-state", "ready");
   expect(await overflow(page)).toBe(0);
+
+  // A reload keeps the tab; the arrow keys move between tabs and back to Providers drops it from the URL.
+  await page.reload();
+  await expect(main(page).getByTestId("accounts-tab-services")).toHaveAttribute("aria-selected", "true");
+  await main(page).getByTestId("accounts-tab-services").focus();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(main(page).getByTestId("accounts-tab-providers")).toHaveAttribute("aria-selected", "true");
+  await expect(page).not.toHaveURL(/tab=/);
 });
 
 test("a hub with model accounts only says there is no service credential, and the page does not scroll sideways", async ({ page, member }) => {
@@ -394,10 +423,12 @@ test("a hub with model accounts only says there is no service credential, and th
   for (const width of [375, 800]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/accounts");
-    await expect(main(page).getByTestId("accounts-group-model-count")).toHaveText("2");
-    await expect(main(page).getByTestId("accounts-group-service-empty")).toBeVisible();
+    await expect(main(page).getByTestId("provider-card-count")).toHaveText("2 keys");
     // Two accounts for one variable: only then do weight and priority show.
     await expect(row(page, "claude-a").getByTestId("account-target")).toContainText("weight 1, priority 0");
+    expect(await overflow(page)).toBe(0);
+    await page.goto("/accounts?tab=services");
+    await expect(main(page).getByTestId("accounts-group-service-empty")).toBeVisible();
     expect(await overflow(page)).toBe(0);
   }
 });
@@ -413,7 +444,7 @@ test("a share whose account is past its usage ceiling says shared runs wait, and
     await shareByApi(me, name, { grantee_kind: "user", login: lan.login, projects: [project], usage_ceiling_pct: 80, terms_ack: true });
   }
 
-  await page.goto("/accounts");
+  await page.goto("/accounts?tab=sharing");
   const shares = main(page).getByTestId("account-shares").getByTestId("share-row");
   await expect(shares).toHaveCount(2);
   const over = shares.filter({ has: page.getByTestId("share-over-ceiling") });
@@ -422,7 +453,7 @@ test("a share whose account is past its usage ceiling says shared runs wait, and
   await expect(over.getByTestId("share-over-ceiling")).toHaveText("Over its ceiling: shared runs wait");
 });
 
-test("the accounts of the agents of the visitor's projects are a third group, each row with its agent, project and page", async ({ page, member }) => {
+test("the accounts of the agents of the visitor's projects follow the provider cards, each row with its agent, project and page", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   const handle = uniqueName("keys");
@@ -438,13 +469,15 @@ test("the accounts of the agents of the visitor's projects are a third group, ea
   await expect(agents.getByRole("heading", { level: 2, name: "Agent accounts" })).toBeVisible();
   await expect(agents.getByTestId("accounts-group-agent-count")).toHaveText("1");
 
-  // With accounts of their own, it comes after Model accounts and Service credentials.
+  // With accounts of their own, it comes after the provider cards; service credentials have their own tab.
   await putSecretByApi(me, "claude-a", { kind: "env", env_var: VAR, projects: [project], value: secretValue("a") });
   await putSecretByApi(me, "gitlab-token", { kind: "env", env_var: "GITLAB_TOKEN", projects: [project], value: secretValue("gl") });
   await page.reload();
-  for (const id of ["model", "service", "agent"]) await expect(main(page).getByTestId(`accounts-group-${id}-count`)).toHaveText("1");
-  const titles = main(page).locator("section[aria-labelledby^='accounts-group-'] h2");
-  await expect(titles).toHaveText(["Model accounts", "Service credentials", "Agent accounts"]);
+  await expect(main(page).getByTestId("provider-card")).toHaveCount(1);
+  await expect(agents.getByTestId("accounts-group-agent-count")).toHaveText("1");
+  await expect(main(page).getByTestId("accounts-group-service")).toHaveCount(0);
+  const titles = main(page).locator("section[aria-labelledby^='provider-card-'] h3, section[aria-labelledby^='accounts-group-'] h2");
+  await expect(titles).toHaveText(["Claude subscription", "Agent accounts"]);
   const agentRow = agents.locator("tbody").filter({ has: page.locator('[data-account-name="openai-agent"]') });
   await expect(agentRow.getByTestId("agent-account-project")).toHaveText(project);
   await expect(agentRow.getByTestId("agent-avatar")).toHaveAttribute("data-avatar", "initial");
@@ -463,4 +496,301 @@ test("the accounts of the agents of the visitor's projects are a third group, ea
   await link.click();
   await page.waitForURL(`**${agentPath(project, handle)}`);
   await expect(main(page).getByTestId("agent-accounts").locator('[data-account-name="openai-agent"]')).toBeVisible();
+});
+
+/** The provider dialog, and an entry of its catalog by the catalog's id. */
+function providerDialog(page: Page) {
+  return page.getByTestId("provider-dialog");
+}
+
+function catalogEntry(page: Page, id: string) {
+  return providerDialog(page).getByTestId("provider-catalog-entry").and(page.locator(`[data-provider-id="${id}"]`));
+}
+
+function card(page: Page, id: string) {
+  return main(page).getByTestId("provider-card").and(page.locator(`[data-provider-id="${id}"]`));
+}
+
+const providerPut = (name: string) => (request: { method(): string; url(): string }) =>
+  request.method() === "PUT" && request.url().endsWith(`/v1/provider-accounts/${name}`);
+
+test("Add provider searches and filters the catalog, tests the key, fetches the models and adds a card the key never comes back to", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const bad = providerKey(false);
+  const key = providerKey();
+  const received = recordResponses(page);
+
+  await page.goto("/accounts");
+  await main(page).getByTestId("accounts-add").click();
+  const dialog = providerDialog(page);
+  await expect(dialog).toHaveAttribute("data-step", "catalog");
+  await expect(dialog.getByRole("heading", { name: "Add provider" })).toBeVisible();
+  // A page of entries at first, more on request; a filter by group, then a search by name or id.
+  await expect(dialog.getByTestId("provider-catalog-entry")).toHaveCount(24);
+  await expect(dialog.getByTestId("provider-catalog-more")).toBeVisible();
+  const regional = dialog.getByTestId("provider-catalog-group").and(page.locator('[data-filter="regional"]'));
+  await regional.click();
+  await expect(regional).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByTestId("provider-catalog-search").fill("glm cod");
+  await expect(dialog.getByTestId("provider-catalog-count")).toHaveText("2 providers");
+  await dialog.getByTestId("provider-catalog-search").fill("glm think");
+  await expect(dialog.getByTestId("provider-catalog-count")).toHaveText("1 provider");
+  await expect(dialog.getByTestId("provider-catalog-entry")).toHaveAttribute("data-provider-id", "glmt");
+  await dialog.getByTestId("provider-catalog-search").fill("no such provider");
+  await expect(dialog.getByTestId("provider-catalog-empty")).toBeVisible();
+  await dialog.getByTestId("provider-catalog-search").fill("glm");
+  await expectNoSeriousViolations(page, "/accounts provider catalog");
+  await catalogEntry(page, "glm").click();
+
+  // The form, prefilled from the catalog.
+  await expect(dialog).toHaveAttribute("data-step", "form");
+  await expect(dialog.getByRole("heading", { name: "Add GLM Coding" })).toBeVisible();
+  await expect(dialog.getByTestId("provider-name")).toHaveValue("glm");
+  await expect(dialog.getByTestId("provider-base-url")).toHaveValue("https://api.z.ai/api/coding/paas/v4");
+  await expect(dialog.getByTestId("provider-format")).toHaveValue("openai");
+  const field = dialog.getByTestId("provider-key");
+  await expect(field).toHaveAttribute("type", "password");
+  expect(await field.getAttribute("name")).toBeNull();
+
+  // Nothing is sent while a field is wrong; each problem is said by its field.
+  await dialog.getByTestId("provider-save").click();
+  await expect(dialog.getByTestId("provider-key-error")).toHaveText("Paste the key.");
+  await expect(dialog.getByTestId("provider-projects-error")).toHaveText("Pick at least one project.");
+  await expect(field).toBeFocused();
+
+  // Test connection: a key the endpoint refuses, then one it takes.
+  await field.fill(bad);
+  await dialog.getByTestId("provider-test").click();
+  await expect(dialog.getByTestId("provider-test-result")).toHaveAttribute("data-ok", "false");
+  await field.fill(key);
+  await dialog.getByTestId("provider-test").click();
+  await expect(dialog.getByTestId("provider-test-result")).toHaveAttribute("data-ok", "true");
+  await expect(dialog.getByTestId("provider-test-result")).toHaveText("The endpoint answered and lists 3 models.");
+
+  // Fetch models lists the endpoint's beside the catalog's; the search narrows the list.
+  await dialog.getByTestId("provider-fetch-models").click();
+  const list = dialog.getByTestId("provider-models-list");
+  for (const model of FAKE_MODELS) await expect(list.getByRole("checkbox", { name: model })).toBeVisible();
+  await expect(list.getByRole("checkbox", { name: "glm-5.3-flash" })).toBeChecked();
+  await dialog.getByTestId("provider-models-search").fill("large");
+  await expect(list.getByRole("checkbox")).toHaveCount(1);
+  await list.getByRole("checkbox", { name: "fake-large" }).check();
+  await dialog.getByTestId("provider-models-search").fill("");
+  await expect(dialog.getByTestId("provider-models-picked")).toHaveText("2 of 4 picked");
+  await dialog.getByTestId("provider-projects").getByRole("checkbox", { name: project }).check();
+
+  const [put] = await Promise.all([page.waitForRequest(providerPut("glm")), dialog.getByTestId("provider-save").click()]);
+  expect(put.headers()["x-evo-csrf"]).toBeTruthy();
+  expect(put.postDataJSON()).toEqual({
+    provider: "glm",
+    base_url: "https://api.z.ai/api/coding/paas/v4",
+    api_format: "openai",
+    value: key,
+    models: ["glm-5.3-flash", "fake-large"],
+    projects: [project],
+    workers: [],
+  });
+  await expect(dialog).toBeHidden();
+  await expect(toast(page, "Provider account glm added")).toBeVisible();
+
+  // Its card: the mark on the catalog colour, the name, the host, the format, its key and its models.
+  const glm = card(page, "glm");
+  await expect(glm.getByRole("heading", { name: "GLM Coding" })).toBeVisible();
+  await expect(glm.locator('[data-provider-mark="glm"]')).toHaveText("GL");
+  await expect(glm.getByTestId("provider-card-host")).toHaveText("api.z.ai");
+  await expect(glm.getByTestId("provider-card-format")).toContainText("openai");
+  await expect(glm.getByTestId("provider-card-count")).toHaveText("1 key");
+  await expect(glm.getByTestId("provider-card-model")).toHaveText(["glm-5.3-flash", "fake-large"]);
+  await expect(row(page, "glm").getByTestId("account-state")).toHaveAttribute("data-state", "ready");
+  // The hub of the specs runs no model gateway: the page says runs cannot take the account yet.
+  await expect(main(page).getByTestId("accounts-gateway-notice")).toHaveAttribute("data-state", "off");
+
+  // The Models tab names each model as a run asks for it, by provider, with its runtimes.
+  await main(page).getByTestId("accounts-tab-models").click();
+  const group = main(page).getByTestId("runnable-models-group").and(page.locator('[data-prefix="glm"]'));
+  await expect(group.getByTestId("runnable-model")).toHaveCount(2);
+  await expect(group.locator('[data-model="glm/fake-large"]')).toContainText(`Projects: ${project}`);
+  await expect(group.getByTestId("runnable-model-runtime").first()).toBeVisible();
+
+  await page.reload();
+  const html = await page.content();
+  expect(html).not.toContain(key);
+  const bodies = (await received()).join("\n");
+  expect(bodies).not.toContain(key);
+  expect(bodies).not.toContain(bad);
+  expect((await providersOf(me)).map(({ name, provider, models }) => ({ name, provider, models }))).toEqual([
+    { name: "glm", provider: "glm", models: ["glm-5.3-flash", "fake-large"] },
+  ]);
+});
+
+test("a self-declared endpoint takes its own base URL, format and model, and a key kept as a secret is used without being sent", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const key = providerKey();
+  await putSecretByApi(me, "router-key", { kind: "env", env_var: "E2E_ROUTER_KEY", projects: [project], value: key });
+  const received = recordResponses(page);
+
+  // Custom: no base URL from the catalog, which the form asks for, over HTTPS.
+  await page.goto("/accounts");
+  await main(page).getByTestId("accounts-add").click();
+  const dialog = providerDialog(page);
+  await dialog.getByTestId("provider-catalog-group").and(page.locator('[data-filter="custom"]')).click();
+  await catalogEntry(page, "custom-openai").click();
+  await expect(dialog.getByTestId("provider-base-url")).toHaveValue("");
+  await dialog.getByTestId("provider-name").fill("my-llm");
+  await dialog.getByTestId("provider-key").fill(providerKey());
+  await dialog.getByTestId("provider-projects").getByRole("checkbox", { name: project }).check();
+  await dialog.getByTestId("provider-save").click();
+  await expect(dialog.getByTestId("provider-base-url-error")).toHaveText("Enter the base URL.");
+  await dialog.getByTestId("provider-base-url").fill("http://llm.example.test/v1");
+  await dialog.getByTestId("provider-save").click();
+  await expect(dialog.getByTestId("provider-base-url-error")).toHaveText("The base URL must use HTTPS.");
+  await dialog.getByTestId("provider-base-url").fill("https://llm.example.test/v1");
+  await dialog.getByTestId("provider-format").selectOption("anthropic");
+  await dialog.getByTestId("provider-model-add").fill("bad model");
+  await dialog.getByTestId("provider-model-add-button").click();
+  await expect(dialog.getByTestId("provider-model-add-error")).toBeVisible();
+  await dialog.getByTestId("provider-model-add").fill("my-model-1");
+  await dialog.getByTestId("provider-model-add").press("Enter");
+  await expect(dialog.getByTestId("provider-models-list").getByRole("checkbox", { name: "my-model-1" })).toBeChecked();
+  // The key comes from the secret instead: the field is gone, and nothing but the secret's name is sent.
+  await dialog.getByTestId("provider-source-secret").check();
+  await expect(dialog.getByTestId("provider-key")).toHaveCount(0);
+  await dialog.getByTestId("provider-save").click();
+  await expect(dialog.getByTestId("provider-from-secret-error")).toHaveText("Pick the secret that holds the key.");
+  await dialog.getByTestId("provider-from-secret").selectOption("router-key");
+  await dialog.getByTestId("provider-test").click();
+  await expect(dialog.getByTestId("provider-test-result")).toHaveAttribute("data-ok", "true");
+  const [put] = await Promise.all([page.waitForRequest(providerPut("my-llm")), dialog.getByTestId("provider-save").click()]);
+  expect(put.postDataJSON()).toEqual({
+    provider: "custom-openai",
+    base_url: "https://llm.example.test/v1",
+    api_format: "anthropic",
+    from_secret: "router-key",
+    models: ["my-model-1"],
+    projects: [project],
+    workers: [],
+  });
+  await expect(dialog).toBeHidden();
+  const custom = card(page, "custom-openai");
+  await expect(custom.getByTestId("provider-card-host")).toHaveText("llm.example.test");
+  await expect(custom.getByTestId("provider-card-format")).toContainText("anthropic");
+  await expect(custom.getByTestId("provider-card-model")).toHaveText(["my-model-1"]);
+
+  // A name already taken is refused by the form.
+  await main(page).getByTestId("accounts-add").click();
+  await dialog.getByTestId("provider-catalog-search").fill("custom-openai");
+  await catalogEntry(page, "custom-openai").click();
+  await dialog.getByTestId("provider-name").fill("router-key");
+  await dialog.getByTestId("provider-save").click();
+  await expect(dialog.getByTestId("provider-name-error")).toHaveText("You already have a secret or an account named router-key.");
+  await dialog.getByTestId("provider-back").click();
+  await expect(dialog).toHaveAttribute("data-step", "catalog");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  const bodies = (await received()).join("\n");
+  expect(bodies).not.toContain(key);
+});
+
+test("a provider account is edited without its key, its key changed, paused and deleted, on a page that never scrolls sideways", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const first = providerKey();
+  const second = providerKey();
+  await putProviderByApi(me, "glm-api", { provider: "glm", value: first, projects: [project], models: ["fake-large"] });
+  const received = recordResponses(page);
+
+  await page.goto("/accounts");
+  const glm = card(page, "glm");
+  await expect(glm.getByTestId("provider-card-model")).toHaveText(["fake-large"]);
+  const account = row(page, "glm-api");
+  await expectNoSeriousViolations(page, "/accounts with a provider account");
+
+  // Edit: the name is locked and no key is asked for; only what changed is sent.
+  await account.getByRole("button", { name: "Edit provider account glm-api" }).click();
+  const dialog = providerDialog(page);
+  await expect(dialog.getByTestId("provider-form")).toHaveAttribute("data-mode", "edit");
+  await expect(dialog.getByTestId("provider-name")).toHaveAttribute("readonly");
+  await expect(dialog.getByTestId("provider-key")).toHaveCount(0);
+  await expect(dialog.getByTestId("provider-back")).toHaveCount(0);
+  await dialog.getByTestId("provider-fetch-models").click();
+  await dialog.getByTestId("provider-models-list").getByRole("checkbox", { name: "fake-small" }).check();
+  await dialog.getByTestId("provider-weight").fill("3");
+  const [patch] = await Promise.all([
+    page.waitForRequest((request) => request.method() === "PATCH" && request.url().endsWith("/v1/provider-accounts/glm-api")),
+    dialog.getByTestId("provider-save").click(),
+  ]);
+  expect(patch.postDataJSON()).toEqual({ models: ["fake-large", "fake-small"], weight: 3 });
+  await expect(dialog).toBeHidden();
+  await expect(toast(page, "Provider account glm-api changed")).toBeVisible();
+  await expect(glm.getByTestId("provider-card-model")).toHaveText(["fake-large", "fake-small"]);
+
+  // Change key: the new key alone.
+  await account.getByRole("button", { name: "Change the key of glm-api" }).click();
+  const keyDialog = page.getByTestId("provider-key-dialog");
+  await keyDialog.getByTestId("provider-key").fill(second);
+  const [change] = await Promise.all([
+    page.waitForRequest((request) => request.method() === "PATCH" && request.url().endsWith("/v1/provider-accounts/glm-api")),
+    keyDialog.getByTestId("provider-key-dialog-save").click(),
+  ]);
+  expect(change.postDataJSON()).toEqual({ value: second });
+  await expect(keyDialog).toBeHidden();
+  await expect(toast(page, "Key of glm-api changed")).toBeVisible();
+
+  // Pause and resume, as any account.
+  await account.getByRole("button", { name: "Pause account glm-api" }).click();
+  await expect(toast(page, "Account glm-api paused")).toBeVisible();
+  await expect(account.getByTestId("account-state")).toHaveAttribute("data-state", "paused");
+  await account.getByRole("button", { name: "Resume account glm-api" }).click();
+  await expect(account.getByTestId("account-state")).toHaveAttribute("data-state", "ready");
+
+  // No sideways scroll at a phone's width or a tablet's, in light and dark, the dialog open or not.
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const width of [375, 800]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(glm).toBeVisible();
+      expect(await overflow(page)).toBe(0);
+      await main(page).getByTestId("accounts-add").click();
+      await expect(providerDialog(page).getByTestId("provider-catalog-entry").first()).toBeVisible();
+      expect(await overflow(page)).toBe(0);
+      await providerDialog(page).getByTestId("provider-catalog-search").fill("glm");
+      await catalogEntry(page, "glm").click();
+      await expect(providerDialog(page).getByTestId("provider-form")).toBeVisible();
+      expect(await overflow(page)).toBe(0);
+      await page.keyboard.press("Escape");
+      await expect(providerDialog(page)).toBeHidden();
+    }
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // Delete, after a confirm that names it: the card goes, and the empty state says what to do.
+  await account.getByRole("button", { name: "Delete provider account glm-api" }).click();
+  const confirm = page.getByTestId("provider-delete-dialog");
+  await expect(confirm.getByRole("heading", { name: "Delete glm-api?" })).toBeVisible();
+  await Promise.all([
+    page.waitForRequest((request) => request.method() === "DELETE" && request.url().endsWith("/v1/provider-accounts/glm-api")),
+    confirm.getByRole("button", { name: "Delete account" }).click(),
+  ]);
+  await expect(confirm).toBeHidden();
+  await expect(toast(page, "Provider account glm-api deleted")).toBeVisible();
+  await expect(glm).toHaveCount(0);
+  await expect(main(page).getByTestId("state-empty")).toContainText("No model account yet");
+  expect(await providersOf(me)).toEqual([]);
+
+  const bodies = (await received()).join("\n");
+  expect(bodies).not.toContain(first);
+  expect(bodies).not.toContain(second);
 });

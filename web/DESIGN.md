@@ -316,8 +316,33 @@ account stays with its pill and its dot, and a logo never changes colour for a s
 | SSH, other | Lucide `KeyRound` | `fg-subtle` |
 
 An account that is ready has no pill; the pill appears only for Paused, Cooling, Expired and Needs sign-in, and the word
-"Ready" stays in the page for a screen reader. Model accounts and service credentials are two groups with a title and
-a count each; a kind of account added later is one more group of the same shape.
+"Ready" stays in the page for a screen reader.
+
+### Provider cards and the catalog
+
+The Accounts page is in tabs held in `?tab=` (Providers, the default, then Models, Service credentials, Rotation,
+Sharing), so a link or a reload opens the same one; the arrow keys move between them. The Providers tab is a grid of
+cards (`components/accounts/provider-card.tsx`), one per provider the visitor's model accounts call. Claude is a card
+like any other, read from the same catalog. A card's header carries the provider's mark, its name as the title, the
+host of its base URL (or "Signs in on the worker" for Claude), its format and a count of keys; the body is the table of
+its keys, each with its own state pill and actions, then its models as monospaced chips. An agent's account carries
+the agent mark, and a share the shared mark, both as text badges next to the account's name.
+
+The mark (`provider-mark.tsx`) is the logo for the providers `provider-logo.tsx` draws (Claude, Anthropic) on a card
+tile, and for any other the catalog's abbreviation (`text_icon`, two letters) on the catalog colour, with white or black
+ink, whichever contrasts more with it (never under 4.5:1). It is decorative (`aria-hidden`): the name is text beside it, and a mark
+never says how the keys are doing.
+
+Add provider opens the catalog in a dialog (`provider-catalog.tsx`): a search over name and id, a row of group filters
+with a count each (`aria-pressed`), a live count of what matches, then the entries as buttons in two columns from
+`sm`, 24 at a time behind Show more. Loading draws skeleton tiles, a failed load says so with Retry, and no match says
+so in a dashed box. Picking Claude closes the catalog and opens the sign-in; any other entry opens the provider form in
+the same dialog, with Back to the catalog. The form takes the name and base URL prefilled from the entry, the format,
+the key in a password field emptied as the form is sent (or an env secret of the visitor's instead), projects,
+workers, expiry, Test connection and Fetch models, and the models as a searchable list of checkboxes with a field to
+add an id. Edit opens the same form without the key; Change key is a dialog of its own. With the hub's model gateway off
+the Providers tab says runs cannot take provider accounts until an admin turns it on, and, when the gateway does not
+answer, that runs asking for a provider model wait.
 
 The mark (`components/brand.tsx`) is a brush-weight lowercase e drawn as an ensō, heavy at the lower left with a
 tapered tail, a sibling of omelet.tech's mark. In the shell it has no tile and takes `foreground`: ink `#09090b` in
