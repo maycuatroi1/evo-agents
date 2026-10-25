@@ -15,6 +15,7 @@ import {
   withScope,
 } from "./explorer";
 import { collapse, expand, mergeExpansions, moreId, openGroup, parseMoreId, workingElements } from "./explorer-working";
+import { nodeLabel } from "./graph";
 import type { ClusterDetail, ClusterSummary, GraphNode, MapNode, Neighbourhood } from "./types";
 
 const label = { level: "internal", location: "any", integrity: "U" };
@@ -56,6 +57,16 @@ const view = (focus: string, nodes: GraphNode[], edges: [string, string, string]
   neighbours: nodes.length - 1,
   left_out: 0,
   truncated: false,
+});
+
+describe("explorer labels", () => {
+  it("names a path by its last part, with its folder when the file's name says little", () => {
+    expect(nodeLabel("web/src/components/srs/findings-model.ts")).toBe("findings-model.ts");
+    expect(nodeLabel("web/src/app/(app)/p/[project]/kg/page.tsx")).toBe("kg/page.tsx");
+    expect(nodeLabel("evo_agents/hub/__init__.py")).toBe("hub/__init__.py");
+    expect(nodeLabel("KB-01")).toBe("KB-01");
+    expect(nodeLabel("a/very-long-file-name-that-goes-on-and-on.tsx")).toBe("very-long-file-name-that-go…");
+  });
 });
 
 describe("explorer scope in the URL", () => {
@@ -135,7 +146,7 @@ describe("explorer cluster", () => {
     const drawing = clusterElements(detail, new Set(["File"]));
     expect(drawing).toMatchObject({ mode: "parts", drawn: 2, total: 4 });
     const byId = new Map(drawing.elements.map((e) => [e.data.id, e]));
-    expect(byId.get("c0.0")?.classes).toEqual(["cluster", "major"]);
+    expect(byId.get("c0.0")?.classes).toEqual(["cluster"]);
     expect(byId.get("c0.0")?.data).toMatchObject({ size: 2, diameter: 92 });
     expect(byId.get("c0.1")?.classes).toContain("filtered"); // its kinds are all File
     expect(byId.get("m4")?.classes).toContain("member");

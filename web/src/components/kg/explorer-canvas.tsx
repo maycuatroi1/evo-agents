@@ -12,7 +12,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { type ExplorerElement, type Scope, stepOrder } from "@/lib/kg/explorer";
 import { parseMoreId } from "@/lib/kg/explorer-working";
 
-import { type ExplorerLayout, fit, inView, layoutOptions, light, sync } from "./explorer-layout";
+import { declutter, type ExplorerLayout, fit, inView, labelScale, layoutOptions, light, sync } from "./explorer-layout";
 
 import { explorerStylesheet } from "./explorer-style";
 import { readTheme } from "./graph-theme";
@@ -30,6 +30,18 @@ import { readTheme } from "./graph-theme";
  * list the same clusters, nodes and relations, and follow the same selection.
  */
 let registered = false;
+
+type Labels = { scale: number; forced: (string | null)[] };
+
+/** Labels back to their size on screen for the zoom, then only those with room (explorer-layout.ts, declutter). */
+function relabel(cy: cytoscape.Core, kind: Scope["kind"], labels: Labels): void {
+  const scale = labelScale(cy.zoom());
+  if (Math.abs(scale - labels.scale) / labels.scale > 0.03) {
+    cy.style(explorerStylesheet(readTheme(), kind, scale));
+    labels.scale = scale;
+  }
+  declutter(cy, labels.forced);
+}
 
 type Tip = { id: string; x: number; y: number };
 
@@ -73,6 +85,8 @@ export function ExplorerCanvas({
   const latest = useRef({ layout, root, reduced });
   const tapped = useRef(false);
   const applied = useRef<ExplorerLayout | null>(null);
+  // The label scale the stylesheet was last built with, and the labels the reader looks at, which always show.
+  const labels = useRef<Labels>({ scale: 1, forced: [] });
   const order = useMemo(() => stepOrder(elements), [elements]);
   const kind = scope.kind;
 
@@ -123,10 +137,18 @@ export function ExplorerCanvas({
       instance.on("mouseover", "node", (event) => setHover(at(event.target)));
       instance.on("mouseout", "node", () => setHover(null));
       instance.on("viewport drag", () => setHover(null));
+      // Once a zoom or a pan settles, the labels take their size on screen again and only those with room show.
+      const created = instance;
+      instance.on("zoom pan", () => {
+        clearTimeout(settle);
+        settle = setTimeout(() => relabel(created, kind, labels.current), 90);
+      });
       setCy(instance);
     });
+    let settle: ReturnType<typeof setTimeout> | undefined;
     return () => {
       cancelled = true;
+      clearTimeout(settle);
       instance?.destroy();
       setCy(null);
     };
@@ -134,7 +156,10 @@ export function ExplorerCanvas({
 
   useEffect(() => {
     if (!cy) return;
-    const frame = requestAnimationFrame(() => cy.style(explorerStylesheet(readTheme(), kind)));
+    const frame = requestAnimationFrame(() => {
+      cy.style(explorerStylesheet(readTheme(), kind, labels.current.scale));
+      declutter(cy, labels.current.forced);
+    });
     return () => cancelAnimationFrame(frame);
   }, [cy, kind, resolvedTheme]);
 
@@ -171,6 +196,7 @@ export function ExplorerCanvas({
       } else if (added.toArray().some((node) => !inView(cy, node.id()))) {
         fit(cy, !still);
       }
+      relabel(cy, kind, labels.current);
     });
     applied.current = name;
     run.run();
@@ -181,13 +207,19 @@ export function ExplorerCanvas({
     if (!cy || cy.nodes().empty() || applied.current === layout) return;
     applied.current = layout;
     const run = cy.elements().layout(layoutOptions(kind, layout, cy, { incremental: false, animate: !reduced, root }));
-    run.one("layoutstop", () => fit(cy, !reduced));
+    run.one("layoutstop", () => {
+      fit(cy, !reduced);
+      relabel(cy, kind, labels.current);
+    });
     run.run();
   }, [cy, layout, kind, reduced, root]);
 
   useEffect(() => {
     if (!cy) return;
-    light(cy, selected, hover?.id ?? highlight ?? selected);
+    const focus = hover?.id ?? highlight ?? selected;
+    light(cy, selected, focus);
+    labels.current.forced = [selected, focus];
+    declutter(cy, labels.current.forced);
   }, [cy, selected, hover, highlight, elements]);
 
   useEffect(() => {

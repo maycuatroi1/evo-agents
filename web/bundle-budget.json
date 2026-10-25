@@ -74,8 +74,8 @@
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB."
     },
     "/inbox": {
-      "kB": 419.4,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
+      "kB": 419.5,
+      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The explorer's labels (kg-explorer-labels): the label of a path by its file name in lib/kg/graph, shared by the pages that name a kind of node, and on the explorer the choice of the labels that show, 0.1 to 0.5 kB."
     },
     "/invite/[token]": {
       "kB": 233.5
@@ -161,24 +161,24 @@
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
     },
     "/p/[project]/kg": {
-      "kB": 320.1,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
+      "kB": 320.6,
+      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The explorer's labels (kg-explorer-labels): the label of a path by its file name in lib/kg/graph, shared by the pages that name a kind of node, and on the explorer the choice of the labels that show, 0.1 to 0.5 kB."
     },
     "/p/[project]/kg/builds": {
-      "kB": 318.5,
-      "reason": "The knowledge graph's Builds tab (kg-explorer): the status, the commits read, the shape and the build history that /p/[project]/kg showed before the explorer took its place, under the graph's tabs."
+      "kB": 318.6,
+      "reason": "The knowledge graph's Builds tab (kg-explorer): the status, the commits read, the shape and the build history that /p/[project]/kg showed before the explorer took its place, under the graph's tabs. The explorer's labels (kg-explorer-labels): the label of a path by its file name in lib/kg/graph, shared by the pages that name a kind of node, and on the explorer the choice of the labels that show, 0.1 to 0.5 kB."
     },
     "/p/[project]/kg/cluster": {
-      "kB": 318,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
+      "kB": 318.1,
+      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The explorer's labels (kg-explorer-labels): the label of a path by its file name in lib/kg/graph, shared by the pages that name a kind of node, and on the explorer the choice of the labels that show, 0.1 to 0.5 kB."
     },
     "/p/[project]/kg/node": {
-      "kB": 312.2,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
+      "kB": 312.3,
+      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The explorer's labels (kg-explorer-labels): the label of a path by its file name in lib/kg/graph, shared by the pages that name a kind of node, and on the explorer the choice of the labels that show, 0.1 to 0.5 kB."
     },
     "/p/[project]/kg/review": {
-      "kB": 304.7,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
+      "kB": 304.9,
+      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The explorer's labels (kg-explorer-labels): the label of a path by its file name in lib/kg/graph, shared by the pages that name a kind of node, and on the explorer the choice of the labels that show, 0.1 to 0.5 kB."
     },
     "/p/[project]/loop": {
       "kB": 326.2,
@@ -407,7 +407,7 @@
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
     },
     "/workers/[id]": {
-      "kB": 340.9,
+      "kB": 340.8,
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB. The Runtimes card gains the worker's browser line with Install browser for its owner (its rules in browser-install.ts, the button, the open request and the last failure), loaded with the worker's page: 0.7 kB."
     }
   }
