@@ -8,8 +8,16 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.marketing_browser import OUTCOMES
-from evo_agents.hub.tables_marketing import ADAPTERS, CHANNELS, DENY_KINDS, MAX_TEXT, MODES, POST_KINDS, SESSION_STATES
+from evo_agents.core_plugins.marketing.tables import (
+    ADAPTERS,
+    CHANNELS,
+    DENY_KINDS,
+    MAX_TEXT,
+    MODES,
+    OUTCOMES,
+    POST_KINDS,
+    SESSION_STATES,
+)
 
 ChannelName = Literal[*CHANNELS]
 
@@ -52,6 +60,10 @@ class MarketingChannel(BaseModel):
 
 class MarketingModeIn(BaseModel):
     mode: Literal[*MODES]
+
+
+class MarketingCheckIn(BaseModel):
+    channel_id: int | None = Field(default=None, ge=1, description="one channel; none checks every one")
 
 
 class MarketingReasonIn(BaseModel):

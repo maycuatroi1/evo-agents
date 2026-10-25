@@ -5,7 +5,7 @@ write takes the caller's connection and happens in its transaction. Private to `
 from __future__ import annotations
 
 import secrets
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, insert, select
@@ -201,10 +201,12 @@ async def notify(
     title: str,
     body: str | None = None,
     link: str | None = None,
+    details: Mapping | None = None,
 ) -> tuple[int, ...]:
     """A notice of ``notice_kind``, a kind the plugin's manifest contributes (``notice_kinds``), of ``project`` for
     each member of ``users`` who holds a grant on it, on each of their channels that is on; the ids of the notices, in
-    the order of ``users``. Members without a grant are left out."""
+    the order of ``users``. Members without a grant are left out. ``details`` (a mapping that JSON holds) is kept
+    with the notice as the Inbox gives it."""
     own_plugin(plugin)
     project_id = await enabled_project(conn, plugin, project)
     enabled = await enabled_in(conn, plugin.id, project_id)
@@ -216,6 +218,8 @@ async def notify(
         raise ValueError(f"a notice goes to at most {MAX_NOTICE_USERS} members at once")
     if link is not None and not (isinstance(link, str) and link.startswith("/") and not link.startswith("//")):
         raise ValueError("a notice's link is a path of the hub's web, such as /p/<project>/runs")
+    if details is not None and not isinstance(details, Mapping):
+        raise ValueError("a notice's details are a mapping")
     g = tables.grants
     held = set(
         (await conn.execute(select(g.c.user_id).where(g.c.project_id == project_id, g.c.user_id.in_(wanted)))).scalars()
@@ -232,6 +236,7 @@ async def notify(
                     title=title,
                     body=body,
                     project_id=project_id,
+                    details=None if details is None else dict(details),
                     link=link,
                 )
             )

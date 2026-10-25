@@ -14,13 +14,17 @@ from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
-from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.core_plugins.marketing import tables
+from evo_agents.hub.server import core_plugin_api as hub
 
 PLUGIN = "marketing"
 MAX_LIST = 500
 OPEN = ("proposed", "judging")  # the states of a post the gate has not decided
+
+
+def handle() -> hub.Plugin:
+    """The plugin's handle, which every call of the API takes."""
+    return hub.plugin(__name__)
 
 
 def post_columns() -> list:
@@ -40,20 +44,20 @@ class MarketingError(Exception):
 # Who may do what
 
 
-def reader(access: ProjectAccess) -> None:
-    if access.role is None:
+def reader(access: hub.ProjectRef) -> None:
+    if access.max_level is None:  # a hub admin without a grant: the API passes them as admin, marketing does not
         raise MarketingError(403, f"reading the marketing of project {access.name} needs a grant on it")
 
 
-def writer(access: ProjectAccess, what: str) -> None:
+def writer(access: hub.ProjectRef, what: str) -> None:
     reader(access)
-    if not has_role(access.role, "writer"):
+    if not hub.has_role(access.role, "writer"):
         raise MarketingError(403, f"{what} in project {access.name} needs the writer role; you are {access.role}")
 
 
-def admin(access: ProjectAccess, what: str) -> None:
+def admin(access: hub.ProjectRef, what: str) -> None:
     reader(access)
-    if not has_role(access.role, "admin"):
+    if not hub.has_role(access.role, "admin"):
         raise MarketingError(403, f"{what} in project {access.name} needs the admin role; you are {access.role}")
 
 
@@ -320,9 +324,3 @@ async def set_killed(conn: AsyncConnection, project_id: int, on: bool, reason: s
     statement = pg_insert(t).values(project_id=project_id, **values)
     await conn.execute(statement.on_conflict_do_update(constraint="marketing_state_pkey", set_=values))
     return before != on
-
-
-async def project_admins(conn: AsyncConnection, project_id: int) -> list[int]:
-    g = tables.grants.c
-    found = await conn.execute(select(g.user_id).where(g.project_id == project_id, g.role == "admin"))
-    return [row.user_id for row in found]

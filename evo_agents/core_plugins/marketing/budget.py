@@ -16,7 +16,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.core_plugins.marketing import tables
 
 
 def month_of(now: datetime) -> str:

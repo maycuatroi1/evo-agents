@@ -15,9 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.marketing import registry
 from evo_agents.core_plugins.marketing.adapters.oauth1 import OAuth1
-from evo_agents.core_plugins.marketing.store import PLUGIN
-from evo_agents.hub.config import HubConfig
-from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import core_plugin_api as hub
 
 TOKENS = {  # channel -> the secret field that holds its credential
@@ -72,8 +69,9 @@ def credentials(values: dict) -> dict:
     return tokens
 
 
-async def config(conn: AsyncConnection, hub_config: HubConfig | None, project: str) -> Config:
-    """The effective config of the plugin in ``project``. A credential this process cannot open is none."""
+async def config(conn: AsyncConnection, hub_config, project: str) -> Config:
+    """The effective config of the plugin in ``project``, with the hub's config (``hub.hub_config``, a context's
+    ``config``) or None. A credential this process cannot open is none."""
     found = await hub.plugin_config(conn, hub.plugin(__name__), hub_config, project=project)
     values = found.values
     tokens = credentials(values)
@@ -88,8 +86,3 @@ async def config(conn: AsyncConnection, hub_config: HubConfig | None, project: s
         tokens=tokens,
         sessions=sessions,
     )
-
-
-async def enabled(conn: AsyncConnection, project_id: int):
-    """The ``enabled_in`` row of the plugin in the project, or None when it is not enabled there."""
-    return await enabled_in(conn, PLUGIN, project_id)

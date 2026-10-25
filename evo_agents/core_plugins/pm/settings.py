@@ -14,9 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.pm.facts import Config
 from evo_agents.core_plugins.pm.workdays import Calendar
-from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.plugins import config as plugin_config
+from evo_agents.hub.server import core_plugin_api as hub
 
 PLUGIN, TASKS, SRS = "pm", "tasks", "srs"
 DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
@@ -42,10 +40,19 @@ class PmError(Exception):
         self.message = message
 
 
-async def _values(conn: AsyncConnection, row, project_id: int) -> dict:
-    stacks = await stored_stacks(conn, [row.id], project_id, None)
-    merged = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, []))
-    return {name: item.value for name, item in merged.fields.items() if not item.secret}
+def handle() -> hub.Plugin:
+    """The plugin's handle of the core plugin API."""
+    return hub.plugin(__name__)
+
+
+async def _values(conn: AsyncConnection, project: str, name: str) -> dict | None:
+    """The config of plugin ``name`` in ``project``, its secrets left out; None when the project does not enable
+    it. PmError 404 when the project does not enable pm."""
+    try:
+        found = await hub.enabled_plugin_config(conn, handle(), project, name)
+    except hub.Refused as exc:
+        raise PmError(exc.status_code, str(exc.detail)) from None
+    return None if found is None else dict(found.values)
 
 
 def _zone(project: str, name: str) -> ZoneInfo:
@@ -76,13 +83,12 @@ def _digest_at(project: str, given) -> time:
         ) from None
 
 
-async def config(conn: AsyncConnection, project_id: int, project: str) -> Config:
+async def config(conn: AsyncConnection, project: str) -> Config:
     """The plugin's effective config in the project; 404 when the project does not enable it, 409 when it cannot be
     used."""
-    row = await enabled_in(conn, PLUGIN, project_id)
-    if row is None:
+    values = await _values(conn, project, PLUGIN)
+    if values is None:
         raise PmError(404, f"plugin {PLUGIN} is not enabled in project {project}: an admin of the project enables it")
-    values = await _values(conn, row, project_id)
     calendar = Calendar(
         _zone(project, values.get("timezone") or DEFAULT_TIMEZONE), _days(project, values.get("working_days"))
     )
@@ -98,24 +104,23 @@ async def config(conn: AsyncConnection, project_id: int, project: str) -> Config
     )
 
 
-async def task_groups(conn: AsyncConnection, project_id: int, project: str) -> tuple[str, dict[str, str]]:
+async def task_groups(conn: AsyncConnection, project: str) -> tuple[str, dict[str, str]]:
     """(the prefix of a task's number, status key -> group) as the plugin tasks has them in the project; 409 when the
     project does not enable tasks."""
-    row = await enabled_in(conn, TASKS, project_id)
-    if row is None:
+    values = await _values(conn, project, TASKS)
+    if values is None:
         raise PmError(
             409,
             f"plugin {TASKS} is not enabled in project {project}: the daily report reads its tasks; an admin enables it",
         )
-    values = await _values(conn, row, project_id)
     statuses = values.get("statuses")
     groups = {s["key"]: s["group"] for s in statuses} if statuses else dict(DEFAULT_STATUSES)
     return values.get("prefix") or "T", groups
 
 
-async def srs_enabled(conn: AsyncConnection, project_id: int) -> bool:
+async def srs_enabled(conn: AsyncConnection, project: str) -> bool:
     """Whether the project enables the plugin srs, whose use cases the report names."""
-    return await enabled_in(conn, SRS, project_id) is not None
+    return await _values(conn, project, SRS) is not None
 
 
-__all__ = ["PLUGIN", "PmError", "config", "srs_enabled", "task_groups"]
+__all__ = ["PLUGIN", "PmError", "config", "handle", "srs_enabled", "task_groups"]

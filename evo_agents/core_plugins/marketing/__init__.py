@@ -30,6 +30,9 @@ post is answered within ``replies_per_day``. Content for a member's personal cha
 project the config names in ``proposals_project``.
 """
 
+import json
+from pathlib import Path
+
 SERVER = "evo_agents.core_plugins.marketing.server"
 JOB = "evo_agents.core_plugins.marketing.job"
 ADVANCE_JOB = "advance"
@@ -38,6 +41,7 @@ JUDGE = "marketing-judge"  # judge.AGENT_TYPE
 MARKETER = "marketer"
 LOOP = "evo_agents.core_plugins.marketing.loop"
 TOOLS = "evo_agents.core_plugins.marketing.tools"
+CLI = json.loads(Path(__file__).with_name("cli.json").read_text(encoding="utf-8"))
 
 JUDGE_INSTRUCTIONS = """# @marketing-judge
 
@@ -214,18 +218,30 @@ PAGES = {
         "title": "Marketing",
         "icon": "message-square",
         "description": "Channels, breakers, budget, kill switch",
+        "entry": "pages/overview.html",
     },
     # Posts and Growth weekly are tabs of the Marketing page, not menu items of their own.
     "posts": {
         "title": "Posts",
         "icon": "list-checks",
         "description": "Posts by the gate's result, and drafts to copy",
+        "entry": "pages/posts.html",
         "menu": False,
     },
     "weekly": {
         "title": "Growth weekly",
         "icon": "chart-column",
         "description": "Signal against Goal, posts and cost",
+        "entry": "pages/weekly.html",
+        "menu": False,
+    },
+    # What waits for a person in the growth, a panel of the project's Decisions page.
+    "decide": {
+        "title": "Growth",
+        "icon": "message-square",
+        "description": "Open breakers, expired login sessions and a spent budget",
+        "entry": "pages/decide.html",
+        "slot": "decide",
         "menu": False,
     },
 }
@@ -242,6 +258,12 @@ MANIFEST = {
     "plugin_api": 1,
     "permissions": [],
     "config": CONFIG,
+    "schema": {
+        "metadata": "evo_agents.core_plugins.marketing.tables:metadata",
+        "migrations": "evo_agents.core_plugins.marketing.migrations",
+        "adopts": [name for name, _ in TABLES],
+    },
+    "ui": "evo_agents.core_plugins.marketing:ui",
     "contributes": {
         "routes": [{"name": "marketing", "title": "The channels and posts of a project", "python": f"{SERVER}:router"}],
         "pages": [{"name": name, **page} for name, page in PAGES.items()],
@@ -323,7 +345,20 @@ MANIFEST = {
             }
         ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
+        "cli": CLI,
     },
 }
 
-__all__ = ["MANIFEST"]
+API = (1, 3)  # the version of the core plugin API the plugin is written for
+
+
+def manifest() -> dict:
+    """The manifest, once this hub serves the version of the API the plugin is written for. The API is imported here:
+    every process that reads the entry points imports this module, the CLI included."""
+    from evo_agents.hub.server import core_plugin_api as hub
+
+    hub.require(*API)
+    return MANIFEST
+
+
+__all__ = ["MANIFEST", "manifest"]

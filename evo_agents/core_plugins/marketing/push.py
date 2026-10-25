@@ -16,12 +16,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.marketing import budget
-from evo_agents.hub import signals, tables
-from evo_agents.hub.server.signals import SignalIn
+from evo_agents.core_plugins.marketing import budget, store, tables
+from evo_agents.hub.server import core_plugin_api as hub
 
 KEY_NAME = "marketing"  # the name of the project's ingest key
 SOURCE = "marketing"
@@ -30,41 +29,6 @@ DEFAULT_DAYS = 90
 
 def key_of(name: str) -> str:
     return f"marketing.{name}"
-
-
-async def ingest_pusher(conn: AsyncConnection, project_id: int) -> signals.Pusher | None:
-    """The pusher of the key ``marketing`` of the project, made on first use; None when no admin can own the key or the
-    admins revoked the one it made and made no other."""
-    k, g = tables.signal_ingest_keys, tables.grants
-    rules = await signals.project_rules(conn, project_id)
-    found = (
-        await conn.execute(
-            select(k.c.id, k.c.max_level, k.c.revoked_at).where(k.c.project_id == project_id, k.c.name == KEY_NAME)
-        )
-    ).all()
-    live = next((row for row in found if row.revoked_at is None), None)
-    if live is None and found:
-        return None
-    if live is None:
-        owner = await conn.scalar(
-            select(g.c.user_id).where(g.c.project_id == project_id, g.c.role == "admin").order_by(g.c.user_id).limit(1)
-        )
-        if owner is None:
-            return None
-        token = signals.new_ingest_token()  # nobody reads it: the plugin writes in this process
-        made = await conn.execute(
-            insert(k)
-            .values(
-                project_id=project_id,
-                name=KEY_NAME,
-                max_level=rules.default_label.get("level"),
-                token_hash=signals.hash_token(token),
-                created_by=owner,
-            )
-            .returning(k.c.id, k.c.max_level, k.c.revoked_at)
-        )
-        live = made.one()
-    return signals.Pusher(project_id, rules, "ingest", live.id, KEY_NAME, live.max_level)
 
 
 async def project_numbers(conn: AsyncConnection, project_id: int, now: datetime) -> dict[str, float]:
@@ -92,15 +56,13 @@ async def project_numbers(conn: AsyncConnection, project_id: int, now: datetime)
     return numbers
 
 
-async def push_project(conn: AsyncConnection, project_id: int, days: int = DEFAULT_DAYS) -> dict:
-    """Push the project numbers and the numbers of posts not pushed yet; what the hub stored, found twice and refused."""
-    pusher = await ingest_pusher(conn, project_id)
-    if pusher is None:
-        return {"pushed": False, "reason": "no ingest key marketing"}
+async def push_project(conn: AsyncConnection, project: str, project_id: int, days: int = DEFAULT_DAYS) -> dict:
+    """Push the project numbers and the numbers of posts not pushed yet; what the hub stored, found twice and refused.
+    Nothing when no admin can own the key ``marketing`` or the admins revoked the one it made and made no other."""
     now = datetime.now(UTC)
     today = now.date().isoformat()
-    items = [
-        SignalIn(key=key_of(name), value=value, source=SOURCE, external_id=f"marketing:{name}:{today}:{value:g}")
+    points = [
+        hub.SignalPoint(key=key_of(name), value=value, external_id=f"marketing:{name}:{today}:{value:g}")
         for name, value in (await project_numbers(conn, project_id, now)).items()
     ]
     m, p = tables.marketing_metrics, tables.marketing_posts.c
@@ -111,16 +73,20 @@ async def push_project(conn: AsyncConnection, project_id: int, days: int = DEFAU
             .where(p.project_id == project_id, m.c.pushed_at.is_(None))
         )
     ).all()
-    items += [
-        SignalIn(
+    points += [
+        hub.SignalPoint(
             key=key_of(f"{r.metric}_{r.span}"),
             value=float(r.value),
-            source=SOURCE,
             external_id=f"marketing:post:{r.post_id}:{r.span}:{r.metric}",
         )
         for r in rows
     ]
-    done = await signals.push(conn, pusher, items, days)
+    try:
+        done = await hub.push_signals(conn, store.handle(), project, points, days=days)
+    except hub.Refused as exc:
+        if exc.status_code != 409:
+            raise
+        return {"pushed": False, "reason": f"no ingest key {KEY_NAME}"}
     if rows and not done.rejected:  # a number whose key no admin declared yet stays for the next pass
         await conn.execute(update(m).where(m.c.id.in_([r.id for r in rows])).values(pushed_at=func.now()))
     return {"pushed": True, "accepted": done.accepted, "duplicates": done.duplicates, "rejected": len(done.rejected)}

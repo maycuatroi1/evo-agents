@@ -153,7 +153,7 @@ No agent changes a channel's mode, the kill switch, a Goal or the Policy, and no
 
 ## Pages and the weekly bulletin
 
-A project that enables the plugin has three pages (the web's `x/marketing`), one item in its menu and tabs on each
+A project that enables the plugin has three framed pages (`evo_agents/core_plugins/marketing/ui/pages`), one item in its menu and tabs on each
 page: Marketing (the kill switch
 with a confirmation, the month's cost against the cap, and each channel with its breaker and login session), Posts
 (the posts by where the gate left them, and the drafts of personal channels and Facebook groups, each with a copy
@@ -216,7 +216,7 @@ need an admin and land in the audit.
 
 A channel with no posting API (Viblo, the Facebook profile; Reddit and LinkedIn while their API has no approved
 credential; TikTok only as a draft, see below) posts through a deterministic script in a logged-in browser. No model
-drives the browser: the script (`evo_agents/hub/marketing_browser.py`) opens the compose page, fills the text the gate
+drives the browser: the script of the CLI (`evo_agents/hub/browser_post.py`, the command's `client` `browser_post`) opens the compose page, fills the text the gate
 passed, presses the button and reads the address it lands on. It opens the compose page and the page of the post and
 nothing else, so it reads no feed, no comment and no number; a browser post has no metrics.
 

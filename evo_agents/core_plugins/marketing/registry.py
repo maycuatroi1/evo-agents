@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from evo_agents.hub.tables_marketing import ACCOUNT_KINDS, ADAPTERS, CHANNELS, PERSONAL_AUTONOMOUS
+from evo_agents.core_plugins.marketing.tables import ACCOUNT_KINDS, ADAPTERS, CHANNELS, PERSONAL_AUTONOMOUS
 
 DEFAULT_BUDGET_USD = 50.0
 DEFAULT_DRY_RUN_HOURS = 72  # a channel made autonomous only drafts for this long

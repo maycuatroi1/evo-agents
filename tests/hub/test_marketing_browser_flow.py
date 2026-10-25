@@ -18,10 +18,11 @@ if not pg.DSN:
 from sqlalchemy import func, select
 
 from evo_agents.core_plugins.marketing import server, store
-from evo_agents.hub import cli_marketing_browser as cli
+from evo_agents.core_plugins.marketing import tables as marketing_tables
+from evo_agents.hub import browser_post_client as cli
 from evo_agents.hub import tables
+from evo_agents.hub.browser_post import PROFILES
 from evo_agents.hub.client import HubError
-from evo_agents.hub.marketing_browser import PROFILES
 from tests.hub.live import sql
 from tests.hub.test_marketing_browser import PNG, FakePage
 from tests.hub.test_marketing_plugin import (  # noqa: F401 (fixtures)
@@ -94,19 +95,21 @@ def test_marketing_browser_the_session_reaches_the_claim_and_nothing_else(mk):
         mk.client.get(f"{BASE}/channels", headers=mk.h["alice"]).text,
         mk.client.get(f"{BASE}/status", headers=mk.h["alice"]).text,
         str(sql(mk.db, select(tables.audit))),
-        str(sql(mk.db, select(tables.marketing_posts.c.layers, tables.marketing_posts.c.reason))),
+        str(sql(mk.db, select(marketing_tables.marketing_posts.c.layers, marketing_tables.marketing_posts.c.reason))),
     ]
     assert not [text for text in everything if "SECRET-SESSION-VALUE" in text]
 
 
 def test_marketing_browser_the_scope_of_an_agent_run_may_not_claim_or_report():
-    from types import SimpleNamespace
+    from evo_agents.hub.server.core_plugin_api._types import issue_session
+    from evo_agents.hub.server.security import MACHINE, Principal, RunScope
 
-    agent = SimpleNamespace(scope=object(), user_id=1)
+    scope = RunScope(7, "northwind", "writer", "internal")
+    agent = issue_session(1, "lumen", 0, False, principal=Principal(1, "lumen", False, 0, MACHINE, "", scope=scope))
     with pytest.raises(store.MarketingError) as refused:
         server._no_agent(agent, "claiming a post for the browser")
     assert refused.value.status == 403 and "agent" in refused.value.message
-    server._no_agent(SimpleNamespace(scope=None, user_id=1), "x")  # a login passes
+    server._no_agent(issue_session(1, "lumen", 0, False), "x")  # a login passes
 
 
 def test_marketing_browser_a_reader_cannot_claim_and_a_post_with_no_session_is_a_draft(mk):
@@ -220,7 +223,9 @@ def test_marketing_browser_channels_that_cannot_be_posted_by_a_script_stay_draft
     assert (
         sql(
             mk.db,
-            select(func.count()).select_from(tables.marketing_posts).where(tables.marketing_posts.c.state == "queued"),
+            select(func.count())
+            .select_from(marketing_tables.marketing_posts)
+            .where(marketing_tables.marketing_posts.c.state == "queued"),
         )[0][0]
         == 0
     )
@@ -234,7 +239,7 @@ def test_marketing_browser_a_browser_post_has_no_numbers_to_read(mk):
     mk.clock.after(days=8)
     run_job(mk)
     assert mk.platform.sent == []
-    assert sql(mk.db, select(func.count()).select_from(tables.marketing_metrics))[0][0] == 0
+    assert sql(mk.db, select(func.count()).select_from(marketing_tables.marketing_metrics))[0][0] == 0
 
 
 def test_marketing_browser_only_the_owner_or_an_admin_marks_a_session(mk):

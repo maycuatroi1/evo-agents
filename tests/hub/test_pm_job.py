@@ -19,8 +19,10 @@ if not pg.DSN:
 from sqlalchemy import insert, select, update
 
 from evo_agents.core_plugins.pm import DAILY_CRON, MANIFEST, job, settings
+from evo_agents.core_plugins.pm import tables as pm_tables
 from evo_agents.hub import plugin_jobs, runs, tables
-from tests.hub.live import sql
+from evo_agents.hub.server import core_plugin_api as api
+from tests.hub.live import engine, sql
 from tests.hub.test_pm_daily_plugin import EVERY_DAY, client, pm_core  # noqa: F401 (fixtures)
 from tests.hub.test_runs import PROJECT
 from tests.hub.test_tasks_plugin import (  # noqa: F401 (fixtures)
@@ -62,7 +64,7 @@ def notices(client, headers, kind: str) -> list[dict]:
 
 
 def sends(hub_db) -> list[tuple]:
-    s = tables.pm_sends
+    s = pm_tables.pm_sends
     return sql(hub_db, select(s.c.kind, s.c.key).order_by(s.c.id))
 
 
@@ -175,6 +177,19 @@ def test_pm_job_a_saturday_in_working_days_sends_and_the_default_does_not(client
     assert run_project(client, saturday)["skipped"] == "not a working day" and sends(hub_db) == []
     configure(client, pm_hub["owner"], "pm", {"working_days": [1, 2, 3, 4, 5, 6]})
     assert "digest" in run_project(client, saturday) and len(sends(hub_db)) == 2
+
+
+def test_pm_job_pm_sends_is_the_plugins_own_table_adopted_as_the_hub_made_it(pm_core, hub_db):  # noqa: F811
+    """pm_sends lives in pm's own metadata; its chain adopts the table the hub's 0086 made, which compares equal."""
+    assert MANIFEST["schema"] == {
+        "metadata": "evo_agents.core_plugins.pm.tables:metadata",
+        "migrations": "evo_agents.core_plugins.pm.migrations",
+        "adopts": ["pm_sends"],
+    }
+    assert [k["name"] for k in MANIFEST["contributes"]["notice_kinds"]] == [job.NOTICE_DAILY, job.NOTICE_ESCALATION]
+    assert api.own_tables(settings.handle()) == ("pm_sends",)
+    with engine(hub_db).begin() as conn:
+        assert api.adopt_tables(conn, pm_tables.metadata, ["pm_sends"]) == []
 
 
 def test_pm_job_waits_for_digest_at_and_sends_once_however_often_it_runs(client, pm_hub, hub_db):

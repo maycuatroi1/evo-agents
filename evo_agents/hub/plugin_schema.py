@@ -29,7 +29,13 @@ from evo_agents.plugins.manifest import table_prefix
 
 log = logging.getLogger(__name__)
 
-HUB_KEYS = ("projects.id", "users.id", "canvas_claims.id", "runs.id")  # what a plugin's foreign key may point at
+HUB_KEYS = (
+    "projects.id",
+    "users.id",
+    "canvas_claims.id",
+    "runs.id",
+    "invites.id",
+)  # what a plugin's foreign key may point at
 VERSION_TABLE = "alembic_version_{prefix}"
 
 

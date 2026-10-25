@@ -15,10 +15,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.marketing import adapters, store
+from evo_agents.core_plugins.marketing import adapters, store, tables
 from evo_agents.core_plugins.marketing.settings import Config
-from evo_agents.hub import tables
-from evo_agents.hub.tables_marketing import MAX_REPLY_TEXT
+from evo_agents.core_plugins.marketing.tables import MAX_REPLY_TEXT
 
 REPLY_DAYS = 7
 MAX_POSTS = 50  # posts read in one pass

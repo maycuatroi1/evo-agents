@@ -1,0 +1,40 @@
+[
+  {
+    "name": "daily",
+    "help": "what was done, late, in review, stale, blocked and to escalate",
+    "project": true,
+    "http": {
+      "method": "GET",
+      "path": "daily"
+    },
+    "args": [
+      {
+        "name": "date",
+        "type": "string",
+        "in": "query",
+        "metavar": "YYYY-MM-DD",
+        "help": "the day of the report (default: today in the project's zone)"
+      }
+    ],
+    "output": {
+      "render": "text",
+      "json": "object",
+      "keys": [
+        "project",
+        "date",
+        "previous_working_day",
+        "done_use_cases",
+        "done_tasks",
+        "sprint",
+        "late",
+        "review",
+        "stale",
+        "blocked",
+        "escalate",
+        "load",
+        "hidden"
+      ],
+      "schema": "PmDaily"
+    }
+  }
+]

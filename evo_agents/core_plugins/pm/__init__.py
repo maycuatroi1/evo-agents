@@ -10,14 +10,19 @@ digest and the escalations each working day from ``digest_at`` (08:00 by default
 
 The route is ``GET /v1/x/pm/<project>/daily?date=`` (``server``); the tools ``pm__daily`` and ``pm__member`` of the
 hub's /mcp (``agent``) answer the same data for the caller; ``evo-agents hub pm daily`` is the client of the route. pm
-reads the tables of the plugins tasks and srs, the plans, runs and decisions of the hub itself and imports neither
+reads the data of the plugins tasks and srs, the plans, runs and decisions of the hub through the API and imports neither
 plugin (import-linter contract ``pm-plugin-own-package``); the status groups and the prefix come from the config of the
 plugin tasks in the project.
 
-The hub imports this package for the manifest only: ``workdays`` counts days, ``settings`` reads the configs, ``reads``
+pm is written against the core plugin API alone (``evo_agents.hub.server.core_plugin_api``): it reads the hub's data
+and sends through it, and keeps one table of its own, ``pm_sends`` (``tables``, adopted by its chain of migrations
+``migrations``). The hub imports this package for the manifest only: ``workdays`` counts days, ``settings`` reads the configs, ``reads``
 reads the facts, ``sprint_view``, ``report`` and ``outcome`` compute from them (no I/O), ``service`` joins the two,
 ``models`` and ``server`` are the API, ``agent`` the tools, ``job`` the morning job.
 """
+
+import json
+from pathlib import Path
 
 SERVER = "evo_agents.core_plugins.pm.server"
 AGENT = "evo_agents.core_plugins.pm.agent"
@@ -115,8 +120,16 @@ MEMBER_SCHEMA = {
 # The native page of the hub's web (web/src/app/(app)/p/[project]/x/pm, web/src/components/pm): the daily report, in the
 # project's menu. The link the digest carries, /p/{project}/x/pm, redirects to it.
 PAGES = {
-    "daily": {"title": "PM daily", "icon": "gauge", "description": "What was done, what is late, blocked and loaded"},
+    "daily": {
+        "title": "PM daily",
+        "icon": "gauge",
+        "description": "What was done, what is late, blocked and loaded",
+        "entry": "pages/daily.html",
+    },
 }
+
+# The commands of `evo-agents hub pm`, a file the CLI reads too without importing the plugin (cli_plugin_commands)
+CLI = json.loads(Path(__file__).with_name("cli.json").read_text(encoding="utf-8"))
 
 MANIFEST = {
     "id": "pm",
@@ -129,7 +142,17 @@ MANIFEST = {
     "plugin_api": 1,
     "permissions": ["notifications:send", "chats:write"],
     "config": CONFIG,
+    "ui": "evo_agents.core_plugins.pm:ui",
+    "schema": {
+        "metadata": "evo_agents.core_plugins.pm.tables:metadata",
+        "migrations": "evo_agents.core_plugins.pm.migrations",
+        "adopts": ["pm_sends"],
+    },
     "contributes": {
+        "notice_kinds": [
+            {"name": "pm_daily", "title": "Daily digest of the project"},
+            {"name": "pm_escalation", "title": "A blocked task to escalate"},
+        ],
         "routes": [{"name": "pm", "title": "The daily report of a project", "python": f"{SERVER}:router"}],
         "mcp_tools": [
             {
@@ -163,7 +186,20 @@ MANIFEST = {
         ],
         "pages": [{"name": name, **page} for name, page in PAGES.items()],
         "tables": [{"name": "pm_sends", "title": "What pm sent a project on a day: its digest and escalations"}],
+        "cli": CLI,
     },
 }
 
-__all__ = ["MANIFEST"]
+API = (1, 3)  # the version of the core plugin API the plugin is written for
+
+
+def manifest() -> dict:
+    """The manifest, once this hub serves the version of the API the plugin is written for. The API is imported here:
+    every process that reads the entry points imports this module, the CLI included."""
+    from evo_agents.hub.server import core_plugin_api as hub
+
+    hub.require(*API)
+    return MANIFEST
+
+
+__all__ = ["MANIFEST", "manifest"]

@@ -20,17 +20,18 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.crm import github, rules, store
-from evo_agents.hub import hub_events, tables
+from evo_agents.hub.server import core_plugin_api as hub
 
 log = logging.getLogger(__name__)
 
 HUB, GITHUB = "hub", "github"  # the sources of crm_cursors
-TOUCH = hub_events.own_kind(store.PLUGIN, "touch")  # what the rule growth of the Loop reads (``loop``)
+TOUCH_EVENT = "touch"  # the plugin's event of a new touch, which emit_event records as TOUCH
+TOUCH = f"plugin.{store.PLUGIN}.{TOUCH_EVENT}"  # what the rule growth of the Loop reads (``loop``)
 FRESH = timedelta(days=7)  # a touch older than this when first read wakes no agent: history is not answered
+JOIN = "join"  # the kind of an invite link of a project
 
 
 @dataclass(frozen=True)
@@ -42,65 +43,57 @@ class Seen:
     at: datetime
 
 
-async def _team(conn: AsyncConnection, project_id: int) -> set[str]:
+async def _team(conn: AsyncConnection, project: str) -> set[str]:
     """The logins that hold an admin grant on the project: its team, never contacts."""
-    g, u = tables.grants, tables.users
-    found = await conn.execute(
-        select(func.lower(u.c.login))
-        .join_from(g, u, u.c.id == g.c.user_id)
-        .where(g.c.project_id == project_id, g.c.role == "admin")
-    )
-    return {login for (login,) in found}
+    grants = await hub.read_grants(conn, store.handle(), project)
+    return {grant.login.lower() for grant in grants if grant.role == "admin"}
 
 
-async def hub_touches(conn: AsyncConnection, project_id: int, since: datetime | None) -> list[Seen]:
+async def hub_touches(conn: AsyncConnection, project: str, since: datetime | None) -> list[Seen]:
     """Invites and grants of the project that happened after ``since`` (all when None)."""
-    i, g, u = tables.invites, tables.grants, tables.users
+    plugin = store.handle()
     found: list[Seen] = []
-    made = select(i.c.id, i.c.for_login, i.c.created_at).where(
-        i.c.project_id == project_id, i.c.kind == "join", i.c.for_login.is_not(None)
-    )
-    for row in await conn.execute(made if since is None else made.where(i.c.created_at > since)):
-        found.append(Seen(row.for_login, "invite_link", f"invite:{row.id}", None, row.created_at))
-    taken = (
-        select(i.c.id, u.c.login, i.c.accepted_at)
-        .join_from(i, u, u.c.id == i.c.accepted_by)
-        .where(i.c.project_id == project_id, i.c.kind == "join", i.c.accepted_at.is_not(None))
-    )
-    for row in await conn.execute(taken if since is None else taken.where(i.c.accepted_at > since)):
-        found.append(Seen(row.login, "invite_link", f"accepted:{row.id}", None, row.accepted_at))
-    given = (
-        select(u.c.login, g.c.granted_at)
-        .join_from(g, u, u.c.id == g.c.user_id)
-        .where(g.c.project_id == project_id, g.c.role != "admin")
-    )
-    for row in await conn.execute(given if since is None else given.where(g.c.granted_at > since)):
-        found.append(Seen(row.login, "grant", "grant", None, row.granted_at))
+    invites = await hub.read_invites(conn, plugin, project, kinds=[JOIN], since=since)
+    for invite in invites:
+        if invite.for_login is not None and (since is None or invite.created_at > since):
+            found.append(Seen(invite.for_login, "invite_link", f"invite:{invite.id}", None, invite.created_at))
+    for invite in invites:
+        taken = invite.accepted_at
+        if invite.accepted_by is not None and taken is not None and (since is None or taken > since):
+            found.append(Seen(invite.accepted_by, "invite_link", f"accepted:{invite.id}", None, taken))
+    for grant in await hub.read_grants(conn, plugin, project):
+        if grant.role != "admin" and (since is None or grant.granted_at > since):
+            found.append(Seen(grant.login, "grant", "grant", None, grant.granted_at))
     return found
 
 
-async def apply(conn: AsyncConnection, project_id: int, label: dict, touches: list[Seen]) -> dict[str, int]:
-    """Make the contacts ``touches`` name and add their touchpoints, oldest first; counts of what was new."""
-    team = await _team(conn, project_id)
+async def apply(conn: AsyncConnection, project_id: int, label, touches: list[Seen]) -> dict[str, int]:
+    """Make the contacts ``touches`` name, with ``label``, and add their touchpoints, oldest first; counts of what was
+    new."""
+    project = (await hub.read_project(conn, store.handle(), project_id)).name
+    team = await _team(conn, project)
     done = {"contacts": 0, "touchpoints": 0}
     for touch in sorted(touches, key=lambda t: t.at):
         login = rules.login_of(touch.login)
         if login is None or login in team:
             continue
-        contact_id, made = await store.ensure_contact(conn, project_id, login, touch.kind, label, touch.at)
+        contact_id, made = await store.ensure_contact(conn, project_id, login, touch.kind, dict(label), touch.at)
         done["contacts"] += made
         new = await store.add_touchpoint(conn, contact_id, touch.kind, touch.ref, touch.at, url=touch.url)
         done["touchpoints"] += new
         if new and touch.kind in github.GITHUB_KINDS and touch.at >= datetime.now(UTC) - FRESH:
             payload = {"v": 1, "contact_id": contact_id, "kind": touch.kind, "ref": touch.ref, "url": touch.url}
-            await hub_events.record(conn, TOUCH, project_id, payload)  # no login: a deleted contact leaves none
+            await hub.emit_event(
+                conn, store.handle(), project, TOUCH_EVENT, payload
+            )  # no login: a deleted one leaves none
     return done
 
 
-async def from_hub(conn: AsyncConnection, project_id: int, label: dict) -> dict[str, int]:
+async def from_hub(conn: AsyncConnection, project: hub.EnabledProject) -> dict[str, int]:
     """Read the invites and grants after the hub cursor and move it."""
+    project_id, label = project.id, project.default_label
     since = await store.cursor(conn, project_id, HUB)
-    touches = await hub_touches(conn, project_id, since)
+    touches = await hub_touches(conn, project.name, since)
     done = await apply(conn, project_id, label, touches)
     if touches:
         await store.move_cursor(conn, project_id, HUB, max(touch.at for touch in touches))
@@ -108,10 +101,11 @@ async def from_hub(conn: AsyncConnection, project_id: int, label: dict) -> dict[
 
 
 async def from_github(
-    conn: AsyncConnection, project_id: int, label: dict, repo: str, fetcher: github.Fetcher
+    conn: AsyncConnection, project: hub.EnabledProject, repo: str, fetcher: github.Fetcher
 ) -> dict[str, int]:
     """Read the issues, pull requests and discussions of ``repo`` after the GitHub cursor and move it. A read that
     fails is logged and changes nothing: the next pass reads the same span again."""
+    project_id, label = project.id, project.default_label
     since = await store.cursor(conn, project_id, GITHUB)
     try:
         touches = github.parse_issues(await fetcher.issues(repo, since))

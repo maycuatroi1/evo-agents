@@ -24,6 +24,9 @@ when the Policy allows (at most ``invite_links_per_week`` links in 7 days, a Git
 outsider's new issue, pull request or discussion its first reply through the posting gate of the plugin marketing.
 """
 
+import json
+from pathlib import Path
+
 SERVER = "evo_agents.core_plugins.crm.server"
 JOB = "evo_agents.core_plugins.crm.job"
 KG = "evo_agents.core_plugins.crm.kg"
@@ -100,8 +103,16 @@ TABLES = (
 )
 
 PAGES = {
-    "contacts": {"title": "Contacts", "icon": "kanban", "description": "The pipeline of the people who came by"},
+    "contacts": {
+        "title": "Contacts",
+        "icon": "kanban",
+        "description": "The pipeline of the people who came by",
+        "entry": "pages/contacts.html",
+    },
 }
+
+# The commands of `evo-agents hub crm`, a file the CLI reads too without importing the plugin (cli_plugin_commands)
+CLI = json.loads(Path(__file__).with_name("cli.json").read_text(encoding="utf-8"))
 
 MANIFEST = {
     "id": "crm",
@@ -114,6 +125,12 @@ MANIFEST = {
     "plugin_api": 1,
     "permissions": [],
     "config": CONFIG,
+    "schema": {
+        "metadata": "evo_agents.core_plugins.crm.tables:metadata",
+        "migrations": "evo_agents.core_plugins.crm.migrations",
+        "adopts": [name for name, _ in TABLES],
+    },
+    "ui": "evo_agents.core_plugins.crm:ui",
     "contributes": {
         "routes": [{"name": "crm", "title": "The contacts of a project", "python": f"{SERVER}:router"}],
         "pages": [{"name": name, **page} for name, page in PAGES.items()],
@@ -174,7 +191,20 @@ MANIFEST = {
             }
         ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
+        "cli": CLI,
     },
 }
 
-__all__ = ["MANIFEST"]
+API = (1, 3)  # the version of the core plugin API the plugin is written for
+
+
+def manifest() -> dict:
+    """The manifest, once this hub serves the version of the API the plugin is written for. The API is imported here:
+    every process that reads the entry points imports this module, the CLI included."""
+    from evo_agents.hub.server import core_plugin_api as hub
+
+    hub.require(*API)
+    return MANIFEST
+
+
+__all__ = ["MANIFEST", "manifest"]

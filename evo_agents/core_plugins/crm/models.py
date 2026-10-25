@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.tables_crm import MAX_NOTE_CHARS
+from evo_agents.core_plugins.crm.tables import MAX_NOTE_CHARS
 
 
 class CrmContact(BaseModel):

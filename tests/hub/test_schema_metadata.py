@@ -37,15 +37,21 @@ def engine_on(db):
     return create_engine("postgresql+psycopg://", creator=lambda: psycopg.connect(db.dsn), poolclass=NullPool)
 
 
+def _plugins(name: str | None) -> bool:
+    """A table crm, pm or marketing keeps, or the version table of a core plugin's chain (``alembic_version_<id>``),
+    as the migration environment leaves them out (``env.py``)."""
+    return name is not None and (name in PLUGIN_OWNED_TABLES or name.startswith("alembic_version_"))
+
+
 def include_name(name, type_, parent_names) -> bool:
     if type_ == "table":
-        return not (name.startswith("procrastinate_") or name in PLUGIN_OWNED_TABLES)
-    return parent_names.get("table_name") not in PLUGIN_OWNED_TABLES
+        return not (name.startswith("procrastinate_") or _plugins(name))
+    return not _plugins(parent_names.get("table_name"))
 
 
 def include_object(item, name, type_, reflected, compare_to) -> bool:
     table = name if type_ == "table" else getattr(getattr(item, "table", None), "name", None)
-    return table not in PLUGIN_OWNED_TABLES
+    return not _plugins(table)
 
 
 def hub_tables() -> set[str]:

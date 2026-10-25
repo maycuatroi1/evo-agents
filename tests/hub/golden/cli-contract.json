@@ -9322,6 +9322,22 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--plugin"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -49981,6 +49997,25 @@
               "description": "only contacts first seen from this source"
             },
             {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer"
+            },
+            {
               "name": "X-Evo-Sink",
               "in": "header",
               "required": false,
@@ -50083,6 +50118,25 @@
               "description": "the contact's GitHub login"
             },
             {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer"
+            },
+            {
               "name": "X-Evo-Sink",
               "in": "header",
               "required": false,
@@ -50181,6 +50235,25 @@
                 "title": "Login"
               },
               "description": "the contact's GitHub login"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub crm` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -50367,6 +50440,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -50453,6 +50545,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -50557,6 +50668,25 @@
                 "minimum": 1,
                 "title": "Channel Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -50661,6 +50791,25 @@
                 "minimum": 1,
                 "title": "Channel Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -50765,6 +50914,25 @@
                 "minimum": 1,
                 "title": "Channel Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -51029,6 +51197,130 @@
           }
         }
       },
+      "/v1/x/marketing/{project}/check": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Check Channels",
+          "description": "Check the health of one account (``channel_id``) or of every one, as ``POST /channels/{id}/check`` does for\neach; what ``evo-agents hub marketing check`` calls. An admin does.",
+          "operationId": "check_channels_v1_x_marketing__project__check_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MarketingCheckIn"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MarketingChannel"
+                    },
+                    "title": "Response Check Channels V1 X Marketing  Project  Check Post"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/marketing/{project}/kill": {
         "post": {
           "tags": [
@@ -51047,6 +51339,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -51141,6 +51452,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -51421,6 +51751,25 @@
                 "title": "State"
               },
               "description": "only posts in this state"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -52169,6 +52518,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -52255,6 +52623,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "requestBody": {
@@ -52358,6 +52745,25 @@
                 "minimum": 1,
                 "title": "Deny Id"
               }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer"
             }
           ],
           "responses": {
@@ -52461,6 +52867,25 @@
                 "title": "Date"
               },
               "description": "the day of the report; today when left out"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub pm daily` prints, as {text}, instead of the report",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub pm daily` prints, as {text}, instead of the report"
             },
             {
               "name": "X-Evo-Sink",
@@ -67459,6 +67884,58 @@
                 }
               },
               "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/cli/plugins": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "The commands plugins add to the CLI",
+          "operationId": "cli_plugins_v1_cli_plugins_get",
+          "parameters": [
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the answer the CLI holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the answer the CLI holds"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "{version, plugins: [{id, version, commands}]}",
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              }
+            },
+            "304": {
+              "description": "unchanged"
             },
             "422": {
               "description": "Validation Error",
@@ -95144,6 +95621,25 @@
           ],
           "title": "MarketingChannelIn"
         },
+        "MarketingCheckIn": {
+          "properties": {
+            "channel_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Channel Id",
+              "description": "one channel; none checks every one"
+            }
+          },
+          "type": "object",
+          "title": "MarketingCheckIn"
+        },
         "MarketingDeny": {
           "properties": {
             "id": {
@@ -98028,42 +98524,14 @@
             "notice_kind": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "enum": [
-                    "push_default_branch",
-                    "merge_default_branch",
-                    "plan_finished",
-                    "run_failed",
-                    "curator_brief",
-                    "curator_paused",
-                    "author_waiting",
-                    "chat_mention",
-                    "chat_added",
-                    "plugin_disabled",
-                    "builder_proposal",
-                    "canvas_baseline",
-                    "merge_paused",
-                    "release",
-                    "pm_daily",
-                    "pm_escalation",
-                    "run_outputs",
-                    "loop_paused",
-                    "goal_review",
-                    "loop_brief",
-                    "plugin_notice",
-                    "autonomy",
-                    "worker_doctor",
-                    "browser_needs_login",
-                    "curator_probe_report",
-                    "opportunity_window"
-                  ]
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Notice Kind",
-              "description": "a notice's kind; null for a decision"
+              "description": "a notice's kind: one of the hub's, or one a core plugin declares (contributes.notice_kinds, its table prefix first); null for a decision"
             },
             "project": {
               "anyOf": [
@@ -102278,6 +102746,18 @@
               ],
               "title": "Url",
               "description": "what the web frames for an isolated plugin's page, a ticket inside it: only in a project that enabled the plugin, null otherwise and for a native page"
+            },
+            "slot": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slot",
+              "description": "where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own"
             }
           },
           "type": "object",

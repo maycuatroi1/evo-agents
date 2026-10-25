@@ -1,4 +1,4 @@
-"""The plugin crm's reads and writes of its own tables (SQLAlchemy Core), and the refusal every module raises.
+"""The plugin crm's reads and writes of its own tables (SQLAlchemy Core), and who may read and write them.
 
 A contact is one row of crm_contacts for each login in a project; a touchpoint is one row for each kind and reference
 of a contact, so a thing read twice is stored once. Deleting a contact deletes its touchpoints and its stage history
@@ -15,23 +15,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.crm import rules
-from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
-from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.tables_crm import STAGES
+from evo_agents.core_plugins.crm import tables as crm
+from evo_agents.core_plugins.crm.tables import STAGES
+from evo_agents.hub.server import core_plugin_api as hub
 
 PLUGIN = "crm"
 SINK_HEADER = "X-Evo-Sink"  # evo_agents.hub.server.plans.SINK_HEADER
 MAX_LIST = 500
-
-
-class CrmError(Exception):
-    """Why the plugin refuses a request, with the HTTP status a route answers; nothing was written."""
-
-    def __init__(self, status: int, message: str):
-        super().__init__(message)
-        self.status = status
-        self.message = message
 
 
 @dataclass(frozen=True)
@@ -46,30 +36,29 @@ class Contact:
     stage_at: datetime
 
 
+def handle() -> hub.Plugin:
+    """The plugin's handle, which every call of the hub's API takes."""
+    return hub.plugin(__name__)
+
+
 # Who may do what
 
 
-def reader(access: ProjectAccess) -> None:
+def reader(access: hub.ProjectRef) -> None:
     if access.role is None:
-        raise CrmError(403, f"reading the contacts of project {access.name} needs a grant on it")
+        raise hub.Refused(403, f"reading the contacts of project {access.name} needs a grant on it")
 
 
-def writer(access: ProjectAccess, what: str) -> None:
+def writer(access: hub.ProjectRef, what: str) -> None:
     reader(access)
-    if not has_role(access.role, "writer"):
-        raise CrmError(403, f"{what} in project {access.name} needs the writer role; you are {access.role}")
+    if not hub.has_role(access.role, "writer"):
+        raise hub.Refused(403, f"{what} in project {access.name} needs the writer role; you are {access.role}")
 
 
-def admin(access: ProjectAccess, what: str) -> None:
+def admin(access: hub.ProjectRef, what: str) -> None:
     reader(access)
-    if not has_role(access.role, "admin"):
-        raise CrmError(403, f"{what} in project {access.name} needs the admin role; you are {access.role}")
-
-
-def visible(access: ProjectAccess, label, sink: str | None) -> bool:
-    """Whether the caller reads a row with ``label`` through ``sink`` (the project's hub sink when none is named)."""
-    through = sink or (access.rules.hub_sink.sink if access.rules.hub_sink else None)
-    return through is not None and access.visible(label, through)
+    if not hub.has_role(access.role, "admin"):
+        raise hub.Refused(403, f"{what} in project {access.name} needs the admin role; you are {access.role}")
 
 
 # Contacts
@@ -82,7 +71,7 @@ def _contact(row) -> Contact:
 
 
 def _columns():
-    c = tables.crm_contacts.c
+    c = crm.contacts.c
     return (c.id, c.login, c.profile_url, c.source, c.stage, c.label, c.first_seen_at, c.stage_at)
 
 
@@ -95,7 +84,7 @@ async def contacts(
     limit: int | None = MAX_LIST,
 ) -> list[Contact]:
     """The contacts of a project, newest first, optionally of one stage or source; ``limit`` None for all."""
-    c = tables.crm_contacts.c
+    c = crm.contacts.c
     query = select(*_columns()).where(c.project_id == project_id).order_by(c.first_seen_at.desc(), c.id.desc())
     if stage:
         query = query.where(c.stage == stage)
@@ -105,7 +94,7 @@ async def contacts(
 
 
 async def contact(conn: AsyncConnection, project_id: int, login: str, *, lock: bool = False) -> Contact | None:
-    c = tables.crm_contacts.c
+    c = crm.contacts.c
     query = select(*_columns()).where(c.project_id == project_id, c.login == login.lower())
     row = (await conn.execute(query.with_for_update() if lock else query)).first()
     return _contact(row) if row else None
@@ -113,7 +102,7 @@ async def contact(conn: AsyncConnection, project_id: int, login: str, *, lock: b
 
 async def counts(conn: AsyncConnection, project_id: int) -> dict[str, int]:
     """stage -> how many contacts are in it now; every stage is there, 0 when empty."""
-    c = tables.crm_contacts.c
+    c = crm.contacts.c
     found = await conn.execute(select(c.stage, func.count()).where(c.project_id == project_id).group_by(c.stage))
     held = {stage: n for stage, n in found}
     return {stage: held.get(stage, 0) for stage in STAGES}
@@ -123,7 +112,7 @@ async def ensure_contact(
     conn: AsyncConnection, project_id: int, login: str, source: str, label: dict, seen_at: datetime
 ) -> tuple[int, bool]:
     """(the id of the contact with ``login``, whether this call made it). The source is the first one it was seen from."""
-    t = tables.crm_contacts
+    t = crm.contacts
     statement = (
         pg_insert(t)
         .values(
@@ -157,7 +146,7 @@ async def add_touchpoint(
     author_id: int | None = None,
 ) -> bool:
     """Whether the touchpoint was new; the same kind and reference twice is stored once."""
-    t = tables.crm_touchpoints
+    t = crm.touchpoints
     statement = (
         pg_insert(t)
         .values(
@@ -169,19 +158,32 @@ async def add_touchpoint(
     return (await conn.execute(statement)).scalar() is not None
 
 
-async def touchpoints(conn: AsyncConnection, contact_id: int) -> list:
-    t, u = tables.crm_touchpoints, tables.users
+@dataclass(frozen=True)
+class Touch:
+    kind: str
+    ref: str
+    url: str | None
+    note: str | None
+    happened_at: datetime
+    author: str | None  # the login of the member who wrote a note
+
+
+async def touchpoints(conn: AsyncConnection, contact_id: int) -> list[Touch]:
+    """The touchpoints of a contact, newest first, a note with the login of its writer."""
+    t = crm.touchpoints
     query = (
-        select(t.c.kind, t.c.ref, t.c.url, t.c.note, t.c.happened_at, u.c.login.label("author"))
-        .join_from(t, u, u.c.id == t.c.author_id, isouter=True)
+        select(t.c.kind, t.c.ref, t.c.url, t.c.note, t.c.happened_at, t.c.author_id)
         .where(t.c.contact_id == contact_id)
         .order_by(t.c.happened_at.desc(), t.c.id.desc())
     )
-    return list(await conn.execute(query))
+    rows = list(await conn.execute(query))
+    ids = {row.author_id for row in rows if row.author_id is not None}
+    logins = {user.id: user.login for user in await hub.read_users(conn, handle(), ids=ids)} if ids else {}
+    return [Touch(r.kind, r.ref, r.url, r.note, r.happened_at, logins.get(r.author_id)) for r in rows]
 
 
 async def history(conn: AsyncConnection, contact_id: int) -> list:
-    h = tables.crm_stage_history.c
+    h = crm.stage_history.c
     found = await conn.execute(
         select(h.stage, h.reached_at).where(h.contact_id == contact_id).order_by(h.reached_at, h.id)
     )
@@ -190,7 +192,7 @@ async def history(conn: AsyncConnection, contact_id: int) -> list:
 
 async def record_stages(conn: AsyncConnection, contact_id: int, stored: str, times: dict[str, datetime]) -> str:
     """Keep the stages ``times`` holds in the history and move the contact to the highest, never down; the stage."""
-    h = tables.crm_stage_history
+    h = crm.stage_history
     await conn.execute(
         pg_insert(h)
         .values([{"contact_id": contact_id, "stage": stage, "reached_at": at} for stage, at in times.items()])
@@ -198,9 +200,9 @@ async def record_stages(conn: AsyncConnection, contact_id: int, stored: str, tim
     )
     stage = rules.advance(stored, times)
     if stage != stored:
-        c = tables.crm_contacts.c
+        c = crm.contacts.c
         await conn.execute(
-            update(tables.crm_contacts)
+            update(crm.contacts)
             .where(c.id == contact_id, c.stage == stored)
             .values(stage=stage, stage_at=times.get(stage, func.now()))
         )
@@ -215,12 +217,12 @@ async def delete_contact(
     found = await contact(conn, project_id, login, lock=True)
     if found is None:
         return None
-    t, sent = tables.crm_touchpoints, tables.crm_invites_sent
+    t, sent = crm.touchpoints, crm.invites_sent
     held = await conn.scalar(select(func.count()).where(t.c.contact_id == found.id))
     await conn.execute(delete(sent).where(sent.c.project_id == project_id, sent.c.login == found.login))
-    await conn.execute(delete(tables.crm_contacts).where(tables.crm_contacts.c.id == found.id))
+    await conn.execute(delete(crm.contacts).where(crm.contacts.c.id == found.id))
     await conn.execute(
-        insert(tables.crm_deletions).values(
+        insert(crm.deletions).values(
             project_id=project_id, contact_id=found.id, touchpoints=held, deleted_by=deleted_by
         )
     )
@@ -232,10 +234,10 @@ async def delete_contact(
 
 async def requested(conn: AsyncConnection, project_id: int, login: str, ref: str) -> bool:
     """Whether contact ``login`` asked for an invite with the request ``ref`` (an invite_request touchpoint)."""
-    c, t = tables.crm_contacts.c, tables.crm_touchpoints.c
+    c, t = crm.contacts.c, crm.touchpoints.c
     found = await conn.scalar(
         select(t.id)
-        .join_from(tables.crm_touchpoints, tables.crm_contacts, c.id == t.contact_id)
+        .join_from(crm.touchpoints, crm.contacts, c.id == t.contact_id)
         .where(c.project_id == project_id, c.login == login.lower(), t.kind == "invite_request", t.ref == ref)
         .limit(1)
     )
@@ -243,20 +245,20 @@ async def requested(conn: AsyncConnection, project_id: int, login: str, ref: str
 
 
 async def sent_for(conn: AsyncConnection, project_id: int, ref: str) -> bool:
-    s = tables.crm_invites_sent.c
+    s = crm.invites_sent.c
     return await conn.scalar(select(s.id).where(s.project_id == project_id, s.ref == ref)) is not None
 
 
 async def sent_this_week(conn: AsyncConnection, project_id: int) -> int:
     """How many invite links @community made in the project in the last 7 days."""
-    s = tables.crm_invites_sent.c
+    s = crm.invites_sent.c
     since = func.now() - timedelta(days=7)
     return int(await conn.scalar(select(func.count()).where(s.project_id == project_id, s.sent_at > since)) or 0)
 
 
 async def add_sent(conn: AsyncConnection, project_id: int, ref: str, login: str, invite_id: int, run_id: int) -> None:
     await conn.execute(
-        insert(tables.crm_invites_sent).values(
+        insert(crm.invites_sent).values(
             project_id=project_id, ref=ref, login=login.lower(), invite_id=invite_id, run_id=run_id
         )
     )
@@ -266,12 +268,12 @@ async def add_sent(conn: AsyncConnection, project_id: int, ref: str, login: str,
 
 
 async def cursor(conn: AsyncConnection, project_id: int, source: str) -> datetime | None:
-    t = tables.crm_cursors
+    t = crm.cursors
     return await conn.scalar(select(t.c.since).where(t.c.project_id == project_id, t.c.source == source))
 
 
 async def move_cursor(conn: AsyncConnection, project_id: int, source: str, since: datetime) -> None:
-    t = tables.crm_cursors
+    t = crm.cursors
     statement = pg_insert(t).values(project_id=project_id, source=source, since=since)
     await conn.execute(
         statement.on_conflict_do_update(

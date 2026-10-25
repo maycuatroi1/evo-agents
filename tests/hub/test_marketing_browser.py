@@ -1,4 +1,4 @@
-"""The script of the browser adapter of the core plugin marketing (``evo_agents.hub.marketing_browser``), as criteria a15
+"""The script of the browser adapter of the core plugin marketing (``evo_agents.hub.browser_post``), as criteria a15
 and a21 of plan autonomous-oss-growth name it: it fills a form and presses a button with no model, stops at a captcha, a
 lock or the login page with a screenshot, never retries, and opens nothing but the compose page and the page of the
 post. No test starts a browser, calls a platform or holds a credential: ``FakePage`` plays a local site."""
@@ -10,8 +10,8 @@ import re
 
 import pytest
 
-from evo_agents.hub import marketing_browser as mb
-from evo_agents.hub.marketing_browser import PROFILES, Post, run_post, trim_session
+from evo_agents.hub import browser_post as mb
+from evo_agents.hub.browser_post import PROFILES, Post, run_post, trim_session
 
 PNG = b"\x89PNG fake"
 VIBLO = PROFILES["viblo"].at("http://site.test")

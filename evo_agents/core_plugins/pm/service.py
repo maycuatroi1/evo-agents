@@ -10,26 +10,27 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.pm import reads, report, settings
 from evo_agents.core_plugins.pm.facts import Inputs
 from evo_agents.core_plugins.pm.models import PmDaily, PmMember
-from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server import core_plugin_api as hub
 
 
 async def facts(
-    conn: AsyncConnection, access: ProjectAccess, sink: str | None, day: date | None
+    conn: AsyncConnection, access: hub.ProjectRef, sink: str | None, day: date | None
 ) -> tuple[Inputs, date]:
     """The facts for the report of ``day`` (today in the project's time zone when None)."""
-    reads.reader(access)
-    config = await settings.config(conn, access.project_id, access.name)
+    found = await reads.reader_for(conn, access, sink)
+    reads.reader(found)
+    config = await settings.config(conn, access.name)
     today = day or datetime.now(config.calendar.zone).date()
-    return await reads.load(conn, access, sink, config, today), today
+    return await reads.load(conn, found, config, today), today
 
 
-async def daily(conn: AsyncConnection, access: ProjectAccess, sink: str | None, day: date | None) -> PmDaily:
+async def daily(conn: AsyncConnection, access: hub.ProjectRef, sink: str | None, day: date | None) -> PmDaily:
     data, today = await facts(conn, access, sink, day)
     return PmDaily.model_validate(report.daily(data, today))
 
 
 async def member(
-    conn: AsyncConnection, access: ProjectAccess, sink: str | None, day: date | None, login: str
+    conn: AsyncConnection, access: hub.ProjectRef, sink: str | None, day: date | None, login: str
 ) -> PmMember:
     data, today = await facts(conn, access, sink, day)
     if login not in {m.login for m in data.members}:

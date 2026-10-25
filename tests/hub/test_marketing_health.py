@@ -15,6 +15,7 @@ pytest.importorskip("psycopg")
 from psycopg import errors
 from sqlalchemy import insert, select
 
+from evo_agents.core_plugins.marketing import tables as marketing_tables
 from evo_agents.core_plugins.marketing.adapters.base import HttpResponse
 from evo_agents.hub import tables
 from tests.hub import live, pg
@@ -37,7 +38,7 @@ def check(world, chan: dict, who="owner", expect=200) -> dict:
 
 
 def stored(world, chan: dict):
-    c = tables.marketing_channels.c
+    c = marketing_tables.marketing_channels.c
     return sql(world.db, select(c.health, c.health_reason, c.health_checked_at).where(c.id == chan["id"]))[0]
 
 
@@ -54,7 +55,7 @@ def test_marketing_health_an_admin_checks_an_account_and_the_result_stays_on_the
     listed = mk.client.get(f"{BASE}/channels", headers=mk.h["eve"]).json()
     assert listed[0]["health"] == "ok" and listed[0]["account_kind"] == "project"
     assert actions(mk.db)[-1] == "marketing.channel.check"
-    assert sql(mk.db, select(tables.marketing_posts.c.id)) == []  # nothing was posted
+    assert sql(mk.db, select(marketing_tables.marketing_posts.c.id)) == []  # nothing was posted
 
 
 def test_marketing_health_only_an_admin_checks_and_a_writer_changes_nothing(mk):
@@ -104,7 +105,7 @@ def test_0129_adds_the_health_of_a_channel_with_unknown_by_default_and_going_bac
     move_to(hub_db, "0128")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    t = tables.marketing_channels
+    t = marketing_tables.marketing_channels
     account = {"project_id": ids["project"], "channel": "x", "account": "evo", "account_kind": "project"}
     with live.connect(hub_db) as conn:
         conn.execute(insert(t).values(account))

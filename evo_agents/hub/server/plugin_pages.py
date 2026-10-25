@@ -54,6 +54,11 @@ class PluginPage(BaseModel):
         description="what the web frames for an isolated plugin's page, a ticket inside it: only in a project that "
         "enabled the plugin, null otherwise and for a native page"
     )
+    slot: str | None = Field(
+        default=None,
+        description="where the web shows the page instead of on a page of its own: decide, a panel of the project's "
+        "Decisions page; null for a page of its own",
+    )
 
 
 # Tickets
@@ -112,9 +117,10 @@ def pages_of(
                 title=item.get("title") or manifest.get("name") or plugin,
                 description=item.get("description", ""),
                 icon=item.get("icon", DEFAULT_ICON),
-                menu=item.get("menu", True),
+                menu=item.get("menu", True) and not item.get("slot"),
                 native=native,
                 url=page_url(secret, plugin, project, sha256, entry) if framed and entry else None,
+                slot=item.get("slot"),
             )
         )
     return found

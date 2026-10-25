@@ -12,27 +12,30 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.marketing import flow, store
 from evo_agents.core_plugins.marketing.models import MarketingPostIn
 from evo_agents.core_plugins.marketing.settings import Config
-from evo_agents.hub import tables
+from evo_agents.hub.server import core_plugin_api as hub
 
 
-async def claim_id_of(conn: AsyncConnection, project_id: int, code: str | None) -> int | None:
+async def claim_id_of(conn: AsyncConnection, project: str, code: str | None) -> int | None:
     """The id of claim ``code`` (CL-<n>) of the project; None for none; 422 when the project has no such claim."""
     if code is None:
         return None
-    c = tables.canvas.claims.c
-    found = await conn.scalar(select(c.id).where(c.project_id == project_id, c.number == int(code.split("-")[1])))
+    found = next(
+        (c.id for c in await hub.read_claim_cards(conn, store.handle(), project, numbers=[int(code.split("-")[1])])),
+        None,
+    )
     if found is None:
         raise store.MarketingError(422, f"no claim {code} on the canvas of this project")
     return found
 
 
-async def values_of(conn: AsyncConnection, project_id: int, user_id: int | None, body: MarketingPostIn, row) -> dict:
+async def values_of(
+    conn: AsyncConnection, project: str, project_id: int, user_id: int | None, body: MarketingPostIn, row
+) -> dict:
     """The row of marketing_posts ``body`` proposes on channel ``row``; 422 when it does not read."""
     if body.kind == "reply" and not body.reply_to:
         raise store.MarketingError(422, "a reply names what it answers (reply_to)")
@@ -48,7 +51,7 @@ async def values_of(conn: AsyncConnection, project_id: int, user_id: int | None,
         "sources": [s.model_dump() for s in body.sources],
         "run_id": body.run_id,
         "proposed_by": user_id,
-        "claim_id": await claim_id_of(conn, project_id, body.claim),
+        "claim_id": await claim_id_of(conn, project, body.claim),
         "signal_key": body.signal_key,
         "scheduled_at": body.scheduled_at,
     }

@@ -24,7 +24,7 @@ fails is logged and changes nothing; the next pass reads the same span again.
 
 ## Model
 
-Five tables, from migration 0124 (`evo_agents/hub/tables_crm.py`):
+Five tables, made by the hub's migration 0124 and adopted by the plugin's own chain (`evo_agents/core_plugins/crm/tables.py`, `crm/migrations/`):
 
 | Table | What it holds |
 | --- | --- |
