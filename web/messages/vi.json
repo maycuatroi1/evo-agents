@@ -5585,8 +5585,10 @@
       }
     },
     "progress": {
-      "at": "{percent}% ({done}/{total}) - {step}: {status}",
-      "complete": "{percent}% ({done}/{total}) - đã xong mọi bước"
+      "label": "Tiến độ plan",
+      "count": "{done}/{total}",
+      "at": "{step}: {status}",
+      "complete": "Đã xong mọi bước"
     }
   },
   "insights": {
