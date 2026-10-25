@@ -42,6 +42,9 @@ const MERGE_QUEUE_CRUMBS: Record<string, "mergeQueueFigures" | "mergeQueuePolicy
   policy: "mergeQueuePolicy",
 };
 
+/** The pages of the visitor's own settings (`/settings/...`), named as the user menu names them. */
+const SETTINGS_CRUMBS: Record<string, "autonomy" | "notifications"> = { autonomy: "autonomy", notifications: "notifications" };
+
 /** The last part of a page's path as a crumb: a name as it is, a number as #id. */
 function itemLabel(part: string): string {
   let text = part;
@@ -56,6 +59,7 @@ function itemLabel(part: string): string {
 function useCrumbs(): Crumb[] {
   const t = useTranslations("nav");
   const tAdmin = useTranslations("admin.nav");
+  const tMenu = useTranslations("userMenu");
   const pathname = usePathname();
   const parts = pathname.split("/").filter(Boolean);
   const workerName = useWorkerName(parts[0] === "workers" ? parts[1] : undefined);
@@ -115,6 +119,9 @@ function useCrumbs(): Crumb[] {
     return crumbs;
   }
   if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
+  // The visitor's own settings, which the user menu opens: Settings, then the page.
+  const settingsPage = parts[0] === "settings" && Object.hasOwn(SETTINGS_CRUMBS, parts[1] ?? "") ? SETTINGS_CRUMBS[parts[1]] : undefined;
+  if (settingsPage) return [{ label: t("groups.settings") }, { label: tMenu(settingsPage) }];
   const hub = [...HOME_NAV, ...HUB_NAV].find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
   // The pools live under Workers: Workers, Pools, then the pool by its name.
   if (hub && parts[0] === "workers" && parts[1] === "pools") {

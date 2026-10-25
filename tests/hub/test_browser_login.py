@@ -250,6 +250,9 @@ def test_login_decision_of_a_plan_run_is_open_once_with_done_and_skip_and_the_li
     row = sql(db, select(d.c.category, d.c.state, d.c.options, d.c.context).where(d.c.run_id == run_id))
     assert len(row) == 1
     category, state, options, context = row[0]
+    reason = sql(db, select(d.c.recommended_reason).where(d.c.run_id == run_id))
+    assert reason == [(browser_login.LOGIN_REASON,)], "the hub recommends signing in, and says why"
+    assert [o["key"] for o in options if o.get("recommended")] == [browser_login.LOGIN_DONE]
     assert (category, state) == (browser_login.CATEGORY, "open")
     assert [o["key"] for o in options] == [browser_login.LOGIN_DONE, browser_login.LOGIN_SKIP]
     assert "northwind.example/login" in context and "the session expired" in context and f"/runs/{run_id}" in context

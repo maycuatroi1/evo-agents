@@ -79,9 +79,10 @@ function InFlightEnd({ run, overview, viewer, now }: { run: OverviewRun; overvie
     return ms === null ? <StatusBadge kind="run" status={run.state} /> : <span data-testid="home-run-duration">{t("ran", { duration: duration(ms) })}</span>;
   }
   if (run.state === "waiting") {
+    // Whose answer it waits for: the person the question is asked of, not always the run's owner.
     const decision = decisionOfRun(overview, run);
-    const owner = decision?.owner ?? run.dispatched_by;
-    return <StatusBadge kind="run" status="waiting" label={owner === viewer ? t("waitingYou") : t("waitingFor", { owner })} />;
+    const asked = decision?.asked_of ?? run.dispatched_by;
+    return <StatusBadge kind="run" status="waiting" label={decision?.yours || asked === viewer ? t("waitingYou") : t("waitingFor", { owner: asked })} />;
   }
   if (run.state === "queued") {
     return (

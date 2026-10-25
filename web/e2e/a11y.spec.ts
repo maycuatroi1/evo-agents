@@ -71,6 +71,7 @@ import {
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
 import { decidePath, goalsPath, itemPath as loopItemPath, loopPath, seedLoop, seedLoopProject } from "./support/loop";
 import { problemsPath, seedProblems } from "./support/problems";
+import { addPushDeviceByApi, fakePush, fakeSubscription } from "./support/push";
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
 import { providerKey, putProviderByApi } from "./support/providers";
@@ -897,6 +898,30 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "notification settings with push on in this browser, a device elsewhere and every kind shown",
+    open: async ({ page, me }) => {
+      await addPushDeviceByApi(me, "Firefox on Linux");
+      await fakePush(page.context(), fakeSubscription("a11y"));
+      await page.goto("/settings/notifications");
+      const main = page.locator("#main");
+      await main.getByTestId("push-browser-on").click();
+      await expect(main.getByTestId("push-browser")).toHaveAttribute("data-state", "on");
+      await expect(main.getByTestId("push-device")).toHaveCount(2);
+      await main.getByTestId("tiers-more").click();
+      await main.getByRole("switch", { name: "Quiet hours" }).click();
+      await expect(main.getByTestId("schedule-quiet-times")).toBeVisible();
+    },
+  },
+  {
+    name: "notification settings on a small screen",
+    open: async ({ page }) => {
+      await fakePush(page.context(), fakeSubscription("a11y-phone"));
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/settings/notifications");
+      await expect(page.locator("#main").getByTestId("push-browser")).toHaveAttribute("data-state", "off");
+    },
+  },
+  {
     name: "accounts with no account yet",
     open: async ({ page }) => {
       await page.goto("/accounts");
@@ -1000,7 +1025,8 @@ const PAGES: Entry[] = [
     name: "runs list with its summary, facets and a failed run",
     open: async ({ page, me }) => {
       await seedRuns(me);
-      await open(page, `/p/${me.projects[0]}/runs`);
+      // Every run: the page opens on Running, and these two are queued and failed.
+      await open(page, `/p/${me.projects[0]}/runs?state=all`);
       await expect(page.locator("#main").getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
       await expect(page.locator("#main").getByTestId("runs-summary")).toBeVisible();
     },
@@ -1318,7 +1344,7 @@ const PAGES: Entry[] = [
     open: async ({ page, me }) => {
       const { live } = await seedRuns(me);
       await page.setViewportSize({ width: 375, height: 812 });
-      await open(page, `/p/${me.projects[0]}/runs`);
+      await open(page, `/p/${me.projects[0]}/runs?state=all`);
       await expect(page.locator("#main").getByTestId("runs-table")).toBeVisible();
       await expectNoSeriousViolations(page, "runs at 375 px");
       await open(page, `/workers/${live.worker.id}`);

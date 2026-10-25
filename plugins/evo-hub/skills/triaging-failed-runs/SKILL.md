@@ -52,4 +52,7 @@ repeat the diagnosis or list again what the `Decision:` line already lists.
 Any other cause (`credentials`, `origin`, `branch_mismatch`, a verify that fails because the code is wrong, a plan,
 author or review run), or a refusal of the hub: ask the owner with a decision of the category `triage`, 2 to 6 options,
 each one an action you can do or a choice the owner makes (`evo-agents worker ask`, see the `using-agent-hub` skill).
-State the diagnosis before you ask, and recommend one option.
+State the diagnosis before you ask, and recommend one option with `--recommended KEY --recommended-reason TEXT`, the
+reason in a sentence the owner can act on from a phone. For an action, add `--reversible yes --undo TEXT` or
+`--reversible no`, and name the failed run and what else the diagnosis rests on with `--evidence run:ID` (repeat it:
+`run:ID:SEQ` for an event of its log, `output:ID`, an https URL).

@@ -105,6 +105,10 @@ def ask_args(**given):
         "option": ["yes=Approved", "later=Not yet"],
         "context_file": None,
         "recommended": None,
+        "recommended_reason": None,
+        "reversible": None,
+        "undo": None,
+        "evidence": None,
         "step": None,
         "attach": None,
         "wait_option": None,
@@ -123,3 +127,46 @@ def test_ask_marks_the_options_that_wait(agent, monkeypatch, capsys):
     assert worker_cli.cmd_ask(ask_args(wait_option=["yes", "later"])) == 1
     assert "names every one" in capsys.readouterr().err
     assert len(sent) == 1
+
+
+def test_ask_sends_the_recommended_reason_reversible_undo_and_evidence(agent, monkeypatch, capsys):
+    sent = hub_answering(monkeypatch, {"id": 43})
+    monkeypatch.setattr(worker_cli.output_cli, "attached", lambda home, run_id, files: {})
+    given = ask_args(
+        recommended="yes",
+        recommended_reason="The baseline W44 was approved on the canvas.",
+        undo="Reopen the baseline.",
+        evidence=["run:12", " P-3/E-2 ", "code:fleet:./api/db.py:9"],
+    )
+    assert worker_cli.cmd_ask(given) == 0
+    ((_, _, body),) = sent
+    assert {key: body[key] for key in ("recommended", "recommended_reason", "reversible", "undo", "evidence")} == {
+        "recommended": "yes",
+        "recommended_reason": "The baseline W44 was approved on the canvas.",
+        "reversible": True,  # --undo says it can be undone
+        "undo": "Reopen the baseline.",
+        "evidence": ["run:12", "P-3/E-2", "code:fleet:api/db.py:9"],
+    }
+    assert "warning" not in capsys.readouterr().err
+    assert worker_cli.cmd_ask(ask_args(recommended="later", reversible="no")) == 0
+    assert sent[-1][2]["reversible"] is False and "undo" not in sent[-1][2] and "evidence" not in sent[-1][2]
+    for refused, why in (
+        (ask_args(recommended_reason="Because."), "name it with --recommended"),
+        (ask_args(recommended="yes", recommended_reason="x" * 501), "1 to 500 characters"),
+        (ask_args(reversible="no", undo="Reopen it."), "goes with --reversible yes"),
+        (ask_args(evidence=["somewhere"]), "--evidence: evidence is run:ID"),
+        (ask_args(evidence=[f"run:{n}" for n in range(1, 22)]), "at most 20 refs"),
+    ):
+        assert worker_cli.cmd_ask(refused) == 1
+        assert why in capsys.readouterr().err
+    assert len(sent) == 2
+
+
+def test_ask_without_recommended_warns_on_stderr_and_still_asks(agent, monkeypatch, capsys):
+    sent = hub_answering(monkeypatch, {"id": 44})
+    monkeypatch.setattr(worker_cli.output_cli, "attached", lambda home, run_id, files: {})
+    assert worker_cli.cmd_ask(ask_args()) == 0
+    printed = capsys.readouterr()
+    assert printed.err.startswith("warning: no --recommended") and "--recommended-reason TEXT" in printed.err
+    assert "Decision #44 is open" in printed.out
+    assert len(sent) == 1 and "recommended" not in sent[0][2]

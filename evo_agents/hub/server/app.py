@@ -304,9 +304,11 @@ def create_app(config: HubConfig) -> FastAPI:
         output_notices,
         overview,
         proposals,
+        push,
         release_claims,
         releases,
         run_outputs,
+        today,
     )
 
     for routes in (
@@ -318,7 +320,10 @@ def create_app(config: HubConfig) -> FastAPI:
         notifications.router,
         notifications.worker_router,
         output_notices.router,  # the notices a member turned off
+        push.router,  # a member's push devices (evo_agents.hub.server.push_store)
+        push.config_router,  # what a client needs to subscribe, without a sign-in
         overview.router,
+        today.router,  # what waits for a member and what changed since they last looked
         curator.router,
         proposals.router,
         proposals.worker_router,

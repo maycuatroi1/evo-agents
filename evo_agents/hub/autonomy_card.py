@@ -171,9 +171,9 @@ def card(snapshot: Mapping, who: Who) -> Card:
         lines.append("- Never do (deny): " + "; ".join(_named(k, classes[k], DENY) for k in by_mode[DENY]) + ".")
     if by_mode[ASK]:
         lines.append(
-            "- Ask first with `evo-agents worker ask --category CATEGORY` and wait for the answer (ask): "
-            + "; ".join(_ask(k, classes[k]) for k in by_mode[ASK])
-            + "."
+            "- Ask first with `evo-agents worker ask --category CATEGORY --recommended KEY --recommended-reason TEXT "
+            "--reversible yes --undo TEXT` (or `--reversible no` when it cannot be undone), and wait for the answer "
+            "(ask): " + "; ".join(_ask(k, classes[k]) for k in by_mode[ASK]) + "."
         )
     if by_mode[NOTIFY]:
         named = "; ".join(_named(k, classes[k], NOTIFY) for k in by_mode[NOTIFY])

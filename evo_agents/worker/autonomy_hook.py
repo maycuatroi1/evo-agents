@@ -119,9 +119,10 @@ def ask_refusal(hit: Hit, mode: str, source: str) -> str:
     categories = CLASS_CATEGORIES.get(hit.klass, ("scope",))
     other = f" (or --category {categories[1]} for a change of real data)" if len(categories) > 1 else ""
     return (
-        f"{refusal(hit, mode, source)}. Ask first: `evo-agents worker ask --category {categories[0]}`{other}, and wait "
-        f"for the answer; when it lets you, run the command again as `{DECISION_VARIABLE}=<the decision's id> "
-        "<command>`."
+        f"{refusal(hit, mode, source)}. Ask first: `evo-agents worker ask --category {categories[0]}`{other}, with "
+        "the option you recommend and why (`--recommended KEY --recommended-reason TEXT`) and whether the command can "
+        "be undone (`--reversible yes --undo TEXT`, or `--reversible no`), and wait for the answer; when it lets you, "
+        f"run the command again as `{DECISION_VARIABLE}=<the decision's id> <command>`."
     )
 
 

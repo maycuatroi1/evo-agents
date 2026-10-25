@@ -399,6 +399,11 @@ export type DecisionAsk = {
   context?: string | null;
   options?: { key: string; label: string; description?: string }[];
   recommended?: string | null;
+  /** Why the agent recommends its option, whether the act can be undone and how, and what the question rests on. */
+  recommended_reason?: string | null;
+  reversible?: boolean | null;
+  undo?: string | null;
+  evidence?: string[];
   /** Outputs of the run the question carries (`worker ask --attach`). */
   output_ids?: number[];
 };

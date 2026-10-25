@@ -73,6 +73,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.opportunity_deadlines``, hourly: the owner of each open opportunity whose window ends gets one notice at 14
   days left, one at 3 and one the day after, each once per value of the date; the hub changes no status
   (``evo_agents.hub.server.opportunity_deadlines``).
+- ``hub.today_digest``, every minute: the summary push of Today to each member with a push device who has been away
+  from the hub for 8 hours, at the local time they chose, when something changed since they last looked, once a day
+  (``evo_agents.hub.server.today_digest``, through ``evo_agents.hub.server.brief``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
@@ -435,6 +438,15 @@ async def opportunity_deadlines(context: JobContext, timestamp: int | None = Non
     from evo_agents.hub.server.opportunity_deadlines import remind
 
     return await remind(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.TODAY_DIGEST, pass_context=True, queueing_lock=jobs.TODAY_DIGEST)
+async def today_digest(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.brief import send_today_digests
+
+    found = hub(context)
+    return await send_today_digests(found.engine, config=found.config)
 
 
 @queue.task(name=jobs.LOOP_TICK, pass_context=True)

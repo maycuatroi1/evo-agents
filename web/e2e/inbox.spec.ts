@@ -243,6 +243,49 @@ test("the owner answers a decision from the Inbox, and an answered decision take
   await expect(main(page).getByTestId("inbox-rest").locator(`[data-decision-id="${decision}"]`)).toHaveAttribute("data-decision-state", "answered");
 });
 
+test("the sheet's card says why the agent picks its option, that the act cannot be undone, and links its evidence", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const { live, run } = await planRunUnderway(me, project, uniqueName("inbox-why"));
+  const decision = await askDecision(live, run.id, SECOND, "3", {
+    category: "delete_data",
+    options: [
+      { key: "drop", label: "Drop it" },
+      { key: "keep", label: "Keep it" },
+    ],
+    recommended: "drop",
+    recommended_reason: "The new bucket has every object, checked by the verify of step 2.",
+    reversible: false,
+    evidence: [`run:${run.id}:2`, "P-1/E-1"],
+  });
+  await open(page, `/inbox?decision=${decision}`);
+  const sheet = page.getByTestId("decision-sheet");
+  const grounds = sheet.getByTestId("decision-grounds");
+  await expect(grounds.getByTestId("decision-reason")).toHaveText("Why “Drop it”: The new bucket has every object, checked by the verify of step 2.");
+  await expect(grounds.getByTestId("decision-irreversible")).toHaveText("Cannot be undone.");
+  await expect(grounds.getByTestId("decision-undo")).toHaveCount(0);
+  const links = grounds.getByTestId("decision-evidence-link");
+  await expect(links).toHaveText([`Run #${run.id}, event 2`, "P-1, evidence E-1"]);
+  await expect(links.nth(1)).toHaveAttribute("href", `/p/${project}/problems/P-1`);
+});
+
+test("the Inbox's Notices still turn a notice off, and lead to every notification setting", async ({ page, member }) => {
+  await member();
+  await open(page, "/inbox");
+  await main(page).getByTestId("inbox-notice-settings").click();
+  const dialog = page.getByTestId("notice-settings-dialog");
+  const files = dialog.getByRole("switch", { name: "Files from your runs" });
+  await expect(files).toBeChecked();
+  await files.click();
+  await expect(toast(page, "You no longer get the notice: Files from your runs")).toBeVisible();
+  await expect(files).not.toBeChecked();
+  await dialog.getByRole("link", { name: "All notification settings" }).click();
+  await expect(page).toHaveURL(/\/settings\/notifications$/);
+  // The page holds what the dialog changed.
+  await expect(main(page).getByTestId("notice-run_outputs").getByRole("switch")).not.toBeChecked();
+});
+
 test("an answer sent while the page was open is refused with the hub's reason", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];

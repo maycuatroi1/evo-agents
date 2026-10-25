@@ -30,6 +30,7 @@ import {
   startRun,
   uploadDiff,
 } from "./support/runs";
+import { addPushDeviceByApi } from "./support/push";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
@@ -41,7 +42,7 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
  * (admin, plans, memories, skills, knowledge graph, workers, secrets and their shares, accounts, runs), the org chart three units deep, Insights with its charts and a wide table,
- * Home, the Inbox and a decision in it, the sign-in page, the product page, the Monitor, chats and an SRS version's review with @ba's
+ * Home, the Inbox and a decision in it, the notification settings, the sign-in page, the product page, the Monitor, chats and an SRS version's review with @ba's
  * findings, seeded with long unbroken names, at 375, 768
  * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
  * into its two scroll regions and the Monitor puts its list beside the grid.
@@ -248,6 +249,14 @@ test("the autonomy settings never scroll sideways at 375, 768, 1024 and 1440 px"
   await noSidewaysScroll(page, WIDTHS, [{ path: "/settings/autonomy", ready: shown("autonomy-classes") }]);
 });
 
+test("the notification settings never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(60_000);
+  const me = await member([{ role: "reader", maxLevel: "internal" }]);
+  // A device whose name is one long unbroken word, as the list and its buttons show it.
+  await addPushDeviceByApi(me, LONG);
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/settings/notifications", ready: shown("tiers-card") }]);
+});
+
 for (const width of WIDTHS) {
   test(`runs pages never scroll sideways at ${width} px`, async ({ page, member }) => {
     const me = await member([{ role: "writer", maxLevel: "internal" }]);
@@ -263,7 +272,8 @@ for (const width of WIDTHS) {
     await runToReview(live, run.id);
     await uploadDiff(live, run.id, `diff --git a/${LONG}/${LONG}.ts b/${LONG}/${LONG}.ts\n--- a/${LONG}/${LONG}.ts\n+++ b/${LONG}/${LONG}.ts\n@@ -1 +1 @@\n-${LONG}${LONG}\n+${LONG}${LONG}${LONG}\n`);
     await noSidewaysScroll(page, [width], [
-      { path: `/p/${project}/runs`, ready: shown("runs-table") },
+      // Every run: the page opens on Running, and this run is in review.
+      { path: `/p/${project}/runs?state=all`, ready: shown("runs-table") },
       { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
       { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
       {

@@ -76,6 +76,7 @@ from evo_agents.hub.autonomy_card import DECISION_CATEGORIES as DECISION_CATEGOR
 from evo_agents.hub.autonomy_card import DECISION_CATEGORY_TEXT as DECISION_CATEGORY_TEXT
 from evo_agents.hub.autonomy_card import PROMPTED_DECISION_CATEGORIES as PROMPTED_DECISION_CATEGORIES
 from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, ships, with_card
+from evo_agents.hub.decision_asks import ASK_RULE
 from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.record_rule import record_rule
@@ -389,6 +390,7 @@ NOTICE_KINDS = (
     PROBE_REPORT_NOTICE,
     "opportunity_window",  # the window of an open opportunity closes or closed (``server.opportunity_deadlines``)
     "market_install_request",  # a project admin asks the hub admins to install a plugin of a market (``server.market``)
+    "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
@@ -906,10 +908,11 @@ def _plan_rules(autonomy) -> list[str]:
         record_rule("KEY", "a step"),
         *decision_lines("its step", autonomy),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
-        f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step KEY`, with {fewest} to {most} options. It prints "
-        "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
-        "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
-        "does not count toward the run's timeout.",
+        f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --recommended-reason TEXT --step KEY`, with {fewest} to "
+        f"{most} options. It prints the decision's id. Go on with the work that does not depend on the answer; when "
+        "none is left, end your turn. The answer comes back in this session as a message naming the decision's id, "
+        "and the time you wait does not count toward the run's timeout.",
+        ASK_RULE,
         WAIT_RULE.format(step="KEY"),
         RELAY_RULE,
         ATTACH_RULE,
@@ -1043,10 +1046,11 @@ def _step_session_rules(key: str, autonomy) -> list[str]:
         record_rule(key, "the step"),
         *decision_lines("the step", autonomy),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
-        f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step {key}`, with {fewest} to {most} options. It "
-        "prints the decision's id. Go on with the work of the step that does not depend on the answer; when none is "
-        "left, end your turn. The answer comes back in this session as a message naming the decision's id, and the "
-        "time you wait does not count toward the run's timeout.",
+        f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --recommended-reason TEXT --step {key}`, with {fewest} "
+        f"to {most} options. It prints the decision's id. Go on with the work of the step that does not depend on the "
+        "answer; when none is left, end your turn. The answer comes back in this session as a message naming the "
+        "decision's id, and the time you wait does not count toward the run's timeout.",
+        ASK_RULE,
         WAIT_RULE.format(step=key),
         RELAY_RULE,
         ATTACH_RULE,

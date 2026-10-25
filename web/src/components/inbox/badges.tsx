@@ -3,6 +3,7 @@
 import {
   AtSign,
   CalendarClock,
+  CalendarDays,
   Boxes,
   CircleCheck,
   CirclePause,
@@ -115,6 +116,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   curator_probe_report: { icon: FlaskConical },
   opportunity_window: { icon: CalendarClock },
   market_install_request: { icon: Store },
+  today: { icon: CalendarDays },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */

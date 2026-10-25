@@ -91,6 +91,10 @@ def test_autonomy_level_merge_under_ask_waits_for_the_principal_then_merges_once
     ((decision_id, decided_run, key, state),) = autonomy_decisions(world)
     assert (decided_run, key, state) == (run_id, MERGE_KEY, "open")
     assert f"decision #{decision_id}" in entry["reason"]
+    d = tables.decisions
+    asked = select(d.c.options, d.c.recommended_reason).where(d.c.id == decision_id)
+    ((options, reason),) = sql(world.db, asked)
+    assert reason is None and not any(o.get("recommended") for o in options), "the principal chose to be asked"
     gate_pass(world)  # still open: it waits, and asks no second time
     assert one(world)["state"] == "judging" and len(autonomy_decisions(world)) == 1
     ((target, *_),) = audit_rows(world.db, "autonomy.asked")

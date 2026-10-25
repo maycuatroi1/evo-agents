@@ -26,6 +26,8 @@ Standard library only, besides ``evo_agents.kg.serve`` and the hub's pure module
 from __future__ import annotations
 
 from evo_agents.hub.chats import READ_REF
+from evo_agents.hub.decision_asks import FORMS as EVIDENCE_FORMS
+from evo_agents.hub.decision_asks import MAX_EVIDENCE, MAX_REASON_CHARS, MAX_REF_CHARS, MAX_UNDO_CHARS
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
 from evo_agents.hub.intakes import REF as INTAKE_REF
 from evo_agents.hub.intakes import STATUSES as INTAKE_STATUSES
@@ -396,7 +398,9 @@ HUB_TOOLS = [
             "answer on any of them or on this machine with `evo-agents hub decision answer`. The first answer wins "
             "and comes back here with the words they wrote. It waits about 20 seconds; with no answer it says so, "
             "and you call it again with decision_id to wait longer or go on, and a late answer reaches you with the "
-            "person's next message. Outside a hub project's session it is refused: use AskUserQuestion."
+            "person's next message. The person may answer on a phone with one tap: give a question with a natural "
+            "choice recommended and recommended_reason, an act reversible (with undo when it can be undone), and "
+            "evidence for what it rests on. Outside a hub project's session it is refused: use AskUserQuestion."
         ),
         "inputSchema": {
             "type": "object",
@@ -422,6 +426,25 @@ HUB_TOOLS = [
                     },
                 },
                 "recommended": {"type": "string", "description": "the key or the label of the option you recommend"},
+                "recommended_reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": MAX_REASON_CHARS,
+                    "description": "why you recommend that option, in a sentence or two; needs recommended",
+                },
+                "reversible": {"type": "boolean", "description": "for an act: whether it can be undone"},
+                "undo": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": MAX_UNDO_CHARS,
+                    "description": "how to undo the act; needs reversible true",
+                },
+                "evidence": {
+                    "type": "array",
+                    "maxItems": MAX_EVIDENCE,
+                    "items": {"type": "string", "minLength": 1, "maxLength": MAX_REF_CHARS},
+                    "description": f"what the question rests on, each a ref: {EVIDENCE_FORMS}",
+                },
                 "context": {"type": "string", "minLength": 1, "maxLength": 16000, "description": "markdown"},
                 "step": _STEP,
                 "decision_id": {

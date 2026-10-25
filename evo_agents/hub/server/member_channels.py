@@ -333,9 +333,10 @@ async def prepare(
 ) -> Outgoing:
     """``notification`` with what a channel cleared for ``level`` and ``location`` may send of it in ``extra``: only
     ``{"restricted": true}`` when its project is kept from the channel (or it is a decision or proposal of no project),
-    else its decision (question, category, plan_id, step_key, options, state, run_kind, run_title) and its proposal
-    (title, tier, kind, lens, evidence_count, state), as Telegram's channel reads them, and for a decision or a notice
-    of a run's files that carries files a channel may send, those files (``outputs``: at most
+    else its decision (question, category, plan_id, step_key, options, state, run_kind, run_title, and the
+    recommended_reason, reversible, undo and evidence of ``decision_models``, an empty list for no evidence) and its
+    proposal (title, tier, kind, lens, evidence_count, state), as Telegram's channel reads them, and for a decision or
+    a notice of a run's files that carries files a channel may send, those files (``outputs``: at most
     ``output_notices.CHANNEL_OUTPUTS``, none of source tool, each with a presigned GET of its bytes) and how many there
     are (``outputs_count``)."""
     restricted = notification.kind in ANSWERABLE
@@ -355,9 +356,13 @@ async def prepare(
             d.c.state,
             r.c.kind.label("run_kind"),
             r.c.title.label("run_title"),
+            d.c.recommended_reason,
+            d.c.reversible,
+            d.c.undo,
+            d.c.evidence,
         ).join_from(d, r, r.c.id == d.c.run_id)
         row = (await conn.execute(query.where(d.c.id == notification.decision_id))).one_or_none()
-        extra["decision"] = None if row is None else dict(row._mapping)
+        extra["decision"] = None if row is None else {**row._mapping, "evidence": row.evidence or []}
     if notification.proposal_id is not None:
         p = tables.proposals
         query = select(p.c.title, p.c.tier, p.c.kind, p.c.lens, p.c.evidence_count, p.c.state)

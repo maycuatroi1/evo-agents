@@ -225,6 +225,9 @@ MARKET_TABLES = frozenset({"market_sources", "plugin_publishers", "market_instal
 # migration 0148: worker pools, the projects of each and their join tokens (plan worker-pools)
 POOL_TABLES = frozenset({"worker_pools", "worker_pool_projects", "worker_join_tokens"})
 PROVIDER_ACCOUNT_TABLES = frozenset({"provider_accounts"})  # migration 0151 (plan model-providers)
+# migration 0156: the push devices of members and their notification preferences (plan hub-mobile-phase-0)
+PUSH_TABLES = frozenset({"push_devices", "notification_preferences"})
+TODAY_TABLES = frozenset({"today_marks"})  # migration 0158: what Today keeps of a member (plan hub-mobile-phase-0)
 
 
 def plugin_version_tables() -> frozenset[str]:

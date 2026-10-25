@@ -430,7 +430,8 @@
     "shortcuts": "Phím tắt",
     "logout": "Đăng xuất",
     "loggingOut": "Đang đăng xuất…",
-    "logoutFailed": "Chưa đăng xuất được. Thử lại sau ít phút."
+    "logoutFailed": "Chưa đăng xuất được. Thử lại sau ít phút.",
+    "notifications": "Thông báo"
   },
   "locales": {
     "vi": "Tiếng Việt",
@@ -635,6 +636,44 @@
       "parked": "đã park <time></time>",
       "reply": "Trả lời",
       "replyLabel": "Trả lời trong chat của run #{id}"
+    },
+    "today": {
+      "title": "Today",
+      "window": {
+        "seen": "Từ lần bạn xem trước",
+        "day": "24 giờ qua",
+        "week": "7 ngày qua"
+      },
+      "settings": "Thông báo",
+      "items": "Những gì đã thay đổi",
+      "caughtUp": "Bạn đã xem hết.",
+      "more": "Còn nhiều thay đổi hơn thế này. Phần còn lại hiện ở lần sau.",
+      "loadFailed": "Không đọc được Today từ hub.",
+      "retry": "Thử lại",
+      "loading": "Đang tải Today",
+      "kind": {
+        "release": "Bản phát hành",
+        "step_done": "Bước plan đã xong",
+        "run_failed": "Run thất bại",
+        "run_parked": "Run đã park",
+        "problem": "Metric thay đổi",
+        "cost": "Chi phí",
+        "proposal": "Đề xuất"
+      },
+      "summary": {
+        "asks": "{count, plural, =0 {Không có câu hỏi nào chờ bạn trả lời} other {# câu hỏi chờ bạn trả lời}}",
+        "nothing": "{asks}, và không có gì thay đổi {window, select, seen {từ lần bạn xem trước} day {trong 24 giờ qua} other {trong 7 ngày qua}}.",
+        "changed": "{asks}. {window, select, seen {Từ lần bạn xem trước} day {Trong 24 giờ qua} other {Trong 7 ngày qua}}: {parts}{more, select, yes {, và còn nữa} other {}}.",
+        "part": {
+          "release": "{count, plural, other {# bản phát hành}}",
+          "step_done": "{count, plural, other {# bước plan đã xong}}",
+          "run_failed": "{count, plural, other {# run thất bại}}",
+          "run_parked": "{count, plural, other {# run đã park}}",
+          "problem": "{count, plural, other {# bài toán có metric thay đổi}}",
+          "cost": "{count, plural, other {chi phí run của bạn ở # dự án}}",
+          "proposal": "{count, plural, other {# đề xuất chờ trả lời}}"
+        }
+      }
     }
   },
   "project": {
@@ -6599,6 +6638,7 @@
       "worker_doctor": "Doctor của một worker được chia phát hiện mức high",
       "curator_probe_report": "Báo cáo probe hằng tuần của Curator",
       "opportunity_window": "Hạn của một cơ hội sắp đóng",
+      "today": "Tóm tắt Today",
       "market_install_request": "Một dự án xin cài plugin từ market"
     },
     "item": {
@@ -6819,7 +6859,8 @@
         }
       },
       "saved": "{on, select, true {Bạn sẽ nhận lại thông báo} other {Bạn sẽ không nhận thông báo nữa}}: {kind}",
-      "failed": "Không đổi được thông báo"
+      "failed": "Không đổi được thông báo",
+      "allSettings": "Mọi cài đặt thông báo"
     },
     "group": {
       "title": "Run #{id}",
@@ -6834,6 +6875,29 @@
       "today": "Hôm nay",
       "yesterday": "Hôm qua",
       "summary": "{count, plural, other {# thông báo}}{unread, plural, =0 {} other {, # chưa đọc}}"
+    },
+    "grounds": {
+      "label": "Lý do, cách hoàn tác và bằng chứng",
+      "why": "Vì sao chọn “{option}”:",
+      "whyPick": "Vì sao agent chọn:",
+      "reversible": "Hoàn tác được:",
+      "undoUnsaid": "agent chưa nói cách làm.",
+      "irreversible": "Không hoàn tác được.",
+      "evidence": "{count, plural, other {Bằng chứng (#)}}",
+      "ref": {
+        "run": "Run #{id}",
+        "runEvent": "Run #{id}, sự kiện {seq}",
+        "output": "File #{id} của run #{run}",
+        "problem": "{problem}, bằng chứng {evidence}",
+        "url": "{page}",
+        "memory": "Memory #{id}, bản {revision}",
+        "code": "{repo}: {path}",
+        "codeLine": "{repo}: {path}, dòng {line}",
+        "session": "Phiên {id}",
+        "transcript": "Phiên {id}, dòng {line}",
+        "other": "{ref}",
+        "newTab": "(mở trong tab mới)"
+      }
     }
   },
   "toast": {
@@ -11058,6 +11122,142 @@
     "tooMany": "Một tin nhắn mang tối đa {max} file: không đính kèm {names}.",
     "notReady": "Có file chưa tải lên được: hãy tải lại hoặc bỏ file đó rồi gửi.",
     "files": "File của tin nhắn này"
+  },
+  "notifications": {
+    "title": "Thông báo",
+    "browser": {
+      "title": "Push trên trình duyệt này",
+      "checking": "Đang kiểm tra trình duyệt này làm được gì",
+      "hubOff": "Hub này đang tắt push",
+      "hubOffText": "Quản trị viên của hub bật Web Push bằng một khoá VAPID. Inbox và Telegram vẫn đưa mọi thông báo tới bạn.",
+      "configFailed": "Không đọc được hub có gửi push hay không.",
+      "retry": "Thử lại",
+      "homeScreen": "Hãy thêm hub vào màn hình chính trước",
+      "homeScreenText": "Trên iPhone hay iPad, Safari chỉ đưa push tới web app được mở từ màn hình chính.",
+      "homeScreenSteps": "Cách thêm hub vào màn hình chính",
+      "homeScreenShare": "Trong Safari, chạm Chia sẻ.",
+      "homeScreenAdd": "Chọn Thêm vào MH chính, rồi chạm Thêm.",
+      "homeScreenOpen": "Mở hub từ biểu tượng mới và quay lại trang này để bật push.",
+      "unsupported": "Trình duyệt này không nhận được push",
+      "unsupportedText": "Hãy dùng Chrome, Edge, Firefox hay Safari bản mới, trên địa chỉ https của hub.",
+      "denied": "Trang này đang bị chặn thông báo",
+      "deniedText": "Cho phép thông báo của trang này trong cài đặt của trình duyệt, rồi bật push ở đây.",
+      "off": "Push đang tắt trên trình duyệt này",
+      "offText": "Bật lên để nhận các câu hỏi dành cho bạn, và những loại bạn chọn bên dưới, khi hub đang đóng.",
+      "on": "Push đang bật trên trình duyệt này",
+      "onText": "{device} nhận những loại bạn chọn bên dưới, trừ trong giờ yên lặng của bạn.",
+      "turnOn": "Bật push cho trình duyệt này",
+      "turningOn": "Đang bật",
+      "turnOff": "Tắt",
+      "turningOff": "Đang tắt",
+      "test": "Gửi thử",
+      "testing": "Đang gửi",
+      "enabled": "Đã bật push cho trình duyệt này",
+      "enabledText": "Gửi thử để xem một thông báo tới.",
+      "disabled": "Đã tắt push cho trình duyệt này",
+      "enableFailed": "Không bật được push",
+      "subscribeFailed": "Trình duyệt không đăng ký được: {message}",
+      "tooMany": "Bạn đã có đủ số thiết bị hub giữ. Hãy gỡ một thiết bị bên dưới rồi thử lại.",
+      "disableFailed": "Không tắt được push",
+      "dismissed": "Trình duyệt chưa cho phép thông báo. Bấm nút lần nữa và chọn Cho phép."
+    },
+    "devices": {
+      "title": "Thiết bị của bạn",
+      "count": "{count, plural, other {# thiết bị}}",
+      "empty": "Chưa có thiết bị nào nhận push",
+      "emptyText": "Bật push trên từng trình duyệt bạn dùng. App điện thoại của hub sẽ tự thêm vào đây khi có.",
+      "kind": {
+        "webpush": "Trình duyệt",
+        "apns": "App trên iPhone hay iPad",
+        "fcm": "App trên Android"
+      },
+      "thisBrowser": "Trình duyệt này",
+      "added": "Thêm ngày {date}",
+      "lastPush": "push gần nhất <time></time>",
+      "noPush": "chưa nhận push nào",
+      "test": "Gửi thử",
+      "testLabel": "Gửi push thử tới {device}",
+      "testing": "Đang gửi",
+      "testSent": "Đã gửi push thử tới {device}",
+      "testSentText": "Thông báo sẽ hiện trong vài giây.",
+      "testRemoved": "{device} không còn nhận push",
+      "testRemovedText": "Dịch vụ push không còn biết thiết bị này, nên hub đã gỡ nó.",
+      "testFailed": "Push thử không đi được",
+      "testFailedFor": "Không gửi được push thử tới {device}",
+      "testOff": "Hiện hub không gửi tới loại thiết bị này.",
+      "remove": "Gỡ",
+      "removeLabel": "Gỡ {device}",
+      "removeTitle": "Gỡ {device}?",
+      "removeText": "Thiết bị này sẽ không nhận push từ hub nữa. Bật push lại ở đó để thêm lại.",
+      "removeConfirm": "Gỡ thiết bị",
+      "removing": "Đang gỡ",
+      "keep": "Giữ lại",
+      "removed": "Đã gỡ {device}",
+      "loadFailed": "Không đọc được danh sách thiết bị từ hub.",
+      "retry": "Thử lại"
+    },
+    "tiers": {
+      "title": "Loại nào được push",
+      "description": "Push ngay gửi tới thiết bị của bạn tức thì. Today và Inbox chờ tới khối Today trên Home. Chỉ Inbox thì chỉ giữ trong Inbox. Dù chọn gì, Inbox, chuông và Telegram vẫn nhận mọi thông báo.",
+      "choice": {
+        "default": "Mặc định: {tier}",
+        "interrupt": "Push ngay",
+        "brief": "Today và Inbox",
+        "off": "Chỉ Inbox"
+      },
+      "kind": {
+        "decision": "Câu hỏi của agent",
+        "proposal": "Đề xuất của Curator",
+        "today": "Tóm tắt Today"
+      },
+      "hint": {
+        "decision": "Mặc định push khi câu hỏi hỏi đúng bạn.",
+        "run_failed": "Mặc định push với các run bạn đã dispatch.",
+        "release": "Mặc định push khi một bản phát hành bị lỗi.",
+        "merge_paused": "Mặc định push: nó chặn deploy của một repo.",
+        "today": "Gửi vào giờ bạn chọn cho nó, sau khi bạn vắng hub."
+      },
+      "more": "{count, plural, other {Thêm # loại}}",
+      "fewer": "Thu gọn",
+      "restLabel": "Các loại khác",
+      "saved": "{kind}: {tier}",
+      "failed": "Không đổi được cách push {kind}"
+    },
+    "schedule": {
+      "title": "Giờ yên lặng và tóm tắt",
+      "quiet": "Giờ yên lặng",
+      "quietHint": "Push chờ tới khi hết giờ yên lặng, trừ câu hỏi mà run của nó sẽ park trong vòng hai giờ.",
+      "start": "Từ",
+      "end": "Đến",
+      "overnight": "Từ {start} tối nay đến {end} sáng mai.",
+      "timeZone": "Múi giờ",
+      "timeZoneBrowser": "Lấy từ trình duyệt này. Hub dùng {zone} cho tới khi bạn lưu.",
+      "timeZoneHint": "Tên IANA, ví dụ Asia/Ho_Chi_Minh.",
+      "digestAt": "Giờ push tóm tắt",
+      "digestHint": "Mỗi ngày một lần, khi có thay đổi và bạn đã vắng hub 8 giờ.",
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "discard": "Bỏ thay đổi",
+      "saved": "Đã lưu giờ yên lặng và tóm tắt",
+      "refused": "Hub không nhận các cài đặt này.",
+      "problem": {
+        "time": "Nhập giờ, ví dụ 22:00.",
+        "sameTime": "Giờ kết thúc phải khác giờ bắt đầu.",
+        "timeZone": "Nhập múi giờ IANA, ví dụ Asia/Tokyo."
+      }
+    },
+    "privacy": {
+      "title": "Màn hình khoá",
+      "hide": "Ẩn chi tiết trên màn hình khoá",
+      "hideHint": "Push khi đó chỉ nói loại việc, tên dự án và link: không có gì của câu hỏi hay run.",
+      "hidden": "Đã ẩn chi tiết trên màn hình khoá",
+      "shown": "Đã hiện chi tiết trên màn hình khoá",
+      "failed": "Không đổi được nội dung trên màn hình khoá"
+    },
+    "notices": {
+      "title": "Thông báo có thể tắt",
+      "description": "Khi tắt, loại thông báo đó không tới bạn ở đâu cả, kể cả Inbox. Câu hỏi của các run của bạn luôn tới."
+    }
   },
   "market": {
     "title": "Chợ plugin",
