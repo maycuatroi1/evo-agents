@@ -69,6 +69,8 @@ PROPOSAL_KEYS = (
     "rollback_version",
     "error",
     "run_id",
+    "opened_run_id",
+    "outcome",
     "link",
 )
 PROPOSAL_KINDS = ("problem", "opportunity")  # the kinds of proposal of @builder an intake makes, a writer's to decide
