@@ -89,7 +89,35 @@ Neither variable reaches a running container, since the compose file passes them
 image with a wheel from a local index that wants a fake credential, then checks that the hub loads the plugin and
 that neither `docker history` nor any layer holds the credential (`tests/plugins/test_core_install_image.py`).
 
-A core plugin from outside evo-agents has the limits a child image's has (below): no `tables` and no native `pages`.
+A core plugin from outside evo-agents has the limits a child image's has (below): no `tables` in the hub's chain and
+no native `pages`. It brings its own tables and its own pages instead (next section).
+
+### The tables and pages of a core plugin
+
+A core plugin of API 1.3 carries its tables in its own package (`schema` of its manifest, `docs/plugins.md`, section
+Core plugins): a MetaData, a chain of Alembic revisions and the tables it adopts. The api and the worker migrate as
+they start, and `evo-agents hub migrate` does the same on its own: the hub's chain first, then each installed plugin's
+chain, under the same advisory lock, each in a transaction of its own, recorded in the plugin's version table
+`alembic_version_<id, - made _>`. A plugin's chain that does not read, or a revision of it that fails, is logged with
+the plugin's id and left as it was, nothing of it committed; the hub starts, and the plugin's routes then find their
+tables missing. Two options look at one chain:
+
+```sh
+evo-agents hub migrate --status                       # each chain: version table, recorded revision, at head or behind
+evo-agents hub migrate --plugin northwind-ledger      # that plugin's chain alone, on a hub already at head
+```
+
+`--status` changes nothing and exits 1 when a chain is behind its head or does not read, so a deploy script can check
+it after an upgrade. `--plugin` fails with the plugin's error instead of logging it, the way to retry one chain after
+fixing it. A plugin that moved out of evo-agents adopts the tables the hub's older chain made: its first revision
+compares them with its metadata and takes them without changing a row, or fails naming each difference. Removing the
+plugin from the image keeps its tables and version table; installing it again resumes its chain where it stood. Going
+back to an older release of a plugin whose chain is ahead is refused, as for the hub: restore a backup.
+
+A core plugin's pages are files of its package (`ui` of its manifest), framed by the hub's web in the same sandbox as
+an isolated plugin's, with the hub's UI kit (`/v1/plugin-ui/kit/1/`), so the web image needs no rebuild for them. Its
+commands of the CLI come from the hub too (`GET /v1/cli/plugins`): members' CLIs pick them up on their next `hub`
+command that names one.
 
 ### A hub built from source with Auto Deploy
 
@@ -159,9 +187,9 @@ docker build --build-arg EVO_HUB_VERSION=<version> -t registry.acme.example/acme
   naming it and why (section Core plugins in the image). A base image older than the module lacks it: leave the line
   out there.
 - A core plugin from outside evo-agents contributes channels, routes, MCP tools, jobs and events, but no `tables` and
-  no native `pages`. The hub's tables come from its one chain of migrations, which is in evo-agents, and the hub
-  records a core plugin only when every table the plugin owns exists. A native page is part of the web image's build.
-  A plugin that needs either belongs in evo-agents.
+  no native `pages`: those are the hub's chain of migrations and the web image's build, which are in evo-agents. It
+  carries its own tables and chain (`schema`) and framed pages (`ui`) instead, which need no rebuild of the hub's
+  images (section The tables and pages of a core plugin).
 - Pin the base by digest as well (`FROM ghcr.io/maycuatroi1/evo-agents-hub:<version>@sha256:...`) so that a rebuild
   takes the same bytes.
 
