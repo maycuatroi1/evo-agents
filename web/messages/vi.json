@@ -4239,10 +4239,12 @@
     "facets": {
       "label": "Trạng thái",
       "all": "Tất cả",
+      "running": "Đang chạy",
       "active": "Đang hoạt động",
       "review": "Chờ duyệt",
       "done": "Xong",
-      "ended": "Thất bại hoặc đã huỷ"
+      "ended": "Thất bại hoặc đã huỷ",
+      "idle": "Đang chờ"
     },
     "search": {
       "label": "Tìm run",
@@ -4262,7 +4264,8 @@
       "runtime": "Runtime",
       "started": "Bắt đầu",
       "duration": "Thời lượng",
-      "attempt": "Lần chạy"
+      "attempt": "Lần chạy",
+      "cost": "Chi phí"
     },
     "stepLine": "{plan}, bước {step}",
     "stepLineProject": "{project}, {plan}, bước {step}",
@@ -5573,6 +5576,10 @@
         "needs_login": "cần đăng nhập",
         "disabled": "đã tắt"
       }
+    },
+    "progress": {
+      "at": "{percent}% ({done}/{total}) - {step}: {status}",
+      "complete": "{percent}% ({done}/{total}) - đã xong mọi bước"
     }
   },
   "insights": {
