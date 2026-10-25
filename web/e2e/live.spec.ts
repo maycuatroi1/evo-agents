@@ -124,9 +124,17 @@ test("the runs list and a local session's page follow the session live, and the 
   await expect(row.getByTestId("run-where")).toHaveText(`laptop-binh, binh@work.example, plan ${RUN_PLAN}, step 2`);
   await expect(row.getByTestId("run-state")).toHaveText("Running");
 
-  // The state changes reach the list without a reload.
+  // The state changes reach the list without a reload. The page opens on Running, and an idle session has a tab of
+  // its own: going idle takes the row off Running, and running again brings it back.
+  const facets = main.getByTestId("runs-facets");
   await localState(me, project, run.id, { state: "idle" });
-  await expect(row.getByTestId("run-state")).toHaveText("Idle", { timeout: 15_000 });
+  await expect(row).toHaveCount(0, { timeout: 15_000 });
+  await facets.getByRole("button", { name: /^Idle/ }).click();
+  await expect(row.getByTestId("run-state")).toHaveText("Idle");
+  await localState(me, project, run.id, { state: "running" });
+  await expect(row).toHaveCount(0, { timeout: 15_000 });
+  await facets.getByRole("button", { name: /^Running/ }).click();
+  await expect(row.getByTestId("run-state")).toHaveText("Running");
 
   // Filter by kind, then by account.
   await main.getByTestId("runs-kinds").getByRole("button", { name: /Local sessions/ }).click();

@@ -41,8 +41,9 @@ test("Home, Workers and a project's Runs arrive from the server with their data"
   const workers = await html(page.request, "/workers");
   expect.soft(holds(workers, `data-worker-name="${live.worker.name}"`), "the workers list").toBe(true);
 
-  // A project's runs: the summary the sidebar's run count also reads, and the list.
-  const runs = await html(page.request, `/p/${project}/runs`);
+  // A project's runs: the summary the sidebar's run count also reads, and the list (the run is queued, and the page
+  // opens on Running).
+  const runs = await html(page.request, `/p/${project}/runs?state=all`);
   expect.soft(holds(runs, `data-run-id="${run.id}"`), "the runs list").toBe(true);
   expect.soft(holds(runs, 'data-testid="runs-summary"'), "the runs summary").toBe(true);
 
