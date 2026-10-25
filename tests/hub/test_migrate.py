@@ -3658,3 +3658,31 @@ def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_t
         (ids["project"], 3, {"chats": True}),  # 0146 knows no feature canvas
     ]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]
+
+
+def test_0148_notices_take_the_kinds_of_core_plugins_and_going_back_deletes_those_notices(hub_db):
+    move_to(hub_db, "0147")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    n = hub_tables.notifications
+    notice = {"user_id": ids["user"], "kind": "notice", "title": "Overdue", "project_id": ids["project"]}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(n).values({**notice, "notice_kind": "northwind_ledger_overdue"}))
+    move_to(hub_db, "0148")
+    with live.connect(hub_db) as conn:
+        for kind in ("northwind_ledger_overdue", "lumen_relay_due", "release", "pm_daily"):
+            conn.execute(insert(n).values({**notice, "notice_kind": kind}))
+        for wrong in ("Northwind_overdue", "overdue", "northwind-ledger_overdue", "_overdue", "northwind_"):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(n).values({**notice, "notice_kind": wrong}))
+    # Going back deletes the notices of the plugins' kinds and keeps the hub's.
+    move_to(hub_db, "0147", down=True)
+    kinds = query(hub_db, select(n.c.notice_kind).order_by(n.c.id))
+    assert kinds == [("release",), ("pm_daily",)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(n).values({**notice, "notice_kind": "northwind_ledger_overdue"}))
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0148") :]

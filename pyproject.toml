@@ -102,6 +102,9 @@ evo_agents = [
     "hub/migrations/*.mako",
     "hub/migrations/versions/*.py",
     "hub/migrations/sql/*",
+    "hub/plugin_migrations/*.py",  # the environment of every core plugin's own chain (evo_agents.hub.plugin_schema)
+    "hub/plugin_migrations/*.mako",
+    "hub/server/static/plugin-kit/*/*",  # the UI kit of plugin pages (evo_agents.hub.server.plugin_ui)
     "core_plugins/*/packs/**/*",  # the agent packs a core plugin ships (evo_agents.plugins.core.image_bundle)
     "core_plugins/*/packs/**/.mcp.json",  # a dotfile no star matches
     "hub/server/*/packs/**/*",  # the agent packs of the features canvas and srs (@strategist, @ba)
