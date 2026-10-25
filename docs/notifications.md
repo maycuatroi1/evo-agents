@@ -4,7 +4,9 @@ A plan run (see [Plan runs](workers.md#plan-runs)) works for hours without anyon
 the member who dispatched it, the run's owner: a decision the agent may not take alone, and a push or merge the
 owner should know about. The hub turns each into a notification for the owner and hands it to every channel the
 owner has turned on. The web was the one channel of 0.4.0; Telegram, at the end of this page, came later as a class
-added to the channel registry, with routes of its own and no change to the outbox.
+added to the channel registry, with routes of its own and no change to the outbox. Push to a member's browsers and
+phones (Push to devices, below) came with plan hub-mobile-phase-0, in the hub's own code rather than a plugin: each
+notification has a tier for its member, and only the interrupt tier is pushed, outside the member's quiet hours.
 
 `evo_agents/hub/runs.py` holds the lists below (decision categories, states and limits, notice kinds, delivery
 states), with the standard library only, so the api and the worker daemon share them. Plan runs, decisions and
@@ -19,8 +21,12 @@ Inbox come in the same release.
 | notice | something the owner should know and need not answer, such as a push to a default branch | none of its own: it is a notification of kind `notice` |
 | notification | one decision or notice for one member, read or not | `notifications` |
 | channel | a place where a member gets notifications: the web, later Telegram | `notification_channels` |
-| delivery | one notification on one channel, with its attempts | `notification_deliveries` |
-| registry | `CHANNELS` in the api: for each channel kind, the class that sends a notification there | code, not a table |
+| delivery | one notification on one channel or one push device, with its attempts | `notification_deliveries` |
+| registry | `CHANNELS` in the api: for each channel kind and each kind of push device, the class that sends a notification there | code, not a table |
+| push device | a browser's Web Push subscription, an iPhone's APNs token or an Android phone's FCM token, of one member | `push_devices` |
+| tier | how a kind of notification reaches a member: `interrupt` (pushed to their devices), `brief` or `off` (not pushed) | `notification_preferences.tiers` |
+| quiet hours | the hours of a member's day in which an interrupt waits to be pushed until they end | `notification_preferences` |
+| Today | what waits for a member and what changed since they last looked, worked out at each view, and its summary push | `today_marks` |
 
 ## Decisions
 
@@ -65,6 +71,39 @@ A decision holds the run, its project, plan and step (the step is optional), the
 markdown of at most 16 KiB, and 2 to 6 options. An option has a key (letters, digits, `_` and `-`, at most 32
 characters, starting with a letter or digit), a label, an optional description, and whether it is the one the agent
 recommends; at most one is. The owner answers with an option, with text of their own, or with both.
+
+### Why the agent recommends, how to undo, what it rests on
+
+So that the person asked can answer on a phone in one tap, a decision may also say why the agent recommends its
+option, whether the act it asks about can be undone and how, and what the question rests on (schema 0148,
+`evo_agents/hub/decision_asks.py`). Each field is optional, and a decision without them reads and answers as before.
+
+| Field | What it holds |
+| --- | --- |
+| `recommended_reason` | why the recommended option, in a sentence or two, at most 500 characters; only with `recommended` (422 otherwise) |
+| `reversible` | for an act: `true` or `false`; `null` when the question asks about no act, or nobody said |
+| `undo` | how to undo the act, at most 500 characters; only with `reversible` true (422 otherwise, and a CHECK of the table) |
+| `evidence` | at most 20 refs: `run:ID`, `run:ID:SEQ`, `output:ID`, `P-<n>/E-<n>` (a line of evidence of a problem; a bare `P-<n>` is refused), an https URL, or `session:ID[:FIELD:INDEX]`, `transcript:ID[:FILE]:LINE`, `code:REPO:PATH[:LINE]` and `memory:ID:REV` as `review.parse_evidence` reads them. A ref of any other form is 422. Only the form is checked, not that the thing exists |
+
+The fields come in through the worker's route (`POST /v1/worker/runs/{id}/decisions`) and `evo-agents worker ask`
+(`--recommended-reason TEXT`, `--reversible yes|no`, `--undo TEXT`, `--evidence REF` repeated; `docs/workers.md`), the
+MCP tool `ask_member` and a local run's decisions. They go out through the decision routes, `evo-agents hub decision
+show` and `hub decision list` (with `--json` too), the MCP tool `decision_list`, which also names the recommended
+option, and `extra["decision"]` of a core plugin's channel (`docs/plugins.md`). The API gives evidence back as a list
+of refs written the way the command line writes them (`code:r:./a.py` becomes `code:r:a.py`), `[]` when there is none,
+and no links: the web makes each ref a link (a run's page, the decision's run with its outputs, a problem, a memory,
+`/kg?q=PATH` for code, an https page in a new tab; `session:` and `transcript:` refs stay text). `--undo` without
+`--reversible` sends `reversible` true, and `--undo` with `--reversible no` is refused before anything is sent.
+
+The prompts of plan runs, step runs and author runs, and the reminders of autonomy that tell an agent to ask, tell it
+to give every question with a natural choice `--recommended` and `--recommended-reason`, an act `--reversible` (with
+`--undo` when it can be undone), and `--evidence` for what it rests on (`decision_asks.ASK_RULE`). `evo-agents worker
+ask` without `--recommended` prints a warning to stderr and still asks. The hub fills the recommendation of its own
+decisions where it has a default answer: a decision to log in recommends `done` (the run asked for the login to go
+on), a stopped release cycle `close` (it spends no more of the cap, and the schedule's next daily check starts a new
+cycle if needed), a work item of the Loop that failed three times `manual`, each with its reason. A wait and a gate of
+autonomy carry none: the hub answers a wait itself, and the principal of a gate chose to be asked about an act whose
+risk the hub cannot judge.
 
 An option may also say not yet (`waits`, which `evo-agents worker ask --wait-option KEY` sets): choosing it leaves
 the decision `open` with `held_at` set and its notification read, sends nothing to the agent, and the run goes on
@@ -227,10 +266,11 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
 | `autonomy` | a class in notify acted for a run (the hub's gate, or the worker's hook through `POST /v1/worker/runs/{id}/autonomy-acts`), to the run's principal and to the person they report to when they are an intern; and a stop of autonomy S4 cancelled the member's runs, or was lifted (`docs/autonomy.md`) | the class, the act, the run and its agent; a stop's scope, reason and the runs it cancelled; never a credential |
 | `worker_doctor` | the doctor report of a worker shared with units of the org chart has a high finding and the one before had none (`docs/workers.md`, Shared workers), to the worker's owner; the worker takes no run of those units' members until a report has none | the worker, the codes of the high findings, and a link to the worker's page; never a credential |
+| `today` | the summary push of Today (Today and its summary push, below): a member with a push device, away from the hub for 8 hours, at their `digest_at` in their time zone, once a local day, when something changed since they last looked | the sentence of Today, which counts things and names none; no project; read when it is stored and delivered to the member's push devices alone, so the Inbox keeps a record and no channel repeats it |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
 `curator_paused`, `release`, `merge_paused`, `loop_paused`, `goal_review`, `loop_brief`, `plugin_notice`, `author_waiting`, `pm_daily`,
-`pm_escalation`, `chat_mention`, `chat_added`, `run_outputs` and `worker_doctor`, and the `merge_default_branch` of its merge queue. A
+`pm_escalation`, `chat_mention`, `chat_added`, `run_outputs`, `worker_doctor` and `today`, and the `merge_default_branch` of its merge queue. A
 release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
@@ -268,20 +308,21 @@ A member turns `run_outputs` off for themselves (`runs.MUTABLE_NOTICE_KINDS`, sc
 the hub then stores no such notice for them, on any channel, and their decisions and every other notice still come.
 `GET /v1/me/notification-settings` answers each kind a member may turn off with whether it is on, and `PUT` with
 `{"notices": [{"kind": "run_outputs", "on": false}]}` sets the kinds it names, audited `notification.settings` with
-the kinds and no text.
+the kinds and no text. The same two routes read and set what a member chose for push (Push to devices, below).
 
 ## Notifications, channels and deliveries
 
 Each decision and each notice becomes, in the transaction that stores it, one notification for the run's owner with a
 title, a body, a link to the web page that shows it, and the project, run and decision it belongs to; and one
-delivery of it for each channel the owner has turned on. The table is the outbox: nothing is sent while the
-transaction is open, and a hub that stops between the two loses nothing.
+delivery of it for each channel the owner has turned on, and, when it is of the interrupt tier for the owner, one for
+each of their push devices (Push to devices, below). The table is the outbox: nothing is sent while the transaction is
+open, and a hub that stops between the two loses nothing.
 
 | Table | Columns |
 | --- | --- |
 | `notifications` | user, kind (`decision`, `notice` or `proposal`), the decision, the notice's kind and details (repo, branch, commits), or the proposal, project, run, title, body, link (a path of the hub's site), `created_at`, `read_at` |
 | `notification_channels` | user, kind (not `web`, at most one of a kind per member), `config` (JSON the channel's class reads), `enabled`, `created_at` |
-| `notification_deliveries` | notification, channel (none for the web), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at` |
+| `notification_deliveries` | notification, channel (none for the web) or push device (`device_id`, schema 0149; never both, by a CHECK), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at` |
 
 A notification of kind `proposal` (schema 0014) is a tier 2 proposal of the Curator's review run in its owner's Inbox:
 when a review run ends, its open tier 2 proposals with the most evidence become such notifications, as many as the
@@ -303,15 +344,18 @@ the fifth failure (`MAX_DELIVERY_ATTEMPTS`) marks it `failed`. A class may say m
 (`RetryAfter`, such as Telegram's 429), which moves `next_at` that far without counting a failed try; the notification
 can never go out there (`Undeliverable`), which fails the delivery at once; or the channel no longer reaches its member
 (`ChannelGone`, such as a blocked bot), which also turns the channel off with the reason in its `config`
-(`disabled_reason`). A channel kind with no class in the registry fails its deliveries with that reason, so a hub that
-drops a channel does not retry forever. A class that answers the id its service gave the message has it kept as the
-delivery's `external_id` (schema 0015), so a reply to that message finds its notification.
+(`disabled_reason`); for a push device, `ChannelGone` removes that device and its deliveries. A channel kind with no
+class in the registry fails its deliveries with that reason, so a hub that drops a channel does not retry forever. A
+class that answers the id its service gave the message has it kept as the delivery's `external_id` (schema 0015), so a
+reply to that message finds its notification.
 
 Before a channel of a row gets a notification, the job checks what stands at that moment, not when the notification
 was stored. A member who no longer holds a grant on the notification's project gets nothing of it there: the delivery
 fails with that reason and the channel stays. A channel bound to the web session that linked it (`token_id`, schema
 0016), as every Telegram chat is, lives no longer than that session: once the session is signed out, revoked or
-expired, the delivery fails and the channel is turned off with that reason, until the member links it again.
+expired, the delivery fails and the channel is turned off with that reason, until the member links it again. A push
+device gets the same checks: no grant fails the delivery and keeps the device, and a device whose sign-in ended is
+removed. Its quiet hours come after them (Push to devices, below).
 
 Adding a channel takes a class with one method, which sends one notification to one channel's `config` or raises,
 and its entry in `CHANNELS`; the tables, the outbox and the job stay as they are. The routes that link a channel to
@@ -325,14 +369,15 @@ text.
 
 ## Routes
 
-`evo_agents/hub/server/decisions.py` and `evo_agents/hub/server/notifications.py` hold them.
+`evo_agents/hub/server/decisions.py` and `evo_agents/hub/server/notifications.py` hold them, with
+`output_notices.py` (the settings), `push.py` (push devices) and `today.py` (Today) in the same directory.
 
 For the worker holding a plan run (or, for `decisions`, an author run), with its `evw_` token and the protocol header
 (`docs/workers.md`); any other run, a run of one step, a review run and a judge run included, gets 404:
 
 | Route | Body | Answer |
 | --- | --- | --- |
-| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above (a chat run's is `triage` alone), a step the plan does not have, or a step of an author run that has put no plan; 409 when the run has 20 decisions open |
+| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan), and, each optional, `recommended_reason`, `reversible`, `undo` and `evidence` (Why the agent recommends, above) | 201, the decision; 422 for a category not listed above (a chat run's is `triage` alone), a step the plan does not have, a step of an author run that has put no plan, a reason without `recommended`, `undo` without `reversible` true, or a ref of evidence in no form above; 409 when the run has 20 decisions open |
 | `POST /v1/worker/runs/{id}/notices` | `kind` (of `NOTICE_KINDS`), `title` (one line, at most 200 characters), `body` (at most 16 KiB), `repo` (one of the run's repos), `branch`, `commits` (at most 100) | 201, the notification |
 
 A decision leaves a `system` event in the run's log, and so does a notice. The hub sends `plan_finished` itself when a
@@ -344,13 +389,20 @@ For members, with a web session or a machine token:
 | Route | Who | What it does |
 | --- | --- | --- |
 | `GET /v1/projects/{p}/decisions` | readers of the decision's run: of its plan, or of the project's runs on no plan for an author run without one | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
-| `GET /v1/projects/{p}/decisions/{id}` | readers of the decision's run, as above | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
+| `GET /v1/projects/{p}/decisions/{id}` | readers of the decision's run, as above | one decision: its options, the recommended one and `recommended_reason`, `reversible`, `undo` and `evidence` (`[]` for none), its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
 | `POST /v1/projects/{p}/decisions/{id}/answer` | the person it is asked of (`asked_of`, above), else the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind`, `project`, `run` and `q` (words anywhere in the title or the body, at most 200 characters, `%` and `_` taken as they are), with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
-| `GET /v1/me/notification-settings` | the member | each kind of notice they may turn off (`run_outputs`), and whether it is on |
-| `PUT /v1/me/notification-settings` | the member | `{"notices": [{"kind": "run_outputs", "on": false}]}`; turns the kinds it names on or off, the others stay |
+| `GET /v1/me/notification-settings` | the member | each kind of notice they may turn off (`run_outputs`), and whether it is on; `hide_details`; `tiers`, each kind of notification with its tier and whether they `chosen` it; `quiet_hours` (`{start, end}` or null); `time_zone` and `time_zone_chosen`; `digest_at` (Push to devices, below) |
+| `PUT /v1/me/notification-settings` | the member | any of `notices` (`[{"kind": "run_outputs", "on": false}]`), `hide_details`, `tiers` (`[{"kind": "decision", "tier": "brief"}]`, a tier of null going back to the hub's default), `quiet_hours` (`{"start": "22:00", "end": "07:00"}`, null for none), `time_zone` (an IANA name Postgres knows, else 422; null for the hub's) and `digest_at` (`HH:MM`, null for the hub's); sets what it names, the rest stays; a body that names none of them is 422. Audited `notification.settings` with the choices |
+| `POST /v1/me/push/devices` | the member, as the sign-in it calls with | adds a push device of theirs, or refreshes it: `{"kind": "webpush", "subscription": PushSubscription.toJSON()}`, `{"kind": "apns", "token", "topic", "environment": "sandbox"\|"production"}` or `{"kind": "fcm", "token"}`, each with an optional `label`; 201, the device; 409 at 20 devices; 422 for a Web Push endpoint that is no push service's |
+| `GET /v1/me/push/devices` | the member | their devices that push reaches, newest first: `id`, `kind`, `label`, `created_at`, `last_sent_at` (when a push last reached it) and `this_session` (this sign-in added it) |
+| `DELETE /v1/me/push/devices/{id}` | the member | removes one of their devices and the pushes waiting for it; 204, or 404 |
+| `POST /v1/me/push/devices/{id}/test` | the member | pushes a test notification to it now, quiet hours or not: `{sent, removed, error}`; a device its push service no longer knows is removed; 503 while the sender of its kind is off |
+| `GET /v1/push/config` | anyone, without a sign-in | `{"vapid_public_key": ..., "senders": {"webpush", "apns", "fcm"}}`: the key a browser subscribes with (null while Web Push is off), and which senders are on |
+| `GET /v1/me/today` | the member | Today, worked out at this call (Today and its summary push, below) |
+| `POST /v1/me/today/seen` | the member | `{"seen_at": ...}`, or `{}` for now: moves their seen mark forward, never back and never past now; answers the mark |
 
 The answer takes the plan's dispatch lock (for a decision with a plan) and the run's row, then: the decision is `answered`, its notification read,
 and the answer goes to an inbox as a message that names the decision. A run that is queued or held (waiting
@@ -369,9 +421,172 @@ A notification links to a page of the hub's web: a decision to `/inbox?decision=
 (`/p/{p}/releases`), `merge_paused` and a notice of the merge queue to the project's Merge queue page
 (`/p/{p}/merge-queue`), `pm_daily` and `pm_escalation` to the project's pm page (`/p/{p}/x/pm`), `loop_paused` to
 the project's Loop page (`/p/{p}/loop`), `goal_review` and `loop_brief` to the project's decision board
-(`/p/{p}/decide`), `plugin_notice` to the link its plugin gave (default: the plugin's page, else the project), and a chat's notice to the chat (`/chats/{id}`,
-with `?message=ID` for a mention). A member sees only the notifications of projects
-they hold a grant on.
+(`/p/{p}/decide`), `plugin_notice` to the link its plugin gave (default: the plugin's page, else the project), a chat's notice to the chat (`/chats/{id}`,
+with `?message=ID` for a mention), and `today` to Home (`/`), which opens with Today. A member sees only the
+notifications of projects they hold a grant on.
+
+## Push to devices
+
+A question an agent asks has to reach its person while they are away from the hub. Push is the hub's own code, not a
+plugin: `push_store.py` keeps the devices, `push_tiers.py` decides what is pushed and when, `push_senders.py` (Web
+Push) and `push_native.py` (APNs and FCM) send, all in `evo_agents/hub/server/`, and `evo_agents/hub/push_payload.py`
+writes what a push says. Deliveries to devices go through the outbox above, with its job, backoff and checks.
+
+### Devices
+
+A member has push devices of three kinds (`push_devices`, schema 0149):
+
+| Kind | What the device is | Its address, and what its sender needs besides |
+| --- | --- | --- |
+| `webpush` | a browser's Web Push subscription, as `PushSubscription.toJSON()` gives it | the endpoint, which must be `https` on port 443 of `fcm.googleapis.com`, `android.googleapis.com`, `push.services.mozilla.com`, `push.apple.com` or `notify.windows.com` (or a subdomain), checked when it is added and before each send, so a member cannot make the hub post into its own network; the browser's P-256 key `p256dh` and the 16-byte secret `auth` |
+| `apns` | an app on an iPhone or iPad, through Apple's push service | the device token, in hex; the app's topic (its bundle id) and its environment, `sandbox` or `production` |
+| `fcm` | an app on an Android phone, through Firebase Cloud Messaging | the registration token |
+
+The hub takes all three kinds even while their sender is off; a push to such a device then fails at once with the
+variable it needs. A device is bound to the sign-in that added it, of any kind but a worker's token: once that token is
+signed out, revoked or expired, the device leaves the member's list and is removed at its next delivery. Adding the
+same kind and address again refreshes it; adding one another member has moves it to the caller, since an address
+speaks for one member. A member has at most 20 devices (409 for the 21st). Adding and removing are audited as
+`push_device.add` and `push_device.remove`, with the device's id, kind and login, never its endpoint or token; a
+device the hub removes because its push service no longer knows it is audited `by=hub`.
+
+### Tiers
+
+Each kind of notification (`decision`, `proposal` and each notice kind of `NOTICE_KINDS`, keyed by the notice's kind)
+is of one tier for each member:
+
+| Tier | What it does |
+| --- | --- |
+| `interrupt` | pushed at once to every device of the member that reaches them, outside their quiet hours |
+| `brief` | not pushed; Today and the Inbox show what changed |
+| `off` | not pushed; for `today`, no summary push either |
+
+The tier decides push alone. The Inbox, the web's bell and channels such as Telegram get every notification whatever
+its tier, and a notice the member turned off (`run_outputs`, above) is still not sent anywhere. Until a member chooses
+a tier for a kind, the hub's default holds:
+
+- `interrupt` for a decision asked of the member (the person who answers it, `asked_of` above), a `run_failed` of a
+  run they dispatched (not a run of the Curator's night shift, which its morning brief reports), a `release` notice of
+  a release that went wrong (any event but `published`) and every `merge_paused`, the breaker that stops a merge queue
+  and its deploys;
+- `brief` for every other notification, a decision asked of someone else included, and for a kind added later, which
+  needs no change of code to get it.
+
+A tier the member chooses holds for every notification of that kind, without the default's conditions: `decision` set
+to `interrupt` pushes every decision of theirs, not only those asked of them. `PUT /v1/me/notification-settings` with
+`{"tiers": [{"kind": "decision", "tier": null}]}` goes back to the default, and `GET` shows each kind with its tier and
+whether the member chose it (`chosen`). `notification_preferences` (schemas 0149 and 0150) keeps what a member chose;
+a member without a row has the defaults.
+
+### Quiet hours
+
+A member may set quiet hours, `start` to `end` in `HH:MM`, past midnight when the end is not after the start, in their
+time zone: an IANA name that Postgres knows, checked as the Curator's charter checks its own, and the hub's
+`EVO_HUB_WEB_TIME_ZONE` (default `Asia/Ho_Chi_Minh`) until they choose one; the web offers the browser's. The job
+`hub.deliver_notifications` checks them as it takes each delivery to a device, not when the notification is stored, so
+quiet hours set meanwhile hold. Inside them a push waits until they end, without counting a try, with one exception: a
+decision whose run parks for want of an answer within two hours is pushed at once, and one whose run parks later waits
+at most until two hours before it parks. A run parks `EVO_HUB_DECISION_WAIT_SECONDS` after it starts waiting (a chat
+run after 10 minutes); a run still working counts as if it started waiting now, and a local run, a parked run and an
+ended one park no more. A push of a decision that was answered or closed by the time it would go out is not sent
+(`notifications.DECISION_CLOSED`), so a push held overnight never asks a question nobody asks any more. A test push
+ignores quiet hours. A time zone Postgres no longer knows counts as UTC, with a warning in the log.
+
+### What a push says
+
+Every sender carries the same payload (`push_payload.payload`): JSON of `title`, `body`, `url` (the absolute link of
+the hub's page), `tag` (one per notification, so a later push of it replaces the earlier one), `kind` and `project`,
+at most 3,072 bytes, under the 4 KB that Web Push, APNs and FCM each take, its body cut first and then its title. The
+words are English, as the hub's web is.
+
+- **Hidden on the lock screen.** A notification of a project whose hub sink the clearance keeps from Telegram (What
+  never goes to Telegram, below: the same rule, failing closed the same way), a decision or proposal of no project,
+  and every push to a member who turned on Hide details (`hide_details`), carry only the kind of thing as the title
+  ("Decision needed", "Proposal to review", "Run failed" and the other words of `telegram.NOTICE_WORDS`), the project
+  as the body, and the link.
+- **Otherwise** a push carries the notification's title, and for a decision its question, at most 300 characters, and
+  `Recommended: <label>` when the agent recommends an option; for the summary push of Today its sentence; for anything
+  else the kind of thing and the project.
+- **Never**, whatever the project: a decision's context, a file or its link, an output, an image, a token or a code.
+  The senders do not read them.
+
+Tapping a push opens the hub at its link; answering from the notification itself is not built, so a question is
+answered on the hub's page it opens.
+
+### The senders
+
+`GET /v1/push/config` says which senders are on. Each is off without its variables (`docs/hub-deployment.md`, Push to
+browsers and phones), and the rest of the outbox, the web and Telegram included, runs as before: a delivery to a
+device whose sender is off fails at once with what to set, and its test route answers 503.
+
+| Sender | How it sends | When the device goes |
+| --- | --- | --- |
+| Web Push | the payload encrypted for the subscription (RFC 8291, `aes128gcm`) and signed in with the hub's VAPID key (RFC 8292), `TTL` 86400 and `Urgency: high`, to the subscription's endpoint | 404 or 410 |
+| APNs | `POST /3/device/<token>` over HTTP/2, the only protocol APNs takes, on `api.push.apple.com` or, for a device of environment `sandbox`, `api.sandbox.push.apple.com`; the device's topic, push type alert, priority 10, expiry a day ahead and the notification's tag as collapse id; a provider token signed with ES256 by the hub's key, made again every 50 minutes, since Apple refuses one older than an hour and new ones more often than every 20 minutes. The body is `aps` (alert, sound default, `thread-id` the project) with `url`, `tag`, `kind` and `project` | 410 with any reason, or the reason `BadDeviceToken` or `Unregistered` |
+| FCM | `POST /v1/projects/<project>/messages:send` of the HTTP v1 API with an OAuth access token of the hub's service account (a JWT signed with RS256, exchanged at `https://oauth2.googleapis.com/token`, kept until 5 minutes before it expires); `notification` (title, body), `data` (`url`, `tag`, `kind`, `project`) and `android` (priority high, TTL a day, the tag) | the error code `UNREGISTERED` |
+
+A device the push service no longer knows is removed with its deliveries, alone. A 429 waits for its `Retry-After`
+without counting a try. Any other 4xx (`DeviceTokenNotForTopic`, `INVALID_ARGUMENT`, `SENDER_ID_MISMATCH` among
+them) fails the delivery and keeps the device, so a wrong key on the hub cannot wipe every member's devices. An APNs
+`ExpiredProviderToken` or an FCM 401 drops the token the process kept and tries again with the outbox's backoff, as a
+5xx or a network error does. Google's token endpoint answering 4xx fails the delivery at once, naming
+`EVO_HUB_FCM_SERVICE_ACCOUNT`. Each process keeps its provider and access tokens, each registered as a secret of the
+log while it is kept. Tests run both native senders against fake servers in the process; no test calls Apple or
+Google.
+
+### Today and its summary push
+
+`GET /v1/me/today` (`today.py`) is worked out at each call, over every project the caller holds a grant on, with the
+checks of `GET /v1/me/overview`: a decision, run or plan of a plan whose label the caller's grant does not reach is
+neither listed nor counted. It answers:
+
+- `needs_you`: the open decisions asked of the caller, the oldest first, at most 20, each with when its run parks
+  (`parks_at`), and `needs_you_count`, all of them;
+- `items`: at most 8 things that changed in the window, the first in the order they happened, each with its `kind`, a
+  `title`, a `body`, its moment `at`, its `project` and a `link`: `release` (a release of a project published),
+  `step_done` (a step of a plan the caller reads that is done now and was not in the revision the hub held at the start
+  of the window; a plan first written in the window starts from its first revision), `run_failed` and `run_parked` (a
+  run the caller dispatched that failed, was lost or parked; the night shift's runs are left to the Curator's morning
+  brief), `problem` (an open problem the caller owns whose metric differs from seven days ago, measured as the Loop
+  measures a goal's), `cost` (what the caller's runs that ended in the window cost, one item a project) and `proposal`
+  (an open proposal of the Curator in a project the caller is an admin of, who may answer it);
+- `caught_up`, whether the items are everything that changed in the window, and `seen_until`, the mark to post once
+  every item listed was shown: the moment of the answer when caught up, else the moment of the last item;
+- `summary`, one sentence made from English templates, no model, and `since` and `seen_at`.
+
+The window starts at the caller's seen mark (`today_marks.seen_at`, schema 0151). Without a mark it is the last 24
+hours, and a mark older than seven days counts from seven days ago. `POST /v1/me/today/seen` moves the mark forward to
+its `seen_at` (now when left out, never past now); a later mark stays where it is. Home on the web opens with Today
+and posts `seen_until` once the end of the list has been on screen.
+
+The job `hub.today_digest` runs every minute (`today_digest.py`, through `brief.send_today_digests`). A member gets a
+summary push when they have a push device that reaches them, have been away from the hub for 8 hours (by
+`users.last_seen_at` and by their seen mark, since the hub writes `last_seen_at` at most once a day a token), did not
+set the tier of `today` to `off`, and it is their `digest_at` (default `07:30`) in their time zone, or up to three hours
+later. The day is claimed in `today_marks.digest_on` before Today is worked out, so a second pass sends nothing and a
+member gets at most one a local day. When their Today has an item, they get a notice `today`: no project, the title
+`Today on the hub`, the sentence as its body, a link to Home, read when it is stored, and delivered to their devices
+alone. A day with no item sends nothing. Quiet hours hold it as any push, and Hide details leaves only `Today on the
+hub`.
+
+`GET /v1/me/overview` counts in `waiting_on_you`, and marks `yours`, the decisions asked of the caller, and names the
+person each decision is asked of (`asked_of`); Home's Needs you reads it.
+
+### On the web
+
+The web serves its service worker at `/sw.js` without a session (the proxy leaves it out of its matcher). It shows a
+push as one notification tagged by its notification; a tap focuses the hub's tab already on that page, or takes the
+hub's first tab there, or opens one, and a link of another origin keeps only its path on the hub's. When the browser
+replaces a subscription, the worker subscribes again with the hub's key and sends the new one to
+`POST /v1/me/push/devices`. It has no fetch handler and caches nothing.
+
+`/settings/notifications`, linked from the user menu and from the Inbox's Notices dialog, holds a member's settings:
+push on this browser, turned on from one button, the only place the web asks the browser for permission; the
+member's devices, each with a test push and Remove; the tier of each kind; quiet hours and the time zone; the time of
+the summary push; and Hide details on the lock screen. Safari on an iPhone or iPad offers Web Push only to a web app
+added to the Home Screen, and asks for permission only from a person's tap: outside such an app the page shows how to
+add it. The Inbox's decision card and the phone's decision screen show the agent's reason for its pick, whether and how
+the act can be undone, and its evidence as links.
 
 ## Telegram
 
