@@ -73,7 +73,7 @@ def _manager(row, user: Principal, access: ProjectAccess, what: str) -> None:
         )
 
 
-async def open_login_session(conn: AsyncConnection, identity_id: int) -> int | None:
+async def _open_session(conn: AsyncConnection, identity_id: int) -> int | None:
     """The id of a login session of the identity that has not ended, if there is one."""
     r = tables.runs
     query = select(r.c.id).where(
@@ -106,7 +106,7 @@ async def login_browser_identity(
             raise HTTPException(409, f"browser identity {row.name} is disabled: enable it before it is logged in")
         if row.held_by_run is not None:
             raise HTTPException(409, f"run {row.held_by_run} holds the browser identity; log in after the run ends")
-        waiting = await open_login_session(conn, identity_id)
+        waiting = await _open_session(conn, identity_id)
         if waiting is not None:
             raise HTTPException(409, f"login session {waiting} of this browser identity has not ended")
         worker_id = await identity_worker(conn, user, access, body.worker) if move else row.worker_id

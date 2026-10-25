@@ -1,5 +1,5 @@
 """Triage and the person when a work item of the Loop does not get on (``evo_agents.hub.server.loop.stall``,
-``rules.failure_move``, ``rules.triaged_move``, the answer of a decision of category loop), as criterion a7 of plan loop-engine
+``rules._failure``, ``rules._triaged``, the answer of a decision of category loop), as criterion a7 of plan loop-engine
 names it, on the hub with Postgres.
 
 A failure queues the work item again; the second opens its triage (the thread its failed run opened, or a thread of the

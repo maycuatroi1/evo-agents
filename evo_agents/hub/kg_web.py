@@ -242,7 +242,9 @@ class WebSession(HubSession):
                 groups = _groups(found, current, others)
                 degree.update(self._degrees(store, {nid for g in groups.values() for nid in g["members"]}, b))
                 if group is not None:
-                    found = _shown_first(found, current, _ranked(groups, degree, group, opened))
+                    rank = _ranked(groups, degree, group, opened)  # the direct neighbours shown, in order
+                    found = [e for e in found if _other(e, current) in rank]
+                    found.sort(key=lambda e: rank[_other(e, current)])  # stable: ties keep the order above
             for e in found:
                 other = _other(e, current)
                 node = others[other]
@@ -257,21 +259,6 @@ class WebSession(HubSession):
         missing = [nid for nid in included if nid not in degree]
         if missing:
             degree.update(self._degrees(store, missing, b))
-        return {
-            "build": b,
-            "focus": focus["id"],
-            "hops": hops,
-            "limit": limit,
-            "group": group,
-            "nodes": self._nodes_json(included, hop, hubs, degree),
-            "edges": self._shown_edges(edges, included),
-            "groups": _groups_json(groups, degree, included),
-            "neighbours": len(neighbours),
-            "left_out": len(left_out),
-            "truncated": bool(left_out),
-        }
-
-    def _nodes_json(self, included: dict[str, dict], hop: dict[str, int], hubs: set[str], degree: dict[str, int]):
         nodes = []
         for nid, n in included.items():
             entry = self._node_json(n)
@@ -279,40 +266,38 @@ class WebSession(HubSession):
             entry["hub"] = nid in hubs
             entry["degree"] = degree.get(nid, 0)
             nodes.append(entry)
-        return nodes
-
-    def _shown_edges(self, edges: dict[str, dict], included: dict[str, dict]) -> list[dict]:
         shown = []
         for e in edges.values():
             if e["src"] in included and e["dst"] in included:
                 self._saw(e["label"])
                 shown.append({"id": e["id"], "src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]})
-        return shown
-
-
-def _groups_json(groups: dict[str, dict], degree: dict[str, int], included: dict[str, dict]) -> list[dict]:
-    return [
-        {
-            "key": key,
-            "rel": g["rel"],
-            "direction": g["direction"],
-            "kind": g["kind"],
-            "total": len(g["members"]),
-            "shown": [nid for nid in _order(g["members"], degree) if nid in included],
+        return {
+            "build": b,
+            "focus": focus["id"],
+            "hops": hops,
+            "limit": limit,
+            "group": group,
+            "nodes": nodes,
+            "edges": shown,
+            "groups": [
+                {
+                    "key": key,
+                    "rel": g["rel"],
+                    "direction": g["direction"],
+                    "kind": g["kind"],
+                    "total": len(g["members"]),
+                    "shown": [nid for nid in _order(g["members"], degree) if nid in included],
+                }
+                for key, g in groups.items()
+            ],
+            "neighbours": len(neighbours),
+            "left_out": len(left_out),
+            "truncated": bool(left_out),
         }
-        for key, g in groups.items()
-    ]
 
 
 def _other(edge: dict, current: str) -> str:
     return edge["dst"] if edge["src"] == current else edge["src"]
-
-
-def _shown_first(found: list[dict], current: str, rank: dict[str, int]) -> list[dict]:
-    """The edges to the direct neighbours shown (``rank``), in rank order; ties keep the order of ``found``."""
-    kept = [e for e in found if _other(e, current) in rank]
-    kept.sort(key=lambda e: rank[_other(e, current)])
-    return kept
 
 
 def _visible_node(session: WebSession, nodes: dict[str, dict], node_id: str) -> bool:

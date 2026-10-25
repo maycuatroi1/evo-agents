@@ -41,12 +41,12 @@ from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probe_fixes
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.curator import charter_row, owner_access
+from evo_agents.hub.server.curator import _charter_row, _owner_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memory_audience import Reader, label_reaches
 from evo_agents.hub.server.night_cost import usage_cost
 from evo_agents.hub.server.notifications import notify
-from evo_agents.hub.server.probe_runs import probe_models
+from evo_agents.hub.server.probe_runs import _models
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
@@ -242,7 +242,7 @@ async def _week_results(
             .order_by(pr.c.id)
         )
     ).all()
-    models = probe_models(body) if (body.get("probes") or {}).get("budget_usd") is not None else []
+    models = _models(body) if (body.get("probes") or {}).get("budget_usd") is not None else []
     k = int((body.get("probes") or {}).get("k") or probes.DEFAULT_K)
     found: dict[date, dict] = {week: {} for week in weeks}
     for row in rows:
@@ -372,7 +372,7 @@ async def build(
     """The report of the ``weeks`` ISO weeks up to the one of ``newest`` (the week in progress when None), newest
     first, as ``user`` reads it through ``sink``; ``today`` is the local day (the database's today in the charter's time
     zone when None)."""
-    charter = await charter_row(conn, access.project_id)
+    charter = await _charter_row(conn, access.project_id)
     body = dict(charter.body) if charter is not None else {}
     settings = body.get("probes") or {}
     current = probes.week_of(today or await local_today(conn, body))
@@ -558,7 +558,7 @@ async def send(conn: AsyncConnection, due) -> str | None:
     )
     if told is not None:
         return "probe_report_sent"
-    access = await owner_access(conn, due.owner_id, due.owner, due.project)
+    access = await _owner_access(conn, due.owner_id, due.owner, due.project)
     if access is None or access.role is None:
         return None
     owner = Principal(user_id=due.owner_id, login=due.owner, admin=False, token_id=0, kind=MACHINE, token_hash="")

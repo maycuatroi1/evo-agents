@@ -35,7 +35,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memory_audience import Reader, label_reaches
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.proposals import ItemId, held_review_run, project_repos, writer_of
+from evo_agents.hub.server.proposals import ItemId, _project_repos, held_review_run, writer_of
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import MAX_ID, RunId
@@ -174,7 +174,7 @@ async def add_probe(request: Request, project: ProjectName, body: probes.ProbeAd
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _admin(access, "adding a probe")
-        if body.repo not in await project_repos(conn, access.project_id):
+        if body.repo not in await _project_repos(conn, access.project_id):
             raise HTTPException(422, f"project {access.name} has no repo {body.repo}; nothing was recorded")
         if body.change_id is not None:
             change = await _change_target(conn, access.project_id, access.name, body.change_id)
@@ -217,7 +217,7 @@ async def edit_probe(
         row = await _probe_row(conn, access, user, probe_id, None, lock=True)
         if row.state != "active":
             raise HTTPException(409, f"probe {probe_id} is {row.state}: only an active probe is edited")
-        if body.repo is not None and body.repo not in await project_repos(conn, access.project_id):
+        if body.repo is not None and body.repo not in await _project_repos(conn, access.project_id):
             raise HTTPException(422, f"project {access.name} has no repo {body.repo}; nothing was changed")
         values = {{"commit": "base_sha"}.get(key, key): getattr(body, key) for key in sorted(body.model_fields_set)}
         await conn.execute(
@@ -284,7 +284,7 @@ async def record_probe(request: Request, run_id: RunId, body: probes.ReviewProbe
             await _replaceable(conn, run, access, change.id, body.replaces)
         elif found is not None:
             raise HTTPException(409, f"change {change.id} has probe #{found} already")
-        if body.repo not in await project_repos(conn, run.project_id):
+        if body.repo not in await _project_repos(conn, run.project_id):
             raise HTTPException(422, f"project {run.project} has no repo {body.repo}; nothing was recorded")
         pr = tables.curator_probes
         if body.replaces is not None:

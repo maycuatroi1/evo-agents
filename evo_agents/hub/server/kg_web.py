@@ -192,7 +192,7 @@ class GraphShape(BaseModel):
 # Reading
 
 
-def require_reader(access: ProjectAccess) -> None:
+def _reader(access: ProjectAccess) -> None:
     if access.role is None:
         raise HTTPException(403, f"reading the knowledge graph of project {access.name} needs a grant on it")
 
@@ -208,13 +208,13 @@ def _ref(graph: BuiltGraph, latest: BuiltGraph) -> GraphRef:
     )
 
 
-async def read_graph(request: Request, user, project: str, reader):
+async def _read(request: Request, user, project: str, reader):
     """``reader(session)`` over the project's latest successful build for ``user``, and that build; (None, None)
     when no build succeeded yet."""
     state = request.app.state
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        require_reader(access)
+        _reader(access)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
         audience = await reader_audience(conn, user) if graphs else frozenset()
     if not graphs:
@@ -238,7 +238,7 @@ async def read_graph(request: Request, user, project: str, reader):
     return data, _ref(graph, graphs[0])
 
 
-def no_graph(project: str) -> HTTPException:
+def _no_graph(project: str) -> HTTPException:
     return HTTPException(
         404, f"project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push`"
     )
@@ -256,7 +256,7 @@ def _text(value) -> str | None:
 async def graph_summary(request: Request, project: ProjectName, user: CurrentUser) -> GraphSummary:
     """The build the knowledge graph pages read, how many nodes of each kind the member can see in it, and the commit
     each git source the member can see read."""
-    summary, ref = await read_graph(request, user, project, WebSession.summary)
+    summary, ref = await _read(request, user, project, WebSession.summary)
     summary = summary or {}
     return GraphSummary(
         graph=ref,
@@ -268,7 +268,7 @@ async def graph_summary(request: Request, project: ProjectName, user: CurrentUse
 @router.get("/{project}/shape", response_model=GraphShape)
 async def graph_shape(request: Request, project: ProjectName, user: CurrentUser) -> GraphShape:
     """How many edges the member can see join each kind of node to each other, by edge type, most first."""
-    shape, ref = await read_graph(request, user, project, WebSession.shape)
+    shape, ref = await _read(request, user, project, WebSession.shape)
     return GraphShape(graph=ref, shape=[ShapeRow(**row) for row in shape or []])
 
 
@@ -283,7 +283,7 @@ async def search_nodes(
 ) -> NodeSearch:
     """Visible nodes matching ``q``, best first, as kg_search finds them."""
     kinds = sorted({k for k in kind or [] if k})
-    found, ref = await read_graph(request, user, project, lambda session: session.search(q, kinds, limit))
+    found, ref = await _read(request, user, project, lambda session: session.search(q, kinds, limit))
     results = (found or {}).get("results", [])
     return NodeSearch(graph=ref, query=q, kinds=kinds, results=[KgNode(**n) for n in results])
 
@@ -298,9 +298,9 @@ async def show_node(request: Request, project: ProjectName, node_id: NodeId, use
         except NotVisible:
             return None
 
-    data, ref = await read_graph(request, user, project, reader)
+    data, ref = await _read(request, user, project, reader)
     if ref is None:
-        raise no_graph(project)
+        raise _no_graph(project)
     if data is None:
         raise _hidden(project)
     evidence = [
@@ -348,9 +348,9 @@ async def show_neighbourhood(
         except NotVisible:
             return None
 
-    data, ref = await read_graph(request, user, project, reader)
+    data, ref = await _read(request, user, project, reader)
     if ref is None:
-        raise no_graph(project)
+        raise _no_graph(project)
     if data is None:
         raise _hidden(project)
     return Neighbourhood(

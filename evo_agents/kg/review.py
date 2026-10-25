@@ -87,42 +87,23 @@ def compute(graph: Graph) -> list[dict]:
     found = graph.clusters
     if found is None or not found.clusters:
         return []
-    run = _Run(graph, found)
-    run.mentions()
-    run.ambiguous_paths()
-    run.unmentioned_documents()
-    run.clusters_without_knowledge()
-    run.possible_duplicates()
-    run.bulk_noise()
-    return [run.items[fp] for fp in sorted(run.items)]
-
-
-class _Run:
-    """One computation of the review items of a graph: the degrees and mentions the rules share, and the items found."""
-
-    def __init__(self, graph: Graph, found) -> None:
-        self.graph = graph
-        self.found = found
-        self.nodes = graph.nodes
-        self.degree: Counter = Counter()
-        self.mentioned: set[str] = set()
-        self.items: dict[str, dict] = {}
-        for e in graph.edges.values():
-            if e["rel"] not in STRUCTURAL:
-                self._count(e)
-
-    def _count(self, e: dict) -> None:
-        self.degree[e["src"]] += 1
-        self.degree[e["dst"]] += 1
-        dst = self.nodes.get(e["dst"])
+    nodes = graph.nodes
+    degree: Counter = Counter()
+    mentioned: set[str] = set()
+    for e in graph.edges.values():
+        if e["rel"] in STRUCTURAL:
+            continue
+        degree[e["src"]] += 1
+        degree[e["dst"]] += 1
+        dst = nodes.get(e["dst"])
         if dst is not None and dst["kind"] == "Document":
-            src = self.nodes.get(e["src"])
+            src = nodes.get(e["src"])
             own = src is not None and src["kind"] == "Section" and src["props"].get("item") == e["dst"]
             if not own:
-                self.mentioned.add(e["dst"])
+                mentioned.add(e["dst"])
 
-    def owner(self, nid: str) -> str:
-        n = self.nodes.get(nid)
+    def owner(nid: str) -> str:
+        n = nodes.get(nid)
         if n is None:
             return nid
         if n["kind"] == "Symbol":
@@ -131,18 +112,20 @@ class _Run:
             return n["props"].get("item") or nid
         return nid
 
-    def cluster_of(self, nid: str) -> str | None:
-        member = self.found.members.get(self.owner(nid))
+    def cluster_of(nid: str) -> str | None:
+        member = found.members.get(owner(nid))
         return member[0] if member else None
 
-    def ranked(self, ids) -> list[str]:
-        return sorted(set(ids), key=lambda i: (-self.degree[i], i))
+    def ranked(ids) -> list[str]:
+        return sorted(set(ids), key=lambda i: (-degree[i], i))
 
-    def add(self, rule: str, key: str, evidence: list[str], detail: dict, *, required: int = 1, least: int = 1) -> None:
+    items: dict[str, dict] = {}
+
+    def add(rule: str, key: str, evidence: list[str], detail: dict, *, required: int = 1, least: int = 1) -> None:
         fp = fingerprint(rule, key)
         kept = evidence[:EVIDENCE]
-        clusters = [self.cluster_of(nid) for nid in kept]
-        self.items[fp] = {
+        clusters = [cluster_of(nid) for nid in kept]
+        items[fp] = {
             "fingerprint": fp,
             "rule": rule,
             "cluster": next((c for c in clusters if c), None),
@@ -152,97 +135,91 @@ class _Run:
             "detail": {"count": len(evidence), **detail, "required": required, "least": least},
         }
 
-    def mentions(self) -> None:
-        """1 and 5: the mentions of each item that matched nothing, or several nodes."""
-        for item_id, m in sorted(self.graph.mentions.items()):
-            if item_id not in self.nodes:
-                continue
-            for kind, rule in (("dangling", "dangling_mention"), ("ambiguous", "ambiguous_match")):
-                if m.get(kind):
-                    samples = (m.get("samples") or {}).get(kind, [])[:SAMPLES]
-                    self.add(rule, item_id, [item_id], {"mentions": m[kind], "samples": samples})
+    # 1 and 5: the mentions of each item that matched nothing, or several nodes
+    for item_id, m in sorted(graph.mentions.items()):
+        if item_id not in nodes:
+            continue
+        if m.get("dangling"):
+            samples = (m.get("samples") or {}).get("dangling", [])[:SAMPLES]
+            add("dangling_mention", item_id, [item_id], {"mentions": m["dangling"], "samples": samples})
+        if m.get("ambiguous"):
+            samples = (m.get("samples") or {}).get("ambiguous", [])[:SAMPLES]
+            add("ambiguous_match", item_id, [item_id], {"mentions": m["ambiguous"], "samples": samples})
 
-    def ambiguous_paths(self) -> None:
-        """5: path edges resolved to one of several files with that path."""
-        nodes = self.nodes
-        by_path: dict[str, list[str]] = defaultdict(list)
-        for nid, n in nodes.items():
-            if n["kind"] == "File" and _path(n):
-                by_path[_path(n)].append(nid)
-        for eid, e in sorted(self.graph.edges.items()):
-            if e["status"] != "resolved" or e["rel"] in STRUCTURAL:
-                continue
-            dst = nodes.get(e["dst"])
-            if dst is None or dst["kind"] != "File" or len(by_path.get(_path(dst), [])) < 2:
-                continue
-            others = [c for c in sorted(by_path[_path(dst)]) if c != e["dst"]]
-            self.add(
-                "ambiguous_match",
-                eid,
-                [e["src"], e["dst"], *others],
-                {"edge": eid, "rel": e["rel"], "path": _path(dst)},
-                required=2,
-                least=2,
-            )
+    # 5: path edges resolved to one of several files with that path
+    by_path: dict[str, list[str]] = defaultdict(list)
+    for nid, n in nodes.items():
+        if n["kind"] == "File" and _path(n):
+            by_path[_path(n)].append(nid)
+    for eid, e in sorted(graph.edges.items()):
+        if e["status"] != "resolved" or e["rel"] in STRUCTURAL:
+            continue
+        dst = nodes.get(e["dst"])
+        if dst is None or dst["kind"] != "File" or len(by_path.get(_path(dst), [])) < 2:
+            continue
+        others = [c for c in sorted(by_path[_path(dst)]) if c != e["dst"]]
+        add(
+            "ambiguous_match",
+            eid,
+            [e["src"], e["dst"], *others],
+            {"edge": eid, "rel": e["rel"], "path": _path(dst)},
+            required=2,
+            least=2,
+        )
 
-    def unmentioned_documents(self) -> None:
-        """2: documents no other node mentions."""
-        for nid, n in sorted(self.nodes.items()):
-            if n["kind"] == "Document" and nid not in self.mentioned and nid in self.found.members:
-                self.add("unmentioned_document", nid, [nid], {"path": _path(n) or None})
+    # 2: documents no other node mentions
+    for nid, n in sorted(nodes.items()):
+        if n["kind"] == "Document" and nid not in mentioned and nid in found.members:
+            add("unmentioned_document", nid, [nid], {"path": _path(n) or None})
 
-    def clusters_without_knowledge(self) -> None:
-        """3: clusters with code and no knowledge."""
-        kinds_of: dict[str, set[str]] = defaultdict(set)
-        code_of: dict[str, list[str]] = defaultdict(list)
-        for nid, (top, _sub) in self.found.members.items():
-            n = self.nodes.get(nid)
-            if n is None:
-                continue
-            kinds_of[top].add(n["kind"])
-            if n["kind"] in CODE_KINDS:
-                code_of[top].append(nid)
-        for cid, c in sorted(self.found.clusters.items()):
-            if c["level"] != 1 or not code_of[cid] or kinds_of[cid] & KNOWLEDGE_KINDS:
-                continue
-            self.add("cluster_without_knowledge", cid, self.ranked(code_of[cid]), {"label": c["label"]}, required=0)
+    # 3: clusters with code and no knowledge
+    kinds_of: dict[str, set[str]] = defaultdict(set)
+    code_of: dict[str, list[str]] = defaultdict(list)
+    for nid, (top, _sub) in found.members.items():
+        n = nodes.get(nid)
+        if n is None:
+            continue
+        kinds_of[top].add(n["kind"])
+        if n["kind"] in CODE_KINDS:
+            code_of[top].append(nid)
+    for cid, c in sorted(found.clusters.items()):
+        if c["level"] != 1 or not code_of[cid] or kinds_of[cid] & KNOWLEDGE_KINDS:
+            continue
+        add("cluster_without_knowledge", cid, ranked(code_of[cid]), {"label": c["label"]}, required=0)
 
-    def possible_duplicates(self) -> None:
-        """4: nodes of one kind with the same normalised name."""
-        named: dict[tuple[str, str], list[str]] = defaultdict(list)
-        for nid, n in self.nodes.items():
-            key = normal(n["name"])
-            if n["kind"] not in UNIQUE_SKIP and len(key) >= 3:
-                named[(n["kind"], key)].append(nid)
-        for (kind, key), ids in sorted(named.items()):
-            if len(ids) >= 2:
-                self.add(
-                    "possible_duplicate", f"{kind}\x1f{key}", self.ranked(ids), {"kind": kind}, required=0, least=2
-                )
+    # 4: nodes of one kind with the same normalised name
+    named: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for nid, n in nodes.items():
+        key = normal(n["name"])
+        if n["kind"] not in UNIQUE_SKIP and len(key) >= 3:
+            named[(n["kind"], key)].append(nid)
+    for (kind, key), ids in sorted(named.items()):
+        if len(ids) >= 2:
+            add("possible_duplicate", f"{kind}\x1f{key}", ranked(ids), {"kind": kind}, required=0, least=2)
 
-    def bulk_noise(self) -> None:
-        """6: bulk noise, per directory or per repeated step name."""
-        noise: dict[tuple[str, str], list[str]] = defaultdict(list)
-        step_plans: dict[str, set[str]] = defaultdict(set)
-        for e in self.graph.edges.values():
-            if e["rel"] == "has_step":
-                step_plans[e["dst"]].add(e["src"])
-        steps: dict[str, list[str]] = defaultdict(list)
-        for nid, n in self.nodes.items():
-            path = _path(n)
-            if n["kind"] == "PlanStep":
-                steps[normal(n["name"])].append(nid)
-            elif path.lower().endswith(IMAGE_SUFFIXES):
-                noise[("image", posixpath.dirname(path))].append(nid)
-            elif path and GENERATED.search(path):
-                noise[("generated", posixpath.dirname(path))].append(nid)
-        for (what, where), ids in sorted(noise.items()):
-            if len(ids) >= BULK:
-                self.add("bulk_noise", f"{what}\x1f{where}", sorted(ids), {"kind": what, "where": where}, required=0)
-        for name, ids in sorted(steps.items()):
-            plans = {p for i in ids for p in step_plans.get(i) or {i}}
-            if name and len(plans) >= BULK:
-                self.add("bulk_noise", f"step\x1f{name}", sorted(ids), {"kind": "step", "where": None}, required=0)
+    # 6: bulk noise, per directory or per repeated step name
+    noise: dict[tuple[str, str], list[str]] = defaultdict(list)
+    step_plans: dict[str, set[str]] = defaultdict(set)
+    for e in graph.edges.values():
+        if e["rel"] == "has_step":
+            step_plans[e["dst"]].add(e["src"])
+    steps: dict[str, list[str]] = defaultdict(list)
+    for nid, n in nodes.items():
+        path = _path(n)
+        if n["kind"] == "PlanStep":
+            steps[normal(n["name"])].append(nid)
+        elif path.lower().endswith(IMAGE_SUFFIXES):
+            noise[("image", posixpath.dirname(path))].append(nid)
+        elif path and GENERATED.search(path):
+            noise[("generated", posixpath.dirname(path))].append(nid)
+    for (what, where), ids in sorted(noise.items()):
+        if len(ids) >= BULK:
+            add("bulk_noise", f"{what}\x1f{where}", sorted(ids), {"kind": what, "where": where}, required=0)
+    for name, ids in sorted(steps.items()):
+        plans = {p for i in ids for p in step_plans.get(i) or {i}}
+        if name and len(plans) >= BULK:
+            add("bulk_noise", f"step\x1f{name}", sorted(ids), {"kind": "step", "where": None}, required=0)
+    return [items[fp] for fp in sorted(items)]
 
 
 def counts(items: list[dict]) -> dict[str, int]:
