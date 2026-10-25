@@ -8038,6 +8038,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugins/install-github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install From Github
+         * @description Install a plugin from the release of a GitHub repo, signed by the signer named (or the repo's ci.yml).
+         */
+        post: operations["install_from_github_v1_plugins_install_github_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/plugins": {
         parameters: {
             query?: never;
@@ -8252,9 +8272,180 @@ export interface paths {
         };
         /**
          * Publishers
-         * @description The publishers an operator of this hub trusts, in the order EVO_HUB_PLUGIN_PUBLISHERS names them.
+         * @description The publishers this hub trusts: the operator's in the order EVO_HUB_PLUGIN_PUBLISHERS names them, then those
+         *     only hub admins trusted.
          */
         get: operations["publishers_v1_plugin_publishers_get"];
+        put?: never;
+        /**
+         * Add Publisher
+         * @description Trust ``signer`` to sign the plugins of ``publisher``; nothing changes when the hub trusts it already.
+         */
+        post: operations["add_publisher_v1_plugin_publishers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-publishers/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Publisher
+         * @description Stop trusting a signer hub admins trusted; a plugin it signed stays installed, and installing or upgrading
+         *     it again is refused until something the hub trusts signs it.
+         */
+        delete: operations["remove_publisher_v1_plugin_publishers__entry_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sources
+         * @description The markets this hub reads, the operator's first.
+         */
+        get: operations["sources_v1_market_sources_get"];
+        put?: never;
+        /**
+         * Add Source
+         * @description Add a market and read it now; a market that does not read is kept with the error, to refresh once fixed.
+         */
+        post: operations["add_source_v1_market_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Source
+         * @description Stop reading a market; the plugins installed from it stay installed. The operator's market stays.
+         */
+        delete: operations["remove_source_v1_market_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/sources/{source_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Source
+         * @description Read a market again now: its index, and the latest release of each of its free plugins.
+         */
+        post: operations["refresh_source_v1_market_sources__source_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/{source}/{plugin}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install From Market
+         * @description Install a free plugin of a market, or upgrade it, from its GitHub release.
+         */
+        post: operations["install_from_market_v1_market__source___plugin__install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/{source}/{plugin}/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Install
+         * @description Ask the hub admins to install a plugin of a market for project ``project``, of which the caller is an admin.
+         */
+        post: operations["request_install_v1_market__source___plugin__request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Market
+         * @description The plugins of every market this hub reads, by market then as each lists them; filtered by the words of
+         *     ``q`` (in the id, name, description and publisher), an industry, a category and a market.
+         */
+        get: operations["market_v1_market_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/market/{source}/{plugin}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Market Plugin
+         * @description One plugin of one market, with the permissions its latest release asks for.
+         */
+        get: operations["market_plugin_v1_market__source___plugin__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -16019,6 +16210,29 @@ export interface components {
             /** Rank */
             rank: number;
         };
+        /** GitHubInstallIn */
+        GitHubInstallIn: {
+            /**
+             * Repo
+             * @description OWNER/REPO
+             */
+            repo: string;
+            /**
+             * Tag
+             * @description the release's tag; the latest if left out
+             */
+            tag?: string | null;
+            /**
+             * Signer
+             * @description what signs the releases; sigstore:OWNER/REPO/.github/workflows/ci.yml when left out
+             */
+            signer?: string | null;
+            /**
+             * Trust Publisher
+             * @default false
+             */
+            trust_publisher: boolean;
+        };
         /** GitHubLogin */
         GitHubLogin: {
             /**
@@ -18680,6 +18894,328 @@ export interface components {
              * @description its level-2 cluster, if any
              */
             sub: string | null;
+        };
+        /** MarketBrief */
+        MarketBrief: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /** Name */
+            name?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** MarketInstallIn */
+        MarketInstallIn: {
+            /**
+             * Version
+             * @description the version to install; the latest release when left out
+             */
+            version?: string | null;
+            /**
+             * Trust Publisher
+             * @description trust the signer for the publisher from now on, when the hub does not yet
+             * @default false
+             */
+            trust_publisher: boolean;
+        };
+        /** MarketInstalled */
+        MarketInstalled: {
+            plugin: components["schemas"]["Plugin"];
+            /**
+             * Trusted Publisher
+             * @description whether this install made the hub trust the publisher's signer
+             */
+            trusted_publisher: boolean;
+            /** Upgraded */
+            upgraded: boolean;
+        };
+        /** MarketList */
+        MarketList: {
+            /** Plugins */
+            plugins: components["schemas"]["MarketPlugin"][];
+            /**
+             * Industries
+             * @description every industry the markets list, to filter by
+             */
+            industries: string[];
+            /**
+             * Categories
+             * @description every category the markets list, to filter by
+             */
+            categories: string[];
+            /** Markets */
+            markets: components["schemas"]["MarketBrief"][];
+        };
+        /** MarketPermission */
+        MarketPermission: {
+            /** Name */
+            name: string;
+            /**
+             * Text
+             * @description what the permission lets the plugin do, as a hub admin grants it
+             */
+            text: string;
+        };
+        /** MarketPlugin */
+        MarketPlugin: {
+            /**
+             * Source
+             * @description the id of the market source that lists it
+             */
+            source: number;
+            /**
+             * Market
+             * @description the market's name
+             */
+            market: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Industries */
+            industries: string[];
+            /** Categories */
+            categories: string[];
+            /** Repo */
+            repo: string;
+            publisher: components["schemas"]["MarketPublisher"];
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "isolated" | "core";
+            /** Package */
+            package?: string | null;
+            price: components["schemas"]["MarketPrice"];
+            /** Icon */
+            icon?: string | null;
+            /** Homepage */
+            homepage?: string | null;
+            /** License */
+            license?: string | null;
+            /** Requires */
+            requires?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_installed" | "installed" | "upgrade" | "in_image" | "not_in_image" | "needs_license" | "unavailable";
+            /** Installed Version */
+            installed_version?: string | null;
+            /** @description its latest release, for a free isolated plugin */
+            latest?: components["schemas"]["MarketRelease"] | null;
+        };
+        /** MarketPluginDetail */
+        MarketPluginDetail: {
+            /**
+             * Source
+             * @description the id of the market source that lists it
+             */
+            source: number;
+            /**
+             * Market
+             * @description the market's name
+             */
+            market: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Industries */
+            industries: string[];
+            /** Categories */
+            categories: string[];
+            /** Repo */
+            repo: string;
+            publisher: components["schemas"]["MarketPublisher"];
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "isolated" | "core";
+            /** Package */
+            package?: string | null;
+            price: components["schemas"]["MarketPrice"];
+            /** Icon */
+            icon?: string | null;
+            /** Homepage */
+            homepage?: string | null;
+            /** License */
+            license?: string | null;
+            /** Requires */
+            requires?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_installed" | "installed" | "upgrade" | "in_image" | "not_in_image" | "needs_license" | "unavailable";
+            /** Installed Version */
+            installed_version?: string | null;
+            /** @description its latest release, for a free isolated plugin */
+            latest?: components["schemas"]["MarketRelease"] | null;
+            /**
+             * Trusted
+             * @description whether the hub trusts the signer for the publisher already
+             */
+            trusted: boolean;
+            /**
+             * May Trust
+             * @description whether a hub admin may trust it here (not locked, not a core publisher)
+             */
+            may_trust: boolean;
+        };
+        /** MarketPrice */
+        MarketPrice: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "free" | "subscription";
+            /** Usd Per Hub Month */
+            usd_per_hub_month?: number | null;
+            /** Seller */
+            seller?: string | null;
+        };
+        /** MarketPublisher */
+        MarketPublisher: {
+            /** Id */
+            id: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Signer
+             * @description what the market says signs its releases: sigstore:<workflow> or ed25519:<key>
+             */
+            signer: string;
+            /**
+             * Identity
+             * @description how the signer reads among a publisher's identities
+             */
+            identity: string;
+        };
+        /** MarketRelease */
+        MarketRelease: {
+            /** Tag */
+            tag?: string | null;
+            /** Version */
+            version?: string | null;
+            /** Permissions */
+            permissions?: components["schemas"]["MarketPermission"][];
+            /**
+             * Error
+             * @description why the latest release does not read, when it does not
+             */
+            error?: string | null;
+        };
+        /** MarketRequest */
+        MarketRequest: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Plugin */
+            plugin: string;
+            /** State */
+            state: string;
+            /**
+             * Created
+             * @description False when the project had asked already and the request is still open
+             */
+            created: boolean;
+        };
+        /** MarketRequestIn */
+        MarketRequestIn: {
+            /** Project */
+            project: string;
+        };
+        /** MarketSource */
+        MarketSource: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /** Name */
+            name?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Ref */
+            ref: string;
+            /** Path */
+            path: string;
+            /**
+             * Builtin
+             * @description the operator's market (EVO_HUB_MARKET_DEFAULT_SOURCE), which stays
+             */
+            builtin: boolean;
+            /**
+             * Private
+             * @description whether the hub reads it with a token
+             */
+            private: boolean;
+            /** Added By */
+            added_by?: string | null;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /**
+             * Plugins
+             * @description how many plugins its index lists
+             */
+            plugins: number;
+        };
+        /** MarketSourceIn */
+        MarketSourceIn: {
+            /**
+             * Repo
+             * @description OWNER/REPO
+             */
+            repo: string;
+            /**
+             * Ref
+             * @default main
+             */
+            ref: string;
+            /**
+             * Path
+             * @default market.json
+             */
+            path: string;
+            /**
+             * Token
+             * @description a GitHub token that reads a private repo; sealed, never shown again
+             */
+            token?: string | null;
+        };
+        /** MarketSources */
+        MarketSources: {
+            /** Sources */
+            sources: components["schemas"]["MarketSource"][];
+            /**
+             * Default Source
+             * @description EVO_HUB_MARKET_DEFAULT_SOURCE
+             */
+            default_source: string | null;
+            /**
+             * Publishers Locked
+             * @description EVO_HUB_PLUGIN_PUBLISHERS_LOCKED: hub admins may trust no publisher
+             */
+            publishers_locked: boolean;
         };
         /** MarketingBrowserClaim */
         MarketingBrowserClaim: {
@@ -22052,6 +22588,17 @@ export interface components {
              * @description whether its plugins may be core plugins, which run in the hub's processes
              */
             core: boolean;
+            /**
+             * Operator
+             * @description whether EVO_HUB_PLUGIN_PUBLISHERS lists it
+             * @default false
+             */
+            operator: boolean;
+            /**
+             * Trusted
+             * @description the signers hub admins trusted for it, besides the operator's
+             */
+            trusted?: components["schemas"]["TrustedSigner"][];
         };
         /**
          * PluginRuntime
@@ -25146,6 +25693,15 @@ export interface components {
              * @enum {string}
              */
             audience: "everyone" | "admins";
+        };
+        /** PublisherTrustIn */
+        PublisherTrustIn: {
+            /** Publisher */
+            publisher: string;
+            /** Signer */
+            signer: string;
+            /** Note */
+            note?: string | null;
         };
         /** Queued */
         Queued: {
@@ -32550,6 +33106,33 @@ export interface components {
              * @description the web page of the thread, /chats/ID?message=ID
              */
             link: string;
+        };
+        /** TrustedSigner */
+        TrustedSigner: {
+            /**
+             * Id
+             * @description the row to remove with DELETE /v1/plugin-publishers/{id}
+             */
+            id: number;
+            /**
+             * Signer
+             * @description sigstore:OWNER/REPO/.github/workflows/FILE.yml or ed25519:KEY, as it was trusted
+             */
+            signer: string;
+            /**
+             * Identity
+             * @description how it reads among the publisher's identities
+             */
+            identity: string;
+            /** Added By */
+            added_by: string | null;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /** Note */
+            note?: string | null;
         };
         /** UnitCreate */
         UnitCreate: {
@@ -64108,6 +64691,93 @@ export interface operations {
             };
         };
     };
+    install_from_github_v1_plugins_install_github_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitHubInstallIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketInstalled"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     plugins_v1_plugins_get: {
         parameters: {
             query?: never;
@@ -64898,6 +65568,673 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_publisher_v1_plugin_publishers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublisherTrustIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginPublisher"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_publisher_v1_plugin_publishers__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginPublisher"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sources_v1_market_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketSources"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_source_v1_market_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketSourceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketSource"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_source_v1_market_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the market source's id, as GET /v1/market/sources gives it */
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketSources"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refresh_source_v1_market_sources__source_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the market source's id, as GET /v1/market/sources gives it */
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketSource"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    install_from_market_v1_market__source___plugin__install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the market source's id, as GET /v1/market/sources gives it */
+                source: number;
+                /** @description the plugin's id, as the market lists it */
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketInstallIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketInstalled"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    request_install_v1_market__source___plugin__request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the market source's id, as GET /v1/market/sources gives it */
+                source: number;
+                /** @description the plugin's id, as the market lists it */
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    market_v1_market_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                industry?: string | null;
+                category?: string | null;
+                source?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    market_plugin_v1_market__source___plugin__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the market source's id, as GET /v1/market/sources gives it */
+                source: number;
+                /** @description the plugin's id, as the market lists it */
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketPluginDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -280,7 +280,8 @@
       "apps": "Ứng dụng",
       "settings": "Cài đặt"
     },
-    "opportunities": "Cơ hội"
+    "opportunities": "Cơ hội",
+    "market": "Chợ plugin"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -776,7 +777,8 @@
       "plugins": "Plugin",
       "diagnostics": "Chẩn đoán",
       "branding": "Nhận diện",
-      "features": "Tính năng"
+      "features": "Tính năng",
+      "market": "Chợ plugin"
     },
     "filters": {
       "apply": "Lọc",
@@ -1215,6 +1217,7 @@
         "curator": "Curator",
         "kg": "Knowledge graph",
         "monitor": "Monitor",
+        "market": "Chợ plugin",
         "canvas": "Canvas",
         "srs": "Yêu cầu (SRS)",
         "tasks": "Task"
@@ -1224,6 +1227,7 @@
         "curator": "Ca đêm của Curator, các đề xuất và bản tin sáng của nó.",
         "kg": "Knowledge graph của dự án: các trang, API và các tool kg trên MCP của hub.",
         "monitor": "Các run đang chạy ở mọi dự án, theo dõi trực tiếp.",
+        "market": "Chợ plugin: duyệt các chợ hub đọc và cài plugin từ đó.",
         "canvas": "Canvas của dự án: các nhận định, bằng chứng và phần chấm của chúng, cùng @strategist.",
         "srs": "Các tài liệu yêu cầu của dự án, phần review và duyệt của chúng, cùng @ba.",
         "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt."
@@ -6231,7 +6235,8 @@
       "autonomy": "Việc hub đã làm theo mức tự chủ của bạn",
       "worker_doctor": "Doctor của một worker được chia phát hiện mức high",
       "curator_probe_report": "Báo cáo probe hằng tuần của Curator",
-      "opportunity_window": "Hạn của một cơ hội sắp đóng"
+      "opportunity_window": "Hạn của một cơ hội sắp đóng",
+      "market_install_request": "Một dự án xin cài plugin từ market"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -10688,5 +10693,180 @@
     "tooMany": "Một tin nhắn mang tối đa {max} file: không đính kèm {names}.",
     "notReady": "Có file chưa tải lên được: hãy tải lại hoặc bỏ file đó rồi gửi.",
     "files": "File của tin nhắn này"
+  },
+  "market": {
+    "title": "Chợ plugin",
+    "caption": "Plugin của các chợ mà hub này đọc",
+    "count": "{count, plural, other {# plugin}}",
+    "manage": "Quản lý chợ",
+    "noResults": "Không có plugin nào khớp bộ lọc",
+    "columns": {
+      "plugin": "Plugin",
+      "publisher": "Nhà phát hành",
+      "categories": "Danh mục",
+      "price": "Giá",
+      "status": "Trạng thái"
+    },
+    "filters": {
+      "search": "Tìm trong chợ",
+      "placeholder": "Tìm plugin",
+      "clear": "Xóa nội dung tìm",
+      "industry": "Ngành",
+      "category": "Danh mục",
+      "allIndustries": "Mọi ngành",
+      "allCategories": "Mọi danh mục"
+    },
+    "summary": {
+      "all": "{count, plural, other {# plugin}}",
+      "filtered": "{shown} trên {count, plural, other {# plugin}}"
+    },
+    "empty": {
+      "title": "Chưa có chợ nào",
+      "admin": "Thêm một chợ, tức một repo GitHub có chỉ mục plugin-market-v1, rồi plugin của nó hiện ở đây cho mọi thành viên.",
+      "member": "Hub này chưa đọc chợ nào. Quản trị viên hub sẽ thêm."
+    },
+    "status": {
+      "not_installed": "Chưa cài",
+      "installed": "Đã cài",
+      "upgrade": "Có bản nâng cấp",
+      "in_image": "Có sẵn trong image",
+      "not_in_image": "Không có trong image",
+      "needs_license": "Cần giấy phép",
+      "unavailable": "Không dùng được"
+    },
+    "price": {
+      "free": "Miễn phí",
+      "subscription": "Thuê bao",
+      "perMonth": "{amount} mỗi hub một tháng"
+    },
+    "tier": {
+      "isolated": "Tách biệt",
+      "core": "Lõi"
+    },
+    "reason": {
+      "inImage": "Plugin lõi có sẵn trong image của hub: quản trị viên dự án bật nó ở mục Plugin của dự án.",
+      "core": "Plugin lõi chạy trong chính tiến trình của hub, nên nó đi kèm image của hub và không bao giờ cài từ đây. Hãy nhờ người vận hành hub dùng image có nó.",
+      "paid": "Plugin trả phí cần giấy phép từ người bán. Giấy phép có ở bản phát hành sau; hiện chưa cài được gì từ đây.",
+      "unavailable": "Bản phát hành mới nhất của nó không đọc được, nên chưa cài được cho tới khi nhà phát hành sửa."
+    },
+    "errors": {
+      "forbidden": "Chỉ quản trị viên hub mới làm được việc này.",
+      "conflict": "Hub từ chối vì tình trạng hiện tại. Tải lại trang để xem lý do."
+    },
+    "install": {
+      "install": "Cài đặt",
+      "upgrade": "Nâng cấp lên {version}",
+      "installing": "Đang cài…",
+      "installed": "Đã cài {name} {version}",
+      "upgraded": "Đã nâng cấp {name} lên {version}",
+      "trustedNow": "Hub đã tin chữ ký của {publisher}.",
+      "openStore": "Mở trong kho",
+      "failed": "Không cài được {name}",
+      "trustTitle": "Tin {publisher}?",
+      "trustDescription": "Hub này chưa tin nhà phát hành của {name}. Cài đặt sẽ tin chủ thể ký bên dưới cho các plugin của nhà phát hành này từ nay; bạn có thể thôi tin ở Quản trị, Chợ plugin.",
+      "publisher": "Nhà phát hành",
+      "signer": "Ký bởi",
+      "cancel": "Hủy",
+      "trustConfirm": "Tin và cài đặt"
+    },
+    "request": {
+      "description": "Chỉ quản trị viên hub mới cài plugin. Hãy nhờ họ cài plugin này cho một dự án bạn quản trị.",
+      "project": "Dự án",
+      "noProjects": "Chỉ quản trị viên hub mới cài plugin, và quản trị viên dự án có thể đề nghị. Bạn không quản trị dự án nào.",
+      "send": "Đề nghị quản trị viên hub",
+      "sending": "Đang gửi…",
+      "sent": "Đã đề nghị quản trị viên hub cài cho {project}",
+      "already": "Đã có đề nghị cho {project} rồi",
+      "failed": "Không gửi được đề nghị"
+    },
+    "detail": {
+      "from": "Từ {market}, của {publisher}",
+      "aboutTitle": "Giới thiệu",
+      "latest": "Bản phát hành mới nhất",
+      "installedVersion": "Đã cài ở đây",
+      "none": "Chưa có",
+      "package": "Gói",
+      "license": "Giấy phép mã nguồn",
+      "requires": "Cần evo-agents",
+      "homepage": "Trang chủ",
+      "asksFor": "Quyền",
+      "asksForDescription": "Những quyền bản phát hành mới nhất yêu cầu. Quản trị viên dự án cấp từng quyền khi bật nó.",
+      "noRelease": "Hub chỉ đọc bản phát hành của plugin tách biệt miễn phí.",
+      "releaseError": "Bản phát hành mới nhất không đọc được: {error}",
+      "noPermissions": "Nó không yêu cầu quyền nào.",
+      "publisherTitle": "Nhà phát hành",
+      "publisher": "Nhà phát hành",
+      "identity": "Ký bởi",
+      "trust": "Trên hub này",
+      "trustImage": "Đi kèm image của hub",
+      "trusted": "Đã tin",
+      "notTrusted": "Chưa tin: khi cài sẽ hỏi trước",
+      "locked": "Chưa tin, và người vận hành đã khóa danh sách nhà phát hành của hub",
+      "repo": "Kho mã",
+      "licenseTitle": "Giấy phép",
+      "licenseDescription": "Plugin trả phí cài bằng giấy phép từ người bán, điều hub này chưa hỗ trợ.",
+      "requestTitle": "Đề nghị cài",
+      "missingTitle": "Không có plugin này",
+      "missingDescription": "Địa chỉ không trỏ tới plugin nào của chợ."
+    },
+    "admin": {
+      "title": "Chợ plugin",
+      "sourcesCaption": "Các chợ hub này đọc",
+      "builtin": "Mặc định",
+      "private": "Riêng tư",
+      "columns": {
+        "market": "Chợ",
+        "plugins": "Plugin",
+        "fetched": "Lần đọc",
+        "actions": "Thao tác"
+      },
+      "never": "Chưa đọc",
+      "pluginCount": "{count, plural, other {# plugin}}",
+      "refresh": "Làm mới",
+      "refreshing": "Đang làm mới…",
+      "refreshed": "Đã đọc {repo}: {count, plural, other {# plugin}}",
+      "refreshFailed": "Không đọc được {repo}",
+      "removeLabel": "Gỡ {repo}",
+      "removeTitle": "Gỡ chợ {repo}?",
+      "removeDescription": "Plugin của nó rời trang chợ. Plugin đã cài từ nó vẫn được giữ.",
+      "removeConfirm": "Gỡ",
+      "removing": "Đang gỡ…",
+      "removed": "Đã gỡ {repo}",
+      "cancel": "Hủy",
+      "lockedNotice": "Người vận hành đã khóa danh sách nhà phát hành hub tin (EVO_HUB_PLUGIN_PUBLISHERS_LOCKED): plugin chỉ cài từ chợ khi chủ thể ký của nhà phát hành đã được tin sẵn.",
+      "empty": {
+        "title": "Chưa có chợ nào",
+        "description": "Thêm một repo GitHub có chỉ mục plugin-market-v1. Hub đọc nó ngay và đọc lại mỗi 6 giờ."
+      },
+      "trusted": {
+        "title": "Tin từ chợ",
+        "description": "Các chủ thể ký mà quản trị viên hub đã tin khi cài từ chợ. Nhà phát hành của người vận hành nằm ở Quản trị, Plugin.",
+        "locked": "Người vận hành đã khóa danh sách nhà phát hành: không quản trị viên nào tin thêm được từ đây.",
+        "none": "Chưa tin chủ thể ký nào từ chợ.",
+        "addedBy": "Tin bởi {login}",
+        "removeLabel": "Thôi tin {publisher}",
+        "removeTitle": "Thôi tin {publisher}?",
+        "removeDescription": "Plugin đã cài vẫn chạy. Phiên bản mới do chủ thể này ký sẽ không cài được cho tới khi có người tin lại.",
+        "removed": "Đã thôi tin {publisher}"
+      },
+      "add": {
+        "open": "Thêm chợ",
+        "title": "Thêm một chợ",
+        "description": "Một repo GitHub có chỉ mục plugin-market-v1. Hub đọc nó ngay và mỗi 6 giờ.",
+        "repo": "Kho mã",
+        "repoHint": "OWNER/REPO, hoặc địa chỉ github.com của nó.",
+        "repoInvalid": "Hãy viết repo dạng OWNER/REPO.",
+        "ref": "Nhánh hoặc tag",
+        "path": "Tệp chỉ mục",
+        "token": "Token (chỉ cho repo riêng tư)",
+        "tokenHint": "Token GitHub chỉ đọc. Hub niêm phong nó và không bao giờ hiện lại.",
+        "cancel": "Hủy",
+        "save": "Thêm chợ",
+        "adding": "Đang thêm…",
+        "added": "Đã thêm {repo}",
+        "addedCount": "Chỉ mục của nó có {count, plural, other {# plugin}}.",
+        "addedWithError": "Chỉ mục của nó chưa đọc được: {error}"
+      }
+    }
   }
 }

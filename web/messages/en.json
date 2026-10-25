@@ -280,7 +280,8 @@
       "apps": "Apps",
       "settings": "Settings"
     },
-    "opportunities": "Opportunities"
+    "opportunities": "Opportunities",
+    "market": "Market"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -776,7 +777,8 @@
       "plugins": "Plugins",
       "diagnostics": "Diagnostics",
       "branding": "Branding",
-      "features": "Features"
+      "features": "Features",
+      "market": "Market"
     },
     "filters": {
       "apply": "Filter",
@@ -1215,6 +1217,7 @@
         "curator": "Curator",
         "kg": "Knowledge graph",
         "monitor": "Monitor",
+        "market": "Market",
         "canvas": "Canvas",
         "srs": "Requirements (SRS)",
         "tasks": "Tasks"
@@ -1224,6 +1227,7 @@
         "curator": "The Curator's night shift, its proposals and its morning brief.",
         "kg": "A project's knowledge graph: its pages, its API and the kg tools of the hub's MCP.",
         "monitor": "The runs at work in every project, watched live.",
+        "market": "The plugin market: browsing the markets the hub reads and installing from them.",
         "canvas": "A project's canvas: its claims, their evidence and judging, and @strategist.",
         "srs": "A project's requirement documents, their reviews and approvals, and @ba.",
         "tasks": "A project's tasks and their board, made from approved requirements."
@@ -6231,7 +6235,8 @@
       "autonomy": "What the hub did under your autonomy",
       "worker_doctor": "A shared worker's doctor found something high",
       "curator_probe_report": "Weekly probe report of the Curator",
-      "opportunity_window": "The window of an opportunity closes"
+      "opportunity_window": "The window of an opportunity closes",
+      "market_install_request": "A project asks for a plugin of the market"
     },
     "item": {
       "unread": "Unread",
@@ -10688,5 +10693,180 @@
     "tooMany": "A message carries at most {max} files: {names} not attached.",
     "notReady": "A file did not upload: retry it or remove it, then send.",
     "files": "Files of this message"
+  },
+  "market": {
+    "title": "Market",
+    "caption": "Plugins of the markets this hub reads",
+    "count": "{count, plural, one {# plugin} other {# plugins}}",
+    "manage": "Manage markets",
+    "noResults": "No plugin matches these filters",
+    "columns": {
+      "plugin": "Plugin",
+      "publisher": "Publisher",
+      "categories": "Categories",
+      "price": "Price",
+      "status": "Status"
+    },
+    "filters": {
+      "search": "Search the market",
+      "placeholder": "Search plugins",
+      "clear": "Clear the search",
+      "industry": "Industry",
+      "category": "Category",
+      "allIndustries": "All industries",
+      "allCategories": "All categories"
+    },
+    "summary": {
+      "all": "{count, plural, one {# plugin} other {# plugins}}",
+      "filtered": "{shown} of {count, plural, one {# plugin} other {# plugins}}"
+    },
+    "empty": {
+      "title": "No market yet",
+      "admin": "Add a market, a GitHub repo with a plugin-market-v1 index, and its plugins show here for every member.",
+      "member": "This hub reads no market yet. A hub admin adds one."
+    },
+    "status": {
+      "not_installed": "Not installed",
+      "installed": "Installed",
+      "upgrade": "Upgrade available",
+      "in_image": "In the image",
+      "not_in_image": "Not in the image",
+      "needs_license": "Needs a license",
+      "unavailable": "Unavailable"
+    },
+    "price": {
+      "free": "Free",
+      "subscription": "Subscription",
+      "perMonth": "{amount} per hub a month"
+    },
+    "tier": {
+      "isolated": "Isolated",
+      "core": "Core"
+    },
+    "reason": {
+      "inImage": "A core plugin that ships in this hub's image: a project's admin enables it from the project's Plugins.",
+      "core": "A core plugin runs in the hub's own processes, so it comes with the hub's image and never installs from here. Ask the hub's operator for an image that carries it.",
+      "paid": "A paid plugin needs a license from its seller. Licenses come in a later release; nothing installs from here yet.",
+      "unavailable": "Its latest release does not read, so nothing installs from it until the publisher fixes it."
+    },
+    "errors": {
+      "forbidden": "Only a hub admin can do that.",
+      "conflict": "The hub refused it as things stand. Reload to see why."
+    },
+    "install": {
+      "install": "Install",
+      "upgrade": "Upgrade to {version}",
+      "installing": "Installing…",
+      "installed": "Installed {name} {version}",
+      "upgraded": "Upgraded {name} to {version}",
+      "trustedNow": "The hub now trusts the signer of {publisher}.",
+      "openStore": "Open in the store",
+      "failed": "Couldn't install {name}",
+      "trustTitle": "Trust {publisher}?",
+      "trustDescription": "This hub does not trust the publisher of {name} yet. Installing trusts the signer below to sign this publisher's plugins from now on; you can stop trusting it from Administration, Market.",
+      "publisher": "Publisher",
+      "signer": "Signed by",
+      "cancel": "Cancel",
+      "trustConfirm": "Trust and install"
+    },
+    "request": {
+      "description": "Only a hub admin installs plugins. Ask the hub's admins to install this one for a project you administer.",
+      "project": "Project",
+      "noProjects": "Only a hub admin installs plugins, and an admin of a project can ask for one. You administer no project.",
+      "send": "Ask a hub admin",
+      "sending": "Asking…",
+      "sent": "Asked the hub's admins to install it for {project}",
+      "already": "The hub's admins were already asked for {project}",
+      "failed": "Couldn't ask the hub's admins"
+    },
+    "detail": {
+      "from": "From {market}, by {publisher}",
+      "aboutTitle": "About",
+      "latest": "Latest release",
+      "installedVersion": "Installed here",
+      "none": "None",
+      "package": "Package",
+      "license": "License",
+      "requires": "Requires evo-agents",
+      "homepage": "Homepage",
+      "asksFor": "Permissions",
+      "asksForDescription": "What its latest release asks for. A project's admin grants each one when enabling it.",
+      "noRelease": "The hub reads the releases of free isolated plugins only.",
+      "releaseError": "Its latest release does not read: {error}",
+      "noPermissions": "It asks for no permission.",
+      "publisherTitle": "Publisher",
+      "publisher": "Publisher",
+      "identity": "Signed by",
+      "trust": "On this hub",
+      "trustImage": "Comes with the hub's image",
+      "trusted": "Trusted",
+      "notTrusted": "Not trusted yet: installing asks first",
+      "locked": "Not trusted, and the operator locked the publishers this hub trusts",
+      "repo": "Repository",
+      "licenseTitle": "License",
+      "licenseDescription": "A paid plugin installs with a license from its seller, which this hub does not take yet.",
+      "requestTitle": "Ask for it",
+      "missingTitle": "No such plugin",
+      "missingDescription": "The address does not name a plugin of a market."
+    },
+    "admin": {
+      "title": "Market",
+      "sourcesCaption": "Markets this hub reads",
+      "builtin": "Default",
+      "private": "Private",
+      "columns": {
+        "market": "Market",
+        "plugins": "Plugins",
+        "fetched": "Read",
+        "actions": "Actions"
+      },
+      "never": "Not yet",
+      "pluginCount": "{count, plural, one {# plugin} other {# plugins}}",
+      "refresh": "Refresh",
+      "refreshing": "Refreshing…",
+      "refreshed": "Read {repo}: {count, plural, one {# plugin} other {# plugins}}",
+      "refreshFailed": "Couldn't read {repo}",
+      "removeLabel": "Remove {repo}",
+      "removeTitle": "Remove the market {repo}?",
+      "removeDescription": "Its plugins leave the market page. Plugins installed from it stay installed.",
+      "removeConfirm": "Remove",
+      "removing": "Removing…",
+      "removed": "Removed {repo}",
+      "cancel": "Cancel",
+      "lockedNotice": "The operator locked the publishers this hub trusts (EVO_HUB_PLUGIN_PUBLISHERS_LOCKED): a plugin installs from a market only when its publisher's signer is trusted already.",
+      "empty": {
+        "title": "No market yet",
+        "description": "Add a GitHub repo with a plugin-market-v1 index. The hub reads it now and again every 6 hours."
+      },
+      "trusted": {
+        "title": "Trusted from the market",
+        "description": "Signers a hub admin trusted while installing from a market. The operator's own publishers are on Administration, Plugins.",
+        "locked": "The operator locked the publishers: no admin can trust another one from here.",
+        "none": "No signer trusted from the market yet.",
+        "addedBy": "Trusted by {login}",
+        "removeLabel": "Stop trusting {publisher}",
+        "removeTitle": "Stop trusting {publisher}?",
+        "removeDescription": "Its installed plugins keep running. A new version signed by this signer will not install until someone trusts it again.",
+        "removed": "Stopped trusting {publisher}"
+      },
+      "add": {
+        "open": "Add market",
+        "title": "Add a market",
+        "description": "A GitHub repo with a plugin-market-v1 index. The hub reads it now and every 6 hours.",
+        "repo": "Repository",
+        "repoHint": "OWNER/REPO, or its github.com address.",
+        "repoInvalid": "Write the repo as OWNER/REPO.",
+        "ref": "Branch or tag",
+        "path": "Index file",
+        "token": "Token (private repo only)",
+        "tokenHint": "A read-only GitHub token. The hub seals it and never shows it again.",
+        "cancel": "Cancel",
+        "save": "Add market",
+        "adding": "Adding…",
+        "added": "Added {repo}",
+        "addedCount": "Its index lists {count, plural, one {# plugin} other {# plugins}}.",
+        "addedWithError": "Its index does not read yet: {error}"
+      }
+    }
   }
 }

@@ -9,6 +9,7 @@ const SECTIONS: readonly string[] = [
   "audit",
   "invites",
   "plugins",
+  "market",
   "branding",
   "features",
   "diagnostics",
