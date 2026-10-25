@@ -19,6 +19,7 @@ import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { planQuery } from "@/lib/plan-queries";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
+import { runnableModelsQuery } from "@/lib/runnable-models";
 import { cn } from "@/lib/utils";
 
 import { AccountField } from "./account-field";
@@ -109,6 +110,7 @@ function AuthorRunForm({
   const me = useQuery(whoamiQuery(browserApi));
   const workersState = useQuery(workersQuery(browserApi));
   const projectState = useQuery(projectQuery(browserApi, project));
+  const gateway = useQuery(runnableModelsQuery(browserApi, project)).data ?? [];
 
   const [request, setRequest] = useState("");
   const [problem, setProblem] = useState<"blank" | "long" | null>(null);
@@ -258,6 +260,7 @@ function AuthorRunForm({
           onChange={setModelText}
           runtime={AUTHOR_RUNTIME}
           models={{ [AUTHOR_RUNTIME]: suggestions }}
+          gateway={gateway}
           problem={model.problem}
           disabled={pending}
         />

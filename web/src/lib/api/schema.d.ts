@@ -1074,6 +1074,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Skills
+         * @description The global skills the owner of the pool node whose token made the request reads, each with its latest
+         *     version: what ``hub skills sync`` writes on a machine without a project.
+         */
+        get: operations["worker_skills_v1_worker_skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/skills/global/{name}/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Bundle
+         * @description A short-lived presigned GET of a global skill's bundle for a pool node, as GET /v1/skills/global/{name}/bundle
+         *     answers its owner.
+         */
+        get: operations["worker_bundle_v1_worker_skills_global__name__bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/config": {
         parameters: {
             query?: never;
@@ -1648,8 +1690,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner
-         *     only, from a web session or with their machine token.
+         * @description Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its
+         *     owner only, from a web session or with their machine token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -1817,6 +1859,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker-pools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pools
+         * @description The caller's pools, by name, each with its nodes that are not revoked.
+         */
+        get: operations["list_pools_v1_worker_pools_get"];
+        put?: never;
+        /**
+         * Create Pool
+         * @description A new pool of the caller's, without nodes until a machine joins with one of its join tokens.
+         */
+        post: operations["create_pool_v1_worker_pools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker-pools/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Pool
+         * @description One of the caller's pools with its nodes that are not revoked.
+         */
+        get: operations["show_pool_v1_worker_pools__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Pool
+         * @description Change the pool's settings; its nodes take them, and their daemons learn them from their next heartbeat.
+         */
+        patch: operations["update_pool_v1_worker_pools__name__patch"];
+        trace?: never;
+    };
+    "/v1/worker-pools/{name}/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Join Tokens
+         * @description The join tokens of the pool, newest first, without the tokens themselves.
+         */
+        get: operations["list_join_tokens_v1_worker_pools__name__tokens_get"];
+        put?: never;
+        /**
+         * Create Join Token
+         * @description A join token of the pool, which machines join it with (`evo-agents worker join --token`); shown once.
+         */
+        post: operations["create_join_token_v1_worker_pools__name__tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker-pools/{name}/tokens/{token_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Join Token
+         * @description Revoke a join token of the pool: no machine joins with it any more; the nodes that joined with it stay.
+         */
+        post: operations["revoke_join_token_v1_worker_pools__name__tokens__token_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/join": {
         parameters: {
             query?: never;
@@ -1828,7 +1962,7 @@ export interface paths {
         put?: never;
         /**
          * Join
-         * @description Trade a pairing code for the token of a new worker; the token is shown once.
+         * @description Trade a pairing code, or a pool's join token, for the token of a new worker; the token is shown once.
          */
         post: operations["join_v1_worker_join_post"];
         delete?: never;
@@ -5597,27 +5731,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/x/marketing/{project}/check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check Channels
-         * @description Check the health of one account (``channel_id``) or of every one, as ``POST /channels/{id}/check`` does for
-         *     each; what ``evo-agents hub marketing check`` calls. An admin does.
-         */
-        post: operations["check_channels_v1_x_marketing__project__check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/x/marketing/{project}/kill": {
         parameters: {
             query?: never;
@@ -7099,6 +7212,54 @@ export interface paths {
         patch: operations["change_agent_account_v1_projects__project__agents__handle__accounts__name__patch"];
         trace?: never;
     };
+    "/v1/projects/{project}/agents/{handle}/provider-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Provider Accounts
+         * @description The agent's provider accounts, by name, without their keys; any member of the project reads them.
+         */
+        get: operations["list_agent_provider_accounts_v1_projects__project__agents__handle__provider_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/provider-accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Agent Provider Account
+         * @description Give the agent the provider account ``name``, or replace it whole; the key is sealed and never shown again.
+         */
+        put: operations["put_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__put"];
+        post?: never;
+        /**
+         * Delete Agent Provider Account
+         * @description Delete the agent's provider account ``name``: its key and bindings go, its leases are revoked.
+         */
+        delete: operations["delete_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Agent Provider Account
+         * @description Change what ``body`` gives of the agent's provider account ``name``; the rest, the key included, stays.
+         */
+        patch: operations["change_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__patch"];
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/accounts": {
         parameters: {
             query?: never;
@@ -8038,26 +8199,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/plugins/install-github": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Install From Github
-         * @description Install a plugin from the release of a GitHub repo, signed by the signer named (or the repo's ci.yml).
-         */
-        post: operations["install_from_github_v1_plugins_install_github_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/plugins": {
         parameters: {
             query?: never;
@@ -8272,180 +8413,9 @@ export interface paths {
         };
         /**
          * Publishers
-         * @description The publishers this hub trusts: the operator's in the order EVO_HUB_PLUGIN_PUBLISHERS names them, then those
-         *     only hub admins trusted.
+         * @description The publishers an operator of this hub trusts, in the order EVO_HUB_PLUGIN_PUBLISHERS names them.
          */
         get: operations["publishers_v1_plugin_publishers_get"];
-        put?: never;
-        /**
-         * Add Publisher
-         * @description Trust ``signer`` to sign the plugins of ``publisher``; nothing changes when the hub trusts it already.
-         */
-        post: operations["add_publisher_v1_plugin_publishers_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/plugin-publishers/{entry_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Publisher
-         * @description Stop trusting a signer hub admins trusted; a plugin it signed stays installed, and installing or upgrading
-         *     it again is refused until something the hub trusts signs it.
-         */
-        delete: operations["remove_publisher_v1_plugin_publishers__entry_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/market/sources": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Sources
-         * @description The markets this hub reads, the operator's first.
-         */
-        get: operations["sources_v1_market_sources_get"];
-        put?: never;
-        /**
-         * Add Source
-         * @description Add a market and read it now; a market that does not read is kept with the error, to refresh once fixed.
-         */
-        post: operations["add_source_v1_market_sources_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/market/sources/{source_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Source
-         * @description Stop reading a market; the plugins installed from it stay installed. The operator's market stays.
-         */
-        delete: operations["remove_source_v1_market_sources__source_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/market/sources/{source_id}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh Source
-         * @description Read a market again now: its index, and the latest release of each of its free plugins.
-         */
-        post: operations["refresh_source_v1_market_sources__source_id__refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/market/{source}/{plugin}/install": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Install From Market
-         * @description Install a free plugin of a market, or upgrade it, from its GitHub release.
-         */
-        post: operations["install_from_market_v1_market__source___plugin__install_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/market/{source}/{plugin}/request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Request Install
-         * @description Ask the hub admins to install a plugin of a market for project ``project``, of which the caller is an admin.
-         */
-        post: operations["request_install_v1_market__source___plugin__request_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/market": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Market
-         * @description The plugins of every market this hub reads, by market then as each lists them; filtered by the words of
-         *     ``q`` (in the id, name, description and publisher), an industry, a category and a market.
-         */
-        get: operations["market_v1_market_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/market/{source}/{plugin}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Market Plugin
-         * @description One plugin of one market, with the permissions its latest release asks for.
-         */
-        get: operations["market_plugin_v1_market__source___plugin__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8633,23 +8603,6 @@ export interface paths {
          *     worker claimed it; empty for a run not claimed yet, or on a project with no plugin enabled.
          */
         get: operations["plugins_of_run_v1_projects__project__runs__run_id__plugins_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/cli/plugins": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The commands plugins add to the CLI */
-        get: operations["cli_plugins_v1_cli_plugins_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8927,6 +8880,138 @@ export interface paths {
          * @description Copy an older version of the project's layer of features as its next version.
          */
         post: operations["rollback_project_features_v1_admin_projects__project__features_rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/model-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Catalog
+         * @description The providers a member can add an account for, with where the catalog came from.
+         */
+        get: operations["get_model_catalog_v1_model_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Provider Accounts
+         * @description The caller's provider accounts, by name, without their keys; a hub admin's own too.
+         */
+        get: operations["list_provider_accounts_v1_provider_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Provider Account
+         * @description The caller's provider account ``name``, without its key.
+         */
+        get: operations["get_provider_account_v1_provider_accounts__name__get"];
+        /**
+         * Put Provider Account
+         * @description Create the caller's provider account ``name``, or replace it whole; the key is sealed and never shown again.
+         */
+        put: operations["put_provider_account_v1_provider_accounts__name__put"];
+        post?: never;
+        /**
+         * Delete Provider Account
+         * @description Delete the caller's account ``name``: its key and bindings go, its leases and shares are revoked.
+         */
+        delete: operations["delete_provider_account_v1_provider_accounts__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Provider Account
+         * @description Change what ``body`` gives of the caller's account ``name``; the rest, the key included, stays.
+         */
+        patch: operations["change_provider_account_v1_provider_accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/provider-accounts/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Endpoint
+         * @description Call an endpoint not saved yet with the key of ``body``: whether it took it, and the models it lists.
+         */
+        post: operations["probe_endpoint_v1_provider_accounts_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-accounts/{name}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Provider Account
+         * @description Call the endpoint of the caller's account ``name`` with its key: whether it took it, and the models it lists.
+         */
+        post: operations["probe_provider_account_v1_provider_accounts__name__probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runnable-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runnable Models
+         * @description The models of provider accounts the caller may run in ``project``, through the model gateway.
+         */
+        get: operations["list_runnable_models_v1_projects__project__runnable_models_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9855,7 +9940,7 @@ export interface components {
     schemas: {
         /**
          * Account
-         * @description One of the caller's env secrets as an account: everything but its value.
+         * @description One of the caller's env secrets or provider accounts as an account: everything but its value or key.
          */
         Account: {
             /** Name */
@@ -9887,6 +9972,12 @@ export interface components {
              * @description the workers it is bound to; empty for any worker of its owner
              */
             workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
             /**
              * Auth
              * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
@@ -9973,6 +10064,8 @@ export interface components {
              * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
              */
             cost_by_principal: components["schemas"]["PrincipalCost"][];
+            /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
+            gateway?: components["schemas"]["GatewayAccount"] | null;
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -10734,6 +10827,88 @@ export interface components {
             /** @description where the agent runs, in order of preference: host, the worker's own machine, and plugins' environments <plugin>/<name>, each a container; all runs on the host */
             environment?: components["schemas"]["AgentAxis"];
         };
+        /** AgentProviderAccountChange */
+        AgentProviderAccountChange: {
+            /** Base Url */
+            base_url?: string | null;
+            /** Api Format */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description a new API key
+             */
+            value?: string | null;
+            /** Models */
+            models?: string[] | null;
+            /** Models From */
+            models_from?: ("endpoint" | "catalog") | null;
+            /** Workers */
+            workers?: string[] | null;
+            /**
+             * Expires At
+             * @description null drops the end
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** AgentProviderAccountWrite */
+        AgentProviderAccountWrite: {
+            /**
+             * Provider
+             * @description the id of an entry of the catalog
+             */
+            provider: string;
+            /**
+             * Base Url
+             * @description the https root of its API; the catalog's when left out
+             */
+            base_url?: string | null;
+            /**
+             * Api Format
+             * @description the catalog's when left out
+             */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * Format: password
+             * @description the API key; never shown again
+             */
+            value: string;
+            /**
+             * Models
+             * @description model names, as typed
+             */
+            models?: string[];
+            /**
+             * Models From
+             * @description add the catalog's default model, or the endpoint's
+             */
+            models_from?: ("endpoint" | "catalog") | null;
+            /**
+             * Workers
+             * @description workers serving the agent's project
+             */
+            workers: string[];
+            /**
+             * Expires At
+             * @description after this no run takes it; in the future
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /** Paused */
+            paused?: boolean | null;
+        };
         /** AgentReactionIn */
         AgentReactionIn: {
             /** Message Id */
@@ -11031,15 +11206,30 @@ export interface components {
         /** AuthorRunDispatch */
         AuthorRunDispatch: {
             /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
+            /**
              * Request
              * @description what the plan should achieve, in the member's words: at most 16384 bytes of UTF-8
              */
             request: string;
             /**
              * Worker Id
-             * @description the worker of yours, or one shared with you in the project, the run goes to; an author run is pinned
+             * @description pin the run to this worker of yours, or one shared with you in the project; null: a worker its labels and tolerations fit takes it
              */
-            worker_id: number;
+            worker_id?: number | null;
             /**
              * Plan Id
              * @description the plan the run revises, one you can read; null: the run writes a new plan
@@ -13367,6 +13557,70 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** CatalogProvider */
+        CatalogProvider: {
+            /** Id */
+            id: string;
+            /**
+             * Alias
+             * @description what the gateway reads before the slash of a model name
+             */
+            alias: string;
+            /** Name */
+            name: string;
+            /** Group */
+            group: string;
+            /** Color */
+            color: string;
+            /** Text Icon */
+            text_icon: string;
+            /** Website */
+            website: string;
+            /** Key Hint */
+            key_hint: string;
+            /**
+             * Base Url
+             * @description the root of the API; empty for the custom entries and the Claude subscription
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @enum {string}
+             */
+            api_format: "openai" | "anthropic" | "openai-responses" | "gemini";
+            /** Default Model */
+            default_model: string;
+            /** Key Required */
+            key_required: boolean;
+            /** Free */
+            free: boolean;
+            /**
+             * Via
+             * @description login: the Claude subscription, which skips the gateway
+             * @enum {string}
+             */
+            via: "gateway" | "login";
+        };
+        /** CatalogSource */
+        CatalogSource: {
+            /** Name */
+            name: string;
+            /** Repository */
+            repository: string;
+            /** Tag */
+            tag: string;
+            /**
+             * Version
+             * @description the OmniRoute version, the one of the gateway image
+             */
+            version: string;
+            /** Commit */
+            commit: string;
+            /** License */
+            license: string;
+            /** Copyright */
+            copyright: string;
+        };
         /**
          * CeilingSet
          * @description The next ceiling revision of one unit (unit), one person's primary seat (login) or one seat (seat).
@@ -13577,9 +13831,14 @@ export interface components {
             window: components["schemas"]["Window"];
             /**
              * Worker
-             * @description the worker on duty, by name: one of the writer's own
+             * @description the worker on duty, by name: one of the writer's own; or name a pool
              */
-            worker: string;
+            worker?: string | null;
+            /**
+             * Pool
+             * @description the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker
+             */
+            pool?: string | null;
             /**
              * Night Budget Usd
              * @description the most a night may cost
@@ -13673,12 +13932,17 @@ export interface components {
             updated_at: string;
             /**
              * Worker Id
-             * @description the worker on duty
+             * @description the worker on duty; null for a pool
              */
-            worker_id: number;
+            worker_id: number | null;
+            /**
+             * Pool Id
+             * @description the pool on duty; null for a worker
+             */
+            pool_id?: number | null;
             /**
              * Schedule Owner
-             * @description the member the night shift dispatches its runs as: the worker's owner
+             * @description the member the night shift dispatches its runs as: the worker's, or the pool's, owner
              */
             schedule_owner: string;
         };
@@ -13693,10 +13957,20 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
-            /** Worker */
-            worker: string;
+            /**
+             * Worker
+             * @description the worker on duty; null for a pool
+             */
+            worker: string | null;
             /** Worker Id */
-            worker_id: number;
+            worker_id: number | null;
+            /**
+             * Pool
+             * @description the pool on duty; null for a worker
+             */
+            pool?: string | null;
+            /** Pool Id */
+            pool_id?: number | null;
         };
         /** CharterWrite */
         CharterWrite: {
@@ -13708,9 +13982,14 @@ export interface components {
             window: components["schemas"]["Window"];
             /**
              * Worker
-             * @description the worker on duty, by name: one of the writer's own
+             * @description the worker on duty, by name: one of the writer's own; or name a pool
              */
-            worker: string;
+            worker?: string | null;
+            /**
+             * Pool
+             * @description the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker
+             */
+            pool?: string | null;
             /**
              * Night Budget Usd
              * @description the most a night may cost
@@ -14746,8 +15025,7 @@ export interface components {
              */
             id: number;
             /**
-             * Kind
-             * @description env: a variable of the agent; git: what git's helper answers
+             * @description env: a variable of the agent; git: what git's helper answers (enum property replaced by openapi-typescript)
              * @enum {string}
              */
             kind: "env" | "git";
@@ -14867,7 +15145,7 @@ export interface components {
         /** Credentials */
         Credentials: {
             /** Leases */
-            leases: components["schemas"]["CredentialLease"][];
+            leases: (components["schemas"]["CredentialLease"] | components["schemas"]["GatewayLease"])[];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
             /**
@@ -15530,6 +15808,21 @@ export interface components {
         };
         /** Dispatch */
         Dispatch: {
+            /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
             /** Plan Id */
             plan_id: string;
             /**
@@ -16210,28 +16503,103 @@ export interface components {
             /** Rank */
             rank: number;
         };
-        /** GitHubInstallIn */
-        GitHubInstallIn: {
+        /**
+         * GatewayAccount
+         * @description What a provider account calls, through the model gateway (``evo_agents.hub.gateway_runs``).
+         */
+        GatewayAccount: {
             /**
-             * Repo
-             * @description OWNER/REPO
+             * Provider
+             * @description the id of its entry in the catalog
              */
-            repo: string;
+            provider: string;
             /**
-             * Tag
-             * @description the release's tag; the latest if left out
+             * Prefix
+             * @description what its models are named with, <prefix>/<model>; null when not served
              */
-            tag?: string | null;
+            prefix: string | null;
             /**
-             * Signer
-             * @description what signs the releases; sigstore:OWNER/REPO/.github/workflows/ci.yml when left out
+             * Base Url Host
+             * @description the host of the endpoint it calls
              */
-            signer?: string | null;
+            base_url_host: string | null;
+            /** Api Format */
+            api_format: string;
             /**
-             * Trust Publisher
-             * @default false
+             * Models
+             * @description how many models it serves
              */
-            trust_publisher: boolean;
+            models: number;
+            /**
+             * Status
+             * @description what the gateway last said of it: ok, cooling after a rate limit, failing, or unknown before any
+             * @enum {string}
+             */
+            status: "ok" | "cooling" | "failing" | "unknown";
+            /**
+             * Reason
+             * @description the gateway's error code or type when cooling or failing; never its text
+             */
+            reason: string | null;
+        };
+        /**
+         * GatewayLease
+         * @description The lease of a run on a provider account's model (``evo_agents.hub.gateway_runs``): the hub's gateway route
+         *     and a token of the run for it; never a provider's key nor the gateway's.
+         */
+        GatewayLease: {
+            /**
+             * Id
+             * @description the lease of the run's key of the gateway; the same id when it is asked for again
+             */
+            id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gateway";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "gateway";
+            /**
+             * Name
+             * @description gateway:<prefix>, the prefix of the run's model
+             */
+            name: string;
+            /** Env Var */
+            env_var?: null;
+            /** Url Prefix */
+            url_prefix?: null;
+            /** Username */
+            username?: null;
+            /**
+             * Value
+             * @description the run's token to the route: for memory only, never a file, a log line or an event
+             */
+            value: string;
+            /**
+             * Expires At
+             * @description when the run's key of the gateway ends
+             */
+            expires_at: string | null;
+            /**
+             * Base Url
+             * @description the hub's gateway route, <hub>/v1, that the runtime sends its model calls to
+             */
+            base_url: string;
+            /**
+             * Model
+             * @description the run's model, <prefix>/<model of the provider>
+             */
+            model: string;
+            /**
+             * Api Format
+             * @description what the runtime speaks
+             * @enum {string}
+             */
+            api_format: "anthropic" | "openai" | "openai-responses";
         };
         /** GitHubLogin */
         GitHubLogin: {
@@ -16573,6 +16941,12 @@ export interface components {
              * @enum {string}
              */
             r2: "ok" | "unavailable" | "unconfigured";
+            /**
+             * Gateway
+             * @description the model gateway, by its health check
+             * @enum {string}
+             */
+            gateway: "ok" | "error" | "off";
             /**
              * Failed
              * @description components that did not answer
@@ -17601,6 +17975,46 @@ export interface components {
              */
             used_at: string | null;
         };
+        /** IssuedJoinToken */
+        IssuedJoinToken: {
+            /** Id */
+            id: number;
+            /** Pool */
+            pool: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "expired" | "revoked" | "used";
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Max Uses */
+            max_uses: number;
+            /**
+             * Uses
+             * @description machines that joined with it
+             */
+            uses: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * Token
+             * @description evj_...; shown once, the hub keeps only its SHA-256
+             */
+            token: string;
+        };
         /** Job */
         Job: {
             /** Job Id */
@@ -17630,7 +18044,62 @@ export interface components {
              * Code
              * @description the pairing code, XXXX-XXXX
              */
-            code: string;
+            code?: string | null;
+            /**
+             * Token
+             * @description instead of a code: the join token of a pool, evj_...
+             */
+            token?: string | null;
+        };
+        /** JoinToken */
+        JoinToken: {
+            /** Id */
+            id: number;
+            /** Pool */
+            pool: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "expired" | "revoked" | "used";
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Max Uses */
+            max_uses: number;
+            /**
+             * Uses
+             * @description machines that joined with it
+             */
+            uses: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /** JoinTokenRequest */
+        JoinTokenRequest: {
+            /**
+             * Hours
+             * @description how long it works: 1 hour to 30 days
+             * @default 24
+             */
+            hours: number;
+            /**
+             * Max Uses
+             * @description machines that may join with it, 1 to 100
+             * @default 1
+             */
+            max_uses: number;
         };
         /** Judge */
         Judge: {
@@ -18895,328 +19364,6 @@ export interface components {
              */
             sub: string | null;
         };
-        /** MarketBrief */
-        MarketBrief: {
-            /** Id */
-            id: number;
-            /** Repo */
-            repo: string;
-            /** Name */
-            name?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Fetched At */
-            fetched_at?: string | null;
-            /** Error */
-            error?: string | null;
-        };
-        /** MarketInstallIn */
-        MarketInstallIn: {
-            /**
-             * Version
-             * @description the version to install; the latest release when left out
-             */
-            version?: string | null;
-            /**
-             * Trust Publisher
-             * @description trust the signer for the publisher from now on, when the hub does not yet
-             * @default false
-             */
-            trust_publisher: boolean;
-        };
-        /** MarketInstalled */
-        MarketInstalled: {
-            plugin: components["schemas"]["Plugin"];
-            /**
-             * Trusted Publisher
-             * @description whether this install made the hub trust the publisher's signer
-             */
-            trusted_publisher: boolean;
-            /** Upgraded */
-            upgraded: boolean;
-        };
-        /** MarketList */
-        MarketList: {
-            /** Plugins */
-            plugins: components["schemas"]["MarketPlugin"][];
-            /**
-             * Industries
-             * @description every industry the markets list, to filter by
-             */
-            industries: string[];
-            /**
-             * Categories
-             * @description every category the markets list, to filter by
-             */
-            categories: string[];
-            /** Markets */
-            markets: components["schemas"]["MarketBrief"][];
-        };
-        /** MarketPermission */
-        MarketPermission: {
-            /** Name */
-            name: string;
-            /**
-             * Text
-             * @description what the permission lets the plugin do, as a hub admin grants it
-             */
-            text: string;
-        };
-        /** MarketPlugin */
-        MarketPlugin: {
-            /**
-             * Source
-             * @description the id of the market source that lists it
-             */
-            source: number;
-            /**
-             * Market
-             * @description the market's name
-             */
-            market: string;
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description: string;
-            /** Industries */
-            industries: string[];
-            /** Categories */
-            categories: string[];
-            /** Repo */
-            repo: string;
-            publisher: components["schemas"]["MarketPublisher"];
-            /**
-             * Tier
-             * @enum {string}
-             */
-            tier: "isolated" | "core";
-            /** Package */
-            package?: string | null;
-            price: components["schemas"]["MarketPrice"];
-            /** Icon */
-            icon?: string | null;
-            /** Homepage */
-            homepage?: string | null;
-            /** License */
-            license?: string | null;
-            /** Requires */
-            requires?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "not_installed" | "installed" | "upgrade" | "in_image" | "not_in_image" | "needs_license" | "unavailable";
-            /** Installed Version */
-            installed_version?: string | null;
-            /** @description its latest release, for a free isolated plugin */
-            latest?: components["schemas"]["MarketRelease"] | null;
-        };
-        /** MarketPluginDetail */
-        MarketPluginDetail: {
-            /**
-             * Source
-             * @description the id of the market source that lists it
-             */
-            source: number;
-            /**
-             * Market
-             * @description the market's name
-             */
-            market: string;
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description: string;
-            /** Industries */
-            industries: string[];
-            /** Categories */
-            categories: string[];
-            /** Repo */
-            repo: string;
-            publisher: components["schemas"]["MarketPublisher"];
-            /**
-             * Tier
-             * @enum {string}
-             */
-            tier: "isolated" | "core";
-            /** Package */
-            package?: string | null;
-            price: components["schemas"]["MarketPrice"];
-            /** Icon */
-            icon?: string | null;
-            /** Homepage */
-            homepage?: string | null;
-            /** License */
-            license?: string | null;
-            /** Requires */
-            requires?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "not_installed" | "installed" | "upgrade" | "in_image" | "not_in_image" | "needs_license" | "unavailable";
-            /** Installed Version */
-            installed_version?: string | null;
-            /** @description its latest release, for a free isolated plugin */
-            latest?: components["schemas"]["MarketRelease"] | null;
-            /**
-             * Trusted
-             * @description whether the hub trusts the signer for the publisher already
-             */
-            trusted: boolean;
-            /**
-             * May Trust
-             * @description whether a hub admin may trust it here (not locked, not a core publisher)
-             */
-            may_trust: boolean;
-        };
-        /** MarketPrice */
-        MarketPrice: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "free" | "subscription";
-            /** Usd Per Hub Month */
-            usd_per_hub_month?: number | null;
-            /** Seller */
-            seller?: string | null;
-        };
-        /** MarketPublisher */
-        MarketPublisher: {
-            /** Id */
-            id: string;
-            /** Name */
-            name?: string | null;
-            /**
-             * Signer
-             * @description what the market says signs its releases: sigstore:<workflow> or ed25519:<key>
-             */
-            signer: string;
-            /**
-             * Identity
-             * @description how the signer reads among a publisher's identities
-             */
-            identity: string;
-        };
-        /** MarketRelease */
-        MarketRelease: {
-            /** Tag */
-            tag?: string | null;
-            /** Version */
-            version?: string | null;
-            /** Permissions */
-            permissions?: components["schemas"]["MarketPermission"][];
-            /**
-             * Error
-             * @description why the latest release does not read, when it does not
-             */
-            error?: string | null;
-        };
-        /** MarketRequest */
-        MarketRequest: {
-            /** Id */
-            id: number;
-            /** Project */
-            project: string;
-            /** Plugin */
-            plugin: string;
-            /** State */
-            state: string;
-            /**
-             * Created
-             * @description False when the project had asked already and the request is still open
-             */
-            created: boolean;
-        };
-        /** MarketRequestIn */
-        MarketRequestIn: {
-            /** Project */
-            project: string;
-        };
-        /** MarketSource */
-        MarketSource: {
-            /** Id */
-            id: number;
-            /** Repo */
-            repo: string;
-            /** Name */
-            name?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Fetched At */
-            fetched_at?: string | null;
-            /** Error */
-            error?: string | null;
-            /** Ref */
-            ref: string;
-            /** Path */
-            path: string;
-            /**
-             * Builtin
-             * @description the operator's market (EVO_HUB_MARKET_DEFAULT_SOURCE), which stays
-             */
-            builtin: boolean;
-            /**
-             * Private
-             * @description whether the hub reads it with a token
-             */
-            private: boolean;
-            /** Added By */
-            added_by?: string | null;
-            /**
-             * Added At
-             * Format: date-time
-             */
-            added_at: string;
-            /**
-             * Plugins
-             * @description how many plugins its index lists
-             */
-            plugins: number;
-        };
-        /** MarketSourceIn */
-        MarketSourceIn: {
-            /**
-             * Repo
-             * @description OWNER/REPO
-             */
-            repo: string;
-            /**
-             * Ref
-             * @default main
-             */
-            ref: string;
-            /**
-             * Path
-             * @default market.json
-             */
-            path: string;
-            /**
-             * Token
-             * @description a GitHub token that reads a private repo; sealed, never shown again
-             */
-            token?: string | null;
-        };
-        /** MarketSources */
-        MarketSources: {
-            /** Sources */
-            sources: components["schemas"]["MarketSource"][];
-            /**
-             * Default Source
-             * @description EVO_HUB_MARKET_DEFAULT_SOURCE
-             */
-            default_source: string | null;
-            /**
-             * Publishers Locked
-             * @description EVO_HUB_PLUGIN_PUBLISHERS_LOCKED: hub admins may trust no publisher
-             */
-            publishers_locked: boolean;
-        };
         /** MarketingBrowserClaim */
         MarketingBrowserClaim: {
             /** @description the next post to make, none when nothing waits */
@@ -19376,14 +19523,6 @@ export interface components {
              * @description a subreddit, a page id, owner/name, an author urn
              */
             target?: string | null;
-        };
-        /** MarketingCheckIn */
-        MarketingCheckIn: {
-            /**
-             * Channel Id
-             * @description one channel; none checks every one
-             */
-            channel_id?: number | null;
         };
         /** MarketingDeny */
         MarketingDeny: {
@@ -20260,6 +20399,14 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** ModelCatalog */
+        ModelCatalog: {
+            source: components["schemas"]["CatalogSource"];
+            /** Groups */
+            groups: string[];
+            /** Providers */
+            providers: components["schemas"]["CatalogProvider"][];
+        };
         /** ModelCount */
         ModelCount: {
             /** Model */
@@ -20640,9 +20787,9 @@ export interface components {
             kind: "decision" | "notice" | "proposal";
             /**
              * Notice Kind
-             * @description a notice's kind: one of the hub's, or one a core plugin declares (contributes.notice_kinds, its table prefix first); null for a decision
+             * @description a notice's kind; null for a decision
              */
-            notice_kind: string | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -22007,6 +22154,37 @@ export interface components {
              */
             run_id?: number | null;
         };
+        /**
+         * PlanProgress
+         * @description How far a plan run's plan has come, as the plan holds it now.
+         */
+        PlanProgress: {
+            /**
+             * Done
+             * @description steps with status done
+             */
+            done: number;
+            /**
+             * Total
+             * @description steps of the plan
+             */
+            total: number;
+            /**
+             * Percent
+             * @description done of total, rounded down; 0 for a plan without steps
+             */
+            percent: number;
+            /**
+             * Current Step
+             * @description the step in progress, else the first not done: its title, else its key; null once all are done
+             */
+            current_step: string | null;
+            /**
+             * Current Status
+             * @description that step's status as the plan holds it
+             */
+            current_status: string | null;
+        };
         /** PlanPut */
         PlanPut: {
             /**
@@ -22046,6 +22224,21 @@ export interface components {
         };
         /** PlanRunDispatch */
         PlanRunDispatch: {
+            /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
             /** Plan Id */
             plan_id: string;
             /**
@@ -22525,11 +22718,6 @@ export interface components {
              * @description what the web frames for an isolated plugin's page, a ticket inside it: only in a project that enabled the plugin, null otherwise and for a native page
              */
             url: string | null;
-            /**
-             * Slot
-             * @description where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own
-             */
-            slot?: string | null;
         };
         /** PluginPermission */
         PluginPermission: {
@@ -22588,17 +22776,6 @@ export interface components {
              * @description whether its plugins may be core plugins, which run in the hub's processes
              */
             core: boolean;
-            /**
-             * Operator
-             * @description whether EVO_HUB_PLUGIN_PUBLISHERS lists it
-             * @default false
-             */
-            operator: boolean;
-            /**
-             * Trusted
-             * @description the signers hub admins trusted for it, besides the operator's
-             */
-            trusted?: components["schemas"]["TrustedSigner"][];
         };
         /**
          * PluginRuntime
@@ -23167,6 +23344,147 @@ export interface components {
              * @description false when the newest revision is this policy already: nothing was written
              */
             changed: boolean;
+        };
+        /** Pool */
+        Pool: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Owner
+             * @description the login of the member who made it
+             */
+            owner: string;
+            /** Projects */
+            projects: string[];
+            /** Slots */
+            slots: number;
+            /** Labels */
+            labels: string[];
+            /** Taints */
+            taints: string[];
+            /** Accepted Findings */
+            accepted_findings: string[];
+            /** Reap After Days */
+            reap_after_days: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Nodes
+             * @description its nodes that are not revoked, newest first
+             */
+            nodes: components["schemas"]["PoolNode"][];
+        };
+        /** PoolNode */
+        PoolNode: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Hostname */
+            hostname: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "online" | "offline" | "draining" | "revoked";
+            /** Agent Version */
+            agent_version: string;
+            /**
+             * Labels
+             * @description its own labels, its pool's, and pool=<name>
+             */
+            labels: string[];
+            /**
+             * Ready
+             * @description whether it takes runs: its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Ready Reason
+             * @description why it takes no run, while ready is false; null when ready
+             */
+            ready_reason?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Heartbeat At */
+            last_heartbeat_at: string | null;
+        };
+        /** PoolRequest */
+        PoolRequest: {
+            /**
+             * Projects
+             * @description the projects its nodes take runs of; the writer role on each
+             */
+            projects: string[];
+            /**
+             * Slots
+             * @description runs each node holds at once
+             * @default 1
+             */
+            slots: number;
+            /** Labels */
+            labels?: string[];
+            /** Taints */
+            taints?: string[];
+            /** Accepted Findings */
+            accepted_findings?: string[];
+            /**
+             * Reap After Days
+             * @default 7
+             */
+            reap_after_days: number;
+            /**
+             * Name
+             * @description unique among the owner's pools; it starts its nodes' names
+             */
+            name: string;
+        };
+        /** PoolUpdate */
+        PoolUpdate: {
+            /**
+             * Projects
+             * @description the projects its nodes take runs of; the writer role on each
+             */
+            projects?: string[] | null;
+            /**
+             * Slots
+             * @description runs each node holds at once
+             */
+            slots?: number | null;
+            /**
+             * Labels
+             * @description labels every node has, a word or key=value; the hub adds pool=<name> itself
+             */
+            labels?: string[] | null;
+            /**
+             * Taints
+             * @description taints every node has: a node takes only the runs that tolerate each of them
+             */
+            taints?: string[] | null;
+            /**
+             * Accepted Findings
+             * @description codes of high doctor findings a node may have and still be ready (`evo-agents worker doctor`)
+             */
+            accepted_findings?: string[] | null;
+            /**
+             * Reap After Days
+             * @description days a node stays offline before the hub revokes it
+             */
+            reap_after_days?: number | null;
         };
         /**
          * PrefSet
@@ -23824,6 +24142,42 @@ export interface components {
              * @description the probes written in place of probes not reproduced two weeks in a row
              */
             replacements?: components["schemas"]["ProbeReplacement"][];
+        };
+        /**
+         * ProbeWrite
+         * @description An endpoint to try before an account is saved: the same fields as the write, the key included.
+         */
+        ProbeWrite: {
+            /**
+             * Provider
+             * @description the id of an entry of the catalog
+             */
+            provider: string;
+            /**
+             * Base Url
+             * @description the https root of its API; the catalog's when left out
+             */
+            base_url?: string | null;
+            /**
+             * Api Format
+             * @description the catalog's when left out
+             */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description the API key
+             */
+            value?: string | null;
+            /**
+             * From Secret
+             * @description or the name of one of your env secrets that holds it
+             */
+            from_secret?: string | null;
+            /**
+             * Model
+             * @description a model to ask, when the endpoint lists none
+             */
+            model?: string | null;
         };
         /** Problem */
         Problem: {
@@ -25626,6 +25980,357 @@ export interface components {
              */
             chat_message: number | null;
         };
+        /**
+         * ProviderAccount
+         * @description A provider account as its owner sees it: everything but its key.
+         */
+        ProviderAccount: {
+            /** Name */
+            name: string;
+            /**
+             * Provider
+             * @description the id of its entry in the catalog (GET /v1/model-catalog)
+             */
+            provider: string;
+            /**
+             * Provider Name
+             * @description the catalog's name of that provider
+             */
+            provider_name: string;
+            /**
+             * Alias
+             * @description what the gateway reads before the slash of a model name: <alias>/<model>
+             */
+            alias: string;
+            /**
+             * Base Url
+             * @description the https root of its API; every address it resolves to is public
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @enum {string}
+             */
+            api_format: "openai" | "anthropic" | "openai-responses" | "gemini";
+            /**
+             * Models
+             * @description the models it serves, by the endpoint's names
+             */
+            models: string[];
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused or expired, now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares?: components["schemas"]["CredentialShare"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProviderAccountChange */
+        ProviderAccountChange: {
+            /**
+             * Base Url
+             * @description the https root of its API
+             */
+            base_url?: string | null;
+            /** Api Format */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description a new API key
+             */
+            value?: string | null;
+            /**
+             * From Secret
+             * @description or an env secret's value
+             */
+            from_secret?: string | null;
+            /**
+             * Models
+             * @description the model names, replaced
+             */
+            models?: string[] | null;
+            /**
+             * Models From
+             * @description add the catalog's default model, or the endpoint's
+             */
+            models_from?: ("endpoint" | "catalog") | null;
+            /** Projects */
+            projects?: string[] | null;
+            /** Workers */
+            workers?: string[] | null;
+            /**
+             * Expires At
+             * @description null drops the end
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** ProviderAccountWrite */
+        ProviderAccountWrite: {
+            /**
+             * Provider
+             * @description the id of an entry of the catalog
+             */
+            provider: string;
+            /**
+             * Base Url
+             * @description the https root of its API; the catalog's when left out
+             */
+            base_url?: string | null;
+            /**
+             * Api Format
+             * @description the catalog's when left out
+             */
+            api_format?: ("openai" | "anthropic" | "openai-responses" | "gemini") | null;
+            /**
+             * Value
+             * @description the API key; written once, never shown again
+             */
+            value?: string | null;
+            /**
+             * From Secret
+             * @description or one of your env secrets whose value is the key
+             */
+            from_secret?: string | null;
+            /**
+             * Models
+             * @description model names, as typed
+             */
+            models?: string[];
+            /**
+             * Models From
+             * @description add the catalog's default model, or the endpoint's
+             */
+            models_from?: ("endpoint" | "catalog") | null;
+            /**
+             * Projects
+             * @description the writer role on each
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description your own; empty for any
+             */
+            workers?: string[];
+            /**
+             * Expires At
+             * @description after this no run takes it; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Weight
+             * @description its share in a weighted pool; 0 leaves it
+             */
+            weight?: number | null;
+            /**
+             * Priority
+             * @description the lower, the sooner in a fill-first pool
+             */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true: no new run takes it
+             */
+            paused?: boolean | null;
+        };
+        /** ProviderAccountWritten */
+        ProviderAccountWritten: {
+            /** Name */
+            name: string;
+            /**
+             * Provider
+             * @description the id of its entry in the catalog (GET /v1/model-catalog)
+             */
+            provider: string;
+            /**
+             * Provider Name
+             * @description the catalog's name of that provider
+             */
+            provider_name: string;
+            /**
+             * Alias
+             * @description what the gateway reads before the slash of a model name: <alias>/<model>
+             */
+            alias: string;
+            /**
+             * Base Url
+             * @description the https root of its API; every address it resolves to is public
+             */
+            base_url: string;
+            /**
+             * Api Format
+             * @enum {string}
+             */
+            api_format: "openai" | "anthropic" | "openai-responses" | "gemini";
+            /**
+             * Models
+             * @description the models it serves, by the endpoint's names
+             */
+            models: string[];
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused or expired, now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares?: components["schemas"]["CredentialShare"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Created
+             * @description true when this write created it, false when it replaced one
+             */
+            created: boolean;
+        };
+        /**
+         * ProviderProbe
+         * @description What the endpoint answered a call with the key: never the key, nor more than a line of its words.
+         */
+        ProviderProbe: {
+            /**
+             * Ok
+             * @description whether the endpoint took the key
+             */
+            ok: boolean;
+            /**
+             * Status
+             * @description the HTTP status of its answer; null when none came
+             */
+            status: number | null;
+            /**
+             * Count
+             * @description how many models it listed
+             */
+            count: number;
+            /**
+             * Models
+             * @description the models it listed, by its names
+             */
+            models: string[];
+            /**
+             * Error
+             * @description why not, sanitized: no key, at most one short line of what it said
+             */
+            error: string | null;
+        };
         /** PruneRequest */
         PruneRequest: {
             /**
@@ -25693,15 +26398,6 @@ export interface components {
              * @enum {string}
              */
             audience: "everyone" | "admins";
-        };
-        /** PublisherTrustIn */
-        PublisherTrustIn: {
-            /** Publisher */
-            publisher: string;
-            /** Signer */
-            signer: string;
-            /** Note */
-            note?: string | null;
         };
         /** Queued */
         Queued: {
@@ -26757,9 +27453,25 @@ export interface components {
         };
         /**
          * Rerun
-         * @description What a rerun may change of the run it reruns; no body keeps everything.
+         * @description What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations
+         *     keep the run's own selector and tolerations.
          */
         Rerun: {
+            /**
+             * Pool
+             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
+             */
+            pool?: string | null;
+            /**
+             * Labels
+             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
+             */
+            labels?: string[] | null;
+            /**
+             * Tolerations
+             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
+             */
+            tolerations?: string[] | null;
             /**
              * Account
              * @description one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
@@ -27121,6 +27833,18 @@ export interface components {
         };
         /** Run */
         Run: {
+            /**
+             * Selector
+             * @description the labels the worker that takes it must have, every one (pool=<name> for a pool); [] for any
+             * @default []
+             */
+            selector: string[];
+            /**
+             * Tolerations
+             * @description the taints of a worker it tolerates
+             * @default []
+             */
+            tolerations: string[];
             /** Id */
             id: number;
             /**
@@ -27255,6 +27979,8 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             } | null;
+            /** @description a plan run's plan progress, set in a list of runs; null for any other run */
+            plan_progress?: components["schemas"]["PlanProgress"] | null;
             /** @description the caps of a run the night shift queued; null for any other */
             budget?: components["schemas"]["RunBudget"] | null;
             /** Error */
@@ -28676,6 +29402,29 @@ export interface components {
              */
             items: components["schemas"]["RunBlobItem"][];
         };
+        /** RunnableModel */
+        RunnableModel: {
+            /**
+             * Model
+             * @description as a run asks for it: <prefix>/<model>
+             */
+            model: string;
+            /**
+             * Prefix
+             * @description the catalog's alias of its provider, or evo-<id> for an endpoint of a member
+             */
+            prefix: string;
+            /**
+             * Runtimes
+             * @description the runtimes that run it through the model gateway; any picks one
+             */
+            runtimes: string[];
+            /**
+             * Accounts
+             * @description the names of the provider accounts that serve it, by name
+             */
+            accounts: string[];
+        };
         /** Runs */
         Runs: {
             /**
@@ -28785,9 +29534,19 @@ export interface components {
              */
             owner: string;
             /** Worker Id */
-            worker_id: number;
-            /** Worker */
-            worker: string;
+            worker_id: number | null;
+            /**
+             * Worker
+             * @description the worker its runs go to; null for a pool
+             */
+            worker: string | null;
+            /** Pool Id */
+            pool_id?: number | null;
+            /**
+             * Pool
+             * @description the pool whose ready nodes take its runs; null for a worker
+             */
+            pool?: string | null;
             /** Paused At */
             paused_at: string | null;
             /**
@@ -29044,6 +29803,12 @@ export interface components {
              * @description the workers it is bound to; empty for any worker of its owner
              */
             workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
             /** Expires At */
             expires_at: string | null;
             /**
@@ -29102,6 +29867,11 @@ export interface components {
              */
             workers?: string[];
             /**
+             * Pools
+             * @description names of the caller's own worker pools: each node of each gets it, the nodes that join later too; never with workers, and none for kind forge
+             */
+            pools?: string[];
+            /**
              * Expires At
              * @description after this no run gets it, and the hub no longer uses one of kind forge; in the future; required for kind forge
              */
@@ -29154,6 +29924,12 @@ export interface components {
              * @description the workers it is bound to; empty for any worker of its owner
              */
             workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
             /** Expires At */
             expires_at: string | null;
             /**
@@ -31345,6 +32121,14 @@ export interface components {
             /** Pending Bytes */
             pending_bytes: number;
         };
+        /** StoredProbe */
+        StoredProbe: {
+            /**
+             * Model
+             * @description a model to ask, when the endpoint lists none; its first otherwise
+             */
+            model?: string | null;
+        };
         /**
          * Task
          * @description A task a plugin handed one of its agent types, as its latest run has it: ids and states only.
@@ -33107,33 +33891,6 @@ export interface components {
              */
             link: string;
         };
-        /** TrustedSigner */
-        TrustedSigner: {
-            /**
-             * Id
-             * @description the row to remove with DELETE /v1/plugin-publishers/{id}
-             */
-            id: number;
-            /**
-             * Signer
-             * @description sigstore:OWNER/REPO/.github/workflows/FILE.yml or ed25519:KEY, as it was trusted
-             */
-            signer: string;
-            /**
-             * Identity
-             * @description how it reads among the publisher's identities
-             */
-            identity: string;
-            /** Added By */
-            added_by: string | null;
-            /**
-             * Added At
-             * Format: date-time
-             */
-            added_at: string;
-            /** Note */
-            note?: string | null;
-        };
         /** UnitCreate */
         UnitCreate: {
             /** Slug */
@@ -33566,8 +34323,39 @@ export interface components {
             agent_commit: string | null;
             /** Slots */
             slots: number;
-            /** Labels */
+            /**
+             * Labels
+             * @description its own labels, then for a node of a pool the pool's labels and pool=<name>, which the pool sets
+             */
             labels: string[];
+            /**
+             * Pool
+             * @description the pool it joined with a join token; null for one paired or registered
+             */
+            pool?: string | null;
+            /**
+             * Auto Labels
+             * @description the labels the hub gives it from its heartbeat, which a run's selector may ask too: os=, arch=, runtime=<name> for each runtime it has, feature=browser when it has one
+             * @default []
+             */
+            auto_labels: string[];
+            /**
+             * Taints
+             * @description its own taints, then its pool's: it takes only the runs that tolerate each, or those pinned to it
+             * @default []
+             */
+            taints: string[];
+            /**
+             * Ready
+             * @description whether it takes runs: a worker of no pool always does; a node of a pool while its newest doctor report is at most 48 hours old and has no high finding but those the pool accepts
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Ready Reason
+             * @description why it takes no run, while ready is false; null when ready
+             */
+            ready_reason?: string | null;
             /**
              * Plugins
              * @description the plugins whose runtimes and environments it takes, as its owner set them
@@ -33927,6 +34715,11 @@ export interface components {
             slots?: number | null;
             /** Labels */
             labels?: string[] | null;
+            /**
+             * Taints
+             * @description its own taints, a word or key=value, the whole list ([] for none): it takes only the runs that tolerate each, or those pinned to it
+             */
+            taints?: string[] | null;
             /**
              * Name
              * @description unique among the owner's workers not revoked
@@ -37806,6 +38599,131 @@ export interface operations {
             };
         };
     };
+    worker_skills_v1_worker_skills_get: {
+        parameters: {
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Skill"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_bundle_v1_worker_skills_global__name__bundle_get: {
+        parameters: {
+            query?: {
+                /** @description default: the latest */
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleTicket"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     put_config_v1_kg__project__config_put: {
         parameters: {
             query?: never;
@@ -40663,6 +41581,417 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pools_v1_worker_pools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_pool_v1_worker_pools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_pool_v1_worker_pools__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pool_v1_worker_pools__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_join_tokens_v1_worker_pools__name__tokens_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinToken"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_join_token_v1_worker_pools__name__tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedJoinToken"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_join_token_v1_worker_pools__name__tokens__token_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinToken"];
                 };
             };
             /** @description Unauthorized */
@@ -53928,8 +55257,6 @@ export interface operations {
                 stage?: ("lead" | "invited" | "activated" | "retained") | null;
                 /** @description only contacts first seen from this source */
                 source?: ("invite_request" | "invite_link" | "grant" | "issue" | "pull_request" | "discussion") | null;
-                /** @description text: the words `evo-agents hub crm` prints, as {text}, instead of the answer */
-                render?: "text" | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;
@@ -53990,10 +55317,7 @@ export interface operations {
     };
     show_contact_v1_x_crm__project__contacts__login__get: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub crm` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
@@ -54055,10 +55379,7 @@ export interface operations {
     };
     delete_contact_v1_x_crm__project__contacts__login__delete: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub crm` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -54184,10 +55505,7 @@ export interface operations {
     };
     list_channels_v1_x_marketing__project__channels_get: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -54254,10 +55572,7 @@ export interface operations {
     };
     add_channel_v1_x_marketing__project__channels_post: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -54328,10 +55643,7 @@ export interface operations {
     };
     set_mode_v1_x_marketing__project__channels__channel_id__mode_put: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -54403,10 +55715,7 @@ export interface operations {
     };
     pause_channel_v1_x_marketing__project__channels__channel_id__pause_post: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -54478,10 +55787,7 @@ export interface operations {
     };
     resume_channel_v1_x_marketing__project__channels__channel_id__resume_post: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -54687,86 +55993,9 @@ export interface operations {
             };
         };
     };
-    check_channels_v1_x_marketing__project__check_post: {
-        parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
-            header?: never;
-            path: {
-                project: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["MarketingCheckIn"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketingChannel"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     kill_v1_x_marketing__project__kill_post: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -54837,10 +56066,7 @@ export interface operations {
     };
     resume_v1_x_marketing__project__resume_post: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -55044,8 +56270,6 @@ export interface operations {
             query?: {
                 /** @description only posts in this state */
                 state?: ("proposed" | "judging" | "queued" | "posting" | "posted" | "draft" | "failed" | "withdrawn") | null;
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
             };
             header?: never;
             path: {
@@ -55602,10 +56826,7 @@ export interface operations {
     };
     list_denylist_v1_x_marketing__project__denylist_get: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -55672,10 +56893,7 @@ export interface operations {
     };
     add_deny_v1_x_marketing__project__denylist_post: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -55746,10 +56964,7 @@ export interface operations {
     };
     remove_deny_v1_x_marketing__project__denylist__deny_id__delete: {
         parameters: {
-            query?: {
-                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
-                render?: "text" | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 project: string;
@@ -55820,8 +57035,6 @@ export interface operations {
             query?: {
                 /** @description the day of the report; today when left out */
                 date?: string | null;
-                /** @description text: the words `evo-agents hub pm daily` prints, as {text}, instead of the report */
-                render?: "text" | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;
@@ -61075,6 +62288,330 @@ export interface operations {
             };
         };
     };
+    list_agent_provider_accounts_v1_projects__project__agents__handle__provider_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentProviderAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccountWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentProviderAccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_agent_accounts_v1_projects__project__agents__handle__accounts_get: {
         parameters: {
             query?: never;
@@ -64691,93 +66228,6 @@ export interface operations {
             };
         };
     };
-    install_from_github_v1_plugins_install_github_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubInstallIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketInstalled"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Bad Gateway */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     plugins_v1_plugins_get: {
         parameters: {
             query?: never;
@@ -65572,673 +67022,6 @@ export interface operations {
             };
         };
     };
-    add_publisher_v1_plugin_publishers_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PublisherTrustIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PluginPublisher"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    remove_publisher_v1_plugin_publishers__entry_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entry_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PluginPublisher"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sources_v1_market_sources_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketSources"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    add_source_v1_market_sources_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MarketSourceIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketSource"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    remove_source_v1_market_sources__source_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description the market source's id, as GET /v1/market/sources gives it */
-                source_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketSources"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    refresh_source_v1_market_sources__source_id__refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description the market source's id, as GET /v1/market/sources gives it */
-                source_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketSource"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    install_from_market_v1_market__source___plugin__install_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description the market source's id, as GET /v1/market/sources gives it */
-                source: number;
-                /** @description the plugin's id, as the market lists it */
-                plugin: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MarketInstallIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketInstalled"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Bad Gateway */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    request_install_v1_market__source___plugin__request_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description the market source's id, as GET /v1/market/sources gives it */
-                source: number;
-                /** @description the plugin's id, as the market lists it */
-                plugin: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MarketRequestIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketRequest"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Bad Gateway */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    market_v1_market_get: {
-        parameters: {
-            query?: {
-                q?: string | null;
-                industry?: string | null;
-                category?: string | null;
-                source?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketList"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    market_plugin_v1_market__source___plugin__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description the market source's id, as GET /v1/market/sources gives it */
-                source: number;
-                /** @description the plugin's id, as the market lists it */
-                plugin: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketPluginDetail"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     plugins_of_project_v1_projects__project__plugins_get: {
         parameters: {
             query?: never;
@@ -66952,45 +67735,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_plugins_v1_cli_plugins_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description the ETag of the answer the CLI holds */
-                "if-none-match"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description {version, plugins: [{id, version, commands}]} */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description unchanged */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -67861,6 +68605,605 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_model_catalog_v1_model_catalog_get: {
+        parameters: {
+            query?: {
+                /** @description only the providers of this group */
+                group?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCatalog"];
+                };
+            };
+            /** @description unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_provider_accounts_v1_provider_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_provider_account_v1_provider_accounts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_provider_account_v1_provider_accounts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccountWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_provider_account_v1_provider_accounts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_provider_account_v1_provider_accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderAccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    probe_endpoint_v1_provider_accounts_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderProbe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    probe_provider_account_v1_provider_accounts__name__probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredProbe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderProbe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_runnable_models_v1_projects__project__runnable_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnableModel"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -64,6 +64,7 @@ CHARTER_BODY_KEYS = (
     "goals",
     "window",
     "worker",
+    "pool",
     "night_budget_usd",
     "run_budget_usd",
     "run_max_turns",
@@ -87,7 +88,7 @@ CHARTER_BODY_KEYS = (
     "env_secrets",
 )
 CHARTER_KEYS = CHARTER_BODY_KEYS + CHARTER_META
-REVISION_KEYS = ("revision", "updated_by", "updated_at", "worker", "worker_id")
+REVISION_KEYS = ("revision", "updated_by", "updated_at", "worker", "worker_id", "pool", "pool_id")
 STATUS_KEYS = (
     "project",
     "charter",
@@ -217,6 +218,11 @@ def _history(charter: dict) -> str:
     return f"facets of the sessions and runs by {model}, at most {money(cap)} a night"
 
 
+def _on_duty(item: dict, key: str = "worker") -> str:
+    """``worker <name>`` or ``pool <name>``: where a charter's or a schedule's night runs go."""
+    return f"pool {item['pool']}" if item.get("pool") else f"worker {item[key]}"
+
+
 def _print_charter(charter: dict) -> None:
     window = charter["window"]
     print(
@@ -226,7 +232,7 @@ def _print_charter(charter: dict) -> None:
     run_cap = money(charter["run_budget_usd"]) if charter["run_budget_usd"] is not None else "what the night has left"
     lines = [
         ("window", f"{window['start']} to {window['end']}, {window['timezone']}"),
-        ("worker", f"{charter['worker']} (#{charter['worker_id']}), runs dispatched as {charter['schedule_owner']}"),
+        ("on duty", f"{_on_duty(charter)}, runs dispatched as {charter['schedule_owner']}"),
         ("night", f"{money(charter['night_budget_usd'])}, at most {charter['max_runs_per_night']} runs"),
         ("each run", f"{run_cap}, {charter['run_max_turns']} turns, {charter['run_minutes']} minutes of agent time"),
         ("plans", ", ".join(charter["night_plans"]) or "none"),
@@ -277,7 +283,7 @@ def cmd_charter_set(args) -> int:
         return 0
     print(f"Charter of {charter['project']} is at revision {charter['revision']}.")
     print(
-        f"The night shift runs {', '.join(charter['night_plans']) or 'no plan'} on {charter['worker']} as "
+        f"The night shift runs {', '.join(charter['night_plans']) or 'no plan'} on {_on_duty(charter)} as "
         f"{charter['schedule_owner']}, {charter['window']['start']} to {charter['window']['end']} "
         f"{charter['window']['timezone']}."
     )
@@ -292,9 +298,9 @@ def cmd_charter_history(args) -> int:
     if args.json:
         _print_json(revisions)
         return 0
-    rows = [(row["revision"], row["updated_by"], _when(row["updated_at"]), row["worker"]) for row in revisions]
+    rows = [(row["revision"], row["updated_by"], _when(row["updated_at"]), _on_duty(row)) for row in revisions]
     if rows:
-        _table(("REVISION", "BY", "AT (UTC)", "WORKER"), rows)
+        _table(("REVISION", "BY", "AT (UTC)", "ON DUTY"), rows)
     print(f"{len(rows)} revision(s) of the charter of {project}")
     return 0
 
@@ -311,7 +317,7 @@ def _print_status(status: dict) -> None:
     for schedule in status["schedules"]:
         by = schedule["paused_by"] or "the hub"
         paused = f", paused by {by} at {_when(schedule['paused_at'])} UTC" if schedule["paused_at"] else ""
-        print(f"  {schedule['kind']}: worker {schedule['worker']}, runs dispatched as {schedule['owner']}{paused}")
+        print(f"  {schedule['kind']}: {_on_duty(schedule)}, runs dispatched as {schedule['owner']}{paused}")
         if schedule.get("pause_reason"):
             print(f"    {schedule['pause_reason']}")
     night = status["night"]

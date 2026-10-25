@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Computed,
     Date,
@@ -29,6 +30,7 @@ from sqlalchemy import (
     false,
     func,
     literal,
+    or_,
     true,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
@@ -55,6 +57,7 @@ from evo_agents.hub import (
     tables_plugin_notices,
     tables_plugins,
     tables_pm,
+    tables_pools,
     tables_problems,
     tables_profiles,
     tables_release,
@@ -411,6 +414,7 @@ Index(
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
 workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0119
+worker_pools, worker_pool_projects, worker_join_tokens = tables_pools.pool_tables(metadata, workers)  # 0148
 
 runs = Table(
     "runs",
@@ -534,6 +538,7 @@ Index(  # the reaper finds the local runs that went silent (0033)
     runs.c.last_activity_at,
     postgresql_where=(runs.c.kind == "local") & (runs.c.state != "ended"),
 )
+tables_pools.placement_columns(workers, runs)  # 0149
 Index("runs_claim_idx", runs.c.project_id, runs.c.dispatched_by, runs.c.id, postgresql_where=runs.c.state == "queued")
 Index("runs_lease_idx", runs.c.lease_expires_at, postgresql_where=runs.c.state.in_(RUN_HELD))
 Index("runs_worker_idx", runs.c.worker_id, runs.c.id.desc(), postgresql_where=runs.c.worker_id.is_not(None))
@@ -757,9 +762,14 @@ secret_bindings = Table(
     Column("secret_id", BigInteger, nullable=False),
     Column("project_id", BigInteger, nullable=False),
     Column("worker_id", BigInteger),
+    Column("pool_id", BigInteger),  # bound to each node of the pool, those that join later too (0150)
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="secret_bindings_project_id_fkey"),
     ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="secret_bindings_secret_id_fkey"),
     ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="secret_bindings_worker_id_fkey"),
+    ForeignKeyConstraint(["pool_id"], ["worker_pools.id"], ondelete="CASCADE", name="secret_bindings_pool_id_fkey"),
+    CheckConstraint(
+        or_(column("worker_id").is_(None), column("pool_id").is_(None)), name="secret_bindings_worker_or_pool_check"
+    ),
     Index("secret_bindings_project_idx", "project_id"),
 )
 Index(
@@ -767,7 +777,13 @@ Index(
     secret_bindings.c.secret_id,
     secret_bindings.c.project_id,
     func.coalesce(secret_bindings.c.worker_id, 0),
+    func.coalesce(secret_bindings.c.pool_id, 0),
     unique=True,
+)
+Index(
+    "secret_bindings_pool_idx",
+    secret_bindings.c.pool_id,
+    postgresql_where=secret_bindings.c.pool_id.is_not(None),
 )
 Index(
     "secret_bindings_worker_idx",
@@ -959,13 +975,13 @@ channel_link_codes = Table(  # the one-time codes that link a member's channel: 
     Index("channel_link_codes_user_idx", "user_id"),
 )
 
-accounts, account_policies, run_accounts, user_emails = tables_accounts.account_tables(metadata)  # 0027, 0066, 0068
+accounts, account_policies, run_accounts, user_emails, provider_accounts = tables_accounts.account_tables(metadata)
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 retired_project_plugins = tables_plugins.retired_table(metadata)  # canvas, srs and tasks before 0147
-market_sources, plugin_publishers, market_install_requests = tables_market.market_tables(metadata)  # 0149
+market_sources, plugin_publishers, market_install_requests = tables_market.market_tables(metadata)  # 0154
 hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)

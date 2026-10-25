@@ -89,6 +89,7 @@ def test_set_takes_no_value_on_its_command_line():
         "--environment",
         "--project",
         "--worker",
+        "--pool",
         "--expires",
     }
     positionals = [entry["name"] for entry in commands()["hub secret set"]["positionals"]]

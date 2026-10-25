@@ -19,6 +19,7 @@ import { isApiError } from "@/lib/api/errors";
 import { planQuery } from "@/lib/plan-queries";
 import { parsePlan } from "@/lib/plans";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
+import { modelsFor, runnableModelsQuery } from "@/lib/runnable-models";
 
 import { AccountField, useAccountChoice } from "./account-field";
 import { accountField } from "./account-model";
@@ -130,6 +131,7 @@ function PlanRunForm({
   const me = useQuery(whoamiQuery(browserApi));
   const workersState = useQuery(workersQuery(browserApi));
   const projectState = useQuery(projectQuery(browserApi, project));
+  const gateway = useQuery(runnableModelsQuery(browserApi, project)).data ?? [];
 
   const [runtime, setRuntime] = useState<RequestedRuntime>("any");
   const [modelText, setModelText] = useState("");
@@ -151,7 +153,7 @@ function PlanRunForm({
   const [account, setAccount] = useAccountChoice(project, runtime, mine.find((worker) => worker.id === pinned)?.name ?? null);
   const models = Object.fromEntries(RUNTIMES.map((name) => [name, agentModels(agents.agent, modelSuggestions(mine, name))])) as Record<RuntimeName, string[]>;
   const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
-  const model = readModel(modelText, runtime);
+  const model = readModel(modelText, runtime, gateway.map((item) => item.model));
   const problems = agentProblems(agents.agent, { runtime, model: model.model, workers: own });
   const runnable = scope !== null && blockers.length === 0 && problems.length === 0;
   const outlook = dispatchOutlook(runnable ? 1 : 0, mine, request, pinned);
@@ -159,10 +161,12 @@ function PlanRunForm({
   const loading = plan.isPending || ready.isPending;
   const loadFailed = !loading && (plan.isError || ready.isError) && scope === null;
 
-  // A model goes with its runtime: one the next runtime does not list is cleared, as is any model for any runtime.
+  // A model goes with its runtime: one the next runtime does not list is cleared, as is any model for any runtime,
+  // but a provider's model the next runtime runs through the gateway.
   const changeRuntime = (next: RequestedRuntime) => {
     setRuntime(next);
-    if (next === "any" || !models[next].includes(modelText.trim())) setModelText("");
+    const kept = modelsFor(gateway, next).some((item) => item.model === modelText.trim());
+    if (!kept && (next === "any" || !models[next].includes(modelText.trim()))) setModelText("");
   };
 
   const submit = async (event: FormEvent) => {
@@ -237,6 +241,7 @@ function PlanRunForm({
             onChange={setModelText}
             runtime={runtime}
             models={models}
+            gateway={gateway}
             onRuntime={changeRuntime}
             problem={model.problem}
             disabled={pending}

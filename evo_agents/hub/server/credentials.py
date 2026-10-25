@@ -108,12 +108,11 @@ from evo_agents.hub.credentials import (
     matches,
     normalize_origin,
 )
-from evo_agents.hub.server import audit, lease_autonomy
+from evo_agents.hub.server import audit, gateway_leases, gateway_sync, lease_autonomy
 from evo_agents.hub.server.account_choice import choose_accounts, fail_over_relogin
 from evo_agents.hub.server.account_refresh import refresh_due
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.credential_models import (
-    CredentialLease,
     Credentials,
     GivenBack,
     MissingOrigin,
@@ -137,6 +136,7 @@ from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, agent_secret_aad, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_leases import Refusal, end_unlent, note_refusals, own_secrets, shared_secrets
+from evo_agents.hub.server.worker_placement import bound_here
 
 if TYPE_CHECKING:
     from evo_agents.hub.autonomy_levels import Choice
@@ -329,12 +329,10 @@ def _owner_role(owner_id: int, project_id: int, *, lock: bool):
 
 
 def _agent_accounts(run: _Run, worker_id: int, *, lock: bool):
-    """The accounts of the run's agent bound to this worker, live (not deleted) and past their end or not, by name. With
+    """The accounts of the run's agent bound to this worker or its pool, live (not deleted) and past their end or not, by name. With
     ``lock`` their rows are shared-locked."""
     s, b = tables.secrets, tables.secret_bindings
-    bound = exists().where(
-        b.c.secret_id == s.c.id, b.c.project_id == run.profile_project_id, b.c.worker_id == worker_id
-    )
+    bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == run.profile_project_id, bound_here(b, worker_id))
     statement = (
         select(
             s.c.id,
@@ -768,7 +766,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     sealer: Sealer | None = state.sealer
     engine = state.engine
     async with engine.begin() as conn:
-        _, survey = await survey_run(conn, user, run_id, lock=False, refreshable=True)
+        asking, survey = await survey_run(conn, user, run_id, lock=False, refreshable=True)
     ended = {secret.id: secret for secret in survey.secrets}  # with the OAuth accounts whose token has ended
     rejected: set[int] = set()
     if sealer is not None:  # before the leases are recorded: an access token near its end is traded for a new one
@@ -781,6 +779,8 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     checked, unchecked = await lease_autonomy.before_lease(engine, state, app, survey)
     if sealer is not None and survey.github and not survey.reusable():
         made, reasons = await _ask_github(state, app, survey, curator)
+    root = str(request.base_url).rstrip("/")
+    gateway = None if sealer is None else await gateway_leases.prepare(request.app, engine, survey.run, asking, root)
     try:
         async with engine.begin() as conn:
             worker_id, survey = await survey_run(conn, user, run_id, lock=True)
@@ -796,8 +796,9 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                     await fail_over_relogin(conn, survey.run, [*survey.secrets, *left], rejected)
                 leases = await _lease_secrets(conn, survey, worker_id, sealer)
                 leases += await _lease_tokens(conn, survey, worker_id, sealer, made)
+                leases += await gateway_leases.record(conn, gateway, survey.run, worker_id, sealer)
                 await _note_uncovered(conn, run_id, survey, leases, reasons)
-            target = _lease_target(survey.run, leases, survey.leased)
+            target = _lease_target(survey.run, leases, survey.leased) + (gateway.audit_text() if gateway else "")
             await audit.record(
                 conn,
                 actor_id=user.user_id,
@@ -809,6 +810,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
             await lease_autonomy.audited(conn, survey, user.user_id, user.token_id)
     except Exception:  # the tokens made are recorded nowhere: revoke them rather than leave them out for an hour
         await _revoke_made(app, made)
+        await gateway_leases.undo(request.app, gateway)
         raise
     missing = [
         MissingOrigin(repo=repo, origin=survey.origins[repo], reason=survey.missing[repo])
@@ -834,9 +836,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
         )
         for repo in survey.origins
     ]
-    return Credentials(
-        leases=[CredentialLease.model_validate(lease.to_json()) for lease in leases], missing=missing, repos=repos
-    )
+    return Credentials(leases=[lease.to_json() for lease in leases], missing=missing, repos=repos)
 
 
 async def _note_uncovered(
@@ -895,5 +895,6 @@ async def give_back_credentials(request: Request, run_id: RunId, user: CurrentUs
             conn, run_id=run_id, worker_id=worker_id, actor_id=user.user_id, token_id=user.token_id, by="worker"
         )
     await revoke_tokens(state.engine, state.sealer, revoker(state), run_id=run_id)
+    gateway_sync.poke(request.app)  # its key of the gateway, if any, is taken back by the next round
     log.info("credentials given back", extra={"run_id": run_id, "worker_id": worker_id, "revoked": revoked})
     return GivenBack(revoked=revoked)

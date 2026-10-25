@@ -74,6 +74,7 @@ import { decidePath, goalsPath, itemPath as loopItemPath, loopPath, seedLoop, se
 import { problemsPath, seedProblems } from "./support/problems";
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
+import { providerKey, putProviderByApi } from "./support/providers";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import {
@@ -909,12 +910,11 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "accounts in two groups with a merged line open",
+    name: "accounts' service credentials tab with a merged line open",
     open: async ({ page, me }) => {
       await seedAccounts(me);
-      await page.goto("/accounts");
+      await page.goto("/accounts?tab=services");
       const services = page.locator("#main").getByTestId("accounts-group-service");
-      await expect(page.locator("#main").getByTestId("accounts-group-model")).toBeVisible();
       await services.getByTestId("service-group-toggle").click();
       await expect(services.getByTestId("service-variables")).toBeVisible();
     },
@@ -925,7 +925,33 @@ const PAGES: Entry[] = [
       await seedAccounts(me);
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/accounts");
-      await expect(page.locator("#main").getByTestId("accounts-group-service")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("provider-card").first()).toBeVisible();
+    },
+  },
+  {
+    name: "accounts' provider cards with a provider account, and its Models tab",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await putProviderByApi(me, "glm-a11y", { provider: "glm", value: providerKey(), projects: [me.projects[0]], models: ["fake-large"] });
+      await page.goto("/accounts");
+      await expect(page.locator("#main").locator('[data-provider-id="glm"]').getByTestId("provider-card-model")).toBeVisible();
+      await expectNoSeriousViolations(page, "accounts with a provider account");
+      await page.locator("#main").getByTestId("accounts-tab-models").click();
+      await expect(page.locator("#main").getByTestId("runnable-model").first()).toBeVisible();
+    },
+  },
+  {
+    name: "accounts' provider catalog, then the provider form with its errors",
+    open: async ({ page }) => {
+      await page.goto("/accounts");
+      await page.locator("#main").getByTestId("accounts-add").click();
+      const dialog = page.getByTestId("provider-dialog");
+      await expect(dialog.getByTestId("provider-catalog-entry").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "the provider catalog");
+      await dialog.getByTestId("provider-catalog-search").fill("glm");
+      await dialog.getByTestId("provider-catalog-entry").and(page.locator('[data-provider-id="glm"]')).click();
+      await dialog.getByTestId("provider-save").click();
+      await expect(dialog.getByTestId("provider-key-error")).toBeVisible();
     },
   },
   {
@@ -937,7 +963,7 @@ const PAGES: Entry[] = [
       const projects = [me.projects[0]];
       await shareByApi(me, "claude-sub", { grantee_kind: "user", login: lan.login, projects, budget_usd: 40, terms_ack: true });
       await shareByApi(me, "anthropic-key", { grantee_kind: "unit", unit, projects, expires_at: `${dayFromNow(2)}T00:00:00Z` });
-      await page.goto("/accounts");
+      await page.goto("/accounts?tab=sharing");
       const shares = page.locator("#main").getByTestId("account-shares");
       await expect(shares.getByTestId("share-row")).toHaveCount(2);
       await expect(shares.getByTestId("share-ends-soon")).toBeVisible();

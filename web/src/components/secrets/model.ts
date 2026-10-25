@@ -26,6 +26,8 @@ export type SecretForm = {
   username: string;
   projects: string[];
   workers: string[];
+  /** The visitor's pools the secret goes to, instead of workers: the hub takes one or the other. */
+  pools: string[];
   /** The day the secret ends, as an <input type="date"> holds it (YYYY-MM-DD), or "" for none. */
   expires: string;
   /** Write-only: never filled from the hub, and cleared as soon as it was sent. */
@@ -59,7 +61,7 @@ export type SecretProblem =
 export type SecretProblems = Partial<Record<SecretField, SecretProblem>>;
 
 export function emptySecretForm(): SecretForm {
-  return { name: "", kind: "env", envVar: "", urlPrefix: "", username: "", projects: [], workers: [], expires: "", value: "" };
+  return { name: "", kind: "env", envVar: "", urlPrefix: "", username: "", projects: [], workers: [], pools: [], expires: "", value: "" };
 }
 
 /** The day of `iso` in UTC, as an <input type="date"> holds it. */
@@ -77,6 +79,7 @@ export function formOf(secret: Secret): SecretForm {
     username: secret.username ?? "",
     projects: [...secret.projects],
     workers: [...secret.workers],
+    pools: [...secret.pools],
     expires: secret.expires_at ? utcDay(secret.expires_at) : "",
     value: "",
   };
@@ -177,6 +180,7 @@ export function secretBody(form: SecretForm, original?: Secret | null): SecretWr
     ...target,
     projects: [...form.projects],
     workers: form.kind === "forge" ? [] : [...form.workers],
+    pools: form.kind === "forge" ? [] : [...form.pools],
     expires_at: expiresAt(form.expires, original) ?? null,
     value: form.value,
   };

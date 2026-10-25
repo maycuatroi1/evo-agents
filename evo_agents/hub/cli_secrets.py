@@ -16,8 +16,8 @@ project's repos under ``--url-prefix``: it needs ``--expires`` and the admin rol
 in ``run_cli``, lists the leases one run got of them.
 
 ``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
-variable. ``account list`` prints them, never a value (GET /v1/accounts); ``account set`` changes the weight or
-priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them take it again (PATCH
+variable. ``account list`` prints them and the provider accounts, never a value (GET /v1/accounts); ``account set``
+changes the weight or priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them back (PATCH
 /v1/accounts/{name}). ``account policy PROJECT`` prints the caller's policy for a project (GET
 /v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
 ``--reset`` drops it, so the defaults hold again (DELETE). ``account list`` and ``account show`` remind the member to
@@ -63,7 +63,9 @@ from evo_agents.hub.accounts import (
     RENEW_WITHIN_DAYS,
     STRATEGIES,
 )
+from evo_agents.hub.cli_bindings import BOTH, add_pool_flag, bound_to, where_cell, where_text
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_provider_accounts import print_gateway, provider_text, register_provider_accounts
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import (
     FORGE_KIND,
@@ -87,6 +89,7 @@ SECRET_KEYS = (
     "environment",
     "projects",
     "workers",
+    "pools",
     "expires_at",
     "created_at",
     "updated_at",
@@ -145,8 +148,8 @@ def target(args) -> dict:
     if args.kind == FORGE_KIND:
         if args.username is not None:
             raise Refused("--kind forge takes no --username: GitLab reads the token from a header")
-        if args.worker:
-            raise Refused("--kind forge takes no --worker: only the hub uses it, and no run is ever leased it")
+        if args.worker or args.pool:
+            raise Refused("--kind forge takes no --worker or --pool: only the hub uses it, and no run is leased it")
         if args.expires is None:
             raise Refused("--kind forge needs --expires, the day the GitLab token it holds ends")
         return {"url_prefix": args.url_prefix}
@@ -203,7 +206,7 @@ def _target_text(secret: dict) -> str:
 def _workers_text(secret: dict) -> str:
     if secret["kind"] == FORGE_KIND:
         return "used by the hub alone, never leased to a run"
-    return "on " + (", ".join(secret["workers"]) if secret["workers"] else "any worker of yours")
+    return where_text(secret)
 
 
 @_client_command
@@ -211,8 +214,9 @@ def cmd_set(args) -> int:
     try:
         check_name(args.name)
         body = {"kind": args.kind, **target(args), "projects": args.project}
-        if args.worker:
-            body["workers"] = args.worker
+        if args.worker and args.pool:
+            raise Refused(BOTH)
+        body.update({key: given for key, given in (("workers", args.worker), ("pools", args.pool)) if given})
         if args.expires is not None:
             body["expires_at"] = expires_at(args.expires)
     except Refused as exc:
@@ -250,7 +254,7 @@ def cmd_list(args) -> int:
             s["kind"],
             _target_text(s),
             ", ".join(s["projects"]),
-            "-" if s["kind"] == FORGE_KIND else ", ".join(s["workers"]) or "any",
+            "-" if s["kind"] == FORGE_KIND else where_cell(s),
             _when(s["expires_at"]),
             _when(s["updated_at"]),
         )
@@ -320,6 +324,7 @@ def register_secrets(hsub) -> None:
         metavar="NAME",
         help="only runs on this worker of yours get it; repeat it for several (default: any worker of yours)",
     )
+    add_pool_flag(put)
     put.add_argument(
         "--expires",
         metavar="YYYY-MM-DD",
@@ -339,6 +344,7 @@ def register_secrets(hsub) -> None:
     cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
+    register_provider_accounts(hsub)  # and `hub model-catalog`, the providers an account is added for
 
 
 # `hub account`: the env secrets as accounts (docs/credentials.md, section Accounts)
@@ -353,6 +359,7 @@ ACCOUNT_KEYS = (
     "auth",
     "projects",
     "workers",
+    "pools",
     "weight",
     "priority",
     "paused_at",
@@ -370,6 +377,7 @@ ACCOUNT_KEYS = (
     "held_by",
     "shares",
     "cost_by_principal",
+    "gateway",
 )
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
@@ -434,8 +442,8 @@ def cmd_account_list(args) -> int:
         (
             a["name"],
             a["env_var"],
-            a["provider"],
-            a["auth"],
+            provider_text(a),
+            "key" if a.get("gateway") else a["auth"],
             a["state"],
             a["weight"],
             a["priority"],
@@ -445,7 +453,7 @@ def cmd_account_list(args) -> int:
             "-" if a["cost_7d_usd"] is None else money(a["cost_7d_usd"]),
             " ".join(f"#{run['run_id']}" for run in a["held_by"]) or "-",
             ", ".join(a["projects"]),
-            ", ".join(a["workers"]) or "any",
+            where_cell(a),
         )
         for a in found
     ]
@@ -475,6 +483,8 @@ def cmd_account_list(args) -> int:
 
 
 def _renew_command(account: dict) -> str:
+    if account.get("gateway"):
+        return f"`evo-agents hub provider-account set {account['name']} --expires ...`"
     if account["env_var"] == setup_token.ENV_VAR:
         command = "oauth-login" if account.get("auth") == "oauth" else "login"
         return f"`evo-agents hub account {command} {account['name']}`"
@@ -547,9 +557,13 @@ def _print_account(a: dict) -> None:
     usage = _usage_text(a["last_usage"])
     reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
     print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
+    print_gateway(a)
     if a.get("auth") == "oauth":
         print("  Signed in with OAuth: the hub keeps its tokens sealed; renew with `account oauth-login`.")
-    print(f"  Projects: {', '.join(a['projects']) or '-'}; workers: {', '.join(a['workers']) or 'any of yours'}.")
+    where = (
+        f"pools: {', '.join(a['pools'])}" if a.get("pools") else f"workers: {', '.join(a['workers']) or 'any of yours'}"
+    )
+    print(f"  Projects: {', '.join(a['projects']) or '-'}; {where}.")
     print(f"  Expires: {_expiry(a, datetime.now(UTC))[0]}.")
     print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {_when(a['last_leased_at'])} UTC.")
     print(f"  Last usage: {usage}{reported}.")
@@ -663,8 +677,11 @@ def login_body(args, existing: dict | None, ends: str) -> dict:
     projects = args.project or (existing["projects"] if existing else [])
     if not projects:
         raise Refused("a new account needs --project, a project whose runs take it; repeat it for several")
-    workers = args.worker if args.worker is not None else (existing["workers"] if existing else [])
-    return {"kind": "env", "env_var": var, "projects": projects, "workers": workers, "expires_at": ends}
+    try:
+        bound = bound_to(args, existing)
+    except ValueError as exc:
+        raise Refused(str(exc)) from None
+    return {"kind": "env", "env_var": var, "projects": projects, **bound, "expires_at": ends}
 
 
 def check_bindings(hub, body: dict) -> None:
@@ -682,6 +699,11 @@ def check_bindings(hub, body: dict) -> None:
         for worker in body["workers"]:
             if worker.lower() not in mine:
                 raise Refused(f"{worker} is not a worker of yours that is not revoked: see GET /v1/workers")
+    if body["pools"]:
+        pools = {p["name"].lower() for p in hub.call("GET", "/v1/worker-pools")}
+        for pool in body["pools"]:
+            if pool.lower() not in pools:
+                raise Refused(f"{pool} is not a worker pool of yours: see GET /v1/worker-pools")
 
 
 def login_token(value: str) -> str:
@@ -700,13 +722,13 @@ def login_token(value: str) -> str:
 
 def _login_intro(name: str, existing: dict | None, body: dict) -> str:
     projects = ", ".join(body["projects"])
-    workers = ", ".join(body["workers"]) or "any worker of yours"
+    where = where_text(body)
     ends = f"{_when(body['expires_at'])} UTC"
     if existing is None:
-        return f"Adding account {name} ({body['env_var']}) for project(s) {projects}, on {workers}; it ends {ends}."
+        return f"Adding account {name} ({body['env_var']}) for project(s) {projects}, {where}; it ends {ends}."
     return (
         f"{name} is an account of yours already: this replaces its token, which ends {ends}, for project(s) "
-        f"{projects}, on {workers}. Its weight, priority, pause, cooldown and runs stay as they are."
+        f"{projects}, {where}. Its weight, priority, pause, cooldown and runs stay as they are."
     )
 
 
@@ -805,9 +827,8 @@ def cmd_account_oauth_login(args) -> int:
         body.pop("expires_at")  # the end of the access token, which the tokens carry
         check_bindings(hub, body)
         projects = ", ".join(body["projects"])
-        workers = ", ".join(body["workers"]) or "any worker of yours"
         verb = "Adding" if existing is None else "Replacing the tokens of"
-        _say(f"{verb} account {args.name} ({body['env_var']}, OAuth) for project(s) {projects}, on {workers}.")
+        _say(f"{verb} account {args.name} ({body['env_var']}, OAuth) for project(s) {projects}, {where_text(body)}.")
         pkce = claude_oauth.new_pkce()
         code = _oauth_code(args.name, pkce, args)
         tokens = claude_oauth.exchange(code, pkce)
@@ -857,6 +878,7 @@ def _register_oauth_login(asub) -> None:
         help="only runs on this worker of yours take it; repeat it for several (default: any worker of yours; "
         "renewing keeps the account's workers)",
     )
+    add_pool_flag(login, "take")
     login.add_argument("--no-browser", action="store_true", help="print the address to open instead of opening it")
     login.add_argument(
         "--paste",
@@ -888,6 +910,7 @@ def _register_login(asub) -> None:
         help="only runs on this worker of yours take it; repeat it for several (default: any worker of yours; "
         "renewing keeps the account's workers)",
     )
+    add_pool_flag(login, "take")
     login.add_argument(
         "--expires",
         metavar="YYYY-MM-DD",

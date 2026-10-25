@@ -116,6 +116,11 @@ function useCrumbs(): Crumb[] {
   }
   if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
   const hub = [...HOME_NAV, ...HUB_NAV].find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
+  // The pools live under Workers: Workers, Pools, then the pool by its name.
+  if (hub && parts[0] === "workers" && parts[1] === "pools") {
+    const pools = { label: t("pools"), href: parts[2] ? "/workers/pools" : undefined };
+    return [{ label: t(hub.label), href: hub.href }, pools, ...(parts[2] ? [{ label: itemLabel(parts[2]) }] : [])];
+  }
   if (hub && parts.length > 1) {
     // A plugin of the market, /market/{source}/{plugin}, goes by its id rather than its market's number.
     const item = parts[0] === "market" && parts[2] ? parts[2] : parts[1];

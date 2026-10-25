@@ -42,7 +42,7 @@ from evo_agents.plugins.signing import MAX_SIGNATURE
 log = logging.getLogger(__name__)
 
 API_HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-MAX_ERROR_CHARS = 2000  # market_sources.last_error (0149)
+MAX_ERROR_CHARS = 2000  # market_sources.last_error (0154)
 MAX_RELEASE = 1024 * 1024  # bytes of a release as the API describes it
 
 

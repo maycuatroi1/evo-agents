@@ -16,7 +16,7 @@ import { docKey, messageDocs, OpenDocContext } from "./doc-model";
 import { AuthorAvatar } from "./faces";
 import type { Quote } from "./line-model";
 import { MessageHead, ReplyQuote, ThreadSummary } from "./message-parts";
-import { MessageLinks } from "./message-links";
+import { MessageLinks, MessageRuns } from "./message-links";
 import { MessageProgress } from "./message-progress";
 import { ReactionChips, ReactionPicker } from "./reactions";
 
@@ -58,7 +58,7 @@ const COLUMN = {
   mine: "items-end max-w-[85%] md:max-w-[min(42rem,calc(100%-4.5rem))]",
   theirs: "items-start max-w-[calc(100%-2.5rem)] md:max-w-[min(42rem,calc(100%-7rem))]",
 };
-/** React and Reply from 768 px: beside the message at its top, on the side away from its face, while it has the pointer or a key. */
+/** React, the message's runs and Reply from 768 px: beside the message at its top, on the side away from its face, while it has the pointer or a key. */
 const ACTIONS = {
   mine: "md:right-full md:mr-1",
   theirs: "md:left-full md:ml-1",
@@ -68,11 +68,11 @@ const ACTIONS = {
  * One message of a chat as a chat app draws it (web/DESIGN.md, Chats): the visitor's own on the right in a `brand-soft`
  * bubble with no face; anyone else's on the left in a `muted` bubble after their face and name, shown once for messages
  * that run on. The text is Markdown that is never HTML; under the bubble, the files of its run it carries (an agent's,
- * as chips that open the viewer, the bytes served to who reads the message), where it leads (the agent's run, the runs
- * its mentions handed work to, its pull requests), how far each run it handed work to is (`message-progress.tsx`), what
+ * as chips that open the viewer, the bytes served to who reads the message), where it leads (its pull requests, a mention
+ * the hub refused), how far each run it handed work to is (`message-progress.tsx`), what
  * the page puts under it, its reactions, and for a message that starts a thread, how many replies it has and a way
- * into it. In a direct chat a reply that does not sit right under what it answers quotes it above its bubble. React and
- * Reply sit beside it from 768 px, shown while the pointer is over it or a key is in it, and under it on phones.
+ * into it. In a direct chat a reply that does not sit right under what it answers quotes it above its bubble. React, its
+ * runs (`MessageRuns`) and Reply sit beside it from 768 px, shown while the pointer is over it or a key is in it, and under it on phones.
  */
 export function MessageItem(props: Props) {
   const { message, chat, me, thread, runOn = false, quote = null, highlighted = false, domId, onReact, onThread, onReply, onQuote, reacting, under, ref } = props;
@@ -136,10 +136,10 @@ export function MessageItem(props: Props) {
         <OutputStrip outputs={attached} label={tAttach("files")} className={cn(mine && "justify-end")} testId="message-attachments" />
         <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
         <DocButtons message={message} className={cn(mine && "justify-end")} />
-        <MessageLinks message={message} chat={chat} />
+        <MessageLinks message={message} />
         <MessageProgress progress={message.progress} />
         {under?.(message)}
-        {/* The reactions, then React and Reply: in the same row under 768 px; from 768 px those two sit beside the
+        {/* The reactions, then React, the runs and Reply: in the same row under 768 px; from 768 px those two sit beside the
             message at its top, shown while the pointer is over it, a key is in it or its picker is open. */}
         <div className={cn("flex flex-wrap items-center gap-1.5 md:contents", mine && "justify-end")}>
           <ReactionChips reactions={message.reactions} me={me} busy={busy} onToggle={toggle} />
@@ -154,6 +154,7 @@ export function MessageItem(props: Props) {
             data-testid="message-actions"
           >
             <ReactionPicker reactions={message.reactions} busy={busy} onToggle={toggle} />
+            <MessageRuns message={message} chat={chat} />
             {reply ? (
               <Button type="button" variant="ghost" size="icon-sm" aria-label={reply.label} title={reply.label} onClick={reply.act} data-testid="message-reply">
                 {reply.icon}

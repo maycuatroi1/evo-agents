@@ -70,6 +70,12 @@ def agent_secret_aad(profile_id: int, name: str) -> bytes:
     return f"agent-secret:{profile_id}:{name}".encode()
 
 
+def agent_provider_aad(profile_id: int, name: str) -> bytes:
+    """The associated data of the key of an agent's provider account: it opens neither as an env secret of the
+    profile of the same name nor as a member's."""
+    return f"agent-provider:{profile_id}:{name}".encode()
+
+
 def lease_aad(lease_id: int) -> bytes:
     """The associated data of a leased token: it opens only as the value of this lease."""
     return f"lease:{lease_id}".encode()

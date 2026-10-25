@@ -77,6 +77,7 @@ const ACCOUNT: Account = {
   auth: "token",
   projects: ["demo", "docs"],
   workers: ["mac-mini"],
+  pools: [],
   weight: 3,
   priority: 2,
   paused_at: null,
@@ -106,6 +107,7 @@ const written = (name: string, created: boolean) => ({
   username: null,
   projects: ["demo"],
   workers: [],
+  pools: [],
   expires_at: "2027-10-13T00:00:00Z",
   created_at: "2026-10-14T00:00:00Z",
   updated_at: "2026-10-14T00:00:00Z",
@@ -217,6 +219,7 @@ describe("LoginDialog", () => {
       env_var: "CLAUDE_CODE_OAUTH_TOKEN",
       projects: ["demo"],
       workers: [],
+      pools: [],
       expires_at: `${defaultExpiryDay(Date.now())}T00:00:00.000Z`,
       value: TOKEN,
     });
@@ -270,6 +273,7 @@ describe("LoginDialog", () => {
       env_var: "CLAUDE_CODE_OAUTH_TOKEN",
       projects: ["demo", "docs"],
       workers: ["mac-mini"],
+      pools: [],
       expires_at: `${defaultExpiryDay(Date.now())}T00:00:00.000Z`,
       value: TOKEN,
     });

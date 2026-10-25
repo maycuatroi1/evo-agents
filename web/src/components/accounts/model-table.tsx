@@ -16,7 +16,17 @@ import { UsageLimits } from "./usage-limits";
  * projects and workers it serves, its runs, what they cost ("API value" for a Claude subscription), the runs holding
  * it, and its usage limits as bars under the row.
  */
-export function ModelTable({ accounts, shared, now, onEdit, onPause, onRenew }: { accounts: Account[]; shared: Set<string>; now: number } & Actions) {
+export function ModelTable({
+  accounts,
+  shared,
+  now,
+  caption,
+  onEdit,
+  onPause,
+  onRenew,
+  onKey,
+  onDelete,
+}: { accounts: Account[]; shared: Set<string>; now: number; caption?: string } & Actions) {
   const t = useTranslations("accounts");
   const columns = useMemo(() => {
     const helper = dataTableColumns<Account>();
@@ -25,7 +35,12 @@ export function ModelTable({ accounts, shared, now, onEdit, onPause, onRenew }: 
         header: () => t("columns.account"),
         sortFn: "alphanumeric",
         meta: { primary: true },
-        cell: (info) => <AccountCell account={info.row.original} ranked={shared.has(info.row.original.env_var)} />,
+        cell: (info) => {
+          const account = info.row.original;
+          // A provider account's weight and priority always show: its card is where they are changed.
+          const ranked = shared.has(account.env_var) || Boolean(account.gateway);
+          return <AccountCell account={account} ranked={ranked} shared={account.shares.length > 0} />;
+        },
       }),
       helper.accessor("state", { header: () => t("columns.state"), sortFn: "text", cell: (info) => <StateCell account={info.row.original} now={now} /> }),
       helper.display({
@@ -64,10 +79,12 @@ export function ModelTable({ accounts, shared, now, onEdit, onPause, onRenew }: 
         id: "actions",
         header: () => <span className="sr-only">{t("columns.actions")}</span>,
         meta: { actions: true },
-        cell: (info) => <ActionButtons account={info.row.original} onEdit={onEdit} onPause={onPause} onRenew={onRenew} />,
+        cell: (info) => (
+          <ActionButtons account={info.row.original} onEdit={onEdit} onPause={onPause} onRenew={onRenew} onKey={onKey} onDelete={onDelete} />
+        ),
       }),
     ]);
-  }, [t, shared, now, onEdit, onPause, onRenew]);
+  }, [t, shared, now, onEdit, onPause, onRenew, onKey, onDelete]);
   // A Claude account's usage limits, or any account's a run reported, under its row at every width.
   const usage = useCallback(
     (account: Account) => (account.last_usage || isClaudeAccount(account) ? <UsageLimits account={account} pageNow={now} /> : null),
@@ -77,7 +94,7 @@ export function ModelTable({ accounts, shared, now, onEdit, onPause, onRenew }: 
     <DataTable
       data={accounts}
       columns={columns}
-      caption={t("groups.model.title")}
+      caption={caption ?? t("groups.model.title")}
       getRowId={(row) => row.name}
       initialSorting={[{ id: "name", desc: false }]}
       columnClassNames={NARROW_HIDDEN}

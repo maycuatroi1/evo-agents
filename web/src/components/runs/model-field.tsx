@@ -6,6 +6,7 @@ import { useId, useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
+import { byPrefix, modelsFor, type RunnableModel } from "@/lib/runnable-models";
 
 import { FieldLabel } from "./field-label";
 import type { ModelProblem, RuntimeName } from "./model";
@@ -14,12 +15,17 @@ import { MAX_MODEL_CHARS, type RequestedRuntime, RUNTIMES } from "./queries";
 /** The dropdown's value of a model: its runtime and its name, apart, since an opencode model holds a slash itself. */
 const SEPARATOR = "\u001f";
 const OTHER = "=other";
+/** The runtime part of a provider's model: the hub's gateway runs it on the runtime asked for, or picks one for any. */
+const GATEWAY = "=gateway";
 
 /**
  * The model a run uses, as a dropdown of the models the visitor's workers list (`models`, by runtime): the runtime's
  * default first, then those of the runtime picked, or of every runtime for any, where picking one picks its runtime
  * too (`onRuntime`); last, another model, typed as its runtime names it. The API takes a model with any runtime; this
  * field asks for a runtime with a typed model, since a model name means something only to the runtime it is for.
+ * Between them come the models of the visitor's provider accounts (`gateway`, `<prefix>/<model>`), one group per
+ * provider, those the runtime picked runs, or all of them for any: the hub's model gateway runs them, and keeps the
+ * runtime asked for.
  */
 export function ModelField({
   value,
@@ -27,6 +33,7 @@ export function ModelField({
   runtime,
   models,
   onRuntime,
+  gateway = [],
   problem,
   disabled = false,
 }: {
@@ -34,6 +41,7 @@ export function ModelField({
   onChange: (value: string) => void;
   runtime: RequestedRuntime;
   models: Partial<Record<RuntimeName, string[]>>;
+  gateway?: readonly RunnableModel[];
   onRuntime?: (runtime: RuntimeName) => void;
   problem: ModelProblem | null;
   disabled?: boolean;
@@ -46,10 +54,12 @@ export function ModelField({
     const listed = models[name] ?? [];
     return listed.length ? [{ runtime: name, models: listed }] : [];
   });
+  const providers = byPrefix(modelsFor(gateway, runtime));
   const model = value.trim();
-  const listed = runtime !== "any" && (models[runtime] ?? []).includes(model);
+  const viaGateway = providers.some((group) => group.models.some((item) => item.model === model));
+  const listed = viaGateway || (runtime !== "any" && (models[runtime] ?? []).includes(model));
   const typing = other || (model !== "" && !listed);
-  const selected = typing ? OTHER : model === "" ? "" : `${runtime}${SEPARATOR}${model}`;
+  const selected = typing ? OTHER : model === "" ? "" : `${viaGateway ? GATEWAY : runtime}${SEPARATOR}${model}`;
   const message = problem === null ? null : problem === "long" ? t("long", { max: MAX_MODEL_CHARS }) : t(problem);
 
   const pick = (next: string) => {
@@ -59,8 +69,8 @@ export function ModelField({
     }
     setOther(false);
     if (next === "") return onChange("");
-    const [name, picked] = next.split(SEPARATOR) as [RuntimeName, string];
-    if (name !== runtime) onRuntime?.(name);
+    const [name, picked] = next.split(SEPARATOR) as [RuntimeName | typeof GATEWAY, string];
+    if (name !== GATEWAY && name !== runtime) onRuntime?.(name);
     onChange(picked);
   };
 
@@ -81,6 +91,15 @@ export function ModelField({
             {group.models.map((name) => (
               <NativeSelectOption key={name} value={`${group.runtime}${SEPARATOR}${name}`}>
                 {name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelectOptGroup>
+        ))}
+        {providers.map((group) => (
+          <NativeSelectOptGroup key={`${GATEWAY}-${group.prefix}`} label={t("provider", { prefix: group.prefix })} data-testid="plan-run-model-provider">
+            {group.models.map((item) => (
+              <NativeSelectOption key={item.model} value={`${GATEWAY}${SEPARATOR}${item.model}`}>
+                {item.model}
               </NativeSelectOption>
             ))}
           </NativeSelectOptGroup>
