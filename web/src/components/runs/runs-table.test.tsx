@@ -67,3 +67,29 @@ describe("RunsTable, a task run", () => {
     }
   });
 });
+
+const PLAN = {
+  ...TASK,
+  id: 90,
+  kind: "plan",
+  plan_id: "model-providers",
+  title: "model-providers",
+  plan_progress: { percent: 30, done: 3, total: 10, current_step: "Run dispatch trên model của provider", current_status: "in_progress" },
+} as unknown as Run;
+
+describe("RunsTable, a plan run's progress", () => {
+  it("draws the share of done steps as a bar, with the count and the current step on one truncated line", () => {
+    renderVi(<RunsTable runs={[PLAN]} caption="Runs" viewer={null} />);
+    const table = screen.getByTestId("runs-table");
+    const progress = within(table).getAllByTestId("run-progress")[0];
+    const bar = within(progress).getByRole("progressbar", { name: "Tiến độ plan" });
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+    expect(bar).toHaveAttribute("aria-valuemax", "10");
+    expect((bar.firstElementChild as HTMLElement).style.width).toBe("30%");
+    expect(within(progress).getByTestId("run-progress-count")).toHaveTextContent("3/10");
+    const step = within(progress).getByTestId("run-progress-step");
+    expect(step).toHaveTextContent("Run dispatch trên model của provider: in_progress");
+    expect(step).toHaveClass("truncate");
+    expect(step).toHaveAttribute("title", "Run dispatch trên model của provider: in_progress");
+  });
+});
