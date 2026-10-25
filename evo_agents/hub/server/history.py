@@ -67,7 +67,7 @@ from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.dispatch import insert_run, unfit
+from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 
@@ -527,7 +527,7 @@ def _values(due, gate, runtime: str, model: str | None, budget: dict) -> dict:
         "plan_revision": None,
         "dispatched_by": due.owner_id,
         "dispatched_via": "schedule",
-        "pinned_worker_id": gate.worker.id,
+        **gate.duty.columns(),
         "requested_runtime": runtime,
         "runtime": runtime,
         "model": model,
@@ -547,7 +547,7 @@ async def _queued(conn: AsyncConnection, due, gate, run_id: int, model: str | No
     caps = f"cost cap {curator.money(budget['max_usd'])}, {budget['max_seconds'] // 60} minutes of agent time"
     text = (
         f"Queued by the night shift of project {due.project} (charter revision {due.revision}) as the reading of its "
-        f"history for the night of {gate.night.isoformat()}, as {due.owner} on worker {gate.worker.name}: the model "
+        f"history for the night of {gate.night.isoformat()}, as {due.owner} on {gate.duty.where}: the model "
         f"{model or 'the runtime picks'} writes a facet of each session and run that has none, in batches; {caps}."
     )
     await write_event(conn, run_id, {"text": text, "schedule_id": due.id, "night": gate.night.isoformat(), **budget})
@@ -574,13 +574,13 @@ async def queue_history(conn: AsyncConnection, due, gate) -> int | None:
     if await _had_one(conn, due.id, gate.night):
         return None
     runtime = (due.body.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    problems = unfit(gate.worker, due.project, "history", [], runtime)
+    problems = gate.duty.unfit(due.project, "history", [], runtime)
     now = (await conn.execute(select(func.now()))).scalar_one()
     if problems or not await _has_work(conn, await reader_of(conn, gate.access), now):
         if problems:
             log.info("no history run tonight", extra={"project": due.project, "why": "; ".join(problems)})
         return None
-    reported = gate.worker.runtimes.get(runtime) if isinstance(gate.worker.runtimes, dict) else None
+    reported = gate.duty.runtime(runtime)
     model = history.model_for(due.body, runtime, (reported or {}).get("models"))
     budget = {**gate.budget, "max_usd": round(usd, 4)}
     try:

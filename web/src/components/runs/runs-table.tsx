@@ -18,9 +18,9 @@ import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadg
 import { hasOtherTurns, isSessionTurn } from "./chat-session";
 import { SessionTurns, TurnsToggle } from "./chat-session-turns";
 import { PlanProgressLine } from "./plan-progress-line";
+import { CostCell, useDuration } from "./run-cost-duration";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
-import { readRunUsage } from "./usage-model";
-import { durationParts, runTiming, taskBranch } from "./model";
+import { runTiming, taskBranch } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
 /** Who reads the table: a worker links to its page only for the member who owns it (or a hub admin). */
@@ -59,32 +59,6 @@ const COLUMNS: Record<RunsTableVariant, string[]> = {
   step: ["run", "state", "cost", "worker", "dispatcher", "runtime", "started", "duration", "attempt"],
   worker: ["run", "step", "state", "cost", "runtime", "started", "duration", "attempt"],
 };
-
-/** What the run cost in dollars, as its runtime reported it; a dash when it reported none. */
-function CostCell({ run }: { run: Run }) {
-  const format = useFormatter();
-  const cost = readRunUsage(run.usage)?.cost;
-  if (!cost) return <span className="text-fg-subtle">-</span>;
-  const amount = format.number(cost.amount, {
-    style: "currency",
-    currency: cost.currency,
-    maximumFractionDigits: cost.amount > 0 && cost.amount < 0.01 ? 4 : 2,
-  });
-  return (
-    <span className="whitespace-nowrap font-mono text-xs" data-testid="run-cost">
-      {amount}
-    </span>
-  );
-}
-
-export function useDuration() {
-  const t = useTranslations("runs.duration");
-  return (ms: number) => {
-    const { hours, minutes } = durationParts(ms);
-    if (hours > 0) return t("hours", { hours, minutes });
-    return minutes > 0 ? t("minutes", { minutes }) : t("lessThanMinute");
-  };
-}
 
 function Timing({ run, part }: { run: Run; part: "started" | "duration" }) {
   const t = useTranslations("runs");

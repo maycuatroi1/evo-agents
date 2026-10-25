@@ -68,7 +68,8 @@ export function Note({
 
 /**
  * Names to pick with checkboxes, two to a row from `sm`: the projects or the workers of an account. A picked one is
- * `surface-selected` inside a brand edge, and its box checked, so colour is not the only cue.
+ * `surface-selected` inside a brand edge, and its box checked, so colour is not the only cue. While `locked`, only the
+ * picked ones may change: the hub takes an account's workers or its pools, not both.
  */
 export function CheckList({
   idPrefix,
@@ -76,6 +77,7 @@ export function CheckList({
   picked,
   onToggle,
   invalid,
+  locked = false,
   testId,
 }: {
   idPrefix: string;
@@ -83,6 +85,7 @@ export function CheckList({
   picked: readonly string[];
   onToggle: (name: string, on: boolean) => void;
   invalid?: boolean;
+  locked?: boolean;
   testId: string;
 }) {
   return (
@@ -94,6 +97,7 @@ export function CheckList({
           className={cn(
             "flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 transition-colors hover:bg-accent max-md:min-h-11",
             picked.includes(name) && "border-brand/40 bg-surface-selected hover:bg-surface-selected",
+            locked && !picked.includes(name) && "cursor-not-allowed border-dashed bg-muted/40 hover:bg-muted/40",
           )}
         >
           <input
@@ -101,6 +105,7 @@ export function CheckList({
             type="checkbox"
             value={name}
             checked={picked.includes(name)}
+            disabled={locked && !picked.includes(name)}
             onChange={(event) => onToggle(name, event.target.checked)}
             className="size-4 shrink-0 cursor-pointer accent-primary"
             aria-invalid={invalid || undefined}
@@ -131,8 +136,45 @@ export function EmptyPick({ children, testId }: { children: ReactNode; testId: s
   );
 }
 
-/** What a renewal keeps: the account's projects and workers, read only. */
-export function KeptBindings({ projects, workers }: { projects: readonly string[]; workers: readonly string[] }) {
+/**
+ * The workers or the pools whose runs may take a new account, the visitor's own. The hub takes one list or the other:
+ * while the other list holds a name, this one is `locked` and its hint says so.
+ */
+export function BindingPick({
+  id,
+  list,
+  loading,
+  names,
+  picked,
+  locked,
+  onToggle,
+}: {
+  id: string;
+  list: "workers" | "pools";
+  loading: boolean;
+  names: readonly string[];
+  picked: readonly string[];
+  locked: boolean;
+  onToggle: (name: string, on: boolean) => void;
+}) {
+  const t = useTranslations("accounts.login");
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-2" aria-describedby={`${id}-hint`}>
+      <legend className="mb-1.5 text-sm font-medium">{t(`${list}Optional`)}</legend>
+      {loading ? (
+        <CheckListSkeleton />
+      ) : names.length === 0 ? (
+        <EmptyPick testId={`login-no-${list}`}>{t(list === "workers" ? "noWorkers" : "noPools")}</EmptyPick>
+      ) : (
+        <CheckList idPrefix={id} names={names} picked={picked} onToggle={onToggle} locked={locked} testId={`login-${list}`} />
+      )}
+      <Hint id={`${id}-hint`}>{t(locked ? `${list}Locked` : `${list}Hint`)}</Hint>
+    </fieldset>
+  );
+}
+
+/** What a renewal keeps: the account's projects, and its workers or its pools, read only. */
+export function KeptBindings({ projects, workers, pools }: { projects: readonly string[]; workers: readonly string[]; pools: readonly string[] }) {
   const t = useTranslations("accounts.login");
   const value = "min-w-0 font-mono text-[13px] [overflow-wrap:anywhere]";
   return (
@@ -141,10 +183,21 @@ export function KeptBindings({ projects, workers }: { projects: readonly string[
       <dd className={value} data-testid="login-kept-projects">
         {projects.join(", ") || "-"}
       </dd>
-      <dt className="text-muted-foreground">{t("workers")}</dt>
-      <dd className={workers.length ? value : "text-fg-subtle"} data-testid="login-kept-workers">
-        {workers.length ? workers.join(", ") : t("anyWorker")}
-      </dd>
+      {pools.length ? (
+        <>
+          <dt className="text-muted-foreground">{t("pools")}</dt>
+          <dd className={value} data-testid="login-kept-pools">
+            {pools.join(", ")}
+          </dd>
+        </>
+      ) : (
+        <>
+          <dt className="text-muted-foreground">{t("workers")}</dt>
+          <dd className={workers.length ? value : "text-fg-subtle"} data-testid="login-kept-workers">
+            {workers.length ? workers.join(", ") : t("anyWorker")}
+          </dd>
+        </>
+      )}
     </dl>
   );
 }

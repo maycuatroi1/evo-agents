@@ -217,3 +217,73 @@ def test_a_presigned_get_names_its_attachment_only_with_a_safe_name():
     for bad in ("", 'x".tar.gz', "a b", "a/b", "ä", "x" * 201, "a\r\nb"):
         with pytest.raises(ValueError):
             store.presign_get("c" * 64, filename=bad)
+
+
+def pool_node(client, who, login: str, pool: str) -> dict:
+    """The worker headers of a node that joined pool ``pool`` of ``login``, made on project demo."""
+    made = client.post("/v1/worker-pools", json={"name": pool, "projects": ["demo"]}, headers=who[login])
+    assert made.status_code == 201, made.text
+    issued = client.post(f"/v1/worker-pools/{pool}/tokens", json={}, headers=who[login])
+    assert issued.status_code == 201, issued.text
+    host = {"hostname": f"{login}-box", "os": "linux", "arch": "x86_64", "agent_version": "0.45.0"}
+    joined = client.post("/v1/worker/join", json={"token": issued.json()["token"], **host}, headers=WORKER_PROTOCOL)
+    assert joined.status_code == 201, joined.text
+    return {"Authorization": f"Bearer {joined.json()['token']}", **WORKER_PROTOCOL}
+
+
+WORKER_PROTOCOL = {"X-Evo-Worker-Protocol": "1"}
+
+
+@needs_pg
+def test_a_pool_node_reads_the_global_skills_of_its_owner_with_its_worker_token_and_nothing_else(hub_db, tmp_path, s3):
+    with make_hub(hub_db, tmp_path, session_secret=live.session_secret(), **s3.config()) as client:
+        who = headers_of(hub_db, client)
+        house = pack(write_skill(tmp_path / "g", "house-style", "house"))
+        publish(client, who, live.ADMIN, house.data, "house-style", None)
+        secret = pack(write_skill(tmp_path / "s", "admin-only", "admins"))
+        publish(client, who, live.ADMIN, secret.data, "admin-only", None)
+        audience = client.put(
+            "/v1/skills/global/admin-only/audience", json={"audience": "admins"}, headers=who[live.ADMIN]
+        )
+        assert audience.status_code == 200, audience.text
+        publish(
+            client, who, "alice", pack(write_skill(tmp_path / "p", "team-notes", "notes")).data, "team-notes", "demo"
+        )
+        grant = {"role": "writer", "max_level": "internal"}
+        given = client.put(f"/v1/admin/projects/demo/grants/{live.ADMIN}", json=grant, headers=who[live.ADMIN])
+        assert given.status_code == 200, given.text
+        node = pool_node(client, who, "alice", "ci")
+        admins_node = pool_node(client, who, live.ADMIN, "ops")
+
+        # the global skills its owner reads, and no project skill: the node has no harness to write them into
+        listed = client.get("/v1/worker/skills", headers=node)
+        assert listed.status_code == 200, listed.text
+        assert [(s["scope"], s["name"], s["version"], s["sha256"]) for s in listed.json()] == [
+            ("global", "house-style", 1, house.sha256)
+        ]
+        names = [s["name"] for s in client.get("/v1/worker/skills", headers=admins_node).json()]
+        assert names == ["admin-only", "house-style"]  # the owner is a hub admin: the admins skills too
+
+        ticket = client.get("/v1/worker/skills/global/house-style/bundle", params={"version": 1}, headers=node)
+        assert ticket.status_code == 200, ticket.text
+        assert (ticket.json()["name"], ticket.json()["sha256"]) == ("house-style", house.sha256)
+        data, _ = download(ticket.json()["url"])
+        assert sha(data) == house.sha256
+        assert client.get("/v1/worker/skills/global/admin-only/bundle", headers=node).status_code == 404
+        assert client.get("/v1/worker/skills/global/admin-only/bundle", headers=admins_node).status_code == 200
+
+        # skills alone: the owner's routes of skills, a project skill's bundle and the runs stay closed to it
+        assert client.get("/v1/skills", headers=node).status_code == 403
+        assert client.get("/v1/worker/skills/projects/demo/team-notes/bundle", headers=node).status_code == 404
+        assert client.get("/v1/projects/demo/runs", headers=node).status_code == 403
+
+        # a worker outside a pool syncs nothing with its token
+        code = client.post("/v1/workers/pairings", json={"name": "laptop", "projects": ["demo"]}, headers=who["alice"])
+        assert code.status_code == 201, code.text
+        host = {"hostname": "laptop", "os": "linux", "arch": "x86_64", "agent_version": "0.44.0"}
+        paired = client.post("/v1/worker/join", json={"code": code.json()["code"], **host}, headers=WORKER_PROTOCOL)
+        assert paired.status_code == 201, paired.text
+        lone = {"Authorization": f"Bearer {paired.json()['token']}", **WORKER_PROTOCOL}
+        refused = client.get("/v1/worker/skills", headers=lone)
+        assert refused.status_code == 403 and "worker pool" in refused.json()["message"]
+        assert client.get("/v1/worker/skills/global/house-style/bundle", headers=lone).status_code == 403

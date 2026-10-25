@@ -91,6 +91,7 @@ class Account(BaseModel):
     category: Category = Field(description="model: the runtime's own sign-in, whose runs cost; service: any other")
     projects: list[str] = Field(description="the projects whose runs may take it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
+    pools: list[str] = Field([], description="the worker pools it is bound to, each node of each")
     auth: Literal["token", "oauth"] = Field(
         description="oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given"
     )
@@ -163,6 +164,7 @@ def _accounts(owner_id: int, name: str | None = None):
             s.c.env_var,
             bound_names(tables.projects, b.c.project_id).label("projects"),
             bound_names(tables.workers, b.c.worker_id).label("workers"),
+            bound_names(tables.worker_pools, b.c.pool_id).label("pools"),
             case((a.c.oauth_sealed.is_not(None), "oauth"), else_="token").label("auth"),
             func.coalesce(a.c.weight, 1).label("weight"),
             func.coalesce(a.c.priority, 0).label("priority"),
@@ -248,7 +250,7 @@ async def _shared_account(conn: AsyncConnection, user: Principal, owner: str, na
         raise refusal
     figures = await account_figures(conn, owner_id, [row.id], principal_id=user.user_id)
     shares = [share for share in (await shares_of(conn, [row.id])).get(row.id, []) if share.id in ids]
-    return _account(row, figures.get(row.id), shares).model_copy(update={"workers": []})
+    return _account(row, figures.get(row.id), shares).model_copy(update={"workers": [], "pools": []})
 
 
 def _paused(change: AccountChange, kept):

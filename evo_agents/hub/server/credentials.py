@@ -137,6 +137,7 @@ from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, agent_secret_aad, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_leases import Refusal, end_unlent, note_refusals, own_secrets, shared_secrets
+from evo_agents.hub.server.worker_placement import bound_here
 
 if TYPE_CHECKING:
     from evo_agents.hub.autonomy_levels import Choice
@@ -329,12 +330,10 @@ def _owner_role(owner_id: int, project_id: int, *, lock: bool):
 
 
 def _agent_accounts(run: _Run, worker_id: int, *, lock: bool):
-    """The accounts of the run's agent bound to this worker, live (not deleted) and past their end or not, by name. With
+    """The accounts of the run's agent bound to this worker or its pool, live (not deleted) and past their end or not, by name. With
     ``lock`` their rows are shared-locked."""
     s, b = tables.secrets, tables.secret_bindings
-    bound = exists().where(
-        b.c.secret_id == s.c.id, b.c.project_id == run.profile_project_id, b.c.worker_id == worker_id
-    )
+    bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == run.profile_project_id, bound_here(b, worker_id))
     statement = (
         select(
             s.c.id,

@@ -150,7 +150,7 @@ function SecretsTable({
           info.row.original.kind === "forge" ? (
             <span className="text-xs text-muted-foreground">{t("hubOnly")}</span>
           ) : (
-            <ChipList items={info.row.original.workers} empty={t("anyWorker")} compact />
+            <ChipList items={[...info.row.original.workers, ...info.row.original.pools.map((pool) => `pool=${pool}`)]} empty={t("anyWorker")} compact />
           ),
       }),
       helper.accessor((row) => (row.expires_at ? new Date(row.expires_at) : new Date(8.64e15)), {

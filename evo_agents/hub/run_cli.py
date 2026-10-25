@@ -60,6 +60,7 @@ from evo_agents.hub.run_cli_options import (
     dispatch_options,
     kind_text,
     list_options,
+    placement_body,
     plan_options,
     rerun_body,
     rerun_options,
@@ -133,6 +134,14 @@ def _step(run: dict) -> str:
     if run.get("kind") == "plan":
         return f"plan {run['plan_id']}{title}"
     return f"step {run['step_key']}{title} of plan {run['plan_id']}"
+
+
+def _author_on(run: dict) -> str:
+    """Where an author run goes: its pinned worker, or any its selector fits."""
+    if run.get("pinned_worker_id"):
+        return f"on worker #{run['pinned_worker_id']}"
+    asked = run.get("selector") or []
+    return f"on a worker with {', '.join(asked)}" if asked else "on any worker of yours that can take it"
 
 
 def _repos(run: dict) -> str:
@@ -347,7 +356,7 @@ def cmd_dispatch(args) -> int:
         return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args)}
+    body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args), **placement_body(args)}
     chosen = {
         "runtime": args.runtime,
         "model": args.model,
@@ -380,7 +389,7 @@ def cmd_plan(args) -> int:
         return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), **browser_body(args)}
+    body = {"plan_id": _plan_id(args.plan), **browser_body(args), **placement_body(args)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
@@ -416,7 +425,9 @@ def cmd_author(args) -> int:
         )
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"request": text, "worker_id": _worker_id(hub, credentials.login, args.worker)}
+    body = {"request": text, **placement_body(args)}
+    if args.worker is not None:
+        body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
     chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in chosen.items() if value is not None})
@@ -425,7 +436,7 @@ def cmd_author(args) -> int:
         _print_json(run)
         return 0
     print(
-        f"Queued author run #{run['id']}: {_step(run)}, on worker #{run['pinned_worker_id']} over {_repos(run)}; "
+        f"Queued author run #{run['id']}: {_step(run)}, {_author_on(run)} over {_repos(run)}; "
         f"runtime {_runtime(run)}, timeout {_timeout(run)} of agent time. It reads only and pushes nothing."
     )
     print(f"Follow it with `evo-agents hub run logs {run['id']} --follow{_with_project(args, project)}`.")

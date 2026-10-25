@@ -15,6 +15,8 @@ export type LoginForm = {
   name: string;
   projects: string[];
   workers: string[];
+  /** The visitor's pools whose nodes may take the account, instead of workers: the hub takes one or the other. */
+  pools: string[];
   /** The day the token ends, as an <input type="date"> holds it (YYYY-MM-DD). */
   expires: string;
 };
@@ -62,12 +64,13 @@ export function expiresAtOf(day: string): string | undefined {
 }
 
 export function emptyLoginForm(now: number): LoginForm {
-  return { name: "", projects: [], workers: [], expires: defaultExpiryDay(now) };
+  return { name: "", projects: [], workers: [], pools: [], expires: defaultExpiryDay(now) };
 }
 
 /** A renewal's form: the account's name and bindings, which it keeps, and a new year for its new token. */
-export function renewForm(account: Pick<Account, "name" | "projects" | "workers">, now: number): LoginForm {
-  return { name: account.name, projects: [...account.projects], workers: [...account.workers], expires: defaultExpiryDay(now) };
+export function renewForm(account: Pick<Account, "name" | "projects" | "workers" | "pools">, now: number): LoginForm {
+  const { name, projects, workers, pools } = account;
+  return { name, projects: [...projects], workers: [...workers], pools: [...pools], expires: defaultExpiryDay(now) };
 }
 
 /** What a name typed in the Add dialog is already: nothing, one of the visitor's Claude accounts, or another secret. */
@@ -125,6 +128,7 @@ export function loginBody(form: LoginForm, token: string): SecretWrite {
     env_var: CLAUDE_TOKEN_VAR,
     projects: [...form.projects],
     workers: [...form.workers],
+    pools: [...form.pools],
     expires_at: expiresAtOf(form.expires) ?? null,
     value: token.trim(),
   };
@@ -137,7 +141,7 @@ export function shellWord(text: string): string {
 
 /**
  * The `evo-agents hub account login` command that does what the dialog does, with `claude setup-token` run for the
- * member and no token to paste. A renewal names the account alone, as the CLI then keeps its projects and workers; an
+ * member and no token to paste. A renewal names the account alone, as the CLI then keeps its projects, workers and pools; an
  * end date other than the default is passed. `complete` is false while a placeholder stands for a missing field.
  */
 export function loginCommand(form: LoginForm, { renewing, now }: { renewing: boolean; now: number }): { text: string; complete: boolean } {
@@ -151,6 +155,7 @@ export function loginCommand(form: LoginForm, { renewing, now }: { renewing: boo
     }
     for (const project of form.projects) words.push("--project", shellWord(project));
     for (const worker of form.workers) words.push("--worker", shellWord(worker));
+    for (const pool of form.pools) words.push("--pool", shellWord(pool));
   }
   if (form.expires && form.expires !== defaultExpiryDay(now) && expiresAtOf(form.expires)) words.push("--expires", form.expires);
   return { text: words.join(" "), complete };

@@ -50,7 +50,7 @@ must have its credentials to work. What the design limits is **how much** they g
 A **secret** belongs to the member who wrote it. Its value goes into the hub once (`PUT /v1/secrets/{name}`, the web
 page Secrets, or `evo-agents hub secret set` reading stdin) and never comes back out through the owner's routes:
 listing shows names, kinds, targets, bindings and dates, never the value. A secret is bound to one or more projects
-the owner holds writer on, and optionally to some of the owner's workers. A hub admin sees only their own secrets.
+the owner holds writer on, and optionally to some of the owner's workers or worker pools. A hub admin sees only their own secrets.
 
 The **GitHub App** is the hub's own (`EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY`). For each owner of a
 run's github.com repos the hub finds the installation (`GET /repos/{owner}/{repo}/installation`) and asks for a token
@@ -103,6 +103,11 @@ The body of a PUT:
 - `workers`: optional names of the caller's own workers that are not revoked; any other name, another member's worker
   included, is 403, also for a hub admin. Left out, the secret goes to any worker of its owner. The bindings are each
   project on each named worker.
+- `pools`: optional names of the caller's own worker pools (`docs/workers.md`, Pools), in any case; another member's
+  pool, or a name the caller has no pool of, is 403. The bindings are each project on each pool
+  (`secret_bindings.pool_id`, schema 0150), and a pool covers each of its nodes, those that join after the binding
+  too. A body naming both `workers` and `pools` is 422: a pool covers its nodes already. A `forge` secret takes
+  neither.
 - `expires_at`: optional, with a time zone, in the future.
 - `value`: 1 to `MAX_SECRET_BYTES` (16384) bytes of UTF-8, without NUL; one line for kind `git`.
 
@@ -129,8 +134,8 @@ evo-agents hub secret delete gitlab-docs
 ```
 
 `secret set NAME (--kind env --env-var VAR [--environment test] | --kind git --url-prefix URL [--username U] | --kind
-forge --url-prefix URL) --project P [--project P ...] [--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the
-value. `--environment test` labels an env secret for tests: a run whose principal's K7 is `auto:test_secrets` is leased
+forge --url-prefix URL) --project P [--project P ...] [--worker NAME ... | --pool NAME ...] [--expires YYYY-MM-DD]`
+has no flag for the value. `--pool` binds it to the nodes of your pools instead of to named workers, never both. `--environment test` labels an env secret for tests: a run whose principal's K7 is `auto:test_secrets` is leased
 those alone, besides its runtime's sign-in (`docs/autonomy.md`). It reads the value from stdin when stdin is not
 a terminal, dropping one final line break, and otherwise asks for it with `getpass`, which does not echo it. The
 arguments are checked first, then that the machine is signed in, and only then is the value read, so a mistake never
@@ -188,7 +193,8 @@ writer role on project P: the run gets no credentials"), even for a run the work
 run's repos (the run's repo for a step run, the repos of the plan run, those of the plan's steps not done when it was
 dispatched, the repos a chat run works in) and their origins from `project_repos`, compared in the form of
 `normalize_origin` (`git@host:path` and `ssh://git@host[:port]/path` included). It then leases what the run's owner
-bound to the run's project, bound to no worker or to this one, and not past its `expires_at`:
+bound to the run's project, bound to no worker, to this one or to this worker's pool, and not past its
+`expires_at`:
 
 - one `env` secret per variable, the run's account for it (section "Accounts" below): with one secret per variable
   and no policy, that secret, as in 0.13;
@@ -288,7 +294,7 @@ take the same turn:
 
 1. the account the run took already: a run keeps its account on every ask for its leases and in every step, and a run
    that resumes another takes the one that run took;
-2. else the accounts bound to this worker (for a run of the Curator: only those its charter lists in `env_secrets`),
+2. else the accounts bound to this worker or to its pool (for a run of the Curator: only those its charter lists in `env_secrets`),
    then the others bound to the project, by the strategy of the owner's policy for the project:
    - `round-robin` (the default): each run takes the account whose turn it is;
    - `weighted-round-robin`: each account takes runs in proportion to its `weight`; weight 0 leaves the pool;
@@ -416,10 +422,10 @@ pbpaste | evo-agents hub account login claude-b --project demo        # a token 
 evo-agents hub account login claude-b --paste                         # asks for the token without echo
 ```
 
-`account login NAME [--project P ...] [--worker W ...] [--expires YYYY-MM-DD] [--paste] [--json]`
+`account login NAME [--project P ...] [--worker W ... | --pool NAME ...] [--expires YYYY-MM-DD] [--paste] [--json]`
 (`evo_agents/hub/cli_secrets.py`) first does every check that needs no token: the name, the day, that the machine is
 signed in, the writer role on each project (`GET /v1/auth/whoami`) and that each worker is one of the caller's
-(`GET /v1/workers`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
+(`GET /v1/workers`), or each pool (`GET /v1/worker-pools`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
 unchanged, on a pseudo-terminal of its own (`evo_agents/hub/setup_token.py`). The member signs in to Claude and
 approves in the browser it opens, and the command reads the token off the screen, joining it again where the
 terminal's width wrapped it. Claude Code 2.1.296 prints the token from column 1 up to the right margin and goes on at
@@ -478,7 +484,7 @@ pbpaste | evo-agents hub secret set claude-b --kind env --env-var CLAUDE_CODE_OA
 
 ### Adding and renewing an OAuth account
 
-`evo-agents hub account oauth-login NAME [--project P ...] [--worker W ...] [--no-browser] [--paste] [--json]` signs a
+`evo-agents hub account oauth-login NAME [--project P ...] [--worker W ... | --pool NAME ...] [--no-browser] [--paste] [--json]` signs a
 Claude account in with Claude's own OAuth flow (authorization code with PKCE, `evo_agents/hub/claude_oauth.py`), as
 Claude Code and CLIProxyAPIPlus's `--claude-login` do, on the member's machine. The command prints the address on
 claude.ai and opens it; once the member approves, the browser goes back to `http://localhost:54545/callback`, which the

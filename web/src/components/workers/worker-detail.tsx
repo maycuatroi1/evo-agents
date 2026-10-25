@@ -10,9 +10,11 @@ import {
   Play,
   Power,
   ShieldAlert,
+  ShieldOff,
   TriangleAlert,
   WifiOff,
 } from "lucide-react";
+import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
@@ -25,6 +27,7 @@ import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { NAME_LINK } from "@/components/data/identifier";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
@@ -41,6 +44,7 @@ import { dispatchKey, readRuntimes, type RuntimeInfo, workerView } from "./model
 import { Note } from "./note";
 import {
   changeWorker,
+  poolHref,
   type Worker,
   type WorkerAction,
   workerKeys,
@@ -174,6 +178,13 @@ function StatusNote({ worker, isOwner, admin }: { worker: Worker; isOwner: boole
         </Note>,
       );
     }
+    if (!worker.ready && view !== "offline") {
+      notes.push(
+        <Note key="not-ready" tone="warning" icon={ShieldOff} testId="worker-not-ready-note">
+          {worker.ready_reason ? t("notReady", { reason: worker.ready_reason }) : t("notReadyNoReason")}
+        </Note>,
+      );
+    }
     if (admin && !isOwner) {
       notes.push(
         <Note key="admin" tone="info" icon={ShieldAlert} testId="worker-as-admin">
@@ -230,6 +241,16 @@ function Scope({ worker, isOwner, className }: { worker: Worker; isOwner: boolea
   return (
     <SectionCard title={t("title")} description={t("description")} testId="worker-scope" className={className}>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
+        {worker.pool ? (
+          <>
+            <dt className="text-muted-foreground">{t("pool")}</dt>
+            <dd className="min-w-0" data-testid="worker-pool">
+              <Link href={poolHref(worker.pool)} className={`${NAME_LINK} font-mono text-[13px]`}>
+                {worker.pool}
+              </Link>
+            </dd>
+          </>
+        ) : null}
         <dt className="text-muted-foreground">{t("projects")}</dt>
         <dd className="min-w-0">
           <ChipList items={worker.projects} empty="-" />
@@ -238,6 +259,10 @@ function Scope({ worker, isOwner, className }: { worker: Worker; isOwner: boolea
         <dd className="tabular-nums">{t("slotsValue", { held: worker.held_runs, slots: worker.slots })}</dd>
         <dt className="text-muted-foreground">{t("labels")}</dt>
         <dd className="min-w-0"><ChipList items={worker.labels} empty={t("noLabels")} /></dd>
+        <dt className="text-muted-foreground">{t("autoLabels")}</dt>
+        <dd className="min-w-0" data-testid="worker-auto-labels"><ChipList items={worker.auto_labels} empty={t("noAutoLabels")} /></dd>
+        <dt className="text-muted-foreground">{t("taints")}</dt>
+        <dd className="min-w-0" data-testid="worker-taints"><ChipList items={worker.taints} empty={t("noTaints")} /></dd>
         <dt className="text-muted-foreground">{t("plugins")}</dt>
         <dd className="min-w-0" data-testid="worker-plugins"><ChipList items={worker.plugins} empty={t("noPlugins")} /></dd>
         <dt className="text-muted-foreground">{t("permissions")}</dt>
