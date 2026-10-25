@@ -30,6 +30,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShieldQuestionMark,
+  Store,
   Sunrise,
   Tags,
   Target,
@@ -113,6 +114,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   worker_doctor: { icon: ShieldAlert },
   curator_probe_report: { icon: FlaskConical },
   opportunity_window: { icon: CalendarClock },
+  market_install_request: { icon: Store },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */
