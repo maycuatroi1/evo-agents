@@ -432,6 +432,7 @@ def create_app(config: HubConfig) -> FastAPI:
         intake,
         market,
         market_install,
+        market_licenses,
         merge_judge,
         merge_view,
         model_catalog,
@@ -452,6 +453,8 @@ def create_app(config: HubConfig) -> FastAPI:
         run_waits,
         runnable_models,
         secrets,
+        seller,
+        seller_api,
         signal_keys,
         signals,
         task_dispatch,
@@ -500,8 +503,11 @@ def create_app(config: HubConfig) -> FastAPI:
         plugins.router,
         plugin_publishers.router,
         market.sources_router,  # before market.router, whose /{source}/{plugin} would take /sources/{id}
+        market_licenses.router,  # before market.router, whose /{source} would take /hub and /licenses
         market_install.router,
         market.router,
+        seller.router,
+        seller_api.router,
         project_plugins.router,
         plugin_ui.router,
         plugin_cli.router,

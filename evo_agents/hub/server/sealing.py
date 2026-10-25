@@ -98,6 +98,12 @@ def market_source_aad(source_id: int) -> bytes:
     return f"market-source:{source_id}".encode()
 
 
+def market_purchase_aad(seller_url: str, number: str) -> bytes:
+    """The associated data of the secret of order ``number`` placed with the seller at ``seller_url``: it opens only as
+    that order's."""
+    return f"market-purchase:{seller_url}:{number}".encode()
+
+
 class Sealer:
     """Seals and opens values under one key; ``repr`` shows its key_id, never the key."""
 

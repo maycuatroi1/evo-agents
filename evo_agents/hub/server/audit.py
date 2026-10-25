@@ -199,6 +199,25 @@ MARKET_SOURCE_REMOVE = "market.source.remove"
 # A project admin asked the hub admins to install a plugin of a market, in that project:
 # "<project>/market:<source id>/<plugin>".
 MARKET_REQUEST = "market.request"
+# Selling plugins (evo_agents.hub.server.seller and seller_api), outside any project; never a secret, a key or a licence
+# token. "listing:<plugin>" with " usd=<price> state=<state>" for a listing; "listing:<plugin>@<version>" for a bundle;
+# "order:<number> hub:<hub id>" with " plugin=<plugin> usd=<total>" for an order placed, " invoice=<invoice>" for one
+# marked paid; "license:<id> order:<number> hub:<hub id> plugin=<plugin> until=<date>" for a licence issued;
+# "payout:<YYYY-MM> publisher:<id> usd=<share>" for a publisher's share marked paid out.
+MARKET_LISTING_ADD = "market.listing.add"  # a member listed a plugin for sale
+MARKET_LISTING_CHANGE = "market.listing.change"  # its owner or a hub admin changed its price, signer or state
+MARKET_BUNDLE_UPLOAD = "market.bundle.upload"  # its owner or a hub admin uploaded a signed version for sale
+MARKET_ORDER_CREATE = "market.order.create"  # a buying hub ordered months of a plugin (no actor: a hub, not a member)
+MARKET_ORDER_PAID = "market.order.paid"  # a hub admin marked an order paid, with its invoice number
+MARKET_ORDER_CANCEL = "market.order.cancel"  # a hub admin cancelled an open order
+MARKET_LICENSE_ISSUE = "market.license.issue"  # the seller signed the licence of a paid order
+MARKET_PAYOUT = "market.payout"  # a hub admin marked a publisher's share of a month paid out
+# Buying them (evo_agents.hub.server.market_licenses): "market:<source id>/<plugin> order:<number>" for an order a hub
+# admin placed with a seller; "license:<id> plugin=<plugin> until=<date>" for a licence the hub received and checked,
+# and for one that lapsed, which turned the plugin off.
+MARKET_ORDER_PLACE = "market.order.place"
+MARKET_LICENSE_RECEIVE = "market.license.receive"
+MARKET_LICENSE_LAPSE = "market.license.lapse"
 # Plugins in a project (evo_agents.hub.server.plugin_grants), in that project; the target is
 # "<project>/plugin:<name>@<version>", then " permissions=<names>" for a grant.
 PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it

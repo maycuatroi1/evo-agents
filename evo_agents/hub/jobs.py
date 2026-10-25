@@ -62,6 +62,8 @@ TODAY_DIGEST = "hub.today_digest"  # every minute: the summary push of Today, at
 MEMORY_UPKEEP = "hub.memory_upkeep"  # daily: agents' memories nobody opened for 30 days archived, stale ones marked
 EXPIRE_SEATS = "hub.expire_seats"  # hourly: org seats past their end date ended, the leases of people at A0 back
 MARKET_REFRESH = "hub.market_refresh"  # every 6 hours: each plugin market's index and its plugins' latest releases
+MARKET_LICENSES = "hub.market_licenses"  # hourly: a buying hub's orders, licences, installs, reminders and lapses
+MARKET_SIGNALS = "hub.market_signals"  # daily: a seller's active licences and the month's revenue, as signals
 REAP_POOL_NODES = "hub.reap_pool_nodes"  # hourly: pool nodes offline past their pool's reap_after_days revoked
 
 

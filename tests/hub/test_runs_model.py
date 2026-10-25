@@ -379,6 +379,7 @@ def test_decisions_and_notices_the_plan_names():
         "curator_probe_report",
         "opportunity_window",
         "market_install_request",
+        "market_license_expiring",
         "today",
     )
     assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)

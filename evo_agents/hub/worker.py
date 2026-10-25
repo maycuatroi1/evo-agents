@@ -250,6 +250,36 @@ async def market_refresh(context: JobContext, timestamp: int | None = None) -> d
     return {"sources": len(done), "failed": sum(1 for item in done if item["error"])}
 
 
+@queue.periodic(cron="23 * * * *")
+@queue.task(name=jobs.MARKET_LICENSES, pass_context=True, queueing_lock=jobs.MARKET_LICENSES)
+async def market_licenses(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents import __version__
+    from evo_agents.hub.server.market_install import Installing
+    from evo_agents.hub.server.market_licenses import check_licenses
+    from evo_agents.plugins.signing import default_sigstore
+
+    found = hub(context)
+    installing = Installing(found.engine, found.config, default_sigstore(), __version__, found.blobs)
+    done = await check_licenses(installing, found.sealer)
+    return {
+        "checked": done.checked,
+        "received": len(done.received),
+        "installed": len(done.installed),
+        "reminded": len(done.reminded),
+        "lapsed": len(done.lapsed),
+        "errors": len(done.errors),
+    }
+
+
+@queue.periodic(cron="17 3 * * *")
+@queue.task(name=jobs.MARKET_SIGNALS, pass_context=True, queueing_lock=jobs.MARKET_SIGNALS)
+async def market_signals(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.seller import push_signals
+
+    found = hub(context)
+    return await push_signals(found.engine, found.config)
+
+
 @queue.periodic(cron="47 * * * *")
 @queue.task(name=jobs.REAP_POOL_NODES, pass_context=True, queueing_lock=jobs.REAP_POOL_NODES)
 async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> dict:
