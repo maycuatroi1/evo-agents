@@ -7,7 +7,14 @@ from them or from a GitHub release (``evo_agents.hub.server.market_install``); d
 - ``market install NAME [--source ID] [--version V] [--trust]`` (hub admins) installs or upgrades a free plugin from
   its GitHub release; a signer the hub does not trust yet is asked about at a terminal, or trusted with ``--trust``;
 - ``market request NAME --project P [--source ID]`` (a project's admins) asks the hub admins to install one;
-- ``market source list|add REPO [--ref] [--path] [--token-stdin]|remove ID|refresh ID`` (hub admins): the markets.
+- ``market source list|add REPO [--ref] [--path] [--token-stdin]|remove ID|refresh ID`` (hub admins): the markets;
+- buying a paid plugin (``evo_agents.hub.server.market_licenses``): ``market buy NAME --months N --name --email
+  [--trust]`` orders it from its seller and prints how to pay; ``market licenses [--check]`` the hub's orders and
+  licences; ``market hub-id`` the id a licence names;
+- selling them, the hub feature ``seller`` (``evo_agents.hub.server.seller``): ``market seller-key FILE`` writes a
+  new key and prints only its public half, ``market seller``, ``market listing list|add|set``, ``market bundle
+  upload``, ``market orders [--state]``, ``market paid NUMBER --invoice``, ``market cancel NUMBER``, ``market revenue
+  [--month YYYY-MM]`` and ``market payout --month --publisher [--note]``.
 
 ``evo-agents hub plugin install --github OWNER/REPO[@TAG] [--signer S] [--trust]`` and ``hub plugin publisher
 list|add|remove`` are registered here too and hang under ``hub plugin``. Standard library only, like the rest of the
@@ -65,6 +72,42 @@ SOURCES_KEYS = ("sources", "default_source", "publishers_locked")
 INSTALLED_KEYS = ("plugin", "trusted_publisher", "upgraded")
 REQUEST_KEYS = ("id", "project", "plugin", "state", "created")
 PUBLISHER_KEYS = ("id", "identities", "core", "operator", "trusted")
+SELLER_KEYS = ("seller", "key_id", "public_key", "selling", "payment_instructions", "signal_project")
+LISTING_KEYS = (
+    "plugin",
+    "publisher",
+    "signer",
+    "owner",
+    "usd_per_hub_month",
+    "state",
+    "bundles",
+    "active_licenses",
+    "created_at",
+    "updated_at",
+)
+ORDER_KEYS = (
+    "number",
+    "plugin",
+    "publisher",
+    "buyer_hub",
+    "buyer_url",
+    "buyer_name",
+    "buyer_email",
+    "months",
+    "usd_per_month",
+    "usd_total",
+    "state",
+    "payment",
+    "created_at",
+    "invoice",
+    "closed_by",
+    "closed_at",
+    "license_id",
+    "valid_from",
+    "valid_until",
+)
+CHECKED_KEYS = ("checked", "received", "installed", "reminded", "lapsed", "errors")
+REVENUE_KEYS = ("month", "publishers", "gross_usd", "publisher_usd", "platform_usd")
 STATUS_TEXT = {
     "not_installed": "not installed",
     "installed": "installed",
@@ -174,16 +217,17 @@ def _confirmed(question: str) -> bool:
     return input(f"{question} [y/N] ").strip().lower() in YES
 
 
-def installed(hub, path: str, body: dict, args) -> dict:
-    """POST an install; asked once at a terminal when the hub does not trust the signer yet and --trust is not given."""
+def installed(hub, path: str, body: dict, args, doing: str = "install") -> dict:
+    """POST an install (or an order, ``doing``); asked once at a terminal when the hub does not trust the signer yet
+    and --trust is not given."""
     try:
         return hub.call("POST", path, {**body, "trust_publisher": bool(args.trust)})
     except HubError as exc:
         if exc.status != 409 or not str(exc).startswith(UNTRUSTED) or args.trust or args.json:
             raise
         print(str(exc), file=sys.stderr)
-        if not _confirmed("Trust this signer for the publisher from now on, and install?"):
-            raise HubError("nothing was installed: pass --trust to trust the publisher's signer") from None
+        if not _confirmed(f"Trust this signer for the publisher from now on, and {doing}?"):
+            raise HubError(f"nothing was done: pass --trust to trust the publisher's signer and {doing}") from None
         return hub.call("POST", path, {**body, "trust_publisher": True})
 
 
@@ -352,6 +396,329 @@ def cmd_publisher_remove(args) -> int:
     return 0
 
 
+# Buying a paid plugin
+
+
+def _print_purchase(item: dict) -> None:
+    state = item["license_state"] or item["state"]
+    until = f" until {item['valid_until']}" if item["valid_until"] else ""
+    print(
+        f"{item['number']}: {item['plugin']} from {item['seller']}, {item['months']} months, {_usd(item['usd_total'])}"
+    )
+    print(f"  {state}{until}" + (f"; last check: {item['last_error']}" if item["last_error"] else ""))
+
+
+def _usd(value) -> str:
+    return f"USD {float(value):.2f}"
+
+
+@client_command
+def cmd_buy(args) -> int:
+    hub, _ = signed_in()
+    source = _source_of(hub, args.name, args.source)
+    body = {"months": args.months, "contact": {"name": args.contact_name, "email": args.email}}
+    bought = installed(hub, f"/v1/market/{source}/{args.name}/buy", body, args, doing="order it")
+    if args.json:
+        print_json(bought)
+        return 0
+    purchase = bought["purchase"]
+    if bought["trusted_publisher"]:
+        print(f"The hub trusts the signer of publisher {purchase['publisher']} from now on.")
+    print(
+        f"Ordered {purchase['plugin']} for {purchase['months']} months: order {purchase['number']}, "
+        f"{_usd(purchase['usd_total'])}."
+    )
+    print(f"Pay it with the order number as the reference:\n{bought['instructions']}")
+    print("Once the seller marks it paid, the hub receives the licence and installs the plugin within the hour.")
+    return 0
+
+
+@client_command
+def cmd_licenses(args) -> int:
+    hub, _ = signed_in()
+    if args.check:
+        found = hub.call("POST", "/v1/market/licenses/check")
+        if args.json:
+            print_json(found)
+            return 0
+        print(f"Asked about {found['checked']} open orders.")
+        for word, key in (
+            ("received", "received"),
+            ("installed", "installed"),
+            ("reminded about", "reminded"),
+            ("turned off", "lapsed"),
+        ):
+            if found[key]:
+                print(f"  {word}: {', '.join(found[key])}")
+        for error in found["errors"]:
+            print(f"  error: {error}", file=sys.stderr)
+        return 0
+    found = hub.call("GET", "/v1/market/licenses")
+    if args.json:
+        print_json(found)
+        return 0
+    if not found["purchases"]:
+        print(f"Hub {found['hub']} has bought no plugin: see `evo-agents hub market buy`.")
+        return 0
+    rows = [
+        (
+            i["number"],
+            i["plugin"],
+            i["seller"],
+            i["months"],
+            _usd(i["usd_total"]),
+            i["license_state"] or i["state"],
+            i["valid_until"] or "-",
+        )
+        for i in found["purchases"]
+    ]
+    table(("ORDER", "PLUGIN", "SELLER", "MONTHS", "TOTAL", "STATE", "UNTIL"), rows)
+    return 0
+
+
+@client_command
+def cmd_hub_id(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call("GET", "/v1/market/hub")
+    if args.json:
+        print_json(found)
+    else:
+        print(found["hub"])
+    return 0
+
+
+# Selling plugins (the hub feature seller)
+
+
+def seller_key_json(file: str, key: str, public: str) -> dict:
+    """What ``market seller-key --json`` prints: never the seed."""
+    return {"file": file, "key_id": key, "public_key": public}
+
+
+def cmd_seller_key(args) -> int:
+    """Write a new Ed25519 seed to FILE, readable by its owner only, and print what the market's index lists."""
+    import base64
+    import os
+
+    from evo_agents.plugins.license import new_key
+    from evo_agents.plugins.signing import key_id
+
+    seed, public = new_key()
+    try:
+        fd = os.open(args.file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        print(f"{args.file} exists: the hub never overwrites a seller key", file=sys.stderr)
+        return 1
+    with os.fdopen(fd, "w") as out:
+        out.write(base64.b64encode(seed).decode() + "\n")
+    found = seller_key_json(args.file, key_id(base64.b64decode(public)), public)
+    if args.json:
+        print_json(found)
+        return 0
+    print(f"Wrote a new seller key to {args.file} (mode 0600). Set EVO_HUB_SELLER_KEY to its content; never share it.")
+    print(f"List it in the market's index under sellers[].keys: key id {found['key_id']}, public key {public}")
+    return 0
+
+
+@client_command
+def cmd_seller_info(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call("GET", "/v1/seller")
+    if args.json:
+        print_json(found)
+        return 0
+    if not found["selling"]:
+        print("The hub cannot sell: set EVO_HUB_SELLER_ID and EVO_HUB_SELLER_KEY (`hub market seller-key`).")
+        return 0
+    print(f"Seller {found['seller']}, key {found['key_id']}, public key {found['public_key']}")
+    print(f"Signals to project {found['signal_project'] or '(none)'}; payment instructions:")
+    print(found["payment_instructions"])
+    return 0
+
+
+def _print_listing(item: dict) -> None:
+    latest = item["bundles"][0]["version"] if item["bundles"] else "no bundle"
+    print(
+        f"{item['plugin']} ({item['publisher']}): {item['state']}, {_usd(item['usd_per_hub_month'])} per hub "
+        f"per month, {latest}, {item['active_licenses']} active licences"
+    )
+
+
+@client_command
+def cmd_listing_list(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call("GET", "/v1/seller/listings")
+    if args.json:
+        print_json(found)
+        return 0
+    rows = [
+        (
+            i["plugin"],
+            i["publisher"],
+            i["state"],
+            _usd(i["usd_per_hub_month"]),
+            i["bundles"][0]["version"] if i["bundles"] else "-",
+            i["active_licenses"],
+            i["owner"] or "-",
+        )
+        for i in found["listings"]
+    ]
+    table(("PLUGIN", "PUBLISHER", "STATE", "PER HUB-MONTH", "LATEST", "LICENCES", "OWNER"), rows)
+    return 0
+
+
+@client_command
+def cmd_listing_add(args) -> int:
+    hub, _ = signed_in()
+    body = {"plugin": args.plugin, "publisher": args.publisher, "signer": args.signer, "usd_per_hub_month": args.usd}
+    found = hub.call("POST", "/v1/seller/listings", body)
+    if args.json:
+        print_json(found)
+    else:
+        _print_listing(found)
+        print(f"Upload a signed bundle with `hub market bundle upload {args.plugin} FILE --signature SIG` to list it.")
+    return 0
+
+
+@client_command
+def cmd_listing_set(args) -> int:
+    hub, _ = signed_in()
+    body = {"usd_per_hub_month": args.usd, "signer": args.signer, "state": args.state}
+    found = hub.call("PATCH", f"/v1/seller/listings/{args.plugin}", {k: v for k, v in body.items() if v is not None})
+    if args.json:
+        print_json(found)
+    else:
+        _print_listing(found)
+    return 0
+
+
+@client_command
+def cmd_bundle_upload(args) -> int:
+    import base64
+    import json
+    from pathlib import Path
+
+    hub, _ = signed_in()
+    try:
+        data = Path(args.file).read_bytes()
+        signature = json.loads(Path(args.signature).read_text())
+    except (OSError, ValueError) as exc:
+        raise HubError(f"cannot read the bundle or its signature: {exc}") from None
+    body = {"bundle": base64.b64encode(data).decode(), "signature": signature}
+    found = hub.call("POST", f"/v1/seller/listings/{args.plugin}/bundles", body)
+    if args.json:
+        print_json(found)
+    else:
+        _print_listing(found)
+    return 0
+
+
+def _order_rows(orders: list[dict]) -> list[tuple]:
+    return [
+        (
+            o["number"],
+            o["plugin"],
+            o["buyer_name"],
+            o["buyer_hub"],
+            o["months"],
+            _usd(o["usd_total"]),
+            o["state"],
+            o["invoice"] or "-",
+            o["valid_until"] or "-",
+        )
+        for o in orders
+    ]
+
+
+ORDER_HEADER = ("ORDER", "PLUGIN", "BUYER", "HUB", "MONTHS", "TOTAL", "STATE", "INVOICE", "UNTIL")
+
+
+@client_command
+def cmd_orders(args) -> int:
+    hub, _ = signed_in()
+    path = "/v1/seller/orders" + (f"?{urlencode({'state': args.state})}" if args.state else "")
+    found = hub.call("GET", path)
+    if args.json:
+        print_json(found)
+    elif not found["orders"]:
+        print("No order" + (f" is {args.state}." if args.state else " yet."))
+    else:
+        table(ORDER_HEADER, _order_rows(found["orders"]))
+    return 0
+
+
+@client_command
+def cmd_paid(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call("POST", f"/v1/seller/orders/{args.number}/paid", {"invoice": args.invoice})
+    if args.json:
+        print_json(found)
+    else:
+        print(
+            f"Order {found['number']} is paid (invoice {found['invoice']}): licence {found['license_id']} covers "
+            f"{found['plugin']} for hub {found['buyer_hub']} from {found['valid_from']} until {found['valid_until']}."
+        )
+        print("The buying hub receives it at its next check.")
+    return 0
+
+
+@client_command
+def cmd_cancel(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call("POST", f"/v1/seller/orders/{args.number}/cancel")
+    if args.json:
+        print_json(found)
+    else:
+        print(f"Order {found['number']} is cancelled.")
+    return 0
+
+
+def _print_revenue(found: dict) -> None:
+    rows = [
+        (
+            line["publisher"],
+            line["orders"],
+            _usd(line["gross_usd"]),
+            _usd(line["publisher_usd"]),
+            _usd(line["platform_usd"]),
+            when(line["paid_out"]["paid_at"]) if line["paid_out"] else "not yet",
+        )
+        for line in found["publishers"]
+    ]
+    print(
+        f"Revenue of {found['month']}: {_usd(found['gross_usd'])}, {_usd(found['publisher_usd'])} to publishers, "
+        f"{_usd(found['platform_usd'])} to the platform"
+    )
+    if rows:
+        table(("PUBLISHER", "ORDERS", "GROSS", "PUBLISHER 80%", "PLATFORM 20%", "PAID OUT"), rows)
+
+
+@client_command
+def cmd_revenue(args) -> int:
+    hub, _ = signed_in()
+    path = "/v1/seller/revenue" + (f"?{urlencode({'month': args.month})}" if args.month else "")
+    found = hub.call("GET", path)
+    if args.json:
+        print_json(found)
+    else:
+        _print_revenue(found)
+    return 0
+
+
+@client_command
+def cmd_payout(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call(
+        "POST", "/v1/seller/payouts", {"month": args.month, "publisher": args.publisher, "note": args.note}
+    )
+    if args.json:
+        print_json(found)
+    else:
+        print(f"Marked the share of {args.publisher} for {args.month} paid out.")
+        _print_revenue(found)
+    return 0
+
+
 # The parser
 
 
@@ -391,6 +758,108 @@ def _sources(msub) -> None:
         changed.set_defaults(func=func)
 
 
+def _selling(msub) -> None:
+    key = msub.add_parser(
+        "seller-key", help="write a new seller key to a file (0600); prints only its public key and id"
+    )
+    key.add_argument("file", metavar="FILE", help="where to write it; never overwritten")
+    json_option(key, returns_object("file", "key_id", "public_key"))
+    key.set_defaults(func=cmd_seller_key)
+
+    info = msub.add_parser("seller", help="whether the hub sells plugins: its seller id and public key")
+    json_option(info, returns_object(*SELLER_KEYS, schema="SellerInfo"))
+    info.set_defaults(func=cmd_seller_info)
+
+    listing = msub.add_parser(
+        "listing", help="the paid plugins the hub sells (their publishers, signed in with GitHub)"
+    )
+    lsub = listing.add_subparsers(dest="market_listing_command", required=True)
+    listed = lsub.add_parser("list", help="every listing, with its price, latest bundle and active licences")
+    json_option(listed, returns_object("listings", schema="Listings"))
+    listed.set_defaults(func=cmd_listing_list)
+    added = lsub.add_parser("add", help="list a plugin at a price in USD per hub per month, as a draft")
+    added.add_argument("plugin", metavar="PLUGIN")
+    added.add_argument("--publisher", required=True, metavar="PUBLISHER")
+    added.add_argument("--signer", required=True, metavar="SIGNER", help="what signs its bundles")
+    added.add_argument("--usd", required=True, metavar="USD", help="the price per hub per month, such as 49.50")
+    json_option(added, returns_object(*LISTING_KEYS, schema="Listing"))
+    added.set_defaults(func=cmd_listing_add)
+    changed = lsub.add_parser("set", help="change a listing's price, signer or state")
+    changed.add_argument("plugin", metavar="PLUGIN")
+    changed.add_argument("--usd", metavar="USD")
+    changed.add_argument("--signer", metavar="SIGNER")
+    changed.add_argument("--state", choices=("listed", "withdrawn"))
+    json_option(changed, returns_object(*LISTING_KEYS, schema="Listing"))
+    changed.set_defaults(func=cmd_listing_set)
+
+    bundle = msub.add_parser("bundle", help="the signed bundles of a listing")
+    bsub = bundle.add_subparsers(dest="market_bundle_command", required=True)
+    upload = bsub.add_parser("upload", help="upload a signed bundle (tar.gz) of a listed plugin")
+    upload.add_argument("plugin", metavar="PLUGIN")
+    upload.add_argument("file", metavar="FILE", help="the bundle, as `evo-agents plugin pack` writes it")
+    upload.add_argument(
+        "--signature", required=True, metavar="FILE", help="its signature, from `evo-agents plugin sign`"
+    )
+    json_option(upload, returns_object(*LISTING_KEYS, schema="Listing"))
+    upload.set_defaults(func=cmd_bundle_upload)
+
+    orders = msub.add_parser("orders", help="the orders buying hubs placed (hub admins of a seller)")
+    orders.add_argument("--state", choices=("open", "paid", "cancelled"))
+    json_option(orders, returns_object("orders", schema="Orders"))
+    orders.set_defaults(func=cmd_orders)
+    for verb, func, text in (
+        ("paid", cmd_paid, "mark an order paid with its invoice number; issues the licence"),
+        ("cancel", cmd_cancel, "cancel an open order"),
+    ):
+        acted = msub.add_parser(verb, help=text)
+        acted.add_argument("number", metavar="NUMBER", help="the order's number, such as ORD-2026-0001")
+        if verb == "paid":
+            acted.add_argument("--invoice", required=True, metavar="INVOICE", help="the invoice it was paid against")
+        json_option(acted, returns_object(*ORDER_KEYS, schema="Order"))
+        acted.set_defaults(func=func)
+
+    revenue = msub.add_parser("revenue", help="a month's revenue by publisher, split 80/20")
+    revenue.add_argument("--month", metavar="YYYY-MM", help="this month in UTC when left out")
+    json_option(revenue, returns_object(*REVENUE_KEYS, schema="Revenue"))
+    revenue.set_defaults(func=cmd_revenue)
+    payout = msub.add_parser("payout", help="mark a publisher's share of a month paid out, once the month is over")
+    payout.add_argument("--month", required=True, metavar="YYYY-MM")
+    payout.add_argument("--publisher", required=True, metavar="PUBLISHER")
+    payout.add_argument("--note", help="how it was paid, for the other hub admins")
+    json_option(payout, returns_object(*REVENUE_KEYS, schema="Revenue"))
+    payout.set_defaults(func=cmd_payout)
+
+
+def _buying(msub) -> None:
+    buy = msub.add_parser("buy", help="order a paid plugin from its seller; prints how to pay it (hub admins)")
+    _name(buy)
+    buy.add_argument("--months", type=int, required=True, metavar="N", help="how many months the licence covers")
+    buy.add_argument("--name", dest="contact_name", required=True, metavar="NAME", help="who the seller invoices")
+    buy.add_argument("--email", required=True, metavar="EMAIL", help="where the seller sends the invoice")
+    buy.add_argument("--trust", action="store_true", help="trust the publisher's signer, if the hub does not yet")
+    json_option(buy, returns_object("purchase", "instructions", "trusted_publisher", schema="Bought"))
+    buy.set_defaults(func=cmd_buy)
+    licenses = msub.add_parser("licenses", help="the hub's orders of paid plugins and their licences (hub admins)")
+    licenses.add_argument(
+        "--check",
+        action="store_true",
+        help="ask the sellers now, install what a licence covers and turn off what lapsed",
+    )
+    json_option(
+        licenses,
+        returns_object(
+            "hub",
+            "purchases",
+            schema="Purchases",
+            variants=(("--check", returns_object(*CHECKED_KEYS, schema="Checked")),),
+        ),
+    )
+    licenses.set_defaults(func=cmd_licenses)
+    hub_id = msub.add_parser("hub-id", help="the hub's stable id, which a seller's licence names")
+    json_option(hub_id, returns_object("hub", "url", schema="HubIdentity"))
+    hub_id.set_defaults(func=cmd_hub_id)
+
+
 def register_market(hsub) -> None:
     market = hsub.add_parser("market", help="the plugin markets: browse them, install from them, add them")
     msub = market.add_subparsers(dest="market_command", required=True)
@@ -421,6 +890,8 @@ def register_market(hsub) -> None:
     json_option(request, returns_object(*REQUEST_KEYS, schema="MarketRequest"))
     request.set_defaults(func=cmd_request)
     _sources(msub)
+    _buying(msub)
+    _selling(msub)
 
 
 def register_publishers(psub) -> None:
