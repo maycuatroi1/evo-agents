@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
-import { NoticeKindBadge } from "./badges";
+import { isNoticeKind, NoticeKindBadge } from "./badges";
 import { daysBefore, dayKey, type InboxDay, type InboxEntry, opensByItself, snippet } from "./model";
 import { AskedBadges, NotificationContent, NotificationIcon, NotificationLinks, useFollow } from "./notification-item";
 import { type Notification, runHref } from "./queries";
@@ -239,7 +239,7 @@ export function NotificationRow({ notification, href, selected, onOpenDecision, 
 /** A notice's kind in words, for a row whose tag shows only once it is open. */
 function NoticeKindName({ kind }: { kind: NonNullable<Notification["notice_kind"]> }) {
   const t = useTranslations("inbox.noticeKind");
-  return <>{t(kind)}</>;
+  return <>{isNoticeKind(kind) ? t(kind) : kind}</>;
 }
 
 /**

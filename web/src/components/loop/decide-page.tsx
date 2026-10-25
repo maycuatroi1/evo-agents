@@ -195,8 +195,8 @@ function Board({ project, board, login }: { project: string; board: DecisionBoar
  * A project's Decisions page (/p/{project}/decide), for any member with a grant on it, kept current while it is open:
  * everything that waits for a person, the three gates first (the goals, the canvases, the policy), then the Loop's
  * exceptions and the SRS its chain waits on; each with since when, who may decide it, and a link to the page where it
- * is decided, whose buttons call the object's own route. The page itself decides nothing. `extra` is what a core
- * plugin adds above the board (the route passes the growth decisions of components/marketing).
+ * is decided, whose buttons call the object's own route. The page itself decides nothing. `extra` is what plugins
+ * add above the board (the route passes the framed panels of the slot "decide", components/plugins/slot-panels).
  */
 export function DecidePage({ project, initialError, extra }: { project: string; initialError: ApiErrorInfo | null; extra?: ReactNode }) {
   const t = useTranslations("loop.decide");

@@ -115,14 +115,19 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   opportunity_window: { icon: CalendarClock },
 };
 
+/** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */
+export function isNoticeKind(kind: string): kind is NoticeKind {
+  return Object.hasOwn(NOTICE_LOOK, kind);
+}
+
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
-export function NoticeKindBadge({ kind, className }: { kind: NoticeKind; className?: string }) {
+export function NoticeKindBadge({ kind, className }: { kind: string; className?: string }) {
   const t = useTranslations("inbox.noticeKind");
-  const { icon: Icon } = NOTICE_LOOK[kind];
+  const Icon = isNoticeKind(kind) ? NOTICE_LOOK[kind].icon : Puzzle;
   return (
     <Tag className={className} data-kind={kind} data-testid="notice-kind">
       <Icon aria-hidden="true" />
-      {t(kind)}
+      {isNoticeKind(kind) ? t(kind) : kind}
     </Tag>
   );
 }

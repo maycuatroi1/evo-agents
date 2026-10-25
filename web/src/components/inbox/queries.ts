@@ -7,6 +7,7 @@ import { csrfHeaders } from "@/lib/api/csrf";
 import { isApiError } from "@/lib/api/errors";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
+import type messages from "../../../messages/vi.json";
 
 /**
  * What the Inbox reads and writes (docs/notifications.md): the member's own notifications and their unread count, the
@@ -18,7 +19,9 @@ export type Notification = Schemas["Notification"];
 export type NotificationList = Schemas["NotificationList"];
 export type NotificationCount = Schemas["NotificationCount"];
 export type NotificationKind = Notification["kind"];
-export type NoticeKind = NonNullable<Notification["notice_kind"]>;
+/** A kind of notice the web has a name and an icon for: the hub's and those of the core plugins it ships. The hub
+ * answers any string, since a core plugin declares its own kinds (contributes.notice_kinds); another shows as it is. */
+export type NoticeKind = keyof (typeof messages)["inbox"]["noticeKind"];
 export type Decision = Schemas["Decision"];
 export type DecisionState = Decision["state"];
 export type DecisionCategory = Decision["category"];

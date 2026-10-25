@@ -5597,6 +5597,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/marketing/{project}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Channels
+         * @description Check the health of one account (``channel_id``) or of every one, as ``POST /channels/{id}/check`` does for
+         *     each; what ``evo-agents hub marketing check`` calls. An admin does.
+         */
+        post: operations["check_channels_v1_x_marketing__project__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/marketing/{project}/kill": {
         parameters: {
             query?: never;
@@ -8421,6 +8442,23 @@ export interface paths {
          *     worker claimed it; empty for a run not claimed yet, or on a project with no plugin enabled.
          */
         get: operations["plugins_of_run_v1_projects__project__runs__run_id__plugins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cli/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The commands plugins add to the CLI */
+        get: operations["cli_plugins_v1_cli_plugins_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -18803,6 +18841,14 @@ export interface components {
              */
             target?: string | null;
         };
+        /** MarketingCheckIn */
+        MarketingCheckIn: {
+            /**
+             * Channel Id
+             * @description one channel; none checks every one
+             */
+            channel_id?: number | null;
+        };
         /** MarketingDeny */
         MarketingDeny: {
             /** Id */
@@ -20058,9 +20104,9 @@ export interface components {
             kind: "decision" | "notice" | "proposal";
             /**
              * Notice Kind
-             * @description a notice's kind; null for a decision
+             * @description a notice's kind: one of the hub's, or one a core plugin declares (contributes.notice_kinds, its table prefix first); null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window") | null;
+            notice_kind: string | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -21943,6 +21989,11 @@ export interface components {
              * @description what the web frames for an isolated plugin's page, a ticket inside it: only in a project that enabled the plugin, null otherwise and for a native page
              */
             url: string | null;
+            /**
+             * Slot
+             * @description where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own
+             */
+            slot?: string | null;
         };
         /** PluginPermission */
         PluginPermission: {
@@ -53294,6 +53345,8 @@ export interface operations {
                 stage?: ("lead" | "invited" | "activated" | "retained") | null;
                 /** @description only contacts first seen from this source */
                 source?: ("invite_request" | "invite_link" | "grant" | "issue" | "pull_request" | "discussion") | null;
+                /** @description text: the words `evo-agents hub crm` prints, as {text}, instead of the answer */
+                render?: "text" | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;
@@ -53354,7 +53407,10 @@ export interface operations {
     };
     show_contact_v1_x_crm__project__contacts__login__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub crm` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
@@ -53416,7 +53472,10 @@ export interface operations {
     };
     delete_contact_v1_x_crm__project__contacts__login__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub crm` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -53542,7 +53601,10 @@ export interface operations {
     };
     list_channels_v1_x_marketing__project__channels_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -53609,7 +53671,10 @@ export interface operations {
     };
     add_channel_v1_x_marketing__project__channels_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -53680,7 +53745,10 @@ export interface operations {
     };
     set_mode_v1_x_marketing__project__channels__channel_id__mode_put: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -53752,7 +53820,10 @@ export interface operations {
     };
     pause_channel_v1_x_marketing__project__channels__channel_id__pause_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -53824,7 +53895,10 @@ export interface operations {
     };
     resume_channel_v1_x_marketing__project__channels__channel_id__resume_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -54030,9 +54104,86 @@ export interface operations {
             };
         };
     };
+    check_channels_v1_x_marketing__project__check_post: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MarketingCheckIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingChannel"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     kill_v1_x_marketing__project__kill_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -54103,7 +54254,10 @@ export interface operations {
     };
     resume_v1_x_marketing__project__resume_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -54307,6 +54461,8 @@ export interface operations {
             query?: {
                 /** @description only posts in this state */
                 state?: ("proposed" | "judging" | "queued" | "posting" | "posted" | "draft" | "failed" | "withdrawn") | null;
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
             };
             header?: never;
             path: {
@@ -54863,7 +55019,10 @@ export interface operations {
     };
     list_denylist_v1_x_marketing__project__denylist_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -54930,7 +55089,10 @@ export interface operations {
     };
     add_deny_v1_x_marketing__project__denylist_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -55001,7 +55163,10 @@ export interface operations {
     };
     remove_deny_v1_x_marketing__project__denylist__deny_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description text: the words `evo-agents hub marketing` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
             header?: never;
             path: {
                 project: string;
@@ -55072,6 +55237,8 @@ export interface operations {
             query?: {
                 /** @description the day of the report; today when left out */
                 date?: string | null;
+                /** @description text: the words `evo-agents hub pm daily` prints, as {text}, instead of the report */
+                render?: "text" | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;
@@ -65448,6 +65615,45 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_plugins_v1_cli_plugins_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the ETag of the answer the CLI holds */
+                "if-none-match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description {version, plugins: [{id, version, commands}]} */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

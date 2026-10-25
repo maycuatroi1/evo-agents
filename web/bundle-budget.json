@@ -278,6 +278,10 @@
       "kB": 302.5,
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB."
     },
+    "/p/[project]/x/[plugin]": {
+      "kB": 292.8,
+      "reason": "plugin-market step 5: /p/{project}/x/{plugin} leads to the plugin's first page for every plugin, in place of the redirects of the core plugins crm, pm and marketing, whose pages are now framed (their routes and budgets go)."
+    },
     "/p/[project]/x/canvas/canvases": {
       "kB": 315.6,
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
@@ -292,42 +296,6 @@
     },
     "/p/[project]/x/canvas/canvases/[slug]/claims/[ref]": {
       "kB": 317.4,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
-    },
-    "/p/[project]/x/crm": {
-      "kB": 292.8,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB."
-    },
-    "/p/[project]/x/crm/contacts": {
-      "kB": 297.5,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB."
-    },
-    "/p/[project]/x/crm/contacts/[login]": {
-      "kB": 300,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
-    },
-    "/p/[project]/x/marketing": {
-      "kB": 292.8,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB."
-    },
-    "/p/[project]/x/marketing/overview": {
-      "kB": 301.5,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
-    },
-    "/p/[project]/x/marketing/posts": {
-      "kB": 298.6,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
-    },
-    "/p/[project]/x/marketing/weekly": {
-      "kB": 299.2,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB."
-    },
-    "/p/[project]/x/pm": {
-      "kB": 292.8,
-      "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page. The knowledge graph explorer (kg-explorer): its en and vi words, the explorer's, its tabs' and the builds page's, are shared by every page, 0.1 to 0.2 kB."
-    },
-    "/p/[project]/x/pm/daily": {
-      "kB": 301.7,
       "reason": "Opportunities (opportunity-intake step 5): the sidebar gains an Opportunities entry and the en and vi messages of the new pages, loaded on every page."
     },
     "/p/[project]/x/srs/documents": {

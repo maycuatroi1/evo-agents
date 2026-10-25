@@ -20,6 +20,11 @@ function main(page: Page) {
   return page.locator("#main");
 }
 
+/** The pm page the hub frames in the main column (web/DESIGN.md, Plugins). */
+function frame(page: Page) {
+  return main(page).frameLocator('[data-testid="plugin-frame"]');
+}
+
 test("PM daily shows only where a project enabled it: no menu item and a 404 elsewhere, then the menu item opens the report", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const [project] = me.projects;
@@ -38,7 +43,7 @@ test("PM daily shows only where a project enabled it: no menu item and a 404 els
   await page.getByTestId("nav-plugin-pm-daily").click();
   await expect(page).toHaveURL(pmPath(project));
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("PM daily");
-  await expect(main(page).getByTestId("pm-bare")).toBeVisible();
+  await expect(frame(page).getByTestId("pm-bare")).toBeVisible();
 });
 
 test("the report has its eight sections, a link to each task's page, and the blocker with who it waits on and its age", async ({ page, member }) => {
@@ -47,15 +52,15 @@ test("the report has its eight sections, a link to each task's page, and the blo
   await seedPm(me, project);
   await page.goto(pmPath(project));
   for (const id of ["done", "sprint", "late", "review", "stale", "blocked", "escalate", "load"]) {
-    await expect(main(page).getByTestId(`pm-${id}`)).toBeVisible();
+    await expect(frame(page).getByTestId(`pm-${id}`)).toBeVisible();
   }
-  await expect(main(page).getByTestId("pm-sprint")).toContainText("Sprint 7");
-  const blocked = main(page).getByTestId("pm-blocked-row");
+  await expect(frame(page).getByTestId("pm-sprint")).toContainText("Sprint 7");
+  const blocked = frame(page).getByTestId("pm-blocked-row");
   await expect(blocked).toHaveCount(1);
   await expect(blocked).toContainText("Acme bank");
   await expect(blocked).toContainText("Waiting for the gateway keys");
   await expect(blocked.getByTestId("pm-blocker-age")).toBeVisible();
-  const review = main(page).getByTestId("pm-review-row");
+  const review = frame(page).getByTestId("pm-review-row");
   await expect(review).toHaveCount(1);
   await review.getByTestId("pm-task-link").click();
   await expect(page).toHaveURL(taskPath(project, "T-2"));
@@ -66,17 +71,17 @@ test("a day can be picked, and Today goes back", async ({ page, member }) => {
   const [project] = me.projects;
   await seedPm(me, project);
   await page.goto(pmPath(project));
-  const date = main(page).getByTestId("pm-date");
+  const date = frame(page).getByTestId("pm-date");
   await expect(date).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
-  await expect(main(page).getByTestId("pm-today")).toHaveCount(0);
-  // A fill before the page hydrates changes the input but navigates nowhere, so fill again until the URL follows.
+  await expect(frame(page).getByTestId("pm-today")).toHaveCount(0);
+  // A fill before the framed page is ready changes the input but navigates nowhere, so fill again until the URL follows.
   await expect(async () => {
     await date.fill("2026-01-07");
     await expect(page).toHaveURL(pmPath(project, "2026-01-07"), { timeout: 2_000 });
   }).toPass();
   await expect(date).toHaveValue("2026-01-07");
-  await expect(main(page).getByTestId("pm-done")).toBeVisible();
-  await main(page).getByTestId("pm-today").click();
+  await expect(frame(page).getByTestId("pm-done")).toBeVisible();
+  await frame(page).getByTestId("pm-today").click();
   await expect(page).toHaveURL(pmPath(project));
 });
 
@@ -88,5 +93,5 @@ test("a reader reads the report; /x/pm leads to it", async ({ page, member }) =>
   await seedPm(me, project);
   await page.goto(`/p/${project}/x/pm`);
   await expect(page).toHaveURL(pmPath(project));
-  await expect(main(page).getByTestId("pm-report")).toBeVisible();
+  await expect(frame(page).getByTestId("pm-report")).toBeVisible();
 });

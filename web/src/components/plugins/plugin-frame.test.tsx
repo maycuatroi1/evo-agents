@@ -64,11 +64,11 @@ const PLUGIN = {
   pages: [PAGE],
 } as unknown as ProjectPlugin;
 
-function setup(path?: string) {
+function setup(path?: string, panel = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   renderVi(
     <QueryClientProvider client={client}>
-      <PluginFrame project="demo" plugin={PLUGIN} page={PAGE} path={path} />
+      <PluginFrame project="demo" plugin={PLUGIN} page={PAGE} path={path} panel={panel} />
     </QueryClientProvider>,
   );
   const frame = screen.getByTestId("plugin-frame") as HTMLIFrameElement;
@@ -199,5 +199,20 @@ describe("PluginFrame", () => {
     expect(toast).toHaveTextContent("Từ plugin Sample");
     send(frame.contentWindow, { bridge: BRIDGE, id: 10, method: "toast", params: { text: "x", tone: "loud" } });
     await refused(posted, 10, "invalid_params");
+  });
+
+  it("as a panel takes no room until its page reports a height above 0, and none again at 0", async () => {
+    const { frame, posted } = setup(undefined, true);
+    expect(frame).toHaveAttribute("data-panel", "empty");
+    expect(frame).toHaveAttribute("aria-hidden", "true");
+    expect(frame).toHaveAttribute("tabindex", "-1");
+    expect(frame.style.height).toBe("0px");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 11, method: "resize", params: { height: 96 } });
+    await waitFor(() => expect(posted).toHaveBeenCalledWith({ bridge: BRIDGE, id: 11, result: { height: 96 } }, "*"));
+    await waitFor(() => expect(frame).toHaveAttribute("data-panel", "shown"));
+    expect(frame.style.height).toBe("96px"); // no floor of FRAME_HEIGHT.min for a panel
+    expect(frame).not.toHaveAttribute("aria-hidden");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 12, method: "resize", params: { height: 0 } });
+    await waitFor(() => expect(frame).toHaveAttribute("data-panel", "empty"));
   });
 });
