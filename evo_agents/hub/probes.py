@@ -2,6 +2,10 @@
 and a one-line verify that exits 0 when an agent given the task does not make that mistake again (plan
 correction-recurrence).
 
+A core plugin may add one for a rule of its own (source ``plugin``, ``ref`` the rule's key), with no proposal or
+change: the files the plugin renders with the rule are its arm on, the same files rendered without it its arm off
+(``arms``), placed as a change's harness files are.
+
 A proposal whose evidence cites a correction of the session figures (``ledger.evidence_metrics`` names
 ``corrections``) and that changes a file a probe arm can place (``probe_path``) carries one probe, or the hub refuses
 it; accepting the proposal attaches its probe to the change. A review run may add one to a merged change that has none,
@@ -12,7 +16,8 @@ Nothing here touches the database: the shape of a probe, read the same way by th
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Mapping
 from datetime import date, timedelta
 from math import comb
 from pathlib import PurePosixPath
@@ -21,11 +26,17 @@ from evo_agents.hub import replay
 from evo_agents.hub.verify_words import programs, shell_problem
 
 STATES = ("active", "retired")
-SOURCES = ("proposal", "review", "admin")  # who wrote the probe: the proposal it came with, a review run, an admin
+SOURCES = ("proposal", "review", "admin", "plugin")
+# who wrote the probe: the proposal it came with, a review run, an admin, or a core plugin for a rule of its own (ref)
+PLUGIN = "plugin"
 MAX_TASK_BYTES = 16 * 1024  # the task text handed the agent of a probe run, as a replay task's ``what``
 MAX_VERIFY_CHARS = replay.MAX_VERIFY_CHARS  # one shell line, as a step's verify
 MAX_NOTE_CHARS = 2000
 MAX_REPO_CHARS = 200
+MAX_REF_CHARS = 200  # a plugin probe's ref: the key of the plugin's rule it measures
+REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]*$")
+MAX_ARM_FILES = 50  # of a plugin probe: the files its two arms place, together
+MAX_ARMS_BYTES = 512 * 1024  # of a plugin probe: the bytes of every file of its two arms, together
 SETTINGS_FILE = ".claude/settings.json"  # the repo's own Claude Code settings, at its root
 HOOKS_DIR = ".claude/hooks"  # the repo's own hooks, at its root
 # probes.k, the arms each probe runs per model; probes.models, at most this many models
@@ -98,6 +109,46 @@ def probe_path(path: str) -> bool:
 def probe_paths(paths: Iterable[str]) -> list[str]:
     """The paths among ``paths`` a probe arm can place, each once, sorted."""
     return sorted({path for path in paths if isinstance(path, str) and probe_path(path)})
+
+
+def ref_problem(ref: object) -> str | None:
+    """Why ``ref`` cannot be a plugin probe's ref, or None: 1 to MAX_REF_CHARS characters of letters, digits and
+    ``._:/@-``, starting with a letter or a digit. The phrase goes after "the probe's ref"."""
+    if not isinstance(ref, str) or not ref:
+        return "is empty"
+    if len(ref) > MAX_REF_CHARS:
+        return f"has {len(ref)} characters, more than {MAX_REF_CHARS}"
+    if not REF.match(ref):
+        return "may hold letters, digits and ._:/@- alone, and starts with a letter or a digit"
+    return None
+
+
+def arms_problem(on: object, off: object) -> str | None:
+    """Why ``on`` and ``off`` ({path: text} each) cannot be the arms of a plugin probe, or None: every path one a
+    probe arm can place (``probe_path``), every content text, at least one file, the two arms not the same, at most
+    MAX_ARM_FILES paths and MAX_ARMS_BYTES bytes together. A path one arm lacks is absent in that arm's sessions."""
+    if not isinstance(on, Mapping) or not isinstance(off, Mapping):
+        return "each arm is a mapping of a path to the file's text"
+    paths = set(on) | set(off)
+    if not paths:
+        return "place no file"
+    for arm in (on, off):
+        for path, text in arm.items():
+            if not probe_path(path):
+                return (
+                    f"name {path!r}, which a probe arm cannot place: AGENTS.md, CLAUDE.md, a skill's file, "
+                    f"{SETTINGS_FILE} or a file under {HOOKS_DIR}/"
+                )
+            if not isinstance(text, str):
+                return f"give {path!r} a content that is no text"
+    if dict(on) == dict(off):
+        return "are the same: arm off must lack the rule arm on has"
+    if len(paths) > MAX_ARM_FILES:
+        return f"place {len(paths)} files, more than {MAX_ARM_FILES}"
+    size = sum(len(text.encode()) for arm in (on, off) for text in arm.values())
+    if size > MAX_ARMS_BYTES:
+        return f"hold {size} bytes, more than {MAX_ARMS_BYTES}"
+    return None
 
 
 def verify_problem(verify: str) -> str | None:

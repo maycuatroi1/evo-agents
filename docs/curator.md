@@ -489,7 +489,7 @@ times with it taken off (arm `off`, the control), on each model the charter name
 rule, whether it still holds (plan correction-recurrence). `docs/hub.md`, "The Curator's probes", has the routes and
 the rules; `docs/workers.md`, "A probe run on the machine", what the daemon does.
 
-**Who writes one.** A probe comes from one of three places, which its `source` names:
+**Who writes one.** A probe comes from one of four places, which its `source` names:
 
 - `proposal`: the Reviewer writes it with the proposal. A proposal whose evidence cites `corrections` of the night's
   figures, and whose paths include a file a probe arm can place (an AGENTS.md or a CLAUDE.md anywhere, a file of a
@@ -499,6 +499,11 @@ the rules; `docs/workers.md`, "A probe run on the machine", what the daemon does
 - `review`: a review run gives one to a merged change that has none, `evo-agents worker probe add --change N`.
 - `admin`: an admin of the project adds one to a change or a proposal (`evo-agents hub curator probe add`), edits it
   (the API's PATCH alone) and retires it (`probe retire`).
+- `plugin`: a core plugin adds one for a rule of its own, which it renders into a repo's harness files, with no
+  proposal or change (core plugin API 1.4, `add_probe` and `remove_probe`, `docs/plugins.md`). The probe names the
+  plugin and `ref`, the rule's key (1 to 200 characters of letters, digits and `._:/@-`), and carries the files of
+  each arm (The two arms, below). A plugin has one active probe per project and `ref`: adding it again retires the old
+  one, and removing it retires it with a note.
 
 A change has at most one active probe: an add answers 409 while one is active, so retire it first. A probe with no
 `commit` starts from the tip of the repo's default branch when it was made (the worker finds the commit of the
@@ -538,6 +543,14 @@ arms. When the change places no such file, or its diff no longer comes off the t
 probe is `stale` for the week, with why, and no agent runs. The agent has none of the hub's tools and no remote to
 push to; each session gets `1/2k` of the run's cost and agent time. Each session records whether the verify passed,
 its cost, turns and time, and the runtime and model it really ran on.
+
+A probe of source `plugin` has no change to take off: its plugin hands the files of each arm, the files it renders
+with the rule (`on`) and without it (`off`), each a path to its text, at most 50 paths and 512 KiB in all, every path one
+a probe arm places. The worker lays them over the task's repo at the base commit through the same placement (a path
+an arm lacks is absent in its sessions), so both arms start from that commit and differ by the rule alone. Its run
+names no change and no plan; its verify stays hidden from the agent as any other's. The probe list, `evo-agents hub
+curator probe list|report` (column RULE, `plugin:ref`) and the weekly report show it by its plugin and `ref`. Its
+results feed no fix proposal: the plugin reads them and changes its rule itself.
 
 **When they run.** The night shift queues a probe run last of all its kinds, after the review, history, judge,
 Builder and replay runs and only while no plan of `night_plans` has work, one probe run of a project at a time. It

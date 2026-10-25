@@ -2,7 +2,8 @@
 (``evo_agents.hub.probes``; GET, POST .../curator/probes, POST .../curator/probes/{id}/retire and GET
 .../curator/probe-report).
 
-``probe list`` lists the probes the caller may read, newest first, by ``--change``, ``--proposal`` and ``--state``;
+``probe list`` lists the probes the caller may read, newest first, by ``--change``, ``--proposal`` and ``--state``,
+a core plugin's probe with its plugin and rule key (RULE, ``plugin:ref``);
 ``probe show`` prints one. Their verify is the answer key: the hub sends it to the project's admins alone, and prints
 ``(hidden)`` for the others. ``probe add`` (admins) adds one to ``--change`` or ``--proposal``: the ``--repo``, the base
 ``--commit`` (none: the tip of the default branch), the task (``--task``, or ``--task-file``, ``-`` for stdin) and the
@@ -46,6 +47,8 @@ PROBE_KEYS = (
     "created_at",
     "updated_at",
     "replaces",
+    "plugin",
+    "ref",
 )
 PROBE = returns_object(*PROBE_KEYS, schema="Probe")
 
@@ -74,8 +77,15 @@ def _task(args) -> str:
     return text
 
 
+def _rule(item: dict) -> str:
+    """The plugin and rule key of a plugin's probe (source plugin), else ``-``."""
+    return f"{item.get('plugin') or 'removed'}:{item['ref']}" if item.get("ref") else "-"
+
+
 def _print(probe: dict) -> None:
     target = f"change #{probe['change_id']}" if probe["change_id"] else f"proposal #{probe['proposal_id']}"
+    if probe.get("ref"):
+        target = f"plugin {probe.get('plugin') or 'removed'} rule {probe['ref']}"
     print(f"probe #{probe['id']} of {target}, {probe['state']} ({probe['source']})")
     print(f"repo: {probe['repo']} at {probe['commit'] or 'the tip of the default branch when it was made'}")
     print(f"verify: {probe['verify'] if probe['verify'] is not None else '(hidden: the admins of the project see it)'}")
@@ -102,6 +112,7 @@ def cmd_probe_list(args) -> int:
             f"#{probe['id']}",
             f"#{probe['change_id']}" if probe["change_id"] else "-",
             f"#{probe['proposal_id']}" if probe["proposal_id"] else "-",
+            _rule(probe),
             probe["repo"],
             probe["state"],
             probe["source"],
@@ -110,7 +121,7 @@ def cmd_probe_list(args) -> int:
         for probe in found["probes"]
     ]
     if rows:
-        table(("PROBE", "CHANGE", "PROPOSAL", "REPO", "STATE", "SOURCE", "TASK"), rows)
+        table(("PROBE", "CHANGE", "PROPOSAL", "RULE", "REPO", "STATE", "SOURCE", "TASK"), rows)
     print(f"{found['total']} probe(s) in {project}")
     return 0
 
@@ -180,7 +191,8 @@ def cmd_probe_report(args) -> int:
         rows = [
             (
                 f"#{item['probe_id']}",
-                f"#{item['change_id']}",
+                f"#{item['change_id']}" if item["change_id"] else "-",
+                _rule(item),
                 f"{item['runtime']}{' ' + item['model'] if item['model'] else ''}",
                 f"{item['on']['failed']}/{item['on']['runs']}",
                 f"{item['off']['failed']}/{item['off']['runs']}",
@@ -190,7 +202,7 @@ def cmd_probe_report(args) -> int:
             for item in week["probes"]
         ]
         if rows:
-            table(("PROBE", "CHANGE", "MODEL", "ON FAILED", "OFF FAILED", "STATUS", "WEEK BEFORE"), rows)
+            table(("PROBE", "CHANGE", "RULE", "MODEL", "ON FAILED", "OFF FAILED", "STATUS", "WEEK BEFORE"), rows)
     if found["unprobed"]:
         print()
         print(f"changes born of a correction without a probe: {len(found['unprobed'])}")

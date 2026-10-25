@@ -13,6 +13,11 @@ of its own, which arm off runs with. The diff taken off is that of the files a p
 (``probes.placed_paths``). A change that places no such file, or whose diff no longer comes off the tip, makes the probe
 stale for the week: the worker posts why and the run ends done without an agent.
 
+A core plugin's probe of a rule of its own (the claim's ``arms``, ``plugin`` and ``ref``) has no change: both arms start
+at the base commit of the probe's repo, arm on with the files the plugin rendered with the rule and arm off with those
+rendered without it, placed where a change's harness files go (``read_rule``, ``lay_out_rule``); a path an arm lacks is
+removed.
+
 Each session lays out a new directory under the run's own (``on-1/``, ``off-1/``, ...) as a replay arm does
 (``ReplayRun.lay_out``): a repository of the probe's repo at the base commit, the harness files of the change's repo as
 the arm's commit has them, and each skill under ``.claude/skills/``; on claude-code also the repo's
@@ -44,7 +49,7 @@ from evo_agents.worker.runner import replay_files as files
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
-from evo_agents.worker.runner.replay import ArmFigures, Refused, ReplayRun, _cost
+from evo_agents.worker.runner.replay import HARNESS_COMMIT, SKILLS, ArmFigures, Refused, ReplayRun, _cost
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -86,13 +91,25 @@ class ProbeRun(ReplayRun):
         self.probe = self.change.get("probe") or {}
         probe = self.probe
         self.task = {"repo": probe.get("repo"), "verify": [probe["verify"]] if probe.get("verify") else []}
-        run.title = run.spec.get("title") or f"probe #{probe.get('probe_id')} of change #{self.change.get('change_id')}"
+        run.title = run.spec.get("title") or (
+            f"probe #{probe.get('probe_id')} of "
+            + (f"rule {probe.get('ref')}" if probe.get("arms") else f"change #{self.change.get('change_id')}")
+        )
         self.directory = RunDirectory(run)
         self.conversation = Conversation(run, self.directory, after_turn=self.no_more)
         self.total = curator.budget_of(run.spec) or {}  # the run's caps, which the 2k sessions share
         self.env = gitops.without_hooks(run.daemon.env)
         self.usages: list = []
         self.k = max(1, min(int(probe.get("k") or probes.DEFAULT_K), probes.MAX_K))
+        arms = probe.get("arms")
+        self.arms = arms if isinstance(arms, dict) else None  # a plugin's probe: {"on": {path: text}, "off": {...}}
+
+    @property
+    def what(self) -> str:
+        """What the probe measures, after "probe #<id> of": the Curator's change, or a plugin's rule."""
+        if self.arms is not None:
+            return f"plugin {self.probe.get('plugin') or 'removed'} rule {self.probe.get('ref')}"
+        return f"the Curator's change #{self.change.get('change_id')}"
 
     @property
     def harness_repo(self) -> str | None:
@@ -103,8 +120,8 @@ class ProbeRun(ReplayRun):
         run, probe = self.run, self.probe
         names = access.repo_names([probe.get("repo"), self.harness_repo])
         run.note(
-            f"Run #{run.id} claimed by worker {run.daemon.config.name}: probe #{probe.get('probe_id')} of the Curator's "
-            f"change #{self.change.get('change_id')}, {self.k} session(s) with its rule on and {self.k} with it off, "
+            f"Run #{run.id} claimed by worker {run.daemon.config.name}: probe #{probe.get('probe_id')} of {self.what}, "
+            f"{self.k} session(s) with its rule on and {self.k} with it off, "
             f"{run.runtime}, timeout {run.timeout_s // 60} min of agent time. Nothing is committed to origin or pushed."
         )
         cls = run.agent.runtime_class()
@@ -136,6 +153,8 @@ class ProbeRun(ReplayRun):
         the probe stale, when arm off cannot be made."""
         run, change = self.run, self.change
         base = await self.base_of(source)
+        if self.arms is not None:
+            return self.read_rule(source, base)
         branch = change.get("base_branch") or await gitops.remote_default_branch(harness)
         branch = branch or default_branch_of(run.daemon.config, run.project, self.harness_repo) or "main"
         tip = await files.commit_of(harness, f"refs/remotes/origin/{branch}", self.env)
@@ -170,6 +189,56 @@ class ProbeRun(ReplayRun):
             "whole": sorted(whole),
             "skills": skills,
         }
+
+    def read_rule(self, source: Path, base: str) -> dict:
+        """The plan of a plugin's probe: both arms at the base commit of the probe's repo, each with the files the
+        plugin rendered for it (``arms``), those a probe on the run's runtime places; Refused when they place none."""
+        run, arms = self.run, self.arms
+        on, off = arms.get("on") or {}, arms.get("off") or {}
+        paths = probes.placed_paths([*on, *off], run.runtime)
+        if not paths:
+            raise Refused(f"the plugin's arms place no file a probe on {run.runtime} places")
+        skills = sorted({found for found in map(replay.skill_dir, paths) if found})
+        run.note(
+            f"Probe from {base[:12]}, with {len(paths)} file(s) the plugin renders ({', '.join(paths[:5])}"
+            f"{', ...' if len(paths) > 5 else ''}): arm on with the rule {self.probe.get('ref')}, arm off without it.",
+            base_sha=base,
+        )
+        texts = {arm: {path: found.get(path) for path in paths} for arm, found in (("on", on), ("off", off))}
+        return {
+            "base": base,
+            "source": source,
+            "harness": source,
+            "refs": {"on": base, "off": base},
+            "paths": paths,
+            "whole": paths,
+            "skills": skills,
+            "arms": texts,
+        }
+
+    def lay_out_rule(self, arm: str, plan: dict, name: str) -> None:
+        """Place the files a plugin's probe gives ``arm`` (a path it lacks is removed) in the session's repository,
+        committed as the arm's harness, each skill under .claude/skills/ of the session's directory, and on claude-code
+        the repo's .claude/settings.json and .claude/hooks/ there too."""
+        root = self.directory.path / name
+        repository = root / gitops.folder_name(self.task["repo"])
+        texts = plan["arms"][arm]
+        files.write_texts(texts, repository, probes.HOOKS_DIR)
+        for skill in plan["skills"]:
+            short = skill.rsplit("/", 1)[-1]
+            under = {
+                f"{short}/{path[len(skill) + 1 :]}": text
+                for path, text in texts.items()
+                if path.startswith(skill + "/")
+            }
+            files.write_texts(under, root / SKILLS)
+        if self.run.runtime == probes.CLAUDE_CODE:
+            loaded = {
+                path: text
+                for path, text in texts.items()
+                if path == probes.SETTINGS_FILE or path.startswith(probes.HOOKS_DIR + "/")
+            }
+            files.write_texts(loaded, root, probes.HOOKS_DIR)
 
     async def base_of(self, source: Path) -> str:
         """The probe's base commit: its own, else the commit of the default branch's first-parent line that was its tip
@@ -215,6 +284,13 @@ class ProbeRun(ReplayRun):
         .claude/settings.json and .claude/hooks/ as the arm's commit has them under .claude/ of the directory, where the
         agent's runtime loads them."""
         root, repository, harness_folder = await super().lay_out(arm, plan, ref=ref, name=name)
+        if plan.get("arms") is not None:
+            try:
+                self.lay_out_rule(arm, plan, name or arm)
+                await files.commit_all(repository, HARNESS_COMMIT, self.env)
+            except (gitops.GitError, OSError) as exc:
+                raise RunFailed(f"{name or arm}: the plugin's files were not placed: {exc}", cause="checkout") from None
+            return root, repository, harness_folder
         if self.run.runtime == probes.CLAUDE_CODE:
             pairs = [
                 (path, path)

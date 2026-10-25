@@ -216,3 +216,50 @@ def test_probe_runs_agent_command_of_a_plan_says_what_a_probe_run_does_instead(m
     commands = [item for item in machine.commands() if item["run"] == found["run"]]
     assert len(commands) == 2  # a session of each arm
     assert all(item["exit"] != 0 and "is a probe run, which does one task" in item["stderr"] for item in commands)
+
+
+def test_probe_run_of_a_plugins_rule_places_the_files_of_each_arm_at_the_base_commit(machine):  # noqa: F811
+    """A core plugin's probe (core plugin API 1.4) has no change: both arms start at the base commit, arm on with the
+    files the plugin rendered with its rule and arm off with those rendered without it, a path an arm lacks absent."""
+    found_commits = history(machine)
+    names = ["on-1", "off-1"]
+    machine.scenarios(
+        {
+            key: [look(machine, name), ACT, {"say": "Done."}]
+            for key, name in zip(["probe", "probe/2"], names, strict=True)
+        }
+    )
+    spec = curator(found_commits, k=1)
+    for key in ("change_id", "branch", "head_sha"):
+        spec.pop(key)
+    hook = {".claude/hooks/rule.sh": "#!/bin/sh\nexit 0\n"}
+    spec["probe"].update(
+        verify=f"test -f done.txt # {MARKER}",
+        merge_sha=None,
+        plugin="northwind-editorial",
+        ref="post.voice",
+        arms={"on": {"AGENTS.md": f"# Rules\n{RULE}", **hook}, "off": {"AGENTS.md": "# Rules\n"}},
+    )
+    found = {}
+
+    async def body(hub, daemon):
+        run_id = hub.queue_probe_run([{"repo": "alpha", "branch": None}], spec, budget=BUDGET)
+        assert await hub.wait_state(run_id, "done", "failed", timeout=90) == "done", hub.texts(run_id)
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, body)
+    run_id, hub = found["run"], found["hub"]
+    sent = hub.probes
+    assert [(item["session"]["arm"], item["session"]["passed"]) for item in sent] == [("on", True), ("off", False)]
+    assert all(item["base_sha"] == item["harness_sha"] == found_commits["base"] for item in sent)
+    assert seen(machine, "on-1", "agents") == f"# Rules\n{RULE}"
+    assert seen(machine, "off-1", "agents") == "# Rules\n"
+    assert "rule.sh" in seen(machine, "on-1", "hooks") and "rule.sh" not in seen(machine, "off-1", "hooks")
+    assert "guard" not in seen(machine, "on-1", "hooks")  # the change's hook is no part of a plugin's probe
+    for name in names:
+        log = seen(machine, name, "log").split()
+        assert found_commits["base"] in log and found_commits["merge"] not in log
+    assert any("probe #5 of plugin northwind-editorial rule post.voice" in text for text in hub.texts(run_id))
+    assert MARKER not in json.dumps(hub.runs[run_id]["events"])
+    starts = [item for item in machine.starts() if item["run"] == run_id]
+    assert all(MARKER not in start["prompt"] for start in starts)

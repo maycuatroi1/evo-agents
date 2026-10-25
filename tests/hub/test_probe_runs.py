@@ -257,3 +257,70 @@ def test_probe_schema_0131_goes_down_to_0130_and_up_again(world):
     assert sql(db, select(func.count()).select_from(r).where(r.c.id == spec["id"])) == [(0,)]
     move_to(db, "0131")
     assert sql(db, select(func.count()).select_from(pw)) == [(0,)]
+
+
+RULE_ARMS = {
+    "on": {"AGENTS.md": "# Posts\n\nCite a source for every figure.\n"},
+    "off": {"AGENTS.md": "# Posts\n"},
+}
+
+
+def plugin_probing(world, *, k: int = 2) -> int:
+    """The charter with probes on opus and the probe of rule cite-sources of a core plugin, northwind-editorial, which
+    names no proposal or change (source plugin); the probe's id."""
+    written(
+        world.client,
+        world.headers["owner"],
+        curator_charter(probes={"k": k, "budget_usd": 3.0, "models": [OPUS]}),
+    )
+    p, pl, pr = tables.projects, tables.plugins, tables.curator_probes
+    ((project_id, label),) = sql(world.db, select(p.c.id, p.c.default_label).where(p.c.name == "evo-agents"))
+    ((plugin_id,),) = sql(
+        world.db, insert(pl).values(name="northwind-editorial", publisher="northwind").returning(pl.c.id)
+    )
+    probe = {"project_id": project_id, "repo": "evo-agents", "task": PROBE["task"], "verify": PROBE["verify"]}
+    probe |= {"source": "plugin", "label": {**label, "projects": ["evo-agents"]}, "plugin_id": plugin_id}
+    probe |= {"ref": "cite-sources", "arms": RULE_ARMS}
+    ((probe_id,),) = sql(world.db, insert(pr).values(**probe).returning(pr.c.id))
+    return probe_id
+
+
+def test_probe_run_of_a_plugins_rule_has_no_change_or_plan_and_its_claim_hands_both_arms(world):
+    probe_id = plugin_probing(world)
+    spec = probe_run(world)
+    sent = spec["curator"]["probe"]
+    assert (sent["probe_id"], sent["plugin"], sent["ref"], sent["arms"]) == (
+        probe_id,
+        "northwind-editorial",
+        "cite-sources",
+        RULE_ARMS,
+    )
+    assert (sent["change_repo"], sent["merge_sha"]) == ("evo-agents", None)  # the files go in the probe's repo
+    assert spec["curator"]["role"] == "probe" and spec["curator"].get("change_id") is None
+    assert PROBE["task"] in spec["prompt"] and PROBE["verify"] not in spec["prompt"]
+    r = tables.runs
+    ((plan_id, title),) = sql(world.db, select(r.c.plan_id, r.c.title).where(r.c.id == spec["id"]))
+    assert plan_id is None and title.startswith(f"Probe #{probe_id} of plugin northwind-editorial rule cite-sources")
+    events = sql(world.db, select(tables.run_events.c.body).where(tables.run_events.c.run_id == spec["id"]))
+    assert events and all(PROBE["verify"] not in str(event[0]) for event in events)  # no event holds the answer key
+    key = spec["curator"]["probe_key"]
+    for arm, index in (("on", 1), ("off", 1), ("on", 2), ("off", 2)):
+        last = report(world, spec["id"], session(arm, index, passed=arm == "on"), key)
+        assert last.status_code == 200, last.text
+    assert last.json()["state"] == "done" and last.json()["change_id"] is None
+    moved(world.client, world.worker, spec["id"], "verifying", "done")
+    (row,) = rows(world)
+    assert (row.state, row.change_id, row.probe_id) == ("done", None, probe_id)
+    shown = world.client.get(path("probes"), headers=world.headers["owner"]).json()["probes"]
+    assert [(item["source"], item["plugin"], item["ref"], item["change_id"]) for item in shown] == [
+        ("plugin", "northwind-editorial", "cite-sources", None)
+    ]
+    found = world.client.get(path("probe-report"), params={"week": str(WEEK)}, headers=world.headers["owner"])
+    assert found.status_code == 200, found.text
+    (result,) = found.json()["weeks"][0]["probes"]
+    assert (result["plugin"], result["ref"], result["change_id"], result["status"]) == (
+        "northwind-editorial",
+        "cite-sources",
+        None,
+        "holds",
+    )

@@ -4,7 +4,7 @@ probes themselves).
 
 The night shift (``curator._fire``) queues a probe run last, inside its window, once the night has no plan to run
 (``queue_probe``): for a charter with ``probes.budget_usd``, the pairs of an active probe of a merged change (with its
-plan) and a model of ``probes.models`` that this week (the ISO week of the night, its Monday in the charter's time zone)
+plan), or of a core plugin's rule (no change and no plan: ``source`` plugin), and a model of ``probes.models`` that this week (the ISO week of the night, its Monday in the charter's time zone)
 has not measured yet, the one measured longest ago first (never measured before all), on a pair whose repos and runtime
 the worker on duty takes. A run of kind probe on the change's plan, pinned to that worker, as the schedule's owner, on
 the pair's runtime and model, with the night's caps of the next run cut to what the week's probes have left; the
@@ -31,7 +31,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -113,7 +113,7 @@ class ProbeReport(BaseModel):
 class ProbeRun(BaseModel):
     id: int
     probe_id: int
-    change_id: int
+    change_id: int | None = Field(description="null: the probe of a plugin's rule, which has no change")
     week: date = Field(description="the Monday of the ISO week, in the charter's time zone")
     runtime: str
     model: str | None
@@ -162,15 +162,24 @@ async def week_cost(conn: AsyncConnection, schedule_id: int, week: date) -> floa
 async def _pairs(conn: AsyncConnection, project_id: int, week: date, models: list[tuple[str, str | None]]) -> list:
     """(probe, change, runtime, model, row of the week or None) of each pair the week has yet to measure, the one
     measured longest ago first, then by probe and by the charter's order of models."""
-    pr, c, pw = tables.curator_probes, tables.curator_changes, tables.curator_probe_runs
+    pr, c, pw, pl = tables.curator_probes, tables.curator_changes, tables.curator_probe_runs, tables.plugins
     found = await conn.execute(
-        select(pr, c.c.plan_id.label("plan_id"), c.c.repo.label("change_repo"), c.c.branch.label("change_branch"))
-        .join(c, c.c.id == pr.c.change_id)
+        select(
+            pr,
+            c.c.plan_id.label("plan_id"),
+            func.coalesce(c.c.repo, pr.c.repo).label("change_repo"),  # a plugin's probe: the files go in its repo
+            c.c.branch.label("change_branch"),
+            pl.c.name.label("plugin"),
+        )
+        .outerjoin(c, c.c.id == pr.c.change_id)
+        .outerjoin(pl, pl.c.id == pr.c.plugin_id)
         .where(
             pr.c.project_id == project_id,
             pr.c.state == "active",
-            c.c.state == "merged",
-            c.c.plan_id.is_not(None),
+            or_(
+                and_(c.c.state == "merged", c.c.plan_id.is_not(None)),
+                and_(pr.c.source == probes.PLUGIN, pr.c.plugin_id.is_not(None)),
+            ),
         )
         .order_by(pr.c.id)
     )
@@ -215,14 +224,21 @@ def _repos(probe) -> list[dict]:
     return [*repos, {"repo": probe.change_repo, "branch": None}]
 
 
+def probe_words(probe) -> str:
+    """What a probe of ``probe`` measures, after "probe #<id> of": the Curator's change, or a plugin's rule."""
+    if probe.change_id is None and probe.ref is not None:
+        return f"plugin {probe.plugin or 'removed'} rule {probe.ref}"
+    return f"the Curator's change #{probe.change_id}"
+
+
 def _values(due, gate, probe, held, runtime: str, model: str | None, budget: dict) -> dict:
     words = f"{runtime}{f' {model}' if model else ''}"
     return {
         "kind": "probe",
         "project_id": due.project_id,
-        "plan_id": probe.plan_id,
-        "title": f"Probe #{probe.id} of the Curator's change #{probe.change_id} on {words}"[:200],
-        "plan_revision": held.revision,
+        "plan_id": probe.plan_id,  # None: a plugin's probe, which has no plan
+        "title": f"Probe #{probe.id} of {probe_words(probe)} on {words}"[:200],
+        "plan_revision": None if held is None else held.revision,
         "dispatched_by": due.owner_id,
         "dispatched_via": "schedule",
         **gate.duty.columns(),
@@ -251,19 +267,24 @@ async def _queued(conn: AsyncConnection, due, gate, week: date, k: int, found, r
         values |= {"base_sha": None, "harness_sha": None, "updated_at": func.now()}
         await conn.execute(update(pw).values(**values).where(pw.c.id == row.id))
     caps = f"cost cap {curator.money(budget['max_usd'])}, {budget['max_seconds'] // 60} minutes of agent time"
+    whose = "the change's" if probe.change_id is not None else "the plugin's"
     text = (
-        f"Queued by the night shift of project {due.project} as probe #{probe.id} of the Curator's change "
-        f"#{probe.change_id} for the week of {week.isoformat()}: {k} session(s) with the change's rule on and {k} with "
+        f"Queued by the night shift of project {due.project} as probe #{probe.id} of {probe_words(probe)} "
+        f"for the week of {week.isoformat()}: {k} session(s) with {whose} rule on and {k} with "
         f"it off, on {runtime}{f' {model}' if model else ''}, each in a new directory at the probe's base commit: {caps}."
     )
-    await write_event(conn, run_id, {"text": text, "change_id": probe.change_id, "probe_id": probe.id, **budget})
+    event = {"text": text, "change_id": probe.change_id, "probe_id": probe.id, **budget}
+    if probe.change_id is None:
+        event |= {"plugin": probe.plugin, "ref": probe.ref}
+    await write_event(conn, run_id, event)
     await notify_queued(conn, run_id)
     await audit.record(
         conn,
         actor_id=due.owner_id,
         token_id=None,
         action=PROBE_RUN,
-        target=f"{due.project}/{probe.plan_id} run:{run_id} probe:{probe.id} week:{week.isoformat()}",
+        target=f"{due.project}/{probe.plan_id or f'plugin:{probe.plugin}'} run:{run_id} probe:{probe.id} "
+        f"week:{week.isoformat()}",
         project_id=due.project_id,
     )
     log.info("curator probe queued", extra={"project": due.project, "run_id": run_id, "probe_id": probe.id})
@@ -292,9 +313,11 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
         probe, runtime, model, _ = found
         if gate.duty.unfit(due.project, "probe", [item["repo"] for item in _repos(probe)], runtime):
             continue
-        held = await plan_routes._held(conn, gate.access, probe.plan_id)
-        if held is None:
-            continue
+        held = None
+        if probe.plan_id is not None:  # a plugin's probe has no plan
+            held = await plan_routes._held(conn, gate.access, probe.plan_id)
+            if held is None:
+                continue
         budget = {**gate.budget, "max_usd": round(left, 4)}
         try:
             run_id = await insert_run(conn, _values(due, gate, probe, held, runtime, model, budget))
@@ -310,7 +333,9 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
 
 async def probe_claim(conn: AsyncConnection, change, run_id: int) -> dict:
     """What the claim of probe run ``run_id`` of ``change`` adds for its worker: the probe, the change's commits, k and
-    a new key of the run (``probe_key``), whose SHA-256 alone the hub keeps; nothing when the run probes nothing now."""
+    a new key of the run (``probe_key``), whose SHA-256 alone the hub keeps; nothing when the run probes nothing now.
+    A plugin's probe has no change (``change`` None): its spec names the plugin, the rule's ``ref`` and the files of
+    each arm (``arms``), which go in the probe's own repo."""
     pw, pr = tables.curator_probe_runs, tables.curator_probes
     row = (
         await conn.execute(select(pw).where(pw.c.run_id == run_id, pw.c.state == "running").with_for_update())
@@ -330,9 +355,16 @@ async def probe_claim(conn: AsyncConnection, change, run_id: int) -> dict:
         "verify": probe.verify,
         "k": row.k,
         "week": row.week,
-        "change_repo": change.repo,
-        "merge_sha": change.merge_sha,
+        "change_repo": probe.repo if change is None else change.repo,
+        "merge_sha": None if change is None else change.merge_sha,
     }
+    if probe.arms is not None:
+        plugin = (
+            await conn.execute(select(tables.plugins.c.name).where(tables.plugins.c.id == probe.plugin_id))
+        ).scalar_one_or_none()
+        spec |= {"plugin": plugin, "ref": probe.ref, "arms": probe.arms}
+    elif change is None:
+        return {}  # a probe of a change, on a run that names none: it probes nothing now
     return {"probe": spec, "probe_key": key}
 
 
@@ -441,7 +473,7 @@ async def probe_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
             notice_kind="run_failed",
             project_id=found.project_id,
             run_id=found.run_id,
-            title=f"Probe run #{found.run_id} of {found.plan_id} failed",
+            title=f"Probe run #{found.run_id} of {found.plan_id or 'a plugin rule'} failed",
             body=why,
             details={"run_kind": "probe", "plan_id": found.plan_id, "error": why},
             link=run_link(found.project, found.run_id),
