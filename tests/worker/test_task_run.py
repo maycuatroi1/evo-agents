@@ -94,6 +94,75 @@ def test_a_task_run_pushes_only_its_task_branch(machine):  # noqa: F811
     assert KINDS["task"] is TaskRun
 
 
+def draft_branch(machine, name: str, branch: str) -> str:  # noqa: F811
+    """A branch of ``name`` on origin with one commit past main, as a draft another run opened: its tip."""
+    seed = machine.tmp / "seed" / name
+    git("checkout", "--quiet", "-b", branch, cwd=seed)
+    (seed / "draft.md").write_text("# Northwind launch\n", encoding="utf-8")
+    git("add", "draft.md", cwd=seed)
+    git("commit", "--quiet", "-m", "draft", cwd=seed)
+    git("push", "--quiet", str(machine.origins[name]), branch, cwd=seed)
+    return git("rev-parse", "HEAD", cwd=seed)
+
+
+def test_a_task_run_works_on_the_branch_its_task_names_and_pushes_back_to_it(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "task": [
+                {"sh": "for r in alpha beta; do git -C $r symbolic-ref --short HEAD; done; cat alpha/draft.md"},
+                {"write": {"alpha/draft.md": "# Northwind launch\n\nThe second paragraph.\n"}},
+                {"write": {"beta/notes.md": "seen\n"}},
+                {"result": {"summary": "Wrote the second paragraph."}},
+                {"say": "Done."},
+            ]
+        }
+    )
+    named = "post/northwind-launch"
+    tip = draft_branch(machine, "alpha", named)
+
+    async def body(hub, daemon):
+        run_id = hub.queue_task_run(["alpha", "beta"])
+        branch = task_runs.branch_of(run_id)
+        hub.runs[run_id]["spec"]["repos"][0]["branch"] = named
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        (look,) = [entry for entry in machine.commands() if entry["run"] == run_id]
+        assert look["stdout"].splitlines() == [named, branch, "# Northwind launch"]
+        head = machine.origin_rev("alpha", f"refs/heads/{named}")
+        assert head != tip and machine.origin("alpha", "rev-parse", f"{head}~1") == tip, "on top of the draft"
+        assert machine.origin_rev("alpha", f"refs/heads/{branch}") is None, "the named repo pushes no task branch"
+        assert machine.origin_rev("beta", f"refs/heads/{branch}") is not None, "the other repos stay on task/<run>"
+        assert machine.origin_rev("alpha", "refs/heads/main") == machine.seeds["alpha"], "never a default branch"
+        assert sorted((repo, pushed) for _, repo, pushed, _ in task_pulls(hub)) == [("alpha", named), ("beta", branch)]
+
+    with_daemon(machine, body)
+
+
+def test_a_task_run_never_works_on_a_default_branch_its_task_names(machine):  # noqa: F811
+    machine.scenarios({"task": [{"result": {"summary": "Nothing."}}, {"say": "Nothing."}]})
+
+    async def body(hub, daemon):
+        run_id = hub.queue_task_run(["alpha"])
+        hub.runs[run_id]["spec"]["repos"][0]["branch"] = "main"
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "failed"
+        assert any("main is a default branch" in text for text in hub.texts(run_id)), hub.texts(run_id)
+        assert machine.starts_path.exists() is False or machine.starts() == [], "the agent never started"
+        assert machine.origin_rev("alpha", "refs/heads/main") == machine.seeds["alpha"]
+
+    with_daemon(machine, body)
+
+
+def test_a_task_run_pushes_the_branch_its_task_names_alone_besides_its_own():
+    named = "post/northwind-launch"
+    assert gitops.check_push(named, ("main",), kind="task", plan_branch=None, named_branch=named) is False
+    for branch, protected in (("main", ("main",)), ("trunk", ("trunk",)), ("post/other", ("main",))):
+        with pytest.raises(gitops.PushRefused):
+            gitops.check_push(branch, protected, kind="task", plan_branch=None, named_branch=named)
+    with pytest.raises(gitops.PushRefused, match="a default branch"):
+        gitops.check_push("trunk", ("trunk",), kind="task", plan_branch=None, named_branch="trunk")
+    with pytest.raises(gitops.PushRefused, match="not a branch of a chat run"):
+        gitops.check_push(named, (), kind="chat", plan_branch=None, named_branch=named)
+
+
 def test_claude_code_gives_a_task_run_its_task_verbatim_and_no_question_tool(tmp_path):
     from tests.worker.test_budget import claude, command_of
     from tests.worker.test_runtimes import _samples
