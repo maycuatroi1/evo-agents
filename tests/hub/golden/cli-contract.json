@@ -7377,6 +7377,8 @@
           "rollback_version",
           "error",
           "run_id",
+          "opened_run_id",
+          "outcome",
           "link"
         ],
         "schema": "BuilderProposal"
@@ -7434,6 +7436,8 @@
           "rollback_version",
           "error",
           "run_id",
+          "opened_run_id",
+          "outcome",
           "link"
         ],
         "schema": "BuilderProposal"
@@ -7487,6 +7491,8 @@
           "rollback_version",
           "error",
           "run_id",
+          "opened_run_id",
+          "outcome",
           "link"
         ],
         "schema": "BuilderProposal"
@@ -7540,6 +7546,8 @@
           "rollback_version",
           "error",
           "run_id",
+          "opened_run_id",
+          "outcome",
           "link"
         ],
         "schema": "BuilderProposal"
