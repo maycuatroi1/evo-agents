@@ -202,6 +202,19 @@ def test_gateway_lease_carries_the_route_a_run_token_the_model_and_the_format(cl
     assert again["value"] == lease["value"] and len(gateway.keys) == 1, "the same accounts keep the same key"
 
 
+def test_run_credentials_list_a_gateway_runs_key_and_accounts_without_a_value(client, hub, hub_db, gateway):
+    provider_account(client, hub["owner"])
+    worker = new_daemon(client, hub_db, hub["owner"])
+    run_id = gateway_run(client, hub_db, hub["owner"], worker)
+    token = gateway_lease(leased(client, worker, run_id))["value"]
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/credentials", headers=hub["owner"])
+    assert shown.status_code == 200, shown.text
+    listed = [(each["name"], each["provider"], each["kind"], each["target"]) for each in shown.json()]
+    assert listed == [(f"gateway:{MODEL}", "gateway", "gateway", MODEL), ("or", "gateway", "gateway", MODEL)]
+    (key,) = gateway.key_values()
+    assert token not in shown.text and key not in shown.text and "value" not in shown.json()[0]
+
+
 def test_gateway_proxy_relays_with_the_runs_key_and_refuses_once_the_run_ends(client, hub, hub_db, gateway):
     provider_account(client, hub["owner"])
     worker = new_daemon(client, hub_db, hub["owner"])
