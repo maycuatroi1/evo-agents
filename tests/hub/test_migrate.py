@@ -143,6 +143,7 @@ TABLES |= pg.INTAKE_TABLES  # migration 0138
 TABLES |= pg.KG_REVIEW_TABLES  # migration 0141
 TABLES |= pg.KG_DECISION_TABLES  # migration 0142
 TABLES |= pg.OPPORTUNITY_TABLES  # migration 0143
+TABLES |= pg.POOL_TABLES  # migration 0147
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -224,8 +225,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_seventy_nine_tables(hub_db):
-    assert len(TABLES) == 179  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eighty_two_tables(hub_db):
+    assert len(TABLES) == 182  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3588,3 +3589,49 @@ def test_0146_adds_the_browser_install_of_a_worker_and_going_back_drops_it(hub_d
     move_to(hub_db, "0145", down=True)
     assert not added & columns(hub_db, "workers")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0146") :]
+
+
+def test_0147_adds_worker_pools_and_their_join_tokens_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0146")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(conn, _token(ids, kind="worker", token_hash="7" * 64, host="vps").returning(t.tokens.c.id))
+        worker = one(conn, _worker_row(ids, token_id, "vps", 1))
+    move_to(hub_db, "0147")
+    assert pg.POOL_TABLES <= tables(hub_db)
+    assert "pool_id" in columns(hub_db, "workers")
+    assert query(hub_db, select(t.workers.c.pool_id).where(t.workers.c.id == worker)) == [(None,)]
+    pools, tokens = t.worker_pools, t.worker_join_tokens
+    with live.connect(hub_db) as conn:
+        pool = one(conn, insert(pools).values(owner_id=ids["user"], name="CI").returning(pools.c.id))
+        conn.execute(insert(t.worker_pool_projects).values(pool_id=pool, project_id=ids["project"]))
+        made = {"pool_id": pool, "created_by": ids["user"], "expires_at": func.now() + DAY, "max_uses": 2}
+        join_token = one(conn, insert(tokens).values(token_hash="8" * 64, **made).returning(tokens.c.id))
+        conn.execute(update(t.workers).values(pool_id=pool).where(t.workers.c.id == worker))
+    defaults = select(pools.c.slots, pools.c.labels, pools.c.taints, pools.c.accepted_findings, pools.c.reap_after_days)
+    assert query(hub_db, defaults) == [(1, [], [], [], 7)]
+    assert query(hub_db, select(tokens.c.uses, tokens.c.revoked_at)) == [(0, None)]
+    bad_pools = ({"name": "ci"}, {"name": "x", "slots": 17}, {"name": "y", "reap_after_days": 0})
+    bad_pools += ({"name": "z", "reap_after_days": 91}, {"name": ""})
+    for bad in bad_pools:
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+            conn.execute(insert(pools).values(owner_id=ids["user"], **bad))
+    bad_tokens = (
+        {"token_hash": "8" * 64},  # one hash, one token
+        {"token_hash": "9" * 64, "max_uses": 101},
+        {"token_hash": "9" * 64, "max_uses": 0},
+        {"token_hash": "9" * 64, "uses": 3},  # more uses than it takes
+        {"token_hash": "9" * 64, "expires_at": func.now() - DAY},
+    )
+    for bad in bad_tokens:
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+            conn.execute(insert(tokens).values({**made, **bad}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):  # not deleted under its nodes
+        conn.execute(delete(pools).where(pools.c.id == pool))
+    assert query(hub_db, select(tokens.c.id)) == [(join_token,)]
+    move_to(hub_db, "0146", down=True)
+    assert not pg.POOL_TABLES & tables(hub_db)
+    assert "pool_id" not in columns(hub_db, "workers")
+    assert query(hub_db, select(t.workers.c.name)) == [("vps",)]  # the node stays a worker, without its pool
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0147") :]

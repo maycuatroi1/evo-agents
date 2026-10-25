@@ -253,10 +253,11 @@ def create_app(config: HubConfig) -> FastAPI:
 
     app.include_router(admin_console.router)
 
-    from evo_agents.hub.server import workers
+    from evo_agents.hub.server import worker_join, worker_pools, workers
 
     app.include_router(workers.router)
-    app.include_router(workers.worker_router)
+    app.include_router(worker_pools.router)
+    app.include_router(worker_join.worker_router)
     app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
 
     from evo_agents.hub.server import author_chat, chat_events, listen, run_events, runs, tool_stats

@@ -68,6 +68,7 @@ from evo_agents.worker import (
     list_cli,
     output_cli,
     playbook_cli,
+    pool_cli,
     probe_cli,
     projects_cli,
     step_verify,
@@ -249,11 +250,12 @@ def cmd_join(args) -> int:
     home = WorkerHome()
     _refuse_rejoin(home, args.replace)
     url = check_url(args.url)
+    code, token = pool_cli.join_secret(args)
     hubapi = _hubapi()
 
     async def join() -> dict:
         async with hubapi.new_session() as session:
-            return await hubapi.WorkerHub(url, None, session).join(args.code, host_facts())
+            return await hubapi.WorkerHub(url, None, session).join(code, host_facts(), token=token)
 
     try:
         answer = asyncio.run(join())
@@ -1047,9 +1049,10 @@ def register(sub) -> None:
     )
     wsub = worker.add_subparsers(dest="worker_command", required=True)
 
-    join = wsub.add_parser("join", help="join a hub with a pairing code from its web's Workers page")
+    join = wsub.add_parser("join", help="join a hub with a pairing code from its web, or a pool's join token")
     join.add_argument("--url", required=True, help="the hub, such as https://hub.example.org")
-    join.add_argument("--code", required=True, help="the pairing code, XXXX-XXXX; it works once, for 10 minutes")
+    join.add_argument("--code", help="the pairing code, XXXX-XXXX; it works once, for 10 minutes")
+    join.add_argument("--token", help=f"instead of a code: a pool's join token, evj_... (or {pool_cli.JOIN_TOKEN_ENV})")
     join.add_argument("--replace", action="store_true", help="join even when this machine is a worker already")
     join.set_defaults(func=cmd_join)
 
@@ -1208,5 +1211,11 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    for extra in (*AGENT_PARSERS, projects_cli.register_projects, list_cli.register_list, register_browser):
+    for extra in (
+        *AGENT_PARSERS,
+        projects_cli.register_projects,
+        list_cli.register_list,
+        register_browser,
+        pool_cli.register_pool,
+    ):
         extra(wsub)

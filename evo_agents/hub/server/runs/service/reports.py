@@ -36,6 +36,7 @@ from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.worker_pools import all_labels
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 
@@ -141,7 +142,7 @@ async def record_heartbeat(
                 browser=_browser(body),
             )
             .where(w.c.id == worker_id)
-            .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
+            .returning(w.c.slots, w.c.name, all_labels(w).label("labels"), w.c.plugins, w.c.version_locked)
         )
         wp, projects = tables.worker_projects, tables.projects
         served = (
@@ -150,7 +151,9 @@ async def record_heartbeat(
             .where(wp.c.worker_id == worker_id)
             .order_by(projects.c.name)
         )
-        settings = WorkerSettings(**held.one()._mapping, projects=list((await conn.execute(served)).scalars()))
+        fields = dict(held.one()._mapping)
+        fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's (worker_pools)
+        settings = WorkerSettings(**fields, projects=list((await conn.execute(served)).scalars()))
         nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
         asked = await update_now.settle(conn, worker_id, body, nightly)
         install = await browser_install.settle(conn, worker_id, body)

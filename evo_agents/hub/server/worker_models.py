@@ -48,7 +48,16 @@ class WorkerRegistration(WorkerScope, HostFacts):
 
 
 class JoinRequest(HostFacts):
-    code: str = Field(min_length=1, max_length=32, description="the pairing code, XXXX-XXXX")
+    code: str | None = Field(None, min_length=1, max_length=32, description="the pairing code, XXXX-XXXX")
+    token: str | None = Field(
+        None, min_length=1, max_length=100, description="instead of a code: the join token of a pool, evj_..."
+    )
+
+    @model_validator(mode="after")
+    def _code_or_token(self) -> JoinRequest:
+        if (self.code is None) == (self.token is None):
+            raise ValueError("give a pairing code or a pool's join token, exactly one of them")
+        return self
 
 
 class Pairing(BaseModel):
@@ -124,7 +133,12 @@ class Worker(BaseModel):
         "when that heartbeat named none: an older daemon, or an install from PyPI or a local checkout"
     )
     slots: int
-    labels: list[str]
+    labels: list[str] = Field(
+        description="its own labels, then for a node of a pool the pool's labels and pool=<name>, which the pool sets"
+    )
+    pool: str | None = Field(
+        None, description="the pool it joined with a join token; null for one paired or registered"
+    )
     plugins: list[str] = Field(
         description="the plugins whose runtimes and environments it takes, as its owner set them"
     )
