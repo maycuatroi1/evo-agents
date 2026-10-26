@@ -6,4 +6,4 @@
 # evo-agents-core-plugins: telegram, chats, crm, pm and marketing, of the repository maycuatroi1/evo-agents-core-plugins. Its release
 # workflow writes this line, with the sha256 of the wheel it publishes, to the run's summary; CI's job
 # core-plugins-suite runs the tests of the tag v<version>.
-evo-agents-core-plugins==2.1.0 --hash=sha256:6781f3382eb75ab724d163737cfcc7ec4a94ba7d3b458d5b834342f2263a8ca0
+evo-agents-core-plugins==2.1.1 --hash=sha256:bf14cab83a74478b0397f3ff4e5ca62539da12f2a789b9df08670cb7828a375f
