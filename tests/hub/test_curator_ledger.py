@@ -31,6 +31,7 @@ from evo_agents.hub import curator, jobs, ledger, runs, tables
 from evo_agents.hub.server.outcomes import measure_outcomes
 from evo_agents.hub.server.proposals import _check_draft
 from evo_agents.hub.worker import queue
+from tests.hub.fake_github import FakePull
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, app_key  # noqa: F401 (a fixture)
 from tests.hub.test_curator import (
@@ -48,9 +49,12 @@ from tests.hub.test_curator import (
 )
 from tests.hub.test_curator_changes import (
     BRANCH,
+    CLEAN,
     GREEN,
     HEAD,
+    PLAN_ID,
     SUCCESS,
+    VERIFY,
     accepted,
     builder,
     changes,
@@ -61,10 +65,12 @@ from tests.hub.test_curator_changes import (
     path,
     proposal_of,
     protect,
+    queue_now,
     through_the_judge,
     world,  # noqa: F401 (a fixture)
 )
 from tests.hub.test_migrate import move_to
+from tests.hub.test_plan_runs import reported
 from tests.hub.test_review_runs import answered, digest_body, push_digest
 from tests.hub.test_runs import OWNER, claim, control, moved, web_client  # noqa: F401 (a fixture)
 
@@ -397,6 +403,111 @@ def test_ledger_a_pull_request_left_open_that_github_refuses_is_read_again_an_ho
     assert moved_on(world) == {}  # not read again before an hour
     assert len([r for r in world.github.requests if r.method == "GET" and r.path.endswith("/pulls/99")]) == reads + 1
     assert one_change(world)["state"] == "open"
+
+
+NO_COMMITS = (
+    422,
+    {
+        "message": "Validation Failed",
+        "errors": [{"resource": "PullRequest", "code": "custom", "message": f"No commits between main and {BRANCH}"}],
+    },
+)
+
+
+def by_hand(world, *, merged: bool = True) -> None:  # noqa: F811
+    """A pull request #7 of BRANCH a member opened on GitHub, outside the hub, then merged as HAND_MERGE, or closed."""
+    pull = FakePull(7, MINE, "evo-agents", BRANCH, HEAD, "main", base_sha="0" * 40)
+    world.github.pulls[(MINE.lower(), "evo-agents", 7)] = pull
+    if merged:
+        world.github.merge_by_hand(MINE, "evo-agents", BRANCH, OWNER, HAND_MERGE)
+    else:
+        world.github.close_by_hand(MINE, "evo-agents", BRANCH)
+
+
+def branch_reads(world) -> int:  # noqa: F811
+    return len([r for r in world.github.requests if r.method == "GET" and r.path.endswith("/pulls")])
+
+
+def test_ledger_a_branch_merged_by_hand_settles_a_change_whose_pull_request_github_will_not_open(world):  # noqa: F811
+    accepted(world)
+    builder(world)
+    world.github.pull_refusals.append(NO_COMMITS)
+    assert moved_on(world) == {"refused": 1}  # no pull request of the branch on GitHub: the change says why
+    assert one_change(world)["reason"].endswith(f"(code custom: No commits between main and {BRANCH})")
+    by_hand(world)
+    world.github.pull_refusals.append(NO_COMMITS)
+    assert moved_on(world) == {"merged_by_hand": 1}
+    change = one_change(world)
+    assert (change["state"], change["pr_number"], change["base_branch"], change["reason"]) == (
+        "merged",
+        7,
+        "main",
+        None,
+    )
+    assert change["pr_url"].endswith("/evo-agents/pull/7") and change["merge_sha"] == HAND_MERGE
+    assert change["merged_at"] and change["head_sha"] == HEAD
+    found = ledger_of(world, change["proposal_id"])
+    line = found["lines"][-1]
+    assert (line["action"], line["actor"], line["actor_login"]) == ("merged", "user", OWNER)
+    assert line["what"] == f"{OWNER} merged pull request #7 into main as {HAND_MERGE}"
+    assert (line["before_sha"], line["after_sha"]) == ("0" * 40, HAND_MERGE) and found["outcome_due_at"] is not None
+    assert moved_on(world) == {}  # settled
+
+
+def test_ledger_a_branch_whose_pull_request_was_closed_by_hand_closes_its_change(world):  # noqa: F811
+    accepted(world)
+    builder(world)
+    by_hand(world, merged=False)
+    world.github.pull_refusals.append(NO_COMMITS)
+    assert moved_on(world) == {"closed": 1}
+    change = one_change(world)
+    assert (change["state"], change["pr_number"], change["merge_sha"]) == ("closed", 7, None)
+    assert change["reason"] == "its pull request was closed without a merge"
+    line = ledger_of(world, change["proposal_id"])["lines"][-1]
+    assert (line["action"], line["actor"], line["what"]) == (
+        "closed",
+        "user",
+        "A member closed pull request #7 without a merge",
+    )
+
+
+def test_ledger_a_planned_change_with_no_step_left_whose_branch_was_merged_by_hand_is_merged(world):  # noqa: F811
+    accepted(world)
+    assert protect(world).json()["protected"] is True
+    c = tables.curator_changes
+    sql(world.db, update(c).values(updated_at=func.now() - timedelta(hours=2)))
+    reads = branch_reads(world)
+    assert moved_on(world) == {} and branch_reads(world) == reads  # its step is ready: its branch is not read
+    assert fire(world.client, NIGHT)["builder"] == 1
+    spec = claim(world.client, world.worker)
+    moved(world.client, world.worker, spec["id"], "running")
+    verify = [{"command": VERIFY, "exit_code": 0}]
+    reported(world.client, world.worker, spec["id"], 1, "done", repo="evo-agents", verify=verify, commit_sha=HEAD)
+    moved(world.client, world.worker, spec["id"], "failed", error="the agent gave up after its step")
+    world.github.push(MINE, "evo-agents", BRANCH, HEAD, files=CLEAN)
+    assert queue_now(world, "builder") is None
+    assert one_change(world)["reason"].startswith(
+        f"its plan {PLAN_ID} has no step ready to run (step 1: its status is done"
+    )
+    assert moved_on(world) == {}  # its last move is not an hour old
+    assert branch_reads(world) == reads
+    sql(world.db, update(c).values(updated_at=func.now() - timedelta(hours=2)))
+    assert moved_on(world) == {} and branch_reads(world) == reads + 1  # no pull request of its branch yet
+    assert one_change(world)["state"] == "planned"
+    assert moved_on(world) == {} and branch_reads(world) == reads + 1  # read again only after an hour
+    by_hand(world)
+    sql(world.db, update(c).values(updated_at=func.now() - timedelta(hours=2)))
+    assert moved_on(world) == {"merged_by_hand": 1}
+    change = one_change(world)
+    assert (change["state"], change["pr_number"], change["merge_sha"], change["reason"]) == (
+        "merged",
+        7,
+        HAND_MERGE,
+        None,
+    )
+    line = ledger_of(world, change["proposal_id"])["lines"][-1]
+    assert (line["action"], line["actor"], line["actor_login"]) == ("merged", "user", OWNER)
+    assert acts(ledger_of(world, change["proposal_id"]))[-2:] == [("build_failed", "agent"), ("merged", "user")]
 
 
 # The outcome

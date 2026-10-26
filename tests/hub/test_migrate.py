@@ -4240,3 +4240,43 @@ def test_0160_takes_proposals_of_a_plugin_its_install_and_its_listing_and_going_
         conn.execute(delete(p))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0160") :]
+
+
+def test_0161_closes_a_curator_change_with_no_plan_and_going_back_opens_it_again(hub_db):
+    move_to(hub_db, "0160")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    t = hub_tables
+    label = {"level": "internal"}
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, _author_run(ids))
+        proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "corrections", "kind": "memory"}
+        proposal |= {"title": "Remember the port", "paths": [], "tier": 1, "tier_reasons": ["memory"]}
+        proposal |= {"evidence": [], "evidence_count": 1, "draft": {}, "fingerprint": "f" * 64, "label": label}
+        proposal_id = one(conn, insert(t.proposals).values(proposal).returning(t.proposals.c.id))
+        change = {"project_id": ids["project"], "proposal_id": proposal_id, "tier": 1, "state": "open"}
+        change_id = one(conn, insert(t.curator_changes).values(change).returning(t.curator_changes.c.id))
+    closed = (
+        update(t.curator_changes).values(state="closed", reason="covered").where(t.curator_changes.c.id == change_id)
+    )
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0017: only an open change has no plan
+        conn.execute(closed)
+    move_to(hub_db, "0161")
+    with live.connect(hub_db) as conn:
+        conn.execute(closed)
+        for state in ("planned", "merged"):
+            with pytest.raises(errors.CheckViolation):  # a change of any other state still has its plan
+                conn.execute(update(t.curator_changes).values(state=state).where(t.curator_changes.c.id == change_id))
+    # Going back opens the change closed with no plan again, its reason kept, and puts the check of 0017 back.
+    move_to(hub_db, "0160", down=True)
+    c = t.curator_changes
+    assert query(hub_db, select(c.c.state, c.c.reason)) == [("open", "covered")]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(closed)
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(c))
+        conn.execute(delete(t.proposals))
+        conn.execute(delete(t.runs).where(t.runs.c.id == run_id))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0161") :]
