@@ -1,9 +1,10 @@
 import { CheckSquare, ImageIcon, Square } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ComponentPropsWithoutRef, type JSX, type ReactNode, useMemo } from "react";
-import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
+import ReactMarkdown, { type Components, defaultUrlTransform, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { type MentionMark, remarkMentions } from "@/lib/mention-marks";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,7 +21,8 @@ import { cn } from "@/lib/utils";
  *   every other stays a placeholder (a project's docs, which the hub serves to their readers);
  * - headings move down two levels (a memory's # sits under the page's h1 and the card's h2); a document that is the
  *   page itself (`variant="page"`) keeps them under the page's h1 instead: # and ## are h2, ### an h3, and so on;
- * - code blocks and tables scroll inside a focusable region instead of widening the page.
+ * - code blocks and tables scroll inside a focusable region instead of widening the page;
+ * - a chat message (`mentions`) marks the members it names, their names without the `@` (`lib/mention-marks.ts`).
  */
 const ALLOWED = [
   "p",
@@ -53,6 +55,9 @@ const ALLOWED = [
   "sup",
   "section",
 ];
+
+// Raw HTML never becomes markup here, so a span comes from remarkMentions alone.
+const MENTION_ALLOWED = [...ALLOWED, "span"];
 
 const SAFE_LINK = /^(https?:|mailto:|#)/i;
 
@@ -216,6 +221,11 @@ const COMPONENTS: Components = {
   ),
 };
 
+/** A member a chat message names (`remarkMentions`): its name on a tint of `brand`, without the `@`. */
+function Mention({ node: _node, className: _className, ...props }: Props<"span">) {
+  return <span {...props} className="rounded-xs bg-brand/10 px-0.5 font-medium text-brand" data-testid="message-mention" />;
+}
+
 /** The headings of a document that is the page itself: under the page's h1, # and ## both h2. */
 const PAGE_HEADINGS: Components = {
   h1: heading(2, "mt-8 mb-3 text-lg first:mt-0"),
@@ -232,6 +242,7 @@ export function SafeMarkdown({
   testId = "memory-markdown",
   images,
   variant = "card",
+  mentions,
 }: {
   children: string;
   className?: string;
@@ -241,9 +252,12 @@ export function SafeMarkdown({
   images?: (src: string) => string | null;
   /** `page` when the Markdown is the page's own content under its h1, `card` (the default) inside a card. */
   variant?: "card" | "page";
+  /** The members of the chat whose message this is, marked where it names them. */
+  mentions?: readonly MentionMark[];
 }): ReactNode {
   const components = useMemo<Components>(() => {
-    const found: Components = variant === "page" ? { ...COMPONENTS, ...PAGE_HEADINGS } : COMPONENTS;
+    const base: Components = variant === "page" ? { ...COMPONENTS, ...PAGE_HEADINGS } : COMPONENTS;
+    const found: Components = mentions ? { ...base, span: Mention } : base;
     if (!images) return found;
     return {
       ...found,
@@ -252,13 +266,14 @@ export function SafeMarkdown({
         return url ? <HeldImage url={url} alt={props.alt ?? ""} title={props.title} /> : <MarkdownImage {...props} />;
       },
     };
-  }, [images, variant]);
+  }, [images, variant, mentions]);
+  const plugins = useMemo<NonNullable<Options["remarkPlugins"]>>(() => (mentions?.length ? [remarkGfm, [remarkMentions, mentions]] : [remarkGfm]), [mentions]);
   return (
     <div className={cn("text-sm text-foreground [overflow-wrap:anywhere]", className)} data-testid={testId}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={plugins}
         components={components}
-        allowedElements={ALLOWED}
+        allowedElements={mentions ? MENTION_ALLOWED : ALLOWED}
         unwrapDisallowed
         urlTransform={(url) => defaultUrlTransform(url)}
       >

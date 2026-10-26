@@ -67,7 +67,7 @@ function GroupHead({ chat, me, onMembers, image }: { chat: Chat; me: string | nu
   const t = useTranslations("chats.header");
   const format = useFormatter();
   const agents = chat.agents.filter((agent) => !agent.deleted);
-  const names = [...agents.map((agent) => `@${agent.handle}`), ...chat.people.filter((person) => person.login.toLowerCase() !== me?.toLowerCase()).map((person) => person.login)];
+  const names = [...agents.map((agent) => agent.name || agent.handle), ...chat.people.filter((person) => person.login.toLowerCase() !== me?.toLowerCase()).map((person) => person.login)];
   const shown = names.slice(0, 4);
   const who = names.length > shown.length ? t("andMore", { names: shown.join(", "), count: names.length - shown.length }) : names.length ? format.list(shown, { type: "conjunction" }) : t("onlyYou");
   return (

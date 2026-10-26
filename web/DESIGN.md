@@ -1036,19 +1036,21 @@ Shared pieces built on them:
   before. They read as a chat app's (`message-item.tsx`): the visitor's own on the right in a `brand-soft` bubble (the
   ground of their pressed reaction too) with no face and no name, the time above; anyone else's on the left in a
   `muted` bubble after their face (an agent's avatar or initial on its colour, a person's GitHub avatar or initials,
-  the hub's mark) under their name (an agent's with `@handle`, the hub's with an Automatic tag for what it says by
-  rule) and the time. On those grounds `fg` reads at 17.2:1 and 18.1:1 in light, 14.9:1 and 17.0:1 in dark, a link
+  the hub's mark) under their name (an agent's with its handle after it, no `@`, when the two differ; the hub's with an
+  Automatic tag for what it says by rule) and the time. On those grounds `fg` reads at 17.2:1 and 18.1:1 in light, 14.9:1 and 17.0:1 in dark, a link
   (`brand`) at 5.8:1 and 6.1:1, 6.2:1 and 7.1:1, and `fg-muted` (list marks, quotes) at 6.1:1 at the least. Messages
   of one author on the same day within five minutes run on: the face, the name and the time show once, over the first,
   whose bubble turns a small corner toward them; each other one keeps a head for a screen reader alone (the message's
   name: who, then when) and gives its full time as the bubble's tooltip. A bubble is `radius-lg`, at most 42 rem wide
   and on phones the line less the face (the visitor's 85 %), its text through SafeMarkdown
   (`components/data/markdown.tsx`: Markdown, never HTML) with inline code and code blocks on `card`, a code block or a
-  table scrolling inside it. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: a
+  table scrolling inside it. A member of the chat the text names is marked (`lib/mention-marks.ts`): an agent's
+  `@handle` shows as its name, a person's `@login` or bare login as the login, never with the `@`, `medium` in `brand`
+  on a tint of it, `radius-xs`; text in code, a link or a path keeps the name as written. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: a
   mention the hub refused in `attention` with the
   hub's reason, each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
   that run is on its way (`message-progress.tsx`, by the hub's rule, for a visitor who may read the run: one polite
-  status line per run, "@handle got it, waiting for worker X" or "in the inbox of the running turn" with a still
+  status line per run, "handle got it, waiting for worker X" (the handle marked as in the text) or "in the inbox of the running turn" with a still
   neutral dot, then each step of its setup and working with the running dot, each in place of the one before; gone
   once the agent answers or the run ends, so a message nobody works on shows nothing), what the page puts under it (a
   decision), its reactions, and in a group chat, for a message that starts a thread, the faces of who replied, "3

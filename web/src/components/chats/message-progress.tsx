@@ -39,7 +39,7 @@ export function MessageProgress({ progress }: { progress: readonly ChatProgress[
               {waiting ? null : <span className="absolute inset-0 animate-live-ping rounded-full bg-running" />}
             </span>
             <span className="min-w-0 [overflow-wrap:anywhere]">
-              {t.rich(key, { ...values, agent: (chunks) => <span className="font-medium text-foreground">{chunks}</span> })}
+              {t.rich(key, { ...values, agent: (chunks) => <span className="rounded-xs bg-brand/10 px-0.5 font-medium text-brand">{chunks}</span> })}
             </span>
           </p>
         );

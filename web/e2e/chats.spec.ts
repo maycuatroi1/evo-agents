@@ -90,7 +90,7 @@ test("under a mention the thread says at once that the agent got it, then each s
   await box.press("Control+Enter");
   const asked = messageOf(page, "is the wait test flaky?");
   const line = asked.getByTestId("message-progress-step");
-  await expect(line).toHaveText(`@${handle} got it, waiting for worker ${workerName}`);
+  await expect(line).toHaveText(`${handle} got it, waiting for worker ${workerName}`);
   await expect(line).toHaveAttribute("data-step", "waiting");
   await expect(line).toHaveRole("status");
   await expect(line.locator(".animate-live-ping")).toHaveCount(0);
@@ -99,7 +99,7 @@ test("under a mention the thread says at once that the agent got it, then each s
 
   // Each step its worker notes replaces the one before, live, with the running dot; no message comes with them.
   await claimOnly(live, runId);
-  await expect(line).toHaveText(`@${handle}: worker ${workerName} claimed the run`);
+  await expect(line).toHaveText(`${handle}: worker ${workerName} claimed the run`);
   await expect(line.locator(".animate-live-ping")).toHaveCount(1);
   const steps: [string, string | undefined, string][] = [
     ["checking", undefined, `@${handle} is checking access to the repos`],
@@ -112,7 +112,7 @@ test("under a mention the thread says at once that the agent got it, then each s
     await expect(asked.getByTestId("message-progress-step")).toHaveCount(1);
   }
   await agentStarts(live, runId);
-  await expect(line).toHaveText(`@${handle} is working on it`);
+  await expect(line).toHaveText(`${handle} is working on it`);
   await expect(main(page).getByTestId("chat-log").getByTestId("chat-message")).toHaveCount(1);
 
   // A message in the thread while the agent works waits in the inbox of that turn, until the agent takes it.
@@ -123,15 +123,15 @@ test("under a mention the thread says at once that the agent got it, then each s
   await thread.getByTestId("thread-composer-text").fill(`@${handle} and the retries?`);
   await thread.getByTestId("thread-composer-text").press("Control+Enter");
   const more = thread.getByTestId("chat-message").filter({ hasText: "and the retries?" }).getByTestId("message-progress-step");
-  await expect(more).toHaveText(`@${handle} got it, in the inbox of the running turn`);
+  await expect(more).toHaveText(`${handle} got it, in the inbox of the running turn`);
   await expect(more.locator(".animate-live-ping")).toHaveCount(0);
 
   // The agent's reply ends the line under the first message; the one it took next works until its own answer.
   await agentSays(live, runId, "Not flaky: it waits on the clock.");
   await expect(asked.getByTestId("message-progress")).toHaveCount(0);
-  await expect(more).toHaveText(`@${handle} got it, in the inbox of the running turn`);
+  await expect(more).toHaveText(`${handle} got it, in the inbox of the running turn`);
   await takeInbox(live, runId);
-  await expect(more).toHaveText(`@${handle} is working on it`);
+  await expect(more).toHaveText(`${handle} is working on it`);
   await agentAnswers(live, runId, "Retries are bounded too.");
   await expect(thread.getByTestId("message-progress")).toHaveCount(0);
   await expect(asked.locator(`[data-testid="reaction-chip"][data-emoji="${CHECK}"]`)).toHaveAccessibleName(`Check mark: 1, by @${handle}`);
@@ -171,7 +171,7 @@ test("a member makes a chat, mentions its agent through the suggestions and foll
   const chatId = Number(new URL(page.url()).pathname.split("/").at(-1));
   await expect(toast(page, "Chat Release talk created")).toBeVisible();
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Release talk");
-  await expect(main(page).getByTestId("chat-who")).toContainText(`@${handle}`);
+  await expect(main(page).getByTestId("chat-who")).toContainText("Code reviewer");
   await expect(main(page).getByTestId("chat-who")).toContainText(mai.login);
   await expect(main(page).locator(`[data-testid="chat-row"][data-chat-id="${chatId}"]`)).toHaveAttribute("aria-current", "page");
 
@@ -320,7 +320,7 @@ test("threads: a link to a reply opens its thread marked, a reply goes in it, an
   await composer.fill(`@${outsider} can you take it?`);
   await composer.press("Control+Enter");
   const asked = messageOf(page, "can you take it?");
-  await expect(asked.getByTestId("mention-refused")).toContainText(`@${outsider} took no work:`);
+  await expect(asked.getByTestId("mention-refused")).toContainText(`${outsider} took no work:`);
   await expect(asked.getByTestId("mention-refused")).toContainText("is not in this chat");
   await expect(asked.getByTestId("thread-summary")).toContainText("1 reply");
   await asked.getByTestId("thread-summary").click();
