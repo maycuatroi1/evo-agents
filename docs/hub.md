@@ -2451,7 +2451,12 @@ A plan write (`evo harness step`, `hub plan step`, the MCP `plan_step`, which th
 `X-Evo-Local-Run`) names the session's run (`CLAUDE_CODE_SESSION_ID` of the tool's environment, else the newest live
 session of the directory), so the revision is recorded for the run and the run shows that plan and step; a hub that
 does not know the run gets the write again without it. `EVO_HUB_LOCAL_SYNC=0` (or `off`) turns the hooks into no-ops;
-the Stop digest and memory push are unchanged. A PostToolUse hook asks the hub at most every 2 seconds, with request
+the Stop digest and memory push are unchanged. Claude Code runs no Stop for a turn the person interrupts (Esc) or an
+API error ends, and a Stop may fail before it writes the session file; so a Stop of any session of the machine reads
+the end of the transcript of up to 3 other sessions whose file still says `running` and sends `idle` with their last
+words when the turn is over: the agent's end of turn, an API error or the interruption mark, untouched for 90 seconds,
+or a model that owes an answer for 30 minutes (a session that died). A tool call with no result yet stays `running`,
+and the hub still ends a run silent for 24 hours. A PostToolUse hook asks the hub at most every 2 seconds, with request
 timeouts of 1.5 s and a deadline of 6 s; events wait in the session file (500 at most) while the hub does not answer
 (the same cooldown as the digest) or refuses the session (10 minutes), and go in order afterwards. Every hook exits 0.
 The questions of the session reach the member too (`docs/notifications.md`, A decision of a local run): a PreToolUse
