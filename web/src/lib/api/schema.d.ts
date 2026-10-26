@@ -731,7 +731,8 @@ export interface paths {
         put?: never;
         /**
          * Complete
-         * @description Move the plan to the completed area; refused while a step is not done, as evo-cli's complete_plan.
+         * @description Move the plan to the completed area; refused while a step is not done, as evo-cli's complete_plan, unless
+         *     ``mark_steps_done`` marks those steps done in the same revision.
          */
         post: operations["complete_v1_projects__project__plans__plan_id__complete_post"];
         delete?: never;
