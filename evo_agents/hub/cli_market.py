@@ -594,16 +594,21 @@ def cmd_listing_set(args) -> int:
 
 @client_command
 def cmd_bundle_upload(args) -> int:
+    """A signature file is an envelope or the Sigstore bundle CI writes, wrapped into one as ``hub plugin publish``
+    does, since the seller's hub takes envelopes alone."""
     import base64
-    import json
     from pathlib import Path
+
+    from evo_agents.plugins.signing import SignatureError, read_signature
 
     hub, _ = signed_in()
     try:
         data = Path(args.file).read_bytes()
-        signature = json.loads(Path(args.signature).read_text())
-    except (OSError, ValueError) as exc:
+        signature = read_signature(Path(args.signature).read_bytes())
+    except OSError as exc:
         raise HubError(f"cannot read the bundle or its signature: {exc}") from None
+    except SignatureError as exc:
+        raise HubError(f"{args.signature}: {exc}") from None
     body = {"bundle": base64.b64encode(data).decode(), "signature": signature}
     found = hub.call("POST", f"/v1/seller/listings/{args.plugin}/bundles", body)
     if args.json:
@@ -798,7 +803,10 @@ def _selling(msub) -> None:
     upload.add_argument("plugin", metavar="PLUGIN")
     upload.add_argument("file", metavar="FILE", help="the bundle, as `evo-agents plugin pack` writes it")
     upload.add_argument(
-        "--signature", required=True, metavar="FILE", help="its signature, from `evo-agents plugin sign`"
+        "--signature",
+        required=True,
+        metavar="FILE",
+        help="its signature: an envelope from `evo-agents plugin sign`, or the .sigstore.json bundle of a release",
     )
     json_option(upload, returns_object(*LISTING_KEYS, schema="Listing"))
     upload.set_defaults(func=cmd_bundle_upload)
