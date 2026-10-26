@@ -43,7 +43,7 @@ import logging
 from collections import Counter
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, literal, select, update
+from sqlalchemy import and_, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -143,7 +143,8 @@ WAITING_CHANGES = ("judge_pending", "judging", "judged", "open")  # a Curator ch
 async def _awaiting(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
     """What waits for the owner: the project's runs in review, to approve, and the Curator's pull requests (merge
     requests on GitLab) still open, to merge; how many, and the first few, runs first. A pull request is named by its
-    Builder's run, with ``pull_request`` its link (null for a merge request, whose link the hub does not know)."""
+    Builder's run, with ``pull_request`` its link (null for a merge request, whose link the hub does not know). A change
+    left open with no branch, whose draft never became a plan, has nothing to merge: ``_planned`` lists it."""
     r, c = tables.runs, tables.curator_changes
     where = (r.c.project_id == project_id, r.c.state == "review")
     total = (await conn.execute(select(func.count()).select_from(r).where(*where))).scalar_one()
@@ -151,7 +152,7 @@ async def _awaiting(conn: AsyncConnection, project_id: int) -> tuple[int, list[d
     listed = [
         {"run_id": row.id, "plan_id": row.plan_id, "title": row.title} for row in (await conn.execute(query)).all()
     ]
-    open_prs = (c.c.project_id == project_id, c.c.state.in_(WAITING_CHANGES))
+    open_prs = (c.c.project_id == project_id, c.c.state.in_(WAITING_CHANGES), c.c.branch.is_not(None))
     total += (await conn.execute(select(func.count()).select_from(c).where(*open_prs))).scalar_one()
     changes = select(
         c.c.builder_run_id, c.c.plan_id, c.c.repo, c.c.branch, c.c.pr_number, c.c.pr_url, c.c.tier, c.c.state
@@ -171,12 +172,14 @@ async def _awaiting(conn: AsyncConnection, project_id: int) -> tuple[int, list[d
 
 async def _planned(conn: AsyncConnection, access: ProjectAccess) -> tuple[int, list[dict]]:
     """The Curator's changes still planned whose proposal the owner may read: how many, and the oldest few, each with
-    why it waits (its reason; null when the night shift has not passed over it, or queued its Builder)."""
+    why it waits (its reason; null when the night shift has not passed over it, or queued its Builder). A change left
+    open with no branch counts too: its draft never became a plan, so its owner builds it, and its reason says why."""
     c, p = tables.curator_changes, tables.proposals
+    no_plan = and_(c.c.state == "open", c.c.branch.is_(None))
     query = (
         select(c.c.id, c.c.proposal_id, c.c.plan_id, c.c.repo, c.c.tier, c.c.reason, c.c.builder_run_id, p.c.label)
         .join_from(c, p, p.c.id == c.c.proposal_id)
-        .where(c.c.project_id == access.project_id, c.c.state == "planned")
+        .where(c.c.project_id == access.project_id, or_(c.c.state == "planned", no_plan))
         .order_by(c.c.id)
     )
     through = plan_routes._sink(access, None)
@@ -210,11 +213,10 @@ def _planned_blocks(planned: dict) -> list[str]:
     when there is none."""
     if not planned["total"]:
         return []
-    lines = [
-        f"- change #{item['id']} ({item['plan_id']}, proposal #{item['proposal_id']}, tier {item['tier']}, "
-        f"{item['repo']}): {_waits_for(item)}"
-        for item in planned["listed"]
-    ]
+    lines = []
+    for item in planned["listed"]:
+        named = [item["plan_id"], f"proposal #{item['proposal_id']}", f"tier {item['tier']}", item["repo"]]
+        lines.append(f"- change #{item['id']} ({', '.join(part for part in named if part)}): {_waits_for(item)}")
     return [f"The Curator's changes waiting to be built: {planned['total']}.", *(["\n".join(lines)] if lines else [])]
 
 

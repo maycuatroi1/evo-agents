@@ -234,6 +234,23 @@ def test_curator_plan_route_refuses_a_proposal_not_accepted_or_of_tier_3(world, 
     assert {item["proposal_id"] for item in changes(world)} == {wide["id"], deferred["id"]}  # accepting it plans it
 
 
+def test_curator_plan_the_brief_lists_a_change_with_no_plan_to_build_not_to_merge(world):  # noqa: F811
+    from tests.hub.test_brief import BRIEF, body_of, briefed, briefs_of
+
+    (wide,) = answered_all(world, (TWO_REPOS, "accept"))
+    (change,) = changes(world)
+    assert (change["state"], change["plan_id"], change["branch"]) == ("open", None, None)
+    assert briefed(world.client, BRIEF) == {"brief": 1}
+    body = body_of(world.db)
+    assert body["awaiting_merge"] == {"total": 0, "listed": []}  # no branch: nothing to merge
+    (planned,) = body["planned_changes"]["listed"]
+    assert (planned["id"], planned["plan_id"], planned["repo"]) == (change["id"], None, None)
+    (note,) = briefs_of(world.client, world.headers["owner"])
+    listed = f"- change #{change['id']} (proposal #{wide['id']}, tier 2): {planned['reason']}"
+    assert f"The Curator's changes waiting to be built: 1.\n\n{listed}" in note["body"]
+    assert "merge request" not in note["body"] and "None" not in note["body"]
+
+
 def test_curator_plan_route_on_the_command_line(world, tmp_path, monkeypatch, capsys):  # noqa: F811
     with monkeypatch.context() as patched:
         patched.setattr(judge, "PLANNED_TIERS", (0, 1))
