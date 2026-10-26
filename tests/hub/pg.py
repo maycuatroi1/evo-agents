@@ -242,6 +242,15 @@ def plugin_version_tables() -> frozenset[str]:
     return frozenset(chain.version_table for chain in plugin_schema.chains())
 
 
+def plugin_chain_tables() -> frozenset[str]:
+    """The tables the installed core plugins' chains leave in a migrated database besides the hub's own: their version
+    tables and the tables of their own metadata (``plugin_schema.installed_tables``), such as editorial's, which no
+    chain of the hub made; the tables crm, pm and marketing adopt are the hub's as well."""
+    from evo_agents.hub import plugin_schema
+
+    return plugin_version_tables() | plugin_schema.installed_tables()
+
+
 def plugin_revision_count() -> int:
     """How many revisions the installed core plugins' chains hold: ``migrate`` logs one upgrade line for each."""
     from evo_agents.hub import plugin_schema

@@ -247,7 +247,7 @@ def test_a_fresh_database_gets_the_one_hundred_and_ninety_six_tables(hub_db):
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
-    assert tables(hub_db) == TABLES | {"alembic_version"} | pg.plugin_version_tables()
+    assert tables(hub_db) == TABLES | {"alembic_version"} | pg.plugin_chain_tables()
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
     # are the sealed values of credentials (0011) and their nonces, the sealed tokens of OAuth accounts (0066), the
@@ -340,7 +340,7 @@ def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db, w
     assert sorted(line.get("applied", []) for line in outcomes) == [[], list(ALL)]
     assert all(any(line["msg"].startswith("waiting for the migration lock") for line in lines) for lines in logs)
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
-    assert tables(hub_db) == TABLES | {"alembic_version"} | pg.plugin_version_tables()
+    assert tables(hub_db) == TABLES | {"alembic_version"} | pg.plugin_chain_tables()
 
 
 def test_a_database_at_an_unknown_revision_is_refused(hub_db):
