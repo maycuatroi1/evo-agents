@@ -1,6 +1,6 @@
 import { CheckSquare, ImageIcon, Square } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { ComponentPropsWithoutRef, JSX, ReactNode } from "react";
+import { type ComponentPropsWithoutRef, type JSX, type ReactNode, useMemo } from "react";
 import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -15,8 +15,11 @@ import { cn } from "@/lib/utils";
  * - links keep http(s) and mailto targets and in-page anchors (footnotes); any other target, `javascript:` or a
  *   path relative to the file, renders as text with the target in a title, since it means nothing on the web;
  * - images are not loaded (a memory must not make the browser fetch another site): they become a link to the
- *   image, or a placeholder;
- * - headings move down two levels (a memory's # sits under the page's h1 and the card's h2);
+ *   image, or a placeholder. A page that holds the images itself passes `images`, which turns the source an image
+ *   names into the URL of its bytes on the hub's own origin: that image is shown, with its title as its caption, and
+ *   every other stays a placeholder (a project's docs, which the hub serves to their readers);
+ * - headings move down two levels (a memory's # sits under the page's h1 and the card's h2); a document that is the
+ *   page itself (`variant="page"`) keeps them under the page's h1 instead: # and ## are h2, ### an h3, and so on;
  * - code blocks and tables scroll inside a focusable region instead of widening the page.
  */
 const ALLOWED = [
@@ -61,7 +64,7 @@ function safeHref(href: string | undefined): string | null {
 
 type Props<T extends keyof JSX.IntrinsicElements> = ComponentPropsWithoutRef<T> & { node?: unknown };
 
-function heading(level: 3 | 4 | 5 | 6, className: string) {
+function heading(level: 2 | 3 | 4 | 5 | 6, className: string) {
   const Tag = `h${level}` as const;
   return function Heading({ node: _node, className: extra, ...props }: Props<"h3">) {
     return <Tag className={cn("scroll-mt-20 font-semibold tracking-tight text-foreground", className, extra)} {...props} />;
@@ -110,6 +113,20 @@ function MarkdownImage({ src, alt }: Props<"img">) {
     </a>
   ) : (
     <span className={cn(chip, "text-muted-foreground")}>{content}</span>
+  );
+}
+
+/**
+ * An image a page holds, from the hub's own origin (`url`), as wide as the text at most, with the title the Markdown
+ * gives it (`![alt](src "title")`) as its caption. Inside a paragraph, so only phrasing elements: spans as blocks.
+ */
+function HeldImage({ url, alt, title }: { url: string; alt: string; title?: string }) {
+  return (
+    <span className="my-4 block" data-testid="markdown-image">
+      {/* eslint-disable-next-line @next/next/no-img-element -- the hub serves the bytes; nothing to optimise here */}
+      <img src={url} alt={alt} loading="lazy" decoding="async" className="h-auto max-w-full rounded-md border border-border" />
+      {title ? <span className="mt-1.5 block text-xs text-muted-foreground">{title}</span> : null}
+    </span>
   );
 }
 
@@ -199,21 +216,48 @@ const COMPONENTS: Components = {
   ),
 };
 
+/** The headings of a document that is the page itself: under the page's h1, # and ## both h2. */
+const PAGE_HEADINGS: Components = {
+  h1: heading(2, "mt-8 mb-3 text-lg first:mt-0"),
+  h2: heading(2, "mt-8 mb-3 text-lg first:mt-0"),
+  h3: heading(3, "mt-6 mb-2 text-base first:mt-0"),
+  h4: heading(4, "mt-5 mb-2 text-sm first:mt-0"),
+  h5: heading(5, "mt-4 mb-2 text-sm first:mt-0"),
+  h6: heading(6, "mt-4 mb-2 text-sm text-muted-foreground first:mt-0"),
+};
+
 export function SafeMarkdown({
   children,
   className,
   testId = "memory-markdown",
+  images,
+  variant = "card",
 }: {
   children: string;
   className?: string;
   /** Other pages that render people's or agents' Markdown (a decision's context) name it for their own tests. */
   testId?: string;
+  /** The URL on the hub's own origin of the image a source names, null for one the page does not hold. */
+  images?: (src: string) => string | null;
+  /** `page` when the Markdown is the page's own content under its h1, `card` (the default) inside a card. */
+  variant?: "card" | "page";
 }): ReactNode {
+  const components = useMemo<Components>(() => {
+    const found: Components = variant === "page" ? { ...COMPONENTS, ...PAGE_HEADINGS } : COMPONENTS;
+    if (!images) return found;
+    return {
+      ...found,
+      img: function Image(props: Props<"img">) {
+        const url = typeof props.src === "string" ? images(props.src) : null;
+        return url ? <HeldImage url={url} alt={props.alt ?? ""} title={props.title} /> : <MarkdownImage {...props} />;
+      },
+    };
+  }, [images, variant]);
   return (
     <div className={cn("text-sm text-foreground [overflow-wrap:anywhere]", className)} data-testid={testId}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={COMPONENTS}
+        components={components}
         allowedElements={ALLOWED}
         unwrapDisallowed
         urlTransform={(url) => defaultUrlTransform(url)}

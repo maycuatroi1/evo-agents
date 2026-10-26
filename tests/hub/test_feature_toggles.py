@@ -22,7 +22,7 @@ SECOND = "second-project"
 
 
 def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
-    assert features.IDS == ("chats", "curator", "kg", "monitor", "market", "seller", "canvas", "srs", "tasks")
+    assert features.IDS == ("chats", "curator", "kg", "monitor", "market", "seller", "canvas", "srs", "tasks", "docs")
     assert {f.id: f.layers for f in features.FEATURES} == {
         "chats": ("instance",),
         "curator": ("instance", "project"),
@@ -33,9 +33,10 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
         "canvas": ("instance", "project"),
         "srs": ("instance", "project"),
         "tasks": ("instance", "project"),
+        "docs": ("instance", "project"),
     }
-    # the seller is off until a hub admin turns it on; canvas, srs and tasks, plugins once, until a project does
-    assert [f.id for f in features.FEATURES if not f.default] == ["seller", "canvas", "srs", "tasks"]
+    # the seller is off until a hub admin turns it on; canvas, srs, tasks (plugins once) and docs until a project does
+    assert [f.id for f in features.FEATURES if not f.default] == ["seller", "canvas", "srs", "tasks", "docs"]
     owners = {
         "/v1/chats": ("chats", None),
         "/v1/chats/12/messages": ("chats", None),
@@ -52,6 +53,7 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
         "/v1/x/srs/demo/documents/4/versions": ("srs", "demo"),
         "/v1/x/tasks/demo/tasks": ("tasks", "demo"),
         "/v1/x/tasksboard/demo": None,
+        "/v1/x/docs/demo/documents/guide/images/ab": ("docs", "demo"),
         "/v1/market": ("market", None),
         "/v1/market/3/lumen-notes": ("market", None),
         "/v1/marketplace": None,
@@ -69,6 +71,7 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
     assert features.tool_owner("memory_get") is None
     assert features.tool_owner("canvas__read").id == "canvas" and features.tool_owner("srs__propose").id == "srs"
     assert features.tool_owner("tasks__create").id == "tasks" and features.tool_owner("crm__invite") is None
+    assert features.tool_owner("docs__read").id == "docs"
 
 
 def test_a_projects_layer_wins_over_the_hubs_and_a_feature_neither_sets_is_on():
@@ -80,7 +83,8 @@ def test_a_projects_layer_wins_over_the_hubs_and_a_feature_neither_sets_is_on():
     assert not features.enabled(chats, {"chats": False}, {"chats": True})  # the hub's alone: a project's is ignored
     assert features.problems({"kg": False, "curator": True}, "project") == []
     assert features.problems({"wiki": False}, "instance") == [
-        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, market, seller, canvas, srs, tasks"
+        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, market, seller, canvas, srs, tasks, "
+        "docs"
     ]
     srs = features.BY_ID["srs"]
     assert not features.enabled(srs, {}) and features.enabled(srs, {}, {"srs": True})
@@ -170,6 +174,7 @@ def test_with_nothing_set_every_feature_is_on_and_no_route_is_turned_away(toggle
             {"id": "canvas", "layers": ["instance", "project"], "enabled": False},
             {"id": "srs", "layers": ["instance", "project"], "enabled": False},
             {"id": "tasks", "layers": ["instance", "project"], "enabled": False},
+            {"id": "docs", "layers": ["instance", "project"], "enabled": False},
         ],
         "projects": [],
     }
@@ -200,7 +205,7 @@ def test_a_feature_turned_off_for_a_project_answers_404_there_and_nowhere_else(t
     mine = get(toggles, "/v1/features").json()
     assert mine["projects"] == [{"project": PROJECT, "values": {"kg": False}}]
     assert all(
-        feature["enabled"] == (feature["id"] not in ("seller", "canvas", "srs", "tasks"))
+        feature["enabled"] == (feature["id"] not in ("seller", "canvas", "srs", "tasks", "docs"))
         for feature in mine["features"]
     )
     assert get(toggles, "/v1/features", "stranger").json()["projects"] == []  # no grant on it
@@ -220,6 +225,7 @@ def test_the_hubs_layer_turns_a_feature_off_everywhere_and_a_projects_layer_turn
         "canvas": False,
         "srs": False,
         "tasks": False,
+        "docs": False,
     }
     turned_away(get(toggles, "/v1/chats"), off("chats"))
     turned_away(get(toggles, f"/v1/kg/{SECOND}/builds"), off("kg", SECOND))
@@ -328,20 +334,20 @@ def test_a_tool_of_a_feature_turned_off_is_refused_as_its_route_is(hub):
 
 
 @needs_pg
-def test_canvas_srs_and_tasks_are_features_the_store_leaves_out_and_enabling_one_turns_it_on(toggles):
+def test_canvas_srs_tasks_and_docs_are_features_the_store_leaves_out_and_enabling_one_turns_it_on(toggles):
     admin = toggles.headers["admin"]
     grant = {"role": "admin", "max_level": "internal"}
     made = toggles.client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=grant, headers=admin)
     assert made.status_code == 200, made.text
     owner = toggles.headers["owner"]  # an admin of the project, not of the hub
     store = {plugin["name"] for plugin in get(toggles, "/v1/plugins", "admin").json()}
-    assert not {"canvas", "srs", "tasks"} & store
-    for name in ("canvas", "srs", "tasks"):
+    assert not {"canvas", "srs", "tasks", "docs"} & store
+    for name in ("canvas", "srs", "tasks", "docs"):
         assert get(toggles, f"/v1/plugins/{name}", "admin").status_code == 404
         refused = toggles.client.post(f"/v1/plugins/{name}/remove", json={}, headers=admin)
         assert refused.status_code == 404, refused.text
     listed = {plugin["name"]: plugin for plugin in get(toggles, f"/v1/projects/{PROJECT}/plugins").json()}
-    assert {name for name, plugin in listed.items() if plugin["builtin"]} == {"canvas", "srs", "tasks"}
+    assert {name for name, plugin in listed.items() if plugin["builtin"]} == {"canvas", "srs", "tasks", "docs"}
     assert not listed["srs"]["enabled"] and listed["srs"]["granted"] == []
     message = (
         f"srs is not enabled in project {PROJECT}: an admin of the project enables it on the project's Plugins page "

@@ -470,6 +470,14 @@ class Hub:
             status, raw = _send("POST", self.url + path, headers, handle, self.timeout if timeout is None else timeout)
         return self._answer(status, raw)
 
+    def get_bytes(self, path: str, *, timeout: float | None = None) -> bytes:
+        """GET ``path`` and the bytes it answers as they are, such as an image; a refusal raises as ``call``."""
+        headers = {**self._headers(), "Accept": "*/*"}
+        status, raw = _send("GET", self.url + path, headers, None, self.timeout if timeout is None else timeout)
+        if status >= 300:
+            self._answer(status, raw)
+        return raw
+
     def _answer(self, status: int, raw: bytes):
         payload = _json(raw)
         if 300 <= status < 400:

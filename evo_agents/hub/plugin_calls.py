@@ -13,8 +13,8 @@ member reads (``DOWN``), and a hub admin reads it in the backend's status.
 
 The core plugins of this process are those of the entry point group ``evo_agents.plugins``
 (``evo_agents.plugins.core``) and the features of the hub that run on the same extension points (``BUILTIN``: canvas,
-srs, tasks), read once (``core_registry``; a test that installs others clears it). A plugin is reachable in a project
-while it is installed on the hub, not turned off, and enabled by the project (``enabled_query``), and what it may do
+srs, tasks, docs), read once (``core_registry``; a test that installs others clears it). A plugin is reachable in a
+project while it is installed on the hub, not turned off, and enabled by the project (``enabled_query``), and what it may do
 there is what the project granted that its installed version still asks for (``effective_grant``): the extension
 points check both on every call, never once for all. A feature of ``BUILTIN`` is no plugin: its row in the store is
 marked ``builtin``, no store or project lists it as a plugin, and it is enabled in each project the feature is on in
@@ -53,6 +53,7 @@ BUILTIN = {
     "canvas": "evo_agents.hub.server.canvas:MANIFEST",
     "srs": "evo_agents.hub.server.srs:MANIFEST",
     "tasks": "evo_agents.hub.server.tasks:MANIFEST",
+    "docs": "evo_agents.hub.server.docs:MANIFEST",
 }
 
 
