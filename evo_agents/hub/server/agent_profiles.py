@@ -100,7 +100,7 @@ class AgentPermissions(BaseModel):
     )
     tool: AgentAxis = Field(default_factory=AgentAxis, description="read, edit, bash, web, agent, mcp:<server>")
     skill: AgentAxis = Field(default_factory=AgentAxis, description="skill names, global or the project's")
-    worker: AgentAxis = Field(default_factory=AgentAxis, description="worker names, or label:<label>")
+    worker: AgentAxis = Field(default_factory=AgentAxis, description="worker names, label:<label>, or pool:<name>")
     project: AgentAxis = Field(default_factory=AgentAxis, description="the other projects whose runs it may take")
     model: AgentAxis = Field(default_factory=AgentAxis, description="model names, as a runtime names them")
     runtime: AgentAxis = Field(

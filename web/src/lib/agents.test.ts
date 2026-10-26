@@ -51,6 +51,13 @@ describe("agent permissions", () => {
     expect(allowsWorker({}, "desk", [])).toBe(true);
   });
 
+  it("lets every node of a pool the worker axis names claim, and no worker of another pool or of none", () => {
+    const permissions = { worker: { mode: "allowlist" as const, allow: ["pool:vps"] } };
+    expect(allowsWorker(permissions, "vps-1", [], "VPS")).toBe(true);
+    expect(allowsWorker(permissions, "lab-1", [], "lab")).toBe(false);
+    expect(allowsWorker(permissions, "desk", ["vps"], null)).toBe(false);
+  });
+
   it("checks an allowlist item by the shape its axis takes", () => {
     expect(validItem("credential", "github-app")).toBe(true);
     expect(validItem("credential", "GitHub")).toBe(false);
@@ -59,6 +66,9 @@ describe("agent permissions", () => {
     expect(validItem("tool", "shell")).toBe(false);
     expect(validItem("worker", "label:gpu")).toBe(true);
     expect(validItem("worker", "label:")).toBe(false);
+    expect(validItem("worker", "pool:vps")).toBe(true);
+    expect(validItem("worker", "pool:")).toBe(false);
+    expect(validItem("worker", "label:pool=vps")).toBe(false);
     expect(validItem("project", "Demo")).toBe(false);
     expect(validItem("model", "anthropic/claude-sonnet-4-5")).toBe(true);
     expect(validItem("environment", "host")).toBe(true);

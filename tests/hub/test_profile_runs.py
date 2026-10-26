@@ -240,6 +240,37 @@ def test_a_worker_claims_a_profile_run_only_when_its_worker_axis_names_it_or_a_l
     assert spec["id"] == run["id"] and spec["profile"]["handle"] == "gpu-only"
 
 
+def pool_node(client, headers, db, name: str, pool: str) -> dict:
+    """A worker of ``headers``' member made a node of ``pool``, of the project, with a fresh doctor report (ready)."""
+    made = client.post("/v1/worker-pools", json={"name": pool, "projects": [PROJECT]}, headers=headers)
+    assert made.status_code in (201, 409), made.text
+    pool_id = client.get(f"/v1/worker-pools/{pool}", headers=headers).json()["id"]
+    worker = worker_of(client, headers, name)
+    sql(db, update(tables.workers).where(tables.workers.c.id == worker["id"]).values(pool_id=pool_id))
+    doctor = client.post("/v1/worker/doctor", json={"findings": []}, headers=worker["headers"])
+    assert doctor.status_code == 200, doctor.text
+    return worker
+
+
+def test_a_profile_whose_worker_axis_names_a_pool_takes_only_the_nodes_of_that_pool(client, admin, hub_db):
+    mac, node = worker_of(client, admin["owner"], "mac-mini"), pool_node(client, admin["owner"], hub_db, "vps-1", "vps")
+    other = pool_node(client, admin["owner"], hub_db, "lab-1", "lab")
+    profile(client, admin["owner"], "vps-only", permissions=allow(worker=["POOL:VPS"]))
+    shown = client.get(f"/v1/projects/{PROJECT}/agents/vps-only", headers=admin["owner"]).json()
+    assert shown["permissions"]["worker"] == {"mode": "allowlist", "allow": ["pool:vps"]}
+    text = refused(dispatch(client, admin["owner"], worker=mac, profile="vps-only"))
+    assert text == "agent @vps-only does not allow worker mac-mini: it allows pool:vps; nothing was dispatched"
+    assert refused(dispatch(client, admin["owner"], worker=other, profile="vps-only")).startswith(
+        "agent @vps-only does not allow worker lab-1"
+    )
+    pinned = dispatched(client, admin["owner"], worker=node, profile="vps-only")
+    assert pinned["pinned_worker_id"] == node["id"] and claim(client, node)["id"] == pinned["id"]
+    assert report(client, node, pinned["id"], "failed", error="done with it").status_code == 200  # frees its slot
+    run = dispatched(client, admin["owner"], "lumen-kb-docs", profile="vps-only")  # unpinned: a node of the pool
+    assert claim(client, mac) is None and claim(client, other) is None
+    assert claim(client, node)["id"] == run["id"]
+
+
 def test_a_profile_claim_of_a_run_asking_any_runtime_takes_a_runtime_the_profile_allows(client, admin, hub_db):
     claude_only = worker_of(client, admin["owner"], "claude-box")
     both = add_worker(client, admin["owner"], "both-box", runtimes=BOTH, checkouts=CHECKOUTS)

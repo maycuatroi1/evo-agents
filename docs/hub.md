@@ -454,7 +454,7 @@ of the dispatcher's secret for the same variable, whatever the credential axis s
 | `credential` | secret names, and `github-app` for a token of the hub's GitHub App | the leases of the run ([credentials.md](credentials.md)) |
 | `tool` | the tool words below, and `mcp:<server>` | the worker's adapter, in the agent session |
 | `skill` | skill names, global or of the project (ignoring case) | the dispatch of an author run (`create-exec-plan`), and the worker's adapter |
-| `worker` | worker names, or `label:<label>` (ignoring case) | the dispatch (a pinned worker, or one of the dispatcher's at least) and the claim |
+| `worker` | worker names, `label:<label>` of a worker's own label, or `pool:<name>` for every node of a worker pool, those that join later too (ignoring case) | the dispatch (a pinned worker, or one of the dispatcher's at least) and the claim |
 | `project` | the other projects whose runs the profile may take; its own always | the dispatch |
 | `model` | model names, as a runtime names them | the dispatch (none named: the first allowed), and the worker's adapter |
 | `runtime` | `claude-code`, `opencode`, `codex`, and `<plugin>/<name>` of a plugin's runtime | the dispatch, and the claim of a run asking for `any` (which takes a runtime of the core) |
