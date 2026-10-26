@@ -304,7 +304,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 
 The Accounts page (`components/accounts/provider-logo.tsx`) names who an account signs in to with the provider's logo at
 20 px, in the brand's colour, and the provider's name as text beside it: the logo is never the only name. Marks are
-Simple Icons paths (CC0) drawn inline, `fill="currentColor"`; the reading of an account's provider from its variable is
+Simple Icons paths (CC0) drawn inline, `fill="currentColor"`, and OpenAI's is the Lobe Icons one (MIT); the reading of an account's provider from its variable is
 the hub's (`docs/credentials.md`, section "Accounts"). A logo is an identity, not a status: what is wrong with an
 account stays with its pill and its dot, and a logo never changes colour for a state. The mark is decorative
 (`aria-hidden`) because the name is text next to it.
@@ -314,9 +314,9 @@ account stays with its pill and its dot, and a logo never changes colour for a s
 | Claude | Simple Icons `claude` | `#D97757` |
 | GitLab | Simple Icons `gitlab` | `#FC6D26` |
 | Anthropic, Notion | Simple Icons `anthropic`, `notion` | text colour of the theme (near black in their brand) |
+| OpenAI | Lobe Icons `openai` | text colour of the theme |
 | GitHub | Simple Icons `github`, the `GitHubMark` of `brand.tsx`, drawn once | text colour of the theme |
 | Lark | lettered tile "L", white on `#3370FF` | `#3370FF` |
-| OpenAI | lettered tile "O", `background` on `foreground` | text colour of the theme |
 | SSH, other | Lucide `KeyRound` | `fg-subtle` |
 
 An account that is ready has no pill; the pill appears only for Paused, Cooling, Expired and Needs sign-in, and the word
@@ -332,9 +332,15 @@ host of its base URL (or "Signs in on the worker" for Claude), its format and a 
 its keys, each with its own state pill and actions, then its models as monospaced chips. An agent's account carries
 the agent mark, and a share the shared mark, both as text badges next to the account's name.
 
-The mark (`provider-mark.tsx`) is the logo for the providers `provider-logo.tsx` draws (Claude, Anthropic) on a card
-tile, and for any other the catalog's abbreviation (`text_icon`, two letters) on the catalog colour, with white or black
-ink, whichever contrasts more with it (never under 4.5:1). It is decorative (`aria-hidden`): the name is text beside it, and a mark
+The mark (`provider-mark.tsx`) is the provider's logo on a white tile with a border, the same in both themes because
+a brand's logo is drawn for a light ground: a file of `public/provider-logos/`, named by
+`components/accounts/provider-logos.json`, drawn as a lazy `<img>` at 24 px (18 px in the small mark). The files come
+from `scripts/generate_provider_logos.py`: Lobe Icons (MIT, the colour variant when there is one), then OmniRoute's
+provider SVGs (MIT), then the icon the provider publishes on its own site (its favicon or app icon as a 64 px PNG, a
+GitHub organisation's avatar); `public/provider-logos/NOTICE.md` names the source of each file. A provider with no
+icon of its own (the two custom endpoints, and a site that is down or has none), or a logo that fails to load, keeps
+the catalog's abbreviation (`text_icon`, two letters) on the catalog colour, with white or black ink, whichever
+contrasts more with it (never under 4.5:1). It is decorative (`aria-hidden`): the name is text beside it, and a mark
 never says how the keys are doing.
 
 Add provider opens the catalog in a dialog (`provider-catalog.tsx`): a search over name and id, a row of group filters
