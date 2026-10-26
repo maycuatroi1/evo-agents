@@ -6760,6 +6760,221 @@
         "schema": "Decision"
       }
     },
+    "hub docs history": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "number",
+          "title",
+          "summary",
+          "author",
+          "created_at"
+        ],
+        "schema": "DocsVersion"
+      }
+    },
+    "hub docs list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "slug",
+          "title",
+          "latest_version",
+          "label",
+          "created_by",
+          "created_at",
+          "updated_by",
+          "updated_at"
+        ],
+        "schema": "DocsDocumentSummary"
+      }
+    },
+    "hub docs put": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--slug"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--summary"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--base"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "document",
+          "version",
+          "created",
+          "changed"
+        ],
+        "schema": "DocsSaved"
+      }
+    },
+    "hub docs show": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--out"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "latest_version",
+          "label",
+          "created_by",
+          "created_at",
+          "updated_by",
+          "updated_at",
+          "versions",
+          "shown"
+        ],
+        "schema": "DocsDocument"
+      }
+    },
     "hub editorial export": {
       "positionals": [],
       "options": [
@@ -22417,7 +22632,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.46.0"
+      "version": "0.47.3"
     },
     "paths": {
       "/v1/health": {
@@ -54533,6 +54748,784 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/docs/{project}/documents": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Documents",
+          "description": "The documents of the project the caller sees, by title, each with its latest version.",
+          "operationId": "list_documents_v1_x_docs__project__documents_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/DocsDocumentSummary"
+                    },
+                    "title": "Response List Documents V1 X Docs  Project  Documents Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/docs/{project}/documents/{slug}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Document",
+          "description": "A document with every version, the newest first, and one version whole: the latest, or ``version``.",
+          "operationId": "show_document_v1_x_docs__project__documents__slug__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a version's number; the latest when left out",
+                "title": "Version"
+              },
+              "description": "a version's number; the latest when left out"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DocsDocument"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Save Document",
+          "description": "Save the next version of a document, or create it at version 1; a save that changes nothing writes nothing.",
+          "operationId": "save_document_v1_x_docs__project__documents__slug__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsSave"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DocsSaved"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/docs/{project}/documents/{slug}/versions": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Versions",
+          "description": "Every version of a document, the newest first: its number, title, summary, author and time.",
+          "operationId": "list_versions_v1_x_docs__project__documents__slug__versions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/DocsVersion"
+                    },
+                    "title": "Response List Versions V1 X Docs  Project  Documents  Slug  Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/docs/{project}/documents/{slug}/images/{sha256}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Image",
+          "description": "An image a version of the document shows, from the hub's own blob store, for the document's readers.",
+          "operationId": "show_image_v1_x_docs__project__documents__slug__images__sha256__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "sha256",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Sha256"
+              }
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the image the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the image the browser holds"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "the image's bytes, in its own media type",
+              "content": {
+                "image/png": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "304": {
+              "description": "the image the browser holds, named by If-None-Match"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/x/docs/{project}/images": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Upload Image",
+          "description": "Upload an image for the project's documents, kept once by its SHA-256; a version then shows it by a name.",
+          "operationId": "upload_image_v1_x_docs__project__images_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DocsUploadedImage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the image's bytes, a PNG, JPEG, WebP or GIF image of at most 10485760 bytes",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
             }
           }
         }
@@ -98553,6 +99546,395 @@
             "value"
           ],
           "title": "DispatchFrom"
+        },
+        "DocsDocument": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "the title of its latest version"
+            },
+            "latest_version": {
+              "type": "integer",
+              "title": "Latest Version"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label",
+              "description": "the label the document and every version and image of it carry"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_by": {
+              "type": "string",
+              "title": "Updated By",
+              "description": "the author of its latest version"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "versions": {
+              "items": {
+                "$ref": "#/components/schemas/DocsVersion"
+              },
+              "type": "array",
+              "title": "Versions",
+              "description": "every version, the newest first"
+            },
+            "shown": {
+              "$ref": "#/components/schemas/DocsVersionDetail",
+              "description": "the version asked for, the latest by default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "title",
+            "latest_version",
+            "label",
+            "created_by",
+            "created_at",
+            "updated_by",
+            "updated_at",
+            "versions",
+            "shown"
+          ],
+          "title": "DocsDocument"
+        },
+        "DocsDocumentSummary": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "the title of its latest version"
+            },
+            "latest_version": {
+              "type": "integer",
+              "title": "Latest Version"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label",
+              "description": "the label the document and every version and image of it carry"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_by": {
+              "type": "string",
+              "title": "Updated By",
+              "description": "the author of its latest version"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "title",
+            "latest_version",
+            "label",
+            "created_by",
+            "created_at",
+            "updated_by",
+            "updated_at"
+          ],
+          "title": "DocsDocumentSummary",
+          "description": "A document of a project, with its latest version."
+        },
+        "DocsImage": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the name the Markdown gives the image: ![alt](name)"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "media_type": {
+              "type": "string",
+              "title": "Media Type"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "GET of the image on this hub, for the document's readers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "sha256",
+            "media_type",
+            "size",
+            "url"
+          ],
+          "title": "DocsImage"
+        },
+        "DocsImageRef": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}(/[A-Za-z0-9_][A-Za-z0-9._-]{0,99}){0,4}$",
+              "title": "Name"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "an image of the project, uploaded before"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "name",
+            "sha256"
+          ],
+          "title": "DocsImageRef"
+        },
+        "DocsSave": {
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 500000,
+              "title": "Body",
+              "description": "the Markdown"
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 500,
+              "title": "Summary",
+              "description": "what this version changes",
+              "default": ""
+            },
+            "images": {
+              "items": {
+                "$ref": "#/components/schemas/DocsImageRef"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Images"
+            },
+            "base_version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Version",
+              "description": "409 unless the document is at this version now, 0 unless it does not exist yet; left out, the save goes on top"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LabelIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a new document's label, an admin's choice; the project's if not"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "title",
+            "body"
+          ],
+          "title": "DocsSave"
+        },
+        "DocsSaved": {
+          "properties": {
+            "document": {
+              "$ref": "#/components/schemas/DocsDocumentSummary"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the latest version after the save"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "the save created the document"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the save changed nothing and no version was written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "version",
+            "created",
+            "changed"
+          ],
+          "title": "DocsSaved"
+        },
+        "DocsUploadedImage": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "media_type": {
+              "type": "string",
+              "title": "Media Type",
+              "description": "one of image/png, image/jpeg, image/webp, image/gif, by the image's first bytes"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "held": {
+              "type": "boolean",
+              "title": "Held",
+              "description": "the project held this image already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "media_type",
+            "size",
+            "held"
+          ],
+          "title": "DocsUploadedImage"
+        },
+        "DocsVersion": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary",
+              "description": "what the version changed; may be empty"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "title",
+            "summary",
+            "author",
+            "created_at"
+          ],
+          "title": "DocsVersion"
+        },
+        "DocsVersionDetail": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary",
+              "description": "what the version changed; may be empty"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body",
+              "description": "the version's Markdown"
+            },
+            "images": {
+              "items": {
+                "$ref": "#/components/schemas/DocsImage"
+              },
+              "type": "array",
+              "title": "Images",
+              "description": "the images the version shows, by name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "title",
+            "summary",
+            "author",
+            "created_at",
+            "body",
+            "images"
+          ],
+          "title": "DocsVersionDetail"
         },
         "DoctorAnswer": {
           "properties": {
