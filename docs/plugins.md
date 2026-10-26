@@ -446,7 +446,7 @@ a hub admin in Features or by an admin of the project on its Plugins page, where
 on, it may do what its manifest asks for, with no grant of its own to keep. Going back below 0147 puts back the rows of
 `project_plugins` that 0147 kept in `retired_project_plugins`.
 
-telegram, chats, crm, pm and marketing are core plugins of another repository,
+telegram, chats, crm, pm, marketing and editorial are core plugins of another repository,
 [maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as
 the distribution `evo-agents-core-plugins` (package `evo_core_plugins`). `deploy/hub/core-plugins.txt` pins the release
 of it that matches the API of each commit of evo-agents, by version and wheel hash, and the hub's image installs it
@@ -562,6 +562,17 @@ the hub's migrations 0086 and 0124 to 0129 made (`evo_agents.hub.migrations.owne
 of `evo-agents hub pm|crm|marketing` (a `cli.json` each), their MCP tools, jobs, Loop rules and signals. The hub's image
 installs them from `deploy/hub/core-plugins.txt`. Their docs are `docs/pm-plugin.md`, `docs/crm-plugin.md` and
 `docs/marketing-plugin.md` of that repository.
+
+### editorial
+
+**editorial** (the posts of a blog from topic to publish: each post's stage, the gates a person keeps, the review rounds
+an agent type scores, and the feedback entries that turn a person's criticism into rules and probes) is a core plugin of
+the same distribution (`evo_core_plugins.editorial`). It uses the core plugin API alone, from 1.4: its own tables and
+Alembic chain, its framed page of posts, the commands of `evo-agents hub editorial`, two agent types (writer, a task on
+the post's branch `post/<slug>`; editor-judge, a question run that scores a draft), a notice kind for a gate that opens,
+a knowledge graph source and plugin probes. An answer to a gate given through the hub hands the writer a task; one
+given in a session on a machine hands none. The hub's image installs it from `deploy/hub/core-plugins.txt`. Its doc is
+`docs/editorial-plugin.md` of that repository.
 
 ### Notifications from a plugin
 
