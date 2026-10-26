@@ -5552,7 +5552,9 @@
           "retired_note",
           "created_at",
           "updated_at",
-          "replaces"
+          "replaces",
+          "plugin",
+          "ref"
         ],
         "schema": "Probe"
       }
@@ -5733,7 +5735,9 @@
           "retired_note",
           "created_at",
           "updated_at",
-          "replaces"
+          "replaces",
+          "plugin",
+          "ref"
         ],
         "schema": "Probe"
       }
@@ -5785,7 +5789,9 @@
           "retired_note",
           "created_at",
           "updated_at",
-          "replaces"
+          "replaces",
+          "plugin",
+          "ref"
         ],
         "schema": "Probe"
       }
@@ -6687,6 +6693,598 @@
           "outputs"
         ],
         "schema": "Decision"
+      }
+    },
+    "hub editorial export": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--notebook"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--format"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "markdown",
+            "json"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "format",
+          "notebooks",
+          "document"
+        ],
+        "schema": "EditorialExport"
+      }
+    },
+    "hub editorial feedback": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "list",
+            "add",
+            "repeat"
+          ]
+        },
+        {
+          "name": "entry",
+          "metavar": "PH",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--notebook"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--post"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--stage"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--seen"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--keyword"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--said"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--date"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent-wrote"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--person-fixed"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rule"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--check"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--probe-id"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "notebook",
+          "title",
+          "date",
+          "post",
+          "said",
+          "agent_wrote",
+          "agent_note",
+          "agent_after",
+          "person_fixed",
+          "fixed_note",
+          "fixed_after",
+          "rule",
+          "check",
+          "seen",
+          "probe_id",
+          "probe_task"
+        ],
+        "schema": "EditorialEntry"
+      }
+    },
+    "hub editorial import": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "posts_added",
+          "posts_updated",
+          "entries_added",
+          "entries_updated"
+        ],
+        "schema": "EditorialImported"
+      }
+    },
+    "hub editorial posts": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--stage"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "slug",
+          "title",
+          "stage",
+          "waiting_gate",
+          "run",
+          "gates",
+          "rounds",
+          "preview_url",
+          "url"
+        ],
+        "schema": "EditorialPostSummary"
+      }
+    },
+    "hub editorial recall": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--stage"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--post"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--keyword"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "notebook",
+          "title",
+          "date",
+          "post",
+          "said",
+          "agent_wrote",
+          "agent_note",
+          "agent_after",
+          "person_fixed",
+          "fixed_note",
+          "fixed_after",
+          "rule",
+          "check",
+          "seen",
+          "probe_id",
+          "probe_task"
+        ],
+        "schema": "EditorialEntry"
+      }
+    },
+    "hub editorial set": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--stage"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--branch"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--preview-url"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--url"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--published-at"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--d7"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--d28"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--gate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--gate-state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "waiting",
+            "answered",
+            "skipped"
+          ]
+        },
+        {
+          "flags": [
+            "--via"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--answer"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "stage",
+          "branch",
+          "preview_url",
+          "url",
+          "published_at",
+          "d7",
+          "d28",
+          "waiting_gate",
+          "gates",
+          "rounds",
+          "history",
+          "feedback",
+          "created_at",
+          "updated_at",
+          "comment_id",
+          "run"
+        ],
+        "schema": "EditorialPost"
+      }
+    },
+    "hub editorial show": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "stage",
+          "branch",
+          "preview_url",
+          "url",
+          "published_at",
+          "d7",
+          "d28",
+          "waiting_gate",
+          "gates",
+          "rounds",
+          "history",
+          "feedback",
+          "created_at",
+          "updated_at",
+          "comment_id",
+          "run"
+        ],
+        "schema": "EditorialPost"
       }
     },
     "hub email add": {
@@ -53769,6 +54367,1946 @@
           }
         }
       },
+      "/v1/x/editorial/{project}/posts": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Posts",
+          "description": "The posts by the order of their stages: the gate that waits, the preview and the url, how many rounds.",
+          "operationId": "list_posts_v1_x_editorial__project__posts_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "stage",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a stage of the project's config",
+                "title": "Stage"
+              },
+              "description": "a stage of the project's config"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EditorialPostSummary"
+                    },
+                    "title": "Response List Posts V1 X Editorial  Project  Posts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/posts/{slug}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Post",
+          "description": "One post with its gates, review rounds and comments, the stages it entered and its feedback entries.",
+          "operationId": "show_post_v1_x_editorial__project__posts__slug__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,159}$",
+                "description": "the post's slug",
+                "title": "Slug"
+              },
+              "description": "the post's slug"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialPost"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Set Post",
+          "description": "Set a post's stage, title, links, figures or the state of one of its gates; a new slug makes the post.",
+          "operationId": "set_post_v1_x_editorial__project__posts__slug__post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,159}$",
+                "description": "the post's slug",
+                "title": "Slug"
+              },
+              "description": "the post's slug"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialSetIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialPost"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/posts/{slug}/comments": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Pull Comments",
+          "description": "Read the reviewers' draft comments of the post into its latest review round, each once (writer).",
+          "operationId": "pull_comments_v1_x_editorial__project__posts__slug__comments_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,159}$",
+                "description": "the post's slug",
+                "title": "Slug"
+              },
+              "description": "the post's slug"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialPost"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/posts/{slug}/run": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Run Post",
+          "description": "Hand the writer agent the post's next task now, such as after an error; 409 while a run of it runs (writer).",
+          "operationId": "run_post_v1_x_editorial__project__posts__slug__run_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,159}$",
+                "description": "the post's slug",
+                "title": "Slug"
+              },
+              "description": "the post's slug"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialPost"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/recall": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Recall",
+          "description": "What to read before a stage: the entries of its notebooks and those about the post, seen most first.",
+          "operationId": "recall_v1_x_editorial__project__recall_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "stage",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a stage of the project's config",
+                "title": "Stage"
+              },
+              "description": "a stage of the project's config"
+            },
+            {
+              "name": "post",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,159}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a post's slug",
+                "title": "Post"
+              },
+              "description": "a post's slug"
+            },
+            {
+              "name": "q",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "every word of it, in any case",
+                "title": "Q"
+              },
+              "description": "every word of it, in any case"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EditorialEntry"
+                    },
+                    "title": "Response Recall V1 X Editorial  Project  Recall Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/feedback": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Feedback",
+          "description": "The entries of the feedback notebook by number, of a notebook, a stage, a post, seen at least so often.",
+          "operationId": "list_feedback_v1_x_editorial__project__feedback_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "notebook",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a notebook of the project's config",
+                "title": "Notebook"
+              },
+              "description": "a notebook of the project's config"
+            },
+            {
+              "name": "stage",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a stage of the project's config",
+                "title": "Stage"
+              },
+              "description": "a stage of the project's config"
+            },
+            {
+              "name": "post",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,159}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a post's slug",
+                "title": "Post"
+              },
+              "description": "a post's slug"
+            },
+            {
+              "name": "seen",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "seen at least this many times",
+                "title": "Seen"
+              },
+              "description": "seen at least this many times"
+            },
+            {
+              "name": "q",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "every word of it, in any case",
+                "title": "Q"
+              },
+              "description": "every word of it, in any case"
+            },
+            {
+              "name": "action",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "list",
+                      "add",
+                      "repeat"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "what the CLI was asked to do",
+                "title": "Action"
+              },
+              "description": "what the CLI was asked to do"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EditorialEntry"
+                    },
+                    "title": "Response List Feedback V1 X Editorial  Project  Feedback Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Feedback",
+          "description": "A new entry of the notebook, numbered after the last; the answer is a list of that one entry.",
+          "operationId": "add_feedback_v1_x_editorial__project__feedback_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "notebook",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a notebook of the project's config",
+                "title": "Notebook"
+              },
+              "description": "a notebook of the project's config"
+            },
+            {
+              "name": "post",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,159}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a post's slug",
+                "title": "Post"
+              },
+              "description": "a post's slug"
+            },
+            {
+              "name": "action",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "list",
+                      "add",
+                      "repeat"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "what the CLI was asked to do",
+                "title": "Action"
+              },
+              "description": "what the CLI was asked to do"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialFeedbackIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EditorialEntry"
+                    },
+                    "title": "Response Add Feedback V1 X Editorial  Project  Feedback Post"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/feedback/{entry}/probe": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Probe Feedback",
+          "description": "Give the entry its curator probe (a task and a verify), in place of the one it has, or retire it (admin).",
+          "operationId": "probe_feedback_v1_x_editorial__project__feedback__entry__probe_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "entry",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "the entry, PH-<n>",
+                "title": "Entry"
+              },
+              "description": "the entry, PH-<n>"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialProbeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialEntry"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/feedback/{entry}/repeat": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Repeat Feedback",
+          "description": "The entry came back: seen once more, with what the person said this time; a list of that one entry.",
+          "operationId": "repeat_feedback_v1_x_editorial__project__feedback__entry__repeat_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "entry",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "the entry, PH-<n>",
+                "title": "Entry"
+              },
+              "description": "the entry, PH-<n>"
+            },
+            {
+              "name": "action",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "list",
+                      "add",
+                      "repeat"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "what the CLI was asked to do",
+                "title": "Action"
+              },
+              "description": "what the CLI was asked to do"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialRepeatIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/EditorialEntry"
+                    },
+                    "title": "Response Repeat Feedback V1 X Editorial  Project  Feedback  Entry  Repeat Post"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/import": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Import Document",
+          "description": "Write the posts and entries of a JSON file, keeping their ids; the same file twice adds nothing (admin).",
+          "operationId": "import_document_v1_x_editorial__project__import_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorialImportIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialImported"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/export": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Export",
+          "description": "The notebook as its markdown files, or with format json everything import takes.",
+          "operationId": "export_v1_x_editorial__project__export_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "notebook",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a notebook of the project's config",
+                "title": "Notebook"
+              },
+              "description": "a notebook of the project's config"
+            },
+            {
+              "name": "format",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "enum": [
+                  "markdown",
+                  "json"
+                ],
+                "type": "string",
+                "default": "markdown",
+                "title": "Format"
+              }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialExport"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            }
+          }
+        }
+      },
       "/v1/x/marketing/{project}/channels": {
         "get": {
           "tags": [
@@ -96105,6 +98643,1386 @@
           ],
           "title": "EarlierView"
         },
+        "EditorialComment": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "the id the comment's source gave it"
+            },
+            "author": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Author"
+            },
+            "quote": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quote",
+              "description": "the sentence the comment marks"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "text"
+          ],
+          "title": "EditorialComment"
+        },
+        "EditorialEntry": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "PH-<n>"
+            },
+            "notebook": {
+              "type": "string",
+              "title": "Notebook"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "date": {
+              "type": "string",
+              "format": "date",
+              "title": "Date"
+            },
+            "post": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Post"
+            },
+            "said": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialSaid"
+              },
+              "type": "array",
+              "title": "Said"
+            },
+            "agent_wrote": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Wrote"
+            },
+            "agent_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Note"
+            },
+            "agent_after": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent After",
+              "description": "how many said lines its line follows; null after all"
+            },
+            "person_fixed": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Person Fixed"
+            },
+            "fixed_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fixed Note"
+            },
+            "fixed_after": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fixed After",
+              "description": "how many said lines its line follows; null after all"
+            },
+            "rule": {
+              "type": "string",
+              "title": "Rule"
+            },
+            "check": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Check",
+              "description": "the Kiểm line: how the rule is checked"
+            },
+            "seen": {
+              "type": "integer",
+              "title": "Seen",
+              "description": "Lần gặp: how many times it was seen"
+            },
+            "probe_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Probe Id"
+            },
+            "probe_task": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Probe Task",
+              "description": "the task of the probe; its verify only the admins read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "notebook",
+            "title",
+            "date",
+            "said",
+            "rule",
+            "seen"
+          ],
+          "title": "EditorialEntry",
+          "description": "An entry of the feedback notebook."
+        },
+        "EditorialExport": {
+          "properties": {
+            "format": {
+              "type": "string",
+              "title": "Format",
+              "description": "markdown | json"
+            },
+            "notebooks": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialNotebookFile"
+              },
+              "type": "array",
+              "title": "Notebooks"
+            },
+            "document": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document",
+              "description": "with json: what import takes, every post and entry"
+            }
+          },
+          "type": "object",
+          "required": [
+            "format",
+            "notebooks"
+          ],
+          "title": "EditorialExport"
+        },
+        "EditorialFeedbackIn": {
+          "properties": {
+            "notebook": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notebook"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "said": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Said",
+              "description": "what the person said"
+            },
+            "date": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date",
+              "description": "the day of the entry; today when unsaid"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "post": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Post"
+            },
+            "agent_wrote": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Wrote"
+            },
+            "person_fixed": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Person Fixed"
+            },
+            "rule": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule"
+            },
+            "check": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Check"
+            },
+            "probe_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Probe Id"
+            },
+            "probe_task": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Probe Task",
+              "description": "the probe's task, with probe_verify (admin)"
+            },
+            "probe_verify": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Probe Verify",
+              "description": "one shell line, exit 0 when the rule was kept"
+            }
+          },
+          "type": "object",
+          "title": "EditorialFeedbackIn",
+          "description": "A new entry; the notebook and the post may come in the query instead."
+        },
+        "EditorialGate": {
+          "properties": {
+            "stage": {
+              "type": "string",
+              "title": "Stage"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "waiting | answered | skipped"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "answered_via": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered Via",
+              "description": "what it was answered through: hub, cli, telegram..."
+            },
+            "opened_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Opened At"
+            },
+            "answered_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered By"
+            },
+            "answer": {
+              "title": "Answer"
+            },
+            "ask": {
+              "title": "Ask",
+              "description": "what the agent put to the person: proposals, questions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "stage",
+            "kind",
+            "state",
+            "opened_at"
+          ],
+          "title": "EditorialGate"
+        },
+        "EditorialGateSummary": {
+          "properties": {
+            "stage": {
+              "type": "string",
+              "title": "Stage"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "waiting | answered | skipped"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "answered_via": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered Via",
+              "description": "what it was answered through: hub, cli, telegram..."
+            }
+          },
+          "type": "object",
+          "required": [
+            "stage",
+            "kind",
+            "state"
+          ],
+          "title": "EditorialGateSummary"
+        },
+        "EditorialImportIn": {
+          "properties": {
+            "file": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File"
+            },
+            "document": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document"
+            }
+          },
+          "type": "object",
+          "title": "EditorialImportIn",
+          "description": "The JSON of posts and notebook entries, as a file's text (``file``) or as an object (``document``)."
+        },
+        "EditorialImported": {
+          "properties": {
+            "posts_added": {
+              "type": "integer",
+              "title": "Posts Added"
+            },
+            "posts_updated": {
+              "type": "integer",
+              "title": "Posts Updated"
+            },
+            "entries_added": {
+              "type": "integer",
+              "title": "Entries Added"
+            },
+            "entries_updated": {
+              "type": "integer",
+              "title": "Entries Updated"
+            }
+          },
+          "type": "object",
+          "required": [
+            "posts_added",
+            "posts_updated",
+            "entries_added",
+            "entries_updated"
+          ],
+          "title": "EditorialImported"
+        },
+        "EditorialJudge": {
+          "properties": {
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "pending | passed | below | failed | refused"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "passed": {
+              "type": "boolean",
+              "title": "Passed",
+              "description": "the machine gate: every axis 4 or more"
+            }
+          },
+          "type": "object",
+          "required": [
+            "passed"
+          ],
+          "title": "EditorialJudge",
+          "description": "The judge's question of a round and what came of it."
+        },
+        "EditorialNotebookFile": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "file": {
+              "type": "string",
+              "title": "File",
+              "description": "the file name the notebook was kept in, <name>.md"
+            },
+            "markdown": {
+              "type": "string",
+              "title": "Markdown"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "file",
+            "markdown"
+          ],
+          "title": "EditorialNotebookFile"
+        },
+        "EditorialPost": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "stage": {
+              "type": "string",
+              "title": "Stage"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "preview_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Preview Url"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "comment_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Comment Id",
+              "description": "the comment service keys its draft comments draft:<comment_id>"
+            },
+            "published_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published At"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EditorialRun"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "d7": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "D7",
+              "description": "the figures a person wrote in 7 days after it went out"
+            },
+            "d28": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "D28",
+              "description": "the figures a person wrote in 28 days after it went out"
+            },
+            "waiting_gate": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Gate"
+            },
+            "gates": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialGate"
+              },
+              "type": "array",
+              "title": "Gates"
+            },
+            "rounds": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialRound"
+              },
+              "type": "array",
+              "title": "Rounds"
+            },
+            "history": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialStageEntered"
+              },
+              "type": "array",
+              "title": "History"
+            },
+            "feedback": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Feedback",
+              "description": "the notebook's entries about this post, PH-<n>"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "title",
+            "stage",
+            "gates",
+            "rounds",
+            "history",
+            "feedback",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "EditorialPost",
+          "description": "One post with its gates, review rounds and comments, the stages it entered and its feedback entries."
+        },
+        "EditorialPostSummary": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "stage": {
+              "type": "string",
+              "title": "Stage"
+            },
+            "waiting_gate": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Gate",
+              "description": "the stage of the gate that waits for a person, if any"
+            },
+            "gates": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialGateSummary"
+              },
+              "type": "array",
+              "title": "Gates"
+            },
+            "rounds": {
+              "type": "integer",
+              "title": "Rounds",
+              "description": "how many review rounds the post had"
+            },
+            "preview_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Preview Url"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the published post"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EditorialRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the writer's latest run, none before the first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "title",
+            "stage",
+            "gates",
+            "rounds"
+          ],
+          "title": "EditorialPostSummary",
+          "description": "One post as ``posts`` lists it."
+        },
+        "EditorialProbeIn": {
+          "properties": {
+            "task": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify"
+            },
+            "remove": {
+              "type": "boolean",
+              "title": "Remove",
+              "default": false
+            }
+          },
+          "type": "object",
+          "title": "EditorialProbeIn",
+          "description": "The probe of an entry: its task and verify, or remove to retire it (admin)."
+        },
+        "EditorialRepeatIn": {
+          "properties": {
+            "said": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Said"
+            },
+            "date": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date",
+              "description": "when it was said; today when unsaid"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "title": "EditorialRepeatIn",
+          "description": "The entry was seen again, with what the person said this time."
+        },
+        "EditorialRound": {
+          "properties": {
+            "stage": {
+              "type": "string",
+              "title": "Stage"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "feedback": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Feedback",
+              "description": "the feedback entries the round wrote, PH-<n>"
+            },
+            "scores": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scores"
+            },
+            "judge": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EditorialJudge"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "comments": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialComment"
+              },
+              "type": "array",
+              "title": "Comments"
+            }
+          },
+          "type": "object",
+          "required": [
+            "stage",
+            "number",
+            "at",
+            "feedback",
+            "comments"
+          ],
+          "title": "EditorialRound"
+        },
+        "EditorialRun": {
+          "properties": {
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "running | done | failed | refused"
+            },
+            "stage": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage",
+              "description": "the stage the task was handed at"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why it failed or was refused"
+            },
+            "at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
+            }
+          },
+          "type": "object",
+          "title": "EditorialRun",
+          "description": "The post's latest task run of the agent type writer."
+        },
+        "EditorialSaid": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "date": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date",
+              "description": "when it was said, as the notebook writes it"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "EditorialSaid"
+        },
+        "EditorialSetIn": {
+          "properties": {
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "stage": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "preview_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Preview Url"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "comment_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^[A-Za-z0-9_-]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Comment Id"
+            },
+            "published_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published At"
+            },
+            "d7": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "D7",
+              "description": "an object of figures, or its JSON text"
+            },
+            "d28": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "D28",
+              "description": "an object of figures, or its JSON text"
+            },
+            "evidence": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence",
+              "description": "what shows the post entered the stage"
+            },
+            "gate": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gate",
+              "description": "the stage of the gate to set"
+            },
+            "gate_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gate State",
+              "description": "waiting | answered | skipped"
+            },
+            "via": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Via",
+              "description": "what the gate was answered through; hub when unsaid"
+            },
+            "answer": {
+              "title": "Answer"
+            },
+            "ask": {
+              "title": "Ask",
+              "description": "what to put to the person at the gate of the stage entered, or of gate: proposals, questions"
+            }
+          },
+          "type": "object",
+          "title": "EditorialSetIn",
+          "description": "What to change of a post; a post that is not there is made, which needs a stage."
+        },
+        "EditorialStageEntered": {
+          "properties": {
+            "stage": {
+              "type": "string",
+              "title": "Stage"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "evidence": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence"
+            }
+          },
+          "type": "object",
+          "required": [
+            "stage",
+            "at"
+          ],
+          "title": "EditorialStageEntered"
+        },
         "EffectiveConfig": {
           "properties": {
             "plugin": {
@@ -115222,10 +119140,11 @@
               "enum": [
                 "proposal",
                 "review",
-                "admin"
+                "admin",
+                "plugin"
               ],
               "title": "Source",
-              "description": "who wrote it: its proposal, a review run or an admin"
+              "description": "who wrote it: its proposal, a review run, an admin, or a core plugin (plugin) for a rule of its own"
             },
             "created_by": {
               "anyOf": [
@@ -115293,6 +119212,30 @@
               ],
               "title": "Replaces",
               "description": "the probe, not reproduced two weeks in a row, this one replaced"
+            },
+            "plugin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plugin",
+              "description": "source plugin: the core plugin whose rule it measures"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref",
+              "description": "source plugin: the key of the plugin's rule it measures"
             }
           },
           "type": "object",
@@ -115745,8 +119688,16 @@
               "title": "Probe Id"
             },
             "change_id": {
-              "type": "integer",
-              "title": "Change Id"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id",
+              "description": "null: the probe of a plugin's rule, which has no change"
             },
             "week": {
               "type": "string",
@@ -116097,7 +120048,7 @@
             "change_repo": {
               "type": "string",
               "title": "Change Repo",
-              "description": "the repo of the change, which holds its rule"
+              "description": "the repo of the change, which holds its rule; a plugin's probe: its repo"
             },
             "merge_sha": {
               "anyOf": [
@@ -116110,6 +120061,48 @@
               ],
               "title": "Merge Sha",
               "description": "the change's merge commit; null: its head against the default branch"
+            },
+            "plugin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plugin",
+              "description": "(plugin probe) the core plugin whose rule the arms put on and off"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref",
+              "description": "(plugin probe) the key of the plugin's rule"
+            },
+            "arms": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arms",
+              "description": "(plugin probe) on and off: path to text"
             }
           },
           "type": "object",
@@ -116226,8 +120219,16 @@
         "ProbeWeekResult": {
           "properties": {
             "change_id": {
-              "type": "integer",
-              "title": "Change Id"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id",
+              "description": "the change it probes; null: the probe of a plugin's rule"
             },
             "probe_id": {
               "type": "integer",
@@ -116322,6 +120323,30 @@
               ],
               "title": "Run Id",
               "description": "the probe run that measured it last"
+            },
+            "plugin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plugin",
+              "description": "the core plugin whose rule it probes, when it has no change"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref",
+              "description": "the key of that plugin's rule"
             }
           },
           "type": "object",
@@ -135570,6 +139595,49 @@
               ],
               "title": "Title",
               "description": "one line the run's list shows; default: the task's"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "the repo of the project whose ``branch`` the run works on; with ``branch`` only"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "a branch of ``repo`` that is no default branch, which the run checks out and pushes back to, never forced; default: task/<run> of each repo"
+            },
+            "minutes": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 120.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Minutes",
+              "description": "the agent time the run may take, at most 120; default: 30"
             }
           },
           "additionalProperties": false,
@@ -135656,7 +139724,7 @@
               "maxLength": 255,
               "minLength": 1,
               "title": "Branch",
-              "description": "the run's branch, task/<id>"
+              "description": "the run's branch, task/<id>, or the branch its task names for the repo"
             },
             "head": {
               "type": "string",
