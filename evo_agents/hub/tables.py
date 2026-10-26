@@ -1,8 +1,9 @@
 """The hub's tables as SQLAlchemy Core metadata, which queries are written on and Alembic autogenerates the next
 migration from (``migrations/env.py``); modules ``tables_<area>`` hold them by area, and ``tables.srs``, ``.tasks`` and
-``.canvas`` are core plugins'. The migrations make the schema and this module describes it; the test
-``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server defaults, identities,
-keys and indexes as the migrations name them (CHECK constraints and triggers are the migrations' alone)."""
+``.canvas`` are core plugins', ``tables.docs`` the feature docs'. The migrations make the schema and this module
+describes it; the test ``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server
+defaults, identities, keys and indexes as the migrations name them (CHECK constraints and triggers are the migrations'
+alone)."""
 
 from __future__ import annotations
 
@@ -40,6 +41,7 @@ from evo_agents.hub import (
     tables_attachments,
     tables_browser,
     tables_curator,
+    tables_docs,
     tables_goals,
     tables_intake,
     tables_invites,
@@ -1001,6 +1003,7 @@ push_devices, notification_preferences = tables_push.push_tables(metadata)  # pu
 today_marks = tables_push.today_table(metadata)  # what Today keeps of a member (0158)
 attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
+docs = tables_docs.docs_tables(metadata)  # the documents of a project, Markdown with images (0163)
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
 goals, goal_revisions = tables_goals.goal_tables(metadata)  # the goals of a project (0091)
 problems, problem_revisions = tables_problems.problem_tables(metadata)  # the problems of a project (0134)

@@ -232,6 +232,8 @@ PROVIDER_ACCOUNT_TABLES = frozenset({"provider_accounts"})  # migration 0151 (pl
 # migration 0156: the push devices of members and their notification preferences (plan hub-mobile-phase-0)
 PUSH_TABLES = frozenset({"push_devices", "notification_preferences"})
 TODAY_TABLES = frozenset({"today_marks"})  # migration 0158: what Today keeps of a member (plan hub-mobile-phase-0)
+# migration 0163: the documents of a project, their versions, their images and the images of each version (feature docs)
+DOCS_TABLES = frozenset({"docs_documents", "docs_versions", "docs_images", "docs_version_images"})
 
 
 def plugin_version_tables() -> frozenset[str]:

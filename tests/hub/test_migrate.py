@@ -152,6 +152,7 @@ TABLES |= pg.MARKET_TABLES  # migration 0154
 TABLES |= pg.PUSH_TABLES  # migration 0156
 TABLES |= pg.TODAY_TABLES  # migration 0158
 TABLES |= pg.SELLER_TABLES  # migration 0159
+TABLES |= pg.DOCS_TABLES  # migration 0163
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -242,8 +243,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_ninety_six_tables(hub_db):
-    assert len(TABLES) == 196  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_tables(hub_db):
+    assert len(TABLES) == 200  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4328,3 +4329,41 @@ def test_0162_takes_probes_of_a_plugins_rule_with_no_change_and_going_back_drops
         conn.execute(delete(t.plugins).where(t.plugins.c.id == plugin_id))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0162") :]
+
+
+def test_0163_makes_the_tables_of_the_feature_docs_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0162")
+    assert not pg.DOCS_TABLES & tables(hub_db)
+    move_to(hub_db, "0163")
+    assert pg.DOCS_TABLES <= tables(hub_db)
+    t, image = hub_tables.docs, "a" * 64
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        user, project = ids["user"], ids["project"]
+        document = {"project_id": project, "slug": "guide", "title": "Guide", "label": {"level": "internal"}}
+        document_id = one(
+            conn, insert(t.documents).values(**document, latest_version=1, created_by=user).returning(t.documents.c.id)
+        )
+        version = {"document_id": document_id, "number": 1, "title": "Guide", "body": "# Guide", "author_id": user}
+        version_id = one(conn, insert(t.versions).values(version).returning(t.versions.c.id))
+        held = {"project_id": project, "sha256": image, "media_type": "image/png", "size": 10, "uploaded_by": user}
+        conn.execute(insert(t.images).values(held))
+        shown = {"version_id": version_id, "name": "shots/board.png", "project_id": project, "sha256": image}
+        conn.execute(insert(t.version_images).values(shown))
+        for table, bad in (
+            (t.documents, {**document, "slug": "Guide", "latest_version": 1, "created_by": user}),
+            (t.documents, {**document, "slug": "other", "latest_version": 0, "created_by": user}),
+            (t.versions, {**version, "number": 2, "body": "x" * 500_001}),
+            (t.images, {**held, "sha256": "b" * 64, "media_type": "image/svg+xml"}),
+            (t.images, {**held, "sha256": "not a hash"}),
+            (t.version_images, {**shown, "name": "../secret.png"}),
+            (t.version_images, {**shown, "name": "shots/.hidden.png"}),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(table).values(bad))
+        with pytest.raises(errors.ForeignKeyViolation):  # an image a version shows is an image of the project
+            conn.execute(insert(t.version_images).values({**shown, "name": "other.png", "sha256": "c" * 64}))
+    # Going back drops the four tables.
+    move_to(hub_db, "0162", down=True)
+    assert not pg.DOCS_TABLES & tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0163") :]

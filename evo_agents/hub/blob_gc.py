@@ -2,8 +2,9 @@
 
 A blob is referred to by a ``blobs`` row of any holder, a skill or plugin version, a kg build's artifact, the log
 of an ingested or pending kg run, a part of a session's transcript, a group chat's image (``chats.image_sha256``), an
-output of a run (``run_outputs.sha256``), a file attached to a message (``attachments.sha256``), or one of the two
-versions of a browser identity's profile it keeps (``browser_identities.sha256`` and ``previous_sha256``). Whoever drops
+output of a run (``run_outputs.sha256``), a file attached to a message (``attachments.sha256``), one of the two
+versions of a browser identity's profile it keeps (``browser_identities.sha256`` and ``previous_sha256``), or an image
+of a project's documents (``docs_images.sha256``, never dropped). Whoever drops
 references (the retention of built graphs, ``evo_agents.hub.kg_prune``; the deletion of transcripts,
 ``evo_agents.hub.server.transcripts``; a chat's image replaced or taken off, ``evo_agents.hub.server.chat_images``; an
 output deleted, or dropped with its run's events, ``evo_agents.hub.output_prune``; an attachment deleted, gone stale
@@ -52,8 +53,8 @@ def hashes_in(sha256, hashes: list[str]):
 
 def _referenced(hashes: list[str]):
     """The hashes of ``hashes`` that a blobs row, a skill or plugin version, a kg build's artifact, the log of an
-    ingested or pending kg run, a part of a transcript, a chat's image, an output of a run, an attachment or a version of
-    a browser identity's profile refers to."""
+    ingested or pending kg run, a part of a transcript, a chat's image, an output of a run, an attachment, a version of
+    a browser identity's profile or an image of a project's documents refers to."""
     h = func.unnest(literal(hashes, ARRAY(Text))).table_valued(column("sha256", Text)).render_derived(name="h")
     references = (
         tables.blobs.c.sha256,
@@ -68,6 +69,7 @@ def _referenced(hashes: list[str]):
         tables.attachments.c.sha256,
         tables.browser_identities.c.sha256,
         tables.browser_identities.c.previous_sha256,
+        tables.docs.images.c.sha256,
     )
     return select(h.c.sha256).where(or_(*(exists().where(sha256 == h.c.sha256) for sha256 in references)))
 
