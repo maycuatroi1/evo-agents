@@ -1046,7 +1046,8 @@ Shared pieces built on them:
   (`components/data/markdown.tsx`: Markdown, never HTML) with inline code and code blocks on `card`, a code block or a
   table scrolling inside it. A member of the chat the text names is marked (`lib/mention-marks.ts`): an agent's
   `@handle` shows as its name, a person's `@login` or bare login as the login, never with the `@`, `medium` in `brand`
-  on a tint of it, `radius-xs`; text in code, a link or a path keeps the name as written. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: a
+  on a tint of it, `radius-xs`; text in code, a link or a path keeps the name as written. A one-line preview of a
+  message (the list of chats, a reply's quote, the composer's Replying to) drops the `@` of the members it mentions too. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: a
   mention the hub refused in `attention` with the
   hub's reason, each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
   that run is on its way (`message-progress.tsx`, by the hub's rule, for a visitor who may read the run: one polite

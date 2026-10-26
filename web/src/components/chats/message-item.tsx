@@ -115,7 +115,7 @@ export function MessageItem(props: Props) {
       {mine ? null : runOn ? <span className="w-8 shrink-0" aria-hidden="true" /> : <AuthorAvatar author={message.author} className="mt-0.5" />}
       <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side])}>
         <MessageHead id={`${id}-head`} message={message} me={me} mine={mine} runOn={runOn} />
-        {quote && onQuote ? <ReplyQuote quote={quote} me={me} onShow={onQuote} /> : null}
+        {quote && onQuote ? <ReplyQuote quote={quote} me={me} marks={marks} onShow={onQuote} /> : null}
         {message.body || !attached.length ? (
           <div
             className={cn(
