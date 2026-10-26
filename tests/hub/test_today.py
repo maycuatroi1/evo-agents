@@ -386,7 +386,9 @@ def test_the_summary_is_made_from_templates():
 @pytest.fixture
 def away(client, members, hub_db) -> dict:
     """Owner, with a browser that takes pushes, away from the hub and from Today for nine hours, with a failed run an
-    hour ago; bea with a browser too, seen an hour ago. Owner's summary is due now, at their digest_at in UTC."""
+    hour ago; bea with a browser too, seen an hour ago. Owner's summary is due now, at their digest_at in UTC; bea's
+    digest_at is twelve hours off it, so her summary is never due at a whole number of days from now, whatever the
+    clock (her default, 07:30 in the hub's zone, was due the next day when the tests ran from 07:30 to 10:30 there)."""
     now = db_now(hub_db)
     wid = add_worker(client, members[OWNER], "mac-mini")["id"]
     run_id = add_run(hub_db, wid, A, ROLLOUT, "failed", OWNER, step="1", finished_at=now - timedelta(hours=1))
@@ -396,8 +398,9 @@ def away(client, members, hub_db) -> dict:
         response = client.post("/v1/me/push/devices", json=phones[login].body(), headers=members[login])
         assert response.status_code == 201, response.text
     utc = now.astimezone(UTC)
-    settings = {"time_zone": "UTC", "digest_at": f"{utc:%H:%M}"}
-    assert client.put("/v1/me/notification-settings", json=settings, headers=members[OWNER]).status_code == 200
+    for login, at in ((OWNER, utc), (BEA, utc + timedelta(hours=12))):
+        settings = {"time_zone": "UTC", "digest_at": f"{at:%H:%M}"}
+        assert client.put("/v1/me/notification-settings", json=settings, headers=members[login]).status_code == 200
     users = tables.users
     for login, ago in ((OWNER, timedelta(hours=9)), (BEA, timedelta(hours=1))):
         sql(hub_db, update(users).values(last_seen_at=now - ago).where(users.c.login == login))
@@ -439,7 +442,7 @@ def test_a_member_away_gets_one_summary_push_at_their_time_with_a_link_home(clie
         None,
     )
     assert service.to(away["phones"][BEA]) == []
-    # The next day it goes again, once; bea, away by then, waits for her own digest_at, 07:30 in the hub's zone.
+    # The next day it goes again, once; bea, away by then, waits for her own digest_at, twelve hours later.
     assert digests(client, now + timedelta(days=1)) == {"not_due": 1, "today": 1}
     assert len(summaries(hub_db)) == 2
 
