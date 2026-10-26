@@ -132,6 +132,7 @@ describe("proxy", () => {
       "/robots.txt",
       "/sw.js",
       "/product/og.png",
+      "/provider-logos/openai.svg",
     ]) {
       expect(source.test(path), path).toBe(false);
     }

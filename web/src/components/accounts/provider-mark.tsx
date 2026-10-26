@@ -1,16 +1,21 @@
+"use client";
+
+import { useState } from "react";
+
 import { cn } from "@/lib/utils";
 
 import { inkOn } from "./provider-cards";
-import { type Provider, ProviderLogo } from "./provider-logo";
+import LOGO_FILES from "./provider-logos.json";
 import type { CatalogProvider } from "./provider-queries";
 
-/** The providers drawn with their own logo; any other gets its catalog tile. */
-const LOGOS: ReadonlySet<string> = new Set<Provider>(["claude", "anthropic"]);
+/** The file under public/provider-logos of each provider of the catalog with a logo (scripts/generate_provider_logos.py). */
+const LOGOS: Readonly<Record<string, string>> = LOGO_FILES;
 
 /**
- * The mark of a provider of the catalog: its logo for the few the page draws (ProviderLogo), else its abbreviation
- * (`text_icon`) on its catalog colour, the ink white or black, whichever contrasts more. Decorative, as
- * the provider's name is text beside it; it says who the provider is, never how its keys are doing.
+ * The mark of a provider of the catalog: its logo on a white tile, the same in both themes as a logo is drawn for a
+ * light ground; else, for a provider that publishes none (or a logo that fails to load), its abbreviation (`text_icon`)
+ * on its catalog colour, the ink white or black, whichever contrasts more. Decorative, as the provider's name is text
+ * beside it; it says who the provider is, never how its keys are doing.
  */
 export function ProviderMark({
   id,
@@ -23,11 +28,30 @@ export function ProviderMark({
   size?: "sm" | "md";
   className?: string;
 }) {
+  const [broken, setBroken] = useState<string | null>(null);
   const box = size === "md" ? "size-9 rounded-md" : "size-7 rounded-[6px]";
-  if (LOGOS.has(id)) {
+  const file = LOGOS[id];
+  if (file && broken !== file) {
+    const px = size === "md" ? 24 : 18;
     return (
-      <span aria-hidden="true" className={cn("inline-flex shrink-0 items-center justify-center border bg-card", box, className)}>
-        <ProviderLogo provider={id as Provider} />
+      <span
+        aria-hidden="true"
+        data-provider-mark={id}
+        data-provider-logo={file}
+        className={cn("inline-flex shrink-0 items-center justify-center border bg-white", box, className)}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- a small static file of public/, nothing to optimise */}
+        <img
+          src={`/provider-logos/${file}`}
+          alt=""
+          width={px}
+          height={px}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => setBroken(file)}
+          className={cn("object-contain", size === "md" ? "size-6" : "size-[18px]")}
+        />
       </span>
     );
   }
