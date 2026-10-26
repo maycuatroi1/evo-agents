@@ -1261,7 +1261,8 @@
         "seller": "Selling plugins",
         "canvas": "Canvas",
         "srs": "Requirements (SRS)",
-        "tasks": "Tasks"
+        "tasks": "Tasks",
+        "docs": "Docs"
       },
       "descriptions": {
         "chats": "Group chats with people and agents.",
@@ -1272,7 +1273,8 @@
         "seller": "Selling plugins to other hubs: listings, orders paid by bank transfer, licences and the monthly revenue.",
         "canvas": "A project's canvas: its claims, their evidence and judging, and @strategist.",
         "srs": "A project's requirement documents, their reviews and approvals, and @ba.",
-        "tasks": "A project's tasks and their board, made from approved requirements."
+        "tasks": "A project's tasks and their board, made from approved requirements.",
+        "docs": "A project's documents: Markdown with images, each save a version."
       },
       "scopeHub": "Whole hub",
       "scopeProject": "Hub or project",
@@ -9637,6 +9639,89 @@
       "noPreviewText": "Paste or read a file, then Preview: the hub reads it against the project and writes nothing.",
       "readerTitle": "Importing tasks into {project} takes the writer role",
       "backToBoard": "Back to the board"
+    }
+  },
+  "docs": {
+    "meta": {
+      "documents": "Docs of {project}",
+      "document": "{slug} of {project}",
+      "history": "History of {slug}",
+      "edit": "Editing {slug}",
+      "new": "New document in {project}"
+    },
+    "documents": {
+      "sub": "Guides and notes of the project, Markdown with images. Every save keeps a version.",
+      "new": "New document",
+      "columns": {
+        "document": "Document",
+        "version": "Version",
+        "updatedBy": "Saved by",
+        "updatedAt": "Saved"
+      },
+      "caption": "Documents of {project}",
+      "readerTitle": "You read the documents of {project}",
+      "readerText": "Readers open every document and its history. Writing a document needs the writer role.",
+      "emptyTitle": "No document yet",
+      "emptyWriter": "Write a guide or a note in Markdown, with images, and the project's members read it here.",
+      "emptyReader": "A writer of the project writes the first one; it shows here."
+    },
+    "head": {
+      "version": "Version {number} of {latest}, saved by {author}",
+      "visibility": "visible to {level}",
+      "edit": "Edit",
+      "tabs": {
+        "label": "Pages of {title}",
+        "read": "Read",
+        "history": "History",
+        "versions": "{count, plural, one {# version} other {# versions}}",
+        "edit": "Edit"
+      }
+    },
+    "read": {
+      "version": "Version",
+      "latestOption": "v{number} (latest)",
+      "older": "You are reading version {number}; the latest is version {latest}.",
+      "readLatest": "Read the latest",
+      "empty": "This version has no text."
+    },
+    "history": {
+      "columns": {
+        "version": "Version",
+        "summary": "What changed",
+        "author": "Saved by",
+        "saved": "Saved"
+      },
+      "caption": "Versions of {title}",
+      "noSummary": "No summary"
+    },
+    "editor": {
+      "title": "Title",
+      "titleMissing": "Give the document a title.",
+      "slug": "Slug",
+      "slugHint": "Lower-case letters, digits and dashes; it names the document's address and never changes.",
+      "slugFixed": "The slug stays as it is.",
+      "write": "Write",
+      "preview": "Preview",
+      "previewEmpty": "Nothing to preview yet.",
+      "body": "Markdown",
+      "bodyHint": "Markdown. Add images puts each picture at the cursor as ![text](images/name.png); a title in quotes after the name shows as its caption.",
+      "addImages": "Add images",
+      "imageRefused": "{name} was not added",
+      "imageRule": "An image is a PNG, JPEG, WebP or GIF file of at most 10 MB.",
+      "imageFailed": "{name} did not upload",
+      "summary": "What this version changes",
+      "summaryPlaceholder": "Optional, such as: added the screenshots",
+      "cancel": "Cancel",
+      "create": "Create document",
+      "saveVersion": "Save version {version}",
+      "saved": "Saved version {version}",
+      "unchanged": "Nothing changed: version {version} stays the latest",
+      "conflict": "Someone saved a newer version while you edited. Copy your text, open the document again and save on the newer version.",
+      "slugTaken": "A document with this slug exists already. Pick another slug.",
+      "readerTitle": "Only writers edit the documents of {project}",
+      "readerText": "You read every document and its history. Ask an admin of the project for the writer role to write.",
+      "newTitle": "New document",
+      "newSub": "A document of {project}: its title, a slug for its address, and its Markdown."
     }
   },
   "canvas": {

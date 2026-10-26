@@ -1261,7 +1261,8 @@
         "seller": "Bán plugin",
         "canvas": "Canvas",
         "srs": "Yêu cầu (SRS)",
-        "tasks": "Task"
+        "tasks": "Task",
+        "docs": "Tài liệu (Docs)"
       },
       "descriptions": {
         "chats": "Group chat giữa người và agent.",
@@ -1272,7 +1273,8 @@
         "seller": "Bán plugin cho các hub khác: sản phẩm niêm yết, đơn hàng trả bằng chuyển khoản, giấy phép và doanh thu hằng tháng.",
         "canvas": "Canvas của dự án: các nhận định, bằng chứng và phần chấm của chúng, cùng @strategist.",
         "srs": "Các tài liệu yêu cầu của dự án, phần review và duyệt của chúng, cùng @ba.",
-        "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt."
+        "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt.",
+        "docs": "Tài liệu của dự án: Markdown có ảnh, mỗi lần lưu là một version."
       },
       "scopeHub": "Cả hub",
       "scopeProject": "Hub hoặc dự án",
@@ -9637,6 +9639,89 @@
       "noPreviewText": "Dán hay đọc một file, rồi bấm Xem trước: hub đọc nó theo dự án và không ghi gì.",
       "readerTitle": "Nhập task vào {project} cần vai trò ghi",
       "backToBoard": "Quay lại bảng"
+    }
+  },
+  "docs": {
+    "meta": {
+      "documents": "Tài liệu của {project}",
+      "document": "{slug} của {project}",
+      "history": "Lịch sử của {slug}",
+      "edit": "Sửa {slug}",
+      "new": "Tài liệu mới trong {project}"
+    },
+    "documents": {
+      "sub": "Hướng dẫn và ghi chú của dự án, Markdown có ảnh. Mỗi lần lưu giữ một version.",
+      "new": "Tài liệu mới",
+      "columns": {
+        "document": "Tài liệu",
+        "version": "Version",
+        "updatedBy": "Người lưu",
+        "updatedAt": "Lưu lúc"
+      },
+      "caption": "Tài liệu của {project}",
+      "readerTitle": "Bạn đọc tài liệu của {project}",
+      "readerText": "Người đọc mở được mọi tài liệu và lịch sử của nó. Viết tài liệu cần vai trò ghi.",
+      "emptyTitle": "Chưa có tài liệu",
+      "emptyWriter": "Viết một hướng dẫn hay ghi chú bằng Markdown, có ảnh, để thành viên dự án đọc ở đây.",
+      "emptyReader": "Người có vai trò ghi của dự án viết tài liệu đầu tiên; nó sẽ hiện ở đây."
+    },
+    "head": {
+      "version": "Version {number} trên {latest}, {author} lưu",
+      "visibility": "mức {level}",
+      "edit": "Sửa",
+      "tabs": {
+        "label": "Các trang của {title}",
+        "read": "Đọc",
+        "history": "Lịch sử",
+        "versions": "{count} version",
+        "edit": "Sửa"
+      }
+    },
+    "read": {
+      "version": "Version",
+      "latestOption": "v{number} (mới nhất)",
+      "older": "Bạn đang đọc version {number}; bản mới nhất là version {latest}.",
+      "readLatest": "Đọc bản mới nhất",
+      "empty": "Version này không có nội dung."
+    },
+    "history": {
+      "columns": {
+        "version": "Version",
+        "summary": "Thay đổi",
+        "author": "Người lưu",
+        "saved": "Lưu lúc"
+      },
+      "caption": "Các version của {title}",
+      "noSummary": "Không có tóm tắt"
+    },
+    "editor": {
+      "title": "Tiêu đề",
+      "titleMissing": "Đặt tiêu đề cho tài liệu.",
+      "slug": "Slug",
+      "slugHint": "Chữ thường, số và dấu gạch ngang; là địa chỉ của tài liệu và không đổi được.",
+      "slugFixed": "Slug giữ nguyên.",
+      "write": "Viết",
+      "preview": "Xem trước",
+      "previewEmpty": "Chưa có gì để xem trước.",
+      "body": "Markdown",
+      "bodyHint": "Markdown. Nút Thêm ảnh chèn mỗi ảnh tại con trỏ dạng ![chữ](images/ten.png); chú thích đặt trong ngoặc kép sau tên ảnh sẽ hiện dưới ảnh.",
+      "addImages": "Thêm ảnh",
+      "imageRefused": "Không thêm được {name}",
+      "imageRule": "Ảnh là file PNG, JPEG, WebP hoặc GIF, tối đa 10 MB.",
+      "imageFailed": "Không tải lên được {name}",
+      "summary": "Version này thay đổi gì",
+      "summaryPlaceholder": "Không bắt buộc, ví dụ: thêm ảnh chụp màn hình",
+      "cancel": "Huỷ",
+      "create": "Tạo tài liệu",
+      "saveVersion": "Lưu version {version}",
+      "saved": "Đã lưu version {version}",
+      "unchanged": "Không có thay đổi: version {version} vẫn là bản mới nhất",
+      "conflict": "Có người vừa lưu version mới hơn trong lúc bạn sửa. Chép nội dung của bạn, mở lại tài liệu rồi lưu trên version mới hơn.",
+      "slugTaken": "Đã có tài liệu dùng slug này. Chọn slug khác.",
+      "readerTitle": "Chỉ người có vai trò ghi mới sửa tài liệu của {project}",
+      "readerText": "Bạn đọc được mọi tài liệu và lịch sử. Muốn viết, nhờ admin của dự án cấp vai trò ghi.",
+      "newTitle": "Tài liệu mới",
+      "newSub": "Một tài liệu của {project}: tiêu đề, slug làm địa chỉ, và nội dung Markdown."
     }
   },
   "canvas": {

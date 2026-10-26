@@ -9,7 +9,7 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
+``cli_plugins``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by
 ``release_cli``, ``policy`` by ``cli_policy``, ``goal`` by ``cli_goals``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
 ``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli_org`` and ``autonomy`` by ``cli_autonomy``; they need nothing beyond the core
@@ -218,6 +218,10 @@ def _register_client_commands(hsub) -> None:
     from evo_agents.hub.cli_srs import register_srs
 
     register_srs(hsub)
+
+    from evo_agents.hub.cli_docs import register_docs
+
+    register_docs(hsub)
 
     from evo_agents.hub.cli_tasks import register_tasks
 

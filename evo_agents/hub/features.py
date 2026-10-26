@@ -3,13 +3,14 @@ declares them: each by its id, the layers it may be set on (the hub's own, ``ins
 the paths of the API it owns and the tools of the hub's /mcp it answers.
 
 A feature is on unless a layer turns it off, or off unless a layer turns it on when it says so (``default``: canvas, srs
-and tasks, which a project turns on as it enabled them when they were plugins). A project's layer, when it sets a feature, wins over the hub's own, so a
-hub admin may turn a feature off for the whole hub and back on for one project; a feature set for the whole hub only
+and tasks, which a project turns on as it enabled them when they were plugins, and docs). A project's layer, when it
+sets a feature, wins over the hub's own, so a hub admin may turn a feature off for the whole hub and back on for one
+project; a feature set for the whole hub only
 (``instance`` alone among its layers) reads the hub's own layer alone. ``evo_agents.hub.server.hub_settings`` keeps
 the layers as versioned settings and answers 404 to the routes and tools of a feature that is off; the web leaves it
 out of its menus and answers 404 to its pages.
 
-canvas, srs and tasks run on the extension points of the plugins (``evo_agents.hub.plugin_calls.BUILTIN``): their
+canvas, srs, tasks and docs run on the extension points of the plugins (``evo_agents.hub.plugin_calls.BUILTIN``): their
 routes stay under /v1/x/<feature>/<project>/ and their tools on /mcp keep the names ``<feature>__<tool>``
 (``tool_prefixes``), so turning one off answers 404 to both, and the hub reaches its jobs, events and knowledge graph
 source in the projects it is on in only.
@@ -89,7 +90,7 @@ FEATURES = (
             default=False,
             tool_prefixes=(f"{name}__",),
         )
-        for name in ("canvas", "srs", "tasks")
+        for name in ("canvas", "srs", "tasks", "docs")
     ),
 )
 BY_ID = {feature.id: feature for feature in FEATURES}

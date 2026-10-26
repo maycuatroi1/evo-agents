@@ -1954,10 +1954,30 @@ Shared pieces built on them:
     `decide` (slot `decide`, out of the menu) is its panel on the Decisions page: a Growth card of what waits for a
     person, each open breaker, each browser channel whose login session expired and the month's spent budget, each
     with who acts and Open to the overview; while nothing waits it sizes itself to 0.
+- `components/docs`, the native pages of the hub's feature docs (docs/hub.md, Docs), under
+  `app/(app)/p/[project]/x/docs/` with a layout that calls `requirePlugin("docs", project, "documents")`: Docs in the
+  menu (`BookOpen`) is the manifest's page `documents`, a 404 where the project has the feature off. Its words are the
+  `docs` namespace of both message files. The documents (`/documents`) are one `DataCard` table: title over slug, the
+  latest version as a `v3` chip, who saved it and when; New document for writers. A document's pages share
+  `DocumentHead`: the title, the slug as a chip, one line with the version shown, its author and time and the
+  visibility, Edit for a writer, then the tabs Read and History (the count of versions). Read
+  (`/documents/{slug}?v=N`) draws the version as `SafeMarkdown` with `variant="page"` (# and ## are h2 under the page's
+  h1) in a column of at most 48 rem, and with `images`: an image whose source is a name the version holds is drawn
+  from the hub's own origin, as wide as the text at most, in a `border` edge with the container radius, its title as a
+  caption in `muted-foreground`; any other stays the placeholder. A version picker (a select that navigates) sits in
+  the head once there are two, and an older version carries an `attention` banner with Read the latest. History
+  (`/history`) is a `DataTable` of the versions, the newest first: the number as a chip that opens it, what it changed
+  over its title, the author, when. The editor (`/documents/{slug}/edit`, and `/new` for a new document) is one form:
+  title, the slug made from the title until edited (fixed once the document exists), the Markdown in mono with Write and
+  Preview tabs, Add images (PNG, JPEG, WebP or GIF of at most 10 MB, refused in a toast before any upload), which uploads
+  each file and puts `![name](images/name.png)` at the cursor, the preview drawing an image uploaded here from its file,
+  and What this version changes. Save sends only the images the Markdown shows, on the latest version it read (0 for a
+  new document); the hub's 409 shows above Save. Readers see a note that they only read, and no control that writes.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
-  never loaded, headings move under the page's h1 and the card's h2.
+  never loaded unless the page passes `images` (the Docs pages, which hold their images on the hub), headings move under
+  the page's h1 and the card's h2, or under the h1 alone with `variant="page"`.
 
 Themes come from `next-themes` with the `class` strategy and follow the system until the person picks light
 or dark in the user menu. The language is the `NEXT_LOCALE` cookie set from the same menu: English without it
