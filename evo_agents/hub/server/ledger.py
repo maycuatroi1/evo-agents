@@ -422,6 +422,10 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
         return
     if new == "closed":
         who = extra.get("login") or "A member"
+        what = f"{who} closed pull request #{row.pr_number} without a merge"
+        details = {"github_login": extra["login"]} if extra.get("login") else None
+        if row.pr_number is None:  # an admin closed on the hub a change left open with none
+            what, details = f"{who} closed change #{row.id}: {row.reason}", None
         await append(
             conn,
             **line,
@@ -429,8 +433,8 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
             action="closed",
             actor="user",
             actor_id=extra.get("actor_id"),
-            what=f"{who} closed pull request #{row.pr_number} without a merge",
-            details={"github_login": extra["login"]} if extra.get("login") else None,
+            what=what,
+            details=details,
         )
 
 

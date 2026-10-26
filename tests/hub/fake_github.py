@@ -980,9 +980,9 @@ class FakeGitHub:
             branch = (query.get("head") or "").partition(":")[2]
             found = [
                 self._pull_answer(item)
-                for item in self.pulls.values()
-                if item.head == branch
-                and item.state == query.get("state", "open")
+                for item in sorted(self.pulls.values(), key=lambda item: item.number, reverse=True)  # newest first
+                if (item.owner, item.name, item.head) == (repo.owner, repo.name, branch)
+                and query.get("state", "open") in ("all", item.state)
                 and item.base == query.get("base", item.base)
             ]
             return 200, found

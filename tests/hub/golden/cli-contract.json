@@ -4563,6 +4563,71 @@
         "schema": "CrmContactDetail"
       }
     },
+    "hub curator change close": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "proposal_id",
+          "plan_id",
+          "repo",
+          "branch",
+          "forge",
+          "tier",
+          "state",
+          "reason",
+          "builder_run_id",
+          "judge_run_id",
+          "pr_number",
+          "pr_url",
+          "base_branch",
+          "head_sha",
+          "passed",
+          "verdict",
+          "merged_at",
+          "merge_sha",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Change"
+      }
+    },
     "hub curator changes": {
       "positionals": [],
       "options": [
@@ -43470,6 +43535,111 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ChangeList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/changes/{change_id}/close": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Close Change",
+          "description": "Close a change left open with no pull request, saying why; the admins of the project alone may.",
+          "operationId": "close_change_v1_projects__project__curator_changes__change_id__close_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "change_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Change Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeClose"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Change"
                   }
                 }
               }
@@ -91011,6 +91181,22 @@
           ],
           "title": "Change",
           "description": "What an accepted proposal of tier 0 to 2 became, and where it stands."
+        },
+        "ChangeClose": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why it is closed: its reason and ledger say it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "ChangeClose"
         },
         "ChangeList": {
           "properties": {

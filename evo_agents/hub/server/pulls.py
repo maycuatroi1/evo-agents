@@ -361,6 +361,18 @@ async def find_pull(
     return items[0] if isinstance(items, list) and items and isinstance(items[0], dict) else None
 
 
+async def branch_pulls(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> list[dict]:
+    """The pull requests of ``branch`` (of owner/repo itself) in any state, newest first: the first page GitHub
+    lists, PAGE of them."""
+    doing = f"looking for the pull requests of {branch} on {owner}/{repo}"
+    params = {"head": f"{owner}:{branch}", "state": "all", "per_page": PAGE}
+    response = await _api(app, token, "GET", _path("repos", owner, repo, "pulls"), doing, params=params)
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    items = response.json()
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+
 async def open_pull(
     app: GitHubApp,
     token: str,
