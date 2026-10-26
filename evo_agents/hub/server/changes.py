@@ -393,7 +393,7 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
     policy = await curator_policy(conn, project_id, view.kind, view.plan_id or None)
     if policy is None:
         return None
-    found = {"role": policy.role, "protected_paths": list(policy.protected)}
+    found, change = {"role": policy.role, "protected_paths": list(policy.protected)}, None
     if policy.change_id is not None:
         change = (
             await conn.execute(select(tables.curator_changes).where(tables.curator_changes.c.id == policy.change_id))
@@ -410,8 +410,8 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
             found["judge_key"] = await issue_judge_key(conn, change.id)
         if policy.role == "replay":
             found.update(await replay_claim(conn, change, view.id))
-        if policy.role == "probe":
-            found.update(await probe_claim(conn, change, view.id))
+    if policy.role == "probe":  # a run of a plugin's probe has no change
+        found.update(await probe_claim(conn, change, view.id))
     return found
 
 

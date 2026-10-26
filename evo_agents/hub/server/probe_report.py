@@ -33,7 +33,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, probes, runs, tables
@@ -83,7 +83,7 @@ class ProbeArmCount(BaseModel):
 class ProbeWeekResult(BaseModel):
     """One probe on one runtime and model in a week."""
 
-    change_id: int
+    change_id: int | None = Field(description="the change it probes; null: the probe of a plugin's rule")
     probe_id: int
     runtime: str
     model: str | None = Field(description="null: the runtime's own choice")
@@ -94,6 +94,8 @@ class ProbeWeekResult(BaseModel):
     previous: Status | None = Field(description="the status of the week before; null when it had none")
     reason: str | None = Field(description="why it is stale or unmeasured")
     run_id: int | None = Field(description="the probe run that measured it last")
+    plugin: str | None = Field(None, description="the core plugin whose rule it probes, when it has no change")
+    ref: str | None = Field(None, description="the key of that plugin's rule")
 
 
 class ProbeWeekTotals(BaseModel):
@@ -165,6 +167,11 @@ def _arm(sessions, arm: str, k: int | None) -> ProbeArmCount:
     return ProbeArmCount(runs=count, failed=failed, recurrence=probes.recurrence(count, failed, k or probes.DEFAULT_K))
 
 
+def _rule(row) -> dict:
+    """The plugin and rule a probe of ``row`` measures; none for the probe of a change."""
+    return {"plugin": row.plugin, "ref": row.ref} if row.ref is not None else {}
+
+
 def _result(row, *, k: int | None = None, reason: str | None = None) -> dict:
     """The week's result of a curator_probe_runs row (``k`` and ``reason`` alone for a pair the week has no row of)."""
     if row is None:
@@ -225,20 +232,26 @@ async def _week_results(
     conn: AsyncConnection, access: ProjectAccess, reach: _Reach, weeks: list[date], body: dict, current: date
 ):
     """{week: {(probe, runtime, model): (change, result)}} of ``weeks`` (any order), the probes the caller reads."""
-    pw, pr, c = tables.curator_probe_runs, tables.curator_probes, tables.curator_changes
+    pw, pr, c, pl = tables.curator_probe_runs, tables.curator_probes, tables.curator_changes, tables.plugins
     rows = (
         await conn.execute(
-            select(pw, pr.c.label.label("probe_label"))
+            select(pw, pr.c.label.label("probe_label"), pl.c.name.label("plugin"), pr.c.ref)
             .join(pr, pr.c.id == pw.c.probe_id)
+            .outerjoin(pl, pl.c.id == pr.c.plugin_id)
             .where(pw.c.project_id == access.project_id, pw.c.week.in_(weeks))
             .order_by(pw.c.id)
         )
     ).all()
     active = (
         await conn.execute(
-            select(pr.c.id, pr.c.change_id, pr.c.label, pr.c.created_at)
-            .join(c, c.c.id == pr.c.change_id)
-            .where(pr.c.project_id == access.project_id, pr.c.state == "active", c.c.state == "merged")
+            select(pr.c.id, pr.c.change_id, pr.c.label, pr.c.created_at, pl.c.name.label("plugin"), pr.c.ref)
+            .outerjoin(c, c.c.id == pr.c.change_id)
+            .outerjoin(pl, pl.c.id == pr.c.plugin_id)
+            .where(
+                pr.c.project_id == access.project_id,
+                pr.c.state == "active",
+                or_(c.c.state == "merged", pr.c.plugin_id.is_not(None)),
+            )
             .order_by(pr.c.id)
         )
     ).all()
@@ -247,7 +260,7 @@ async def _week_results(
     found: dict[date, dict] = {week: {} for week in weeks}
     for row in rows:
         if await reach(row.probe_label):
-            found[row.week][(row.probe_id, row.runtime, row.model)] = (row.change_id, _result(row))
+            found[row.week][(row.probe_id, row.runtime, row.model)] = (row.change_id, _result(row) | _rule(row))
     for probe in active:
         if not await reach(probe.label):
             continue
@@ -258,7 +271,7 @@ async def _week_results(
                 key = (probe.id, runtime, model)
                 if key not in found[week]:
                     why = NOT_YET if week >= current else NO_RUN
-                    found[week][key] = (probe.change_id, _result(None, k=k, reason=why))
+                    found[week][key] = (probe.change_id, _result(None, k=k, reason=why) | _rule(probe))
     return found
 
 
@@ -394,7 +407,15 @@ async def build(
             )
             for key, (change_id, result) in found[week].items()
         ]
-        results.sort(key=lambda item: (item.change_id, item.probe_id, item.runtime, item.model or ""))
+        results.sort(
+            key=lambda item: (
+                item.change_id is None,
+                item.change_id or 0,
+                item.probe_id,
+                item.runtime,
+                item.model or "",
+            )
+        )
         shown.append(
             ProbeWeek(
                 week=week,
@@ -443,9 +464,10 @@ async def probe_report(
 
 
 def _who(item: ProbeWeekResult) -> str:
-    return (
-        f"probe #{item.probe_id} of change #{item.change_id} on {item.runtime}{f' {item.model}' if item.model else ''}"
-    )
+    what = f"change #{item.change_id}"
+    if item.change_id is None and item.ref is not None:
+        what = f"plugin {item.plugin or 'removed'} rule {item.ref}"
+    return f"probe #{item.probe_id} of {what} on {item.runtime}{f' {item.model}' if item.model else ''}"
 
 
 def _rate(arm: ProbeArmCount) -> str:

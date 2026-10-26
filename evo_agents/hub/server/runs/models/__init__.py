@@ -441,8 +441,11 @@ class ProbeSpec(BaseModel):
     verify: str = Field(description="one shell line the worker runs on each session's work; never shown the agent")
     k: int = Field(description="the sessions of each arm")
     week: date = Field(description="the Monday of the ISO week the run measures")
-    change_repo: str = Field(description="the repo of the change, which holds its rule")
+    change_repo: str = Field(description="the repo of the change, which holds its rule; a plugin's probe: its repo")
     merge_sha: str | None = Field(description="the change's merge commit; null: its head against the default branch")
+    plugin: str | None = Field(None, description="(plugin probe) the core plugin whose rule the arms put on and off")
+    ref: str | None = Field(None, description="(plugin probe) the key of the plugin's rule")
+    arms: dict[str, dict[str, str]] | None = Field(None, description="(plugin probe) on and off: path to text")
 
 
 class HistorySpec(BaseModel):

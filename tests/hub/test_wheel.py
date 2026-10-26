@@ -99,4 +99,4 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
     assert live.sql(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(REVISIONS[-1],)]
     public = select(PG_TABLES.c.tablename).where(PG_TABLES.c.schemaname == "public")
     # The wheel's venv sees this interpreter's core plugins too, whose chains migrate runs after the hub's own.
-    assert {name for (name,) in live.sql(hub_db, public)} == TABLES | {"alembic_version"} | pg.plugin_version_tables()
+    assert {name for (name,) in live.sql(hub_db, public)} == TABLES | {"alembic_version"} | pg.plugin_chain_tables()

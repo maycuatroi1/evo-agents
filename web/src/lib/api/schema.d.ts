@@ -5772,6 +5772,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/editorial/{project}/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Posts
+         * @description The posts by the order of their stages: the gate that waits, the preview and the url, how many rounds.
+         */
+        get: operations["list_posts_v1_x_editorial__project__posts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/posts/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Post
+         * @description One post with its gates, review rounds and comments, the stages it entered and its feedback entries.
+         */
+        get: operations["show_post_v1_x_editorial__project__posts__slug__get"];
+        put?: never;
+        /**
+         * Set Post
+         * @description Set a post's stage, title, links, figures or the state of one of its gates; a new slug makes the post.
+         */
+        post: operations["set_post_v1_x_editorial__project__posts__slug__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/posts/{slug}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pull Comments
+         * @description Read the reviewers' draft comments of the post into its latest review round, each once (writer).
+         */
+        post: operations["pull_comments_v1_x_editorial__project__posts__slug__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/posts/{slug}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Post
+         * @description Hand the writer agent the post's next task now, such as after an error; 409 while a run of it runs (writer).
+         */
+        post: operations["run_post_v1_x_editorial__project__posts__slug__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recall
+         * @description What to read before a stage: the entries of its notebooks and those about the post, seen most first.
+         */
+        get: operations["recall_v1_x_editorial__project__recall_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Feedback
+         * @description The entries of the feedback notebook by number, of a notebook, a stage, a post, seen at least so often.
+         */
+        get: operations["list_feedback_v1_x_editorial__project__feedback_get"];
+        put?: never;
+        /**
+         * Add Feedback
+         * @description A new entry of the notebook, numbered after the last; the answer is a list of that one entry.
+         */
+        post: operations["add_feedback_v1_x_editorial__project__feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/feedback/{entry}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Feedback
+         * @description Give the entry its curator probe (a task and a verify), in place of the one it has, or retire it (admin).
+         */
+        post: operations["probe_feedback_v1_x_editorial__project__feedback__entry__probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/feedback/{entry}/repeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Repeat Feedback
+         * @description The entry came back: seen once more, with what the person said this time; a list of that one entry.
+         */
+        post: operations["repeat_feedback_v1_x_editorial__project__feedback__entry__repeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Document
+         * @description Write the posts and entries of a JSON file, keeping their ids; the same file twice adds nothing (admin).
+         */
+        post: operations["import_document_v1_x_editorial__project__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/editorial/{project}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export
+         * @description The notebook as its markdown files, or with format json everything import takes.
+         */
+        get: operations["export_v1_x_editorial__project__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/marketing/{project}/channels": {
         parameters: {
             query?: never;
@@ -16952,6 +17160,514 @@ export interface components {
              */
             rejected: components["schemas"]["RejectedProposal"][];
         };
+        /** EditorialComment */
+        EditorialComment: {
+            /**
+             * Id
+             * @description the id the comment's source gave it
+             */
+            id: string;
+            /** Author */
+            author?: string | null;
+            /**
+             * Quote
+             * @description the sentence the comment marks
+             */
+            quote?: string | null;
+            /** Text */
+            text: string;
+            /** At */
+            at?: string | null;
+        };
+        /**
+         * EditorialEntry
+         * @description An entry of the feedback notebook.
+         */
+        EditorialEntry: {
+            /**
+             * Id
+             * @description PH-<n>
+             */
+            id: string;
+            /** Notebook */
+            notebook: string;
+            /** Title */
+            title: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Post */
+            post?: string | null;
+            /** Said */
+            said: components["schemas"]["EditorialSaid"][];
+            /** Agent Wrote */
+            agent_wrote?: string | null;
+            /** Agent Note */
+            agent_note?: string | null;
+            /**
+             * Agent After
+             * @description how many said lines its line follows; null after all
+             */
+            agent_after?: number | null;
+            /** Person Fixed */
+            person_fixed?: string | null;
+            /** Fixed Note */
+            fixed_note?: string | null;
+            /**
+             * Fixed After
+             * @description how many said lines its line follows; null after all
+             */
+            fixed_after?: number | null;
+            /** Rule */
+            rule: string;
+            /**
+             * Check
+             * @description the Kiểm line: how the rule is checked
+             */
+            check?: string | null;
+            /**
+             * Seen
+             * @description Lần gặp: how many times it was seen
+             */
+            seen: number;
+            /** Probe Id */
+            probe_id?: number | null;
+            /**
+             * Probe Task
+             * @description the task of the probe; its verify only the admins read
+             */
+            probe_task?: string | null;
+        };
+        /** EditorialExport */
+        EditorialExport: {
+            /**
+             * Format
+             * @description markdown | json
+             */
+            format: string;
+            /** Notebooks */
+            notebooks: components["schemas"]["EditorialNotebookFile"][];
+            /**
+             * Document
+             * @description with json: what import takes, every post and entry
+             */
+            document?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * EditorialFeedbackIn
+         * @description A new entry; the notebook and the post may come in the query instead.
+         */
+        EditorialFeedbackIn: {
+            /** Notebook */
+            notebook?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Said
+             * @description what the person said
+             */
+            said?: string | null;
+            /**
+             * Date
+             * @description the day of the entry; today when unsaid
+             */
+            date?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Post */
+            post?: string | null;
+            /** Agent Wrote */
+            agent_wrote?: string | null;
+            /** Person Fixed */
+            person_fixed?: string | null;
+            /** Rule */
+            rule?: string | null;
+            /** Check */
+            check?: string | null;
+            /** Probe Id */
+            probe_id?: number | null;
+            /**
+             * Probe Task
+             * @description the probe's task, with probe_verify (admin)
+             */
+            probe_task?: string | null;
+            /**
+             * Probe Verify
+             * @description one shell line, exit 0 when the rule was kept
+             */
+            probe_verify?: string | null;
+        };
+        /** EditorialGate */
+        EditorialGate: {
+            /** Stage */
+            stage: string;
+            /** Kind */
+            kind: string;
+            /**
+             * State
+             * @description waiting | answered | skipped
+             */
+            state: string;
+            /** Answered At */
+            answered_at?: string | null;
+            /**
+             * Answered Via
+             * @description what it was answered through: hub, cli, telegram...
+             */
+            answered_via?: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Answered By */
+            answered_by?: string | null;
+            /** Answer */
+            answer?: unknown;
+            /**
+             * Ask
+             * @description what the agent put to the person: proposals, questions
+             */
+            ask?: unknown;
+        };
+        /** EditorialGateSummary */
+        EditorialGateSummary: {
+            /** Stage */
+            stage: string;
+            /** Kind */
+            kind: string;
+            /**
+             * State
+             * @description waiting | answered | skipped
+             */
+            state: string;
+            /** Answered At */
+            answered_at?: string | null;
+            /**
+             * Answered Via
+             * @description what it was answered through: hub, cli, telegram...
+             */
+            answered_via?: string | null;
+        };
+        /**
+         * EditorialImportIn
+         * @description The JSON of posts and notebook entries, as a file's text (``file``) or as an object (``document``).
+         */
+        EditorialImportIn: {
+            /** File */
+            file?: string | null;
+            /** Document */
+            document?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** EditorialImported */
+        EditorialImported: {
+            /** Posts Added */
+            posts_added: number;
+            /** Posts Updated */
+            posts_updated: number;
+            /** Entries Added */
+            entries_added: number;
+            /** Entries Updated */
+            entries_updated: number;
+        };
+        /**
+         * EditorialJudge
+         * @description The judge's question of a round and what came of it.
+         */
+        EditorialJudge: {
+            /**
+             * State
+             * @description pending | passed | below | failed | refused
+             */
+            state?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Passed
+             * @description the machine gate: every axis 4 or more
+             */
+            passed: boolean;
+        };
+        /** EditorialNotebookFile */
+        EditorialNotebookFile: {
+            /** Name */
+            name: string;
+            /**
+             * File
+             * @description the file name the notebook was kept in, <name>.md
+             */
+            file: string;
+            /** Markdown */
+            markdown: string;
+        };
+        /**
+         * EditorialPost
+         * @description One post with its gates, review rounds and comments, the stages it entered and its feedback entries.
+         */
+        EditorialPost: {
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Stage */
+            stage: string;
+            /** Branch */
+            branch?: string | null;
+            /** Preview Url */
+            preview_url?: string | null;
+            /** Url */
+            url?: string | null;
+            /**
+             * Comment Id
+             * @description the comment service keys its draft comments draft:<comment_id>
+             */
+            comment_id?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            run?: components["schemas"]["EditorialRun"] | null;
+            /**
+             * D7
+             * @description the figures a person wrote in 7 days after it went out
+             */
+            d7?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * D28
+             * @description the figures a person wrote in 28 days after it went out
+             */
+            d28?: {
+                [key: string]: unknown;
+            } | null;
+            /** Waiting Gate */
+            waiting_gate?: string | null;
+            /** Gates */
+            gates: components["schemas"]["EditorialGate"][];
+            /** Rounds */
+            rounds: components["schemas"]["EditorialRound"][];
+            /** History */
+            history: components["schemas"]["EditorialStageEntered"][];
+            /**
+             * Feedback
+             * @description the notebook's entries about this post, PH-<n>
+             */
+            feedback: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * EditorialPostSummary
+         * @description One post as ``posts`` lists it.
+         */
+        EditorialPostSummary: {
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Stage */
+            stage: string;
+            /**
+             * Waiting Gate
+             * @description the stage of the gate that waits for a person, if any
+             */
+            waiting_gate?: string | null;
+            /** Gates */
+            gates: components["schemas"]["EditorialGateSummary"][];
+            /**
+             * Rounds
+             * @description how many review rounds the post had
+             */
+            rounds: number;
+            /** Preview Url */
+            preview_url?: string | null;
+            /**
+             * Url
+             * @description the published post
+             */
+            url?: string | null;
+            /** @description the writer's latest run, none before the first */
+            run?: components["schemas"]["EditorialRun"] | null;
+        };
+        /**
+         * EditorialProbeIn
+         * @description The probe of an entry: its task and verify, or remove to retire it (admin).
+         */
+        EditorialProbeIn: {
+            /** Task */
+            task?: string | null;
+            /** Verify */
+            verify?: string | null;
+            /**
+             * Remove
+             * @default false
+             */
+            remove: boolean;
+        };
+        /**
+         * EditorialRepeatIn
+         * @description The entry was seen again, with what the person said this time.
+         */
+        EditorialRepeatIn: {
+            /** Said */
+            said?: string | null;
+            /**
+             * Date
+             * @description when it was said; today when unsaid
+             */
+            date?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** EditorialRound */
+        EditorialRound: {
+            /** Stage */
+            stage: string;
+            /** Number */
+            number: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Feedback
+             * @description the feedback entries the round wrote, PH-<n>
+             */
+            feedback: string[];
+            /** Scores */
+            scores?: {
+                [key: string]: unknown;
+            } | null;
+            judge?: components["schemas"]["EditorialJudge"] | null;
+            /** Comments */
+            comments: components["schemas"]["EditorialComment"][];
+        };
+        /**
+         * EditorialRun
+         * @description The post's latest task run of the agent type writer.
+         */
+        EditorialRun: {
+            /** Run Id */
+            run_id?: number | null;
+            /**
+             * State
+             * @description running | done | failed | refused
+             */
+            state?: string | null;
+            /**
+             * Stage
+             * @description the stage the task was handed at
+             */
+            stage?: string | null;
+            /**
+             * Error
+             * @description why it failed or was refused
+             */
+            error?: string | null;
+            /** At */
+            at?: string | null;
+        };
+        /** EditorialSaid */
+        EditorialSaid: {
+            /** Text */
+            text: string;
+            /**
+             * Date
+             * @description when it was said, as the notebook writes it
+             */
+            date?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * EditorialSetIn
+         * @description What to change of a post; a post that is not there is made, which needs a stage.
+         */
+        EditorialSetIn: {
+            /** Title */
+            title?: string | null;
+            /** Stage */
+            stage?: string | null;
+            /** Branch */
+            branch?: string | null;
+            /** Preview Url */
+            preview_url?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Comment Id */
+            comment_id?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * D7
+             * @description an object of figures, or its JSON text
+             */
+            d7?: {
+                [key: string]: unknown;
+            } | string | null;
+            /**
+             * D28
+             * @description an object of figures, or its JSON text
+             */
+            d28?: {
+                [key: string]: unknown;
+            } | string | null;
+            /**
+             * Evidence
+             * @description what shows the post entered the stage
+             */
+            evidence?: string | null;
+            /**
+             * Gate
+             * @description the stage of the gate to set
+             */
+            gate?: string | null;
+            /**
+             * Gate State
+             * @description waiting | answered | skipped
+             */
+            gate_state?: string | null;
+            /**
+             * Via
+             * @description what the gate was answered through; hub when unsaid
+             */
+            via?: string | null;
+            /** Answer */
+            answer?: unknown;
+            /**
+             * Ask
+             * @description what to put to the person at the gate of the stage entered, or of gate: proposals, questions
+             */
+            ask?: unknown;
+        };
+        /** EditorialStageEntered */
+        EditorialStageEntered: {
+            /** Stage */
+            stage: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Evidence */
+            evidence?: string | null;
+        };
         /**
          * EffectiveConfig
          * @description The config a plugin gets in a project, for runs of an agent profile: each field from the highest layer.
@@ -25235,10 +25951,10 @@ export interface components {
             state: "active" | "retired";
             /**
              * Source
-             * @description who wrote it: its proposal, a review run or an admin
+             * @description who wrote it: its proposal, a review run, an admin, or a core plugin (plugin) for a rule of its own
              * @enum {string}
              */
-            source: "proposal" | "review" | "admin";
+            source: "proposal" | "review" | "admin" | "plugin";
             /** Created By */
             created_by: string | null;
             /** Created Run Id */
@@ -25262,6 +25978,16 @@ export interface components {
              * @description the probe, not reproduced two weeks in a row, this one replaced
              */
             replaces?: number | null;
+            /**
+             * Plugin
+             * @description source plugin: the core plugin whose rule it measures
+             */
+            plugin?: string | null;
+            /**
+             * Ref
+             * @description source plugin: the key of the plugin's rule it measures
+             */
+            ref?: string | null;
         };
         /**
          * ProbeAdd
@@ -25452,8 +26178,11 @@ export interface components {
             id: number;
             /** Probe Id */
             probe_id: number;
-            /** Change Id */
-            change_id: number;
+            /**
+             * Change Id
+             * @description null: the probe of a plugin's rule, which has no change
+             */
+            change_id: number | null;
             /**
              * Week
              * Format: date
@@ -25631,7 +26360,7 @@ export interface components {
             week: string;
             /**
              * Change Repo
-             * @description the repo of the change, which holds its rule
+             * @description the repo of the change, which holds its rule; a plugin's probe: its repo
              */
             change_repo: string;
             /**
@@ -25639,6 +26368,25 @@ export interface components {
              * @description the change's merge commit; null: its head against the default branch
              */
             merge_sha: string | null;
+            /**
+             * Plugin
+             * @description (plugin probe) the core plugin whose rule the arms put on and off
+             */
+            plugin?: string | null;
+            /**
+             * Ref
+             * @description (plugin probe) the key of the plugin's rule
+             */
+            ref?: string | null;
+            /**
+             * Arms
+             * @description (plugin probe) on and off: path to text
+             */
+            arms?: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            } | null;
         };
         /**
          * ProbeUnprobed
@@ -25688,8 +26436,11 @@ export interface components {
          * @description One probe on one runtime and model in a week.
          */
         ProbeWeekResult: {
-            /** Change Id */
-            change_id: number;
+            /**
+             * Change Id
+             * @description the change it probes; null: the probe of a plugin's rule
+             */
+            change_id: number | null;
             /** Probe Id */
             probe_id: number;
             /** Runtime */
@@ -25728,6 +26479,16 @@ export interface components {
              * @description the probe run that measured it last
              */
             run_id: number | null;
+            /**
+             * Plugin
+             * @description the core plugin whose rule it probes, when it has no change
+             */
+            plugin?: string | null;
+            /**
+             * Ref
+             * @description the key of that plugin's rule
+             */
+            ref?: string | null;
         };
         /** ProbeWeekTotals */
         ProbeWeekTotals: {
@@ -34102,6 +34863,21 @@ export interface components {
              * @description one line the run's list shows; default: the task's
              */
             title?: string | null;
+            /**
+             * Repo
+             * @description the repo of the project whose ``branch`` the run works on; with ``branch`` only
+             */
+            repo?: string | null;
+            /**
+             * Branch
+             * @description a branch of ``repo`` that is no default branch, which the run checks out and pushes back to, never forced; default: task/<run> of each repo
+             */
+            branch?: string | null;
+            /**
+             * Minutes
+             * @description the agent time the run may take, at most 120; default: 30
+             */
+            minutes?: number | null;
         };
         /** TaskPull */
         TaskPull: {
@@ -34136,7 +34912,7 @@ export interface components {
             repo: string;
             /**
              * Branch
-             * @description the run's branch, task/<id>
+             * @description the run's branch, task/<id>, or the branch its task names for the repo
              */
             branch: string;
             /**
@@ -58035,6 +58811,1032 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_posts_v1_x_editorial__project__posts_get: {
+        parameters: {
+            query?: {
+                /** @description a stage of the project's config */
+                stage?: string | null;
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialPostSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_post_v1_x_editorial__project__posts__slug__get: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the post's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialPost"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_post_v1_x_editorial__project__posts__slug__post: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the post's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditorialSetIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialPost"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pull_comments_v1_x_editorial__project__posts__slug__comments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the post's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialPost"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_post_v1_x_editorial__project__posts__slug__run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the post's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialPost"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    recall_v1_x_editorial__project__recall_get: {
+        parameters: {
+            query?: {
+                /** @description a stage of the project's config */
+                stage?: string | null;
+                /** @description a post's slug */
+                post?: string | null;
+                /** @description every word of it, in any case */
+                q?: string | null;
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialEntry"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_feedback_v1_x_editorial__project__feedback_get: {
+        parameters: {
+            query?: {
+                /** @description a notebook of the project's config */
+                notebook?: string | null;
+                /** @description a stage of the project's config */
+                stage?: string | null;
+                /** @description a post's slug */
+                post?: string | null;
+                /** @description seen at least this many times */
+                seen?: number | null;
+                /** @description every word of it, in any case */
+                q?: string | null;
+                /** @description what the CLI was asked to do */
+                action?: ("list" | "add" | "repeat") | null;
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialEntry"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_feedback_v1_x_editorial__project__feedback_post: {
+        parameters: {
+            query?: {
+                /** @description a notebook of the project's config */
+                notebook?: string | null;
+                /** @description a post's slug */
+                post?: string | null;
+                /** @description what the CLI was asked to do */
+                action?: ("list" | "add" | "repeat") | null;
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditorialFeedbackIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialEntry"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    probe_feedback_v1_x_editorial__project__feedback__entry__probe_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the entry, PH-<n> */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditorialProbeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialEntry"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    repeat_feedback_v1_x_editorial__project__feedback__entry__repeat_post: {
+        parameters: {
+            query?: {
+                /** @description what the CLI was asked to do */
+                action?: ("list" | "add" | "repeat") | null;
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the entry, PH-<n> */
+                entry: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditorialRepeatIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialEntry"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    import_document_v1_x_editorial__project__import_post: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditorialImportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialImported"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_v1_x_editorial__project__export_get: {
+        parameters: {
+            query?: {
+                /** @description a notebook of the project's config */
+                notebook?: string | null;
+                format?: "markdown" | "json";
+                /** @description text: the words `evo-agents hub editorial` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

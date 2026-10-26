@@ -5,6 +5,10 @@ or the worktrees of the chat run before it in its session, adopted as they are a
 and at the run's end, what the agent left committed in each and the run's branch pushed of each repo whose commits the
 branch lacks on origin, never a default branch and never forced (``gitops.check_push``, by the run's kind), with the
 hub told of each push (POST /v1/worker/runs/{id}/<kind>/pulls), which opens the draft pull request.
+
+A task run may work in one repo on a branch its task names (``named``, from the run's repos), which is no default
+branch: that branch from origin when origin has it, else from the default branch, pushed back to it, never forced
+(``gitops.check_push`` takes it as ``named_branch``).
 """
 
 from __future__ import annotations
@@ -45,11 +49,12 @@ class BranchWork:
     """The worktrees of a run on its ``branch`` in its ``directory``, and their push at its end, for a run of
     ``kind``."""
 
-    def __init__(self, run: Run, directory: RunDirectory, branch: str, kind: Kind):
+    def __init__(self, run: Run, directory: RunDirectory, branch: str, kind: Kind, named: dict[str, str] | None = None):
         self.run = run
         self.directory = directory
         self.branch = branch
         self.kind = kind
+        self.named = dict(named or {})  # repo -> the branch the run's task names for it, instead of ``branch``
         self.left_out: list[str] = []  # repos of the run this worker has no checkout of
         self.no_origin: list[str] = []  # repos of the run the project lists no origin for
         # the step of the setup a fetch's note starts: the thread of a chat run shows the repo it opens
@@ -114,7 +119,8 @@ class BranchWork:
         """A worktree of ``name`` at ``<directory>/<folder>`` on the run's branch: from origin's branch when the
         run's branch was pushed already, else from origin's default branch; on evo-run/<run>/<folder> when the branch
         is checked out elsewhere or has commits here that the start lacks."""
-        run, branch = self.run, self.branch
+        run, named = self.run, self.named.get(name)
+        branch = named or self.branch
         path = self.directory.path / folder
         async with run.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
@@ -123,6 +129,8 @@ class BranchWork:
             remote_head = await gitops.remote_default_branch(checkout)
             hub_default = default_branch_of(run.daemon.config, run.project, name)
             protected = tuple(sorted(origin.protected_branches(remote_head, hub_default)))
+            if named is not None and named in protected:
+                raise RunFailed(f"{named} is a default branch of {name}: the run never works on it")
             defaults = [f"refs/remotes/origin/{default}" for default in (remote_head, hub_default) if default]
             refs = (f"refs/remotes/origin/{branch}", *defaults, "refs/remotes/origin/HEAD", "HEAD")
             start, base = await origin.start_point(checkout, refs)
@@ -194,6 +202,7 @@ class BranchWork:
                     kind=self.kind.name,
                     plan_branch=None,
                     env=env,
+                    named_branch=self.named.get(name),
                 )
 
         try:

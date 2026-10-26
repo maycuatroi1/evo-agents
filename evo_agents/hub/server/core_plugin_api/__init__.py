@@ -1,4 +1,4 @@
-"""The API of the hub for core plugins, version 1.3: the one module of ``evo_agents.hub`` a core plugin imports
+"""The API of the hub for core plugins, version 1.4: the one module of ``evo_agents.hub`` a core plugin imports
 (``from evo_agents.hub.server import core_plugin_api as hub``), whose ``__all__`` is the whole of it. ``docs/plugins.md``
 (The core plugin API) is the contract; ``tests/plugins/golden/core-plugin-api.json`` holds its surface.
 
@@ -31,6 +31,8 @@ large, a handle it made itself) is a ValueError.
   of a kind its manifest contributes) write; ``chat_run_of``, ``run_session``, ``reply_in_chat``,
   ``enabled_agent_type`` and ``hand_task`` act in chat runs and hand tasks to its agent types; ``project_configs``
   reads its config in every project that enables it.
+- The probes of its own rules (1.4): ``add_probe`` and ``remove_probe`` keep a weekly probe of a rule the plugin
+  renders into a repo's harness files, arm on with the files rendered with the rule and arm off without it.
 
 Version 1.1 added ``Caller``, ``linked_channel``, ``unlink_by_login``, ``audit``, ``Clearance.below``, ``NOT_YOURS``
 and ``RESTRICTED_ANSWER``, what the core plugin telegram needed to run on this module alone. Version 1.2 added
@@ -40,6 +42,10 @@ and ``RESTRICTED_ANSWER``, what the core plugin telegram needed to run on this m
 Version 1.3 added what a core plugin outside evo-agents needs: its tables and chain of migrations, its framed
 pages (manifest key ``ui``), its commands and notice kinds, and the functions of the bullet above, with the values
 they return (``ProjectRef``, ``RunRef``, ``SignalPushed``, ``Invite`` and the others of ``__all__``).
+
+Version 1.4 added the keywords ``repo``, ``branch`` and ``minutes`` of ``hand_task`` (a task on a branch of one repo
+that is no default branch, pushed back to it, with up to ``MAX_TASK_MINUTES`` of agent time), and ``add_probe``,
+``remove_probe`` and ``MAX_PROBE_REF_CHARS`` for the probes of a plugin's own rules.
 
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
 naming both otherwise; a plugin calls it in the function its entry point names, so a hub of another version leaves the
@@ -66,7 +72,7 @@ from evo_agents.hub.server.core_plugin_api._acts import (
     read_message,
     send_message,
 )
-from evo_agents.hub.server.core_plugin_api._agents import enabled_agent_type, hand_task, reply_in_chat
+from evo_agents.hub.server.core_plugin_api._agents import MAX_TASK_MINUTES, enabled_agent_type, hand_task, reply_in_chat
 from evo_agents.hub.server.core_plugin_api._base import (
     Context,
     audit,
@@ -128,6 +134,7 @@ from evo_agents.hub.server.core_plugin_api._people import (
     read_project,
     read_run,
 )
+from evo_agents.hub.server.core_plugin_api._probes import MAX_PROBE_REF_CHARS, add_probe, remove_probe
 from evo_agents.hub.server.core_plugin_api._questions import (
     ANSWER_EVENT,
     MAX_ANSWER_CHARS,
@@ -249,7 +256,7 @@ from evo_agents.hub.server.notifications import (
     Undeliverable,
 )
 
-API_VERSION: tuple[int, int] = (1, 3)
+API_VERSION: tuple[int, int] = (1, 4)
 
 WebSession = Annotated[Session, Depends(web_session)]
 Caller = Annotated[Session, Depends(caller)]
@@ -302,8 +309,10 @@ __all__ = [
     "Login",
     "MAX_ANSWER_CHARS",
     "MAX_ASKER_CHARS",
+    "MAX_PROBE_REF_CHARS",
     "MAX_QUESTION_BYTES",
     "MAX_REF_CHARS",
+    "MAX_TASK_MINUTES",
     "Member",
     "NOT_YOURS",
     "NotACorePlugin",
@@ -356,6 +365,7 @@ __all__ = [
     "WebSession",
     "WorkItemRef",
     "admins_notified",
+    "add_probe",
     "adopt_tables",
     "agents",
     "answer_decision",
@@ -432,6 +442,7 @@ __all__ = [
     "read_work_items",
     "record_audit",
     "redeem_link_code",
+    "remove_probe",
     "reply_in_chat",
     "require",
     "restricted",

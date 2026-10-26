@@ -4,7 +4,8 @@ a task the plugin handed it, which may change code.
 The daemon takes the run's leases for the repos of its project it has a checkout of (the others it leaves out, saying
 so), checks it can read each, and makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a writable
 worktree of each, on the run's branch ``task/<id>`` (the id of the run the plugin's dispatch made), from origin's
-branch when an earlier attempt pushed it already, else from origin's default branch (``branch_work``). The agent works
+branch when an earlier attempt pushed it already, else from origin's default branch (``branch_work``); the one repo
+whose branch the task names (``task_runs.branch_problem``) on that branch instead, pushed back to it. The agent works
 in EVO_RUN_KIND ``task``, one turn that asks nobody anything. When it ends, the daemon commits what the agent left in
 each worktree and pushes the run's branch of each repo whose commits the branch lacks on origin, never a default branch
 and never forced (``gitops.check_push``, kind ``task``), tells the hub (POST /v1/worker/runs/{id}/task/pulls), which
@@ -29,6 +30,16 @@ if TYPE_CHECKING:
 TASK = Kind("task", "task/pulls", "as a draft pull request", "let the plugin hand the task again")
 
 
+def _named_branches(repos, branch: str) -> dict[str, str]:
+    """The repos of the run whose entry names a branch other than the run's ``branch``: the branch its task names."""
+    named = {}
+    for entry in repos or []:
+        if isinstance(entry, dict) and isinstance(entry.get("repo"), str) and isinstance(entry.get("branch"), str):
+            if entry["branch"] and entry["branch"] != branch:
+                named[entry["repo"]] = entry["branch"]
+    return named
+
+
 async def _no_more_turns() -> list[dict]:
     """A task run is one turn: nobody writes to its agent."""
     return []
@@ -48,7 +59,8 @@ class TaskRun:
         self.directory = RunDirectory(run)
         self.conversation = Conversation(run, self.directory, after_turn=_no_more_turns)
         self.branch = str(run.spec.get("branch") or task_runs.branch_of(run.id))
-        self.work = BranchWork(run, self.directory, self.branch, TASK)  # its worktrees and their push
+        self.named = _named_branches(run.spec.get("repos"), self.branch)
+        self.work = BranchWork(run, self.directory, self.branch, TASK, self.named)  # its worktrees and their push
 
     async def steps(self) -> None:
         run, spec = self.run, self.run.spec
@@ -62,6 +74,10 @@ class TaskRun:
             raise RunFailed("a task run runs headless only")
         if not task_runs.is_task_branch(self.branch):
             raise RunFailed(f"a task run works on a branch task/<run>, not {self.branch}")
+        for name, branch in self.named.items():
+            problem = task_runs.branch_problem(branch)
+            if problem is not None:
+                raise RunFailed(f"the task names {branch} of {name}: {problem}")
         names = [entry.get("repo") for entry in repos]
         await access.take_credentials(run, names, best_effort=True)  # cloning those it lacks first
         run.check()
