@@ -54,6 +54,15 @@ Each session's file keeps the state its last hook wanted, and a Stop that reache
 deadline, what up to SWEEP other sessions of the machine left waiting: their events and the end of their turn
 (``idle``, ``ended``), for sessions touched in the last SWEEP_HOURS and not refused lately. A session whose hook holds
 its file at that moment is left to that hook.
+
+Some turns end with no Stop at all: Claude Code runs none for a turn the person interrupts (Esc) or an API error ends,
+and a Stop that failed before it wrote the file (an evo-ak it could not start) leaves ``running`` there. So the sweep
+also reads the end of the transcript of each session whose file still says the turn runs (``turn_over``; the path its
+hooks gave, else Claude Code's own place for it): a turn whose last record is the agent's end of turn, an API error or
+the person's interruption, the file untouched for SETTLE seconds, or one where the model owes an answer (a message of
+the person or a tool's result last) untouched for DEAD_AFTER, a session that died, is over, and the sweep sends its last
+words and ``idle``. A tool call with no result yet is a turn under way, since a tool may run for hours. The Stop of a
+session outside any hub project sweeps too, unless the hub was found down lately.
 """
 
 from __future__ import annotations
@@ -126,6 +135,11 @@ STATES = {"user-prompt": "running", "tool": "running", "stop": "idle", "session-
 ENDS = ("idle", "ended")  # what a turn or a session ends in: no later hook of that session sends it again
 SWEEP = 3  # other sessions whose waiting events and end of turn one Stop sends at most, after its own
 SWEEP_HOURS = 24  # sessions touched longer ago are left as they are: the hub ends a run silent for 24 hours itself
+SETTLE = 90.0  # seconds a transcript stays untouched before a sweep reads its turn: the session's own Stop goes first
+DEAD_AFTER = 1800.0  # seconds a turn whose model owes an answer may stay untouched before its session counts as dead
+TAIL = 256 * 1024  # bytes of a transcript's end read for how its last turn ended
+INTERRUPTED = "[Request interrupted by user"  # how Claude Code marks a turn the person stopped, with a tool or not
+TURN_ENDS = frozenset({"end_turn", "stop_sequence", "refusal"})  # stop reasons of the agent's last message of a turn
 ASK_TOOL = "AskUserQuestion"
 MAX_QUESTIONS = 4  # questions of one dialog put to the hub
 MAX_ASKS = 5  # dialogs whose answers are still awaited, kept in the session's file
@@ -756,6 +770,8 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
     if (rec is None and hook in ("stop", "session-end")) or (
         rec is not None and rec["resolved"] and rec["project"] is None
     ):
+        if hook == "stop":
+            _sweep_from_elsewhere(hub, login, session_id, now)
         return []
     asking = limit_key(hook, payload) == "tool-ask"
     wait = LOCK_WAIT_TOOL if hook == "tool" and not asking else LOCK_WAIT
@@ -765,6 +781,9 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         if not got:
             return []
         rec = store.load() or store.fresh(cwd)
+        transcript = _absolute(payload.get("transcript_path"))
+        if transcript:
+            rec["transcript"] = transcript  # where a sweep reads how a turn no Stop reported ended
         title = _title(payload) if hook == "user-prompt" else None
         _append(rec, _hook_events(hook, payload, rec, found), hub.token)
         if asking:
@@ -823,32 +842,122 @@ def _deliver(delivery: Delivery, title: str | None, wanted: str, due: bool, now:
     return True
 
 
+def _sweepable(rec: dict | None, url: str, now: float) -> bool:
+    """Whether the session of ``rec`` is a run of the hub at ``url``, touched in the last SWEEP_HOURS, that the hub did
+    not refuse lately."""
+    if not rec or rec.get("hub") != url or rec.get("project") is None or not isinstance(rec.get("run_id"), int):
+        return False
+    return 0 <= now - float(rec.get("touched") or 0) < SWEEP_HOURS * 3600 and not _refused_lately(rec, now)
+
+
 def _waiting(rec: dict | None, url: str, now: float) -> bool:
     """Whether the session of ``rec`` left events or the end of its turn waiting for the hub at ``url``, in the last
     SWEEP_HOURS, and the hub did not refuse it lately."""
-    if not rec or rec.get("hub") != url or rec.get("project") is None or not isinstance(rec.get("run_id"), int):
-        return False
-    if not 0 <= now - float(rec.get("touched") or 0) < SWEEP_HOURS * 3600 or _refused_lately(rec, now):
+    if not _sweepable(rec, url, now):
         return False
     return bool(rec.get("events")) or (rec.get("wanted") in ENDS and rec.get("wanted") != rec.get("sent"))
 
 
+def _interrupted(content) -> bool:
+    """Whether a message of the person's side is the mark Claude Code leaves where the person stopped the turn."""
+    if isinstance(content, str):
+        return content.startswith(INTERRUPTED)
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict):
+            continue
+        text = block.get("text") if block.get("type") == "text" else block.get("content")
+        if isinstance(text, str) and text.startswith(INTERRUPTED):
+            return True
+    return False
+
+
+def turn_over(transcript: Path, now: float) -> bool:
+    """Whether the last turn of ``transcript`` is over, though no Stop may have said so (see the module): its last
+    record of the session itself (not a subagent's, not a meta one) is the agent's end of turn, an API error or the
+    person's interruption and the file is untouched for SETTLE seconds, or the model owes an answer (a message of the
+    person or a tool's result) and the file is untouched for DEAD_AFTER. A tool call with no result is under way."""
+    try:
+        stat = transcript.stat()
+        quiet = now - stat.st_mtime
+        if quiet < SETTLE:
+            return False
+        with transcript.open("rb") as handle:
+            handle.seek(max(0, stat.st_size - TAIL))
+            data = handle.read(TAIL)
+    except OSError:
+        return False
+    for line in reversed(data.splitlines()):
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(item, dict) or item.get("type") not in ("user", "assistant"):
+            continue
+        if item.get("isSidechain") or item.get("isMeta"):
+            continue
+        message = item.get("message")
+        if not isinstance(message, dict):
+            return False
+        if item["type"] == "assistant":
+            return bool(item.get("isApiErrorMessage")) or message.get("stop_reason") in TURN_ENDS
+        return _interrupted(message.get("content")) or quiet >= DEAD_AFTER
+    return False
+
+
+def _transcript_of(rec: dict, sid: str) -> Path | None:
+    """The transcript of session ``sid``: the path its hooks gave, else (a file of an earlier evo-ak) the one under a
+    projects directory of Claude Code (``transcripts.claude_roots``)."""
+    given = _absolute(rec.get("transcript"))
+    if given:
+        return Path(given)
+    from evo_agents.hub.transcripts import claude_roots
+
+    with contextlib.suppress(OSError):
+        for root in claude_roots():
+            for found in root.glob(f"*/{sid}.jsonl"):
+                return found
+    return None
+
+
+def _stale(rec: dict | None, sid: str, url: str, now: float) -> bool:
+    """Whether the session of ``rec`` still says its turn runs while its transcript shows the turn over
+    (``turn_over``): the person interrupted it, an API error ended it, or its Stop never reached the file."""
+    if not _sweepable(rec, url, now) or rec.get("wanted") in ENDS or rec.get("sent") == "ended":
+        return False
+    transcript = _transcript_of(rec, sid)
+    return transcript is not None and turn_over(transcript, now)
+
+
+def _end_turn(rec: dict, sid: str, token: str) -> None:
+    """What the Stop the session of ``rec`` never ran would have written: the agent's last words, and ``idle``."""
+    transcript = _transcript_of(rec, sid)
+    if transcript is not None:
+        words = agent_words(rec, transcript)
+        _append(rec, [("agent_message_chunk", {"text": _cut(t, TEXT_CHARS)}) for t in words], token)
+    rec["wanted"] = "idle"
+
+
 def sweep(hub: Hub, login: str, state: hooks.HookState, skip: str, deadline: float, now: float) -> None:
-    """Send what up to SWEEP other sessions of this machine left waiting for ``hub``, the newest first, until
-    ``deadline`` (``time.monotonic``) or a failure. A session whose file another hook holds is skipped."""
+    """Send what up to SWEEP other sessions of this machine left waiting for ``hub``, and the end of the turns their
+    transcripts show over (``_stale``), the newest first, until ``deadline`` (``time.monotonic``) or a failure. A
+    session whose file another hook holds is skipped."""
     found = []
     with contextlib.suppress(OSError):
         for path in _directory().glob("*.json"):
-            rec = _read(path)
-            if path.stem != skip and digest.SESSION_ID.fullmatch(path.stem) and _waiting(rec, hub.url, now):
-                found.append((float(rec["touched"]), path.stem))
+            sid, rec = path.stem, _read(path)
+            if sid == skip or not digest.SESSION_ID.fullmatch(sid):
+                continue
+            if _waiting(rec, hub.url, now) or _stale(rec, sid, hub.url, now):
+                found.append((float(rec["touched"]), sid))
     for _, sid in sorted(found, reverse=True)[:SWEEP]:
         if time.monotonic() > deadline:
             return
         store = Store(sid, hub.url)
         with locked(store.lock, 0.0) as got:
             rec = store.load() if got else None
-            if not _waiting(rec, hub.url, now):
+            if _stale(rec, sid, hub.url, now):
+                _end_turn(rec, sid, hub.token)
+            elif not _waiting(rec, hub.url, now):
                 continue
             wanted = rec["wanted"] if rec.get("wanted") in ENDS else rec["sent"]
             delivery = Delivery(hub, login, rec, sid, Path(rec["cwd"]), "sweep", state, deadline=deadline)
@@ -858,6 +967,14 @@ def sweep(hub: Hub, login: str, state: hooks.HookState, skip: str, deadline: flo
                 store.save(rec)
         if not reached:
             return
+
+
+def _sweep_from_elsewhere(hub: Hub, login: str, skip: str, now: float) -> None:
+    """The sweep of a Stop whose own session has no run on the hub (outside any hub project), unless the hub was found
+    down lately."""
+    state = hooks.HookState(hub_dir())
+    if state.down_since(hub.url, now, COOLDOWN) is None:
+        sweep(hub, login, state, skip, time.monotonic() + LIMITS["stop"][1], now)
 
 
 def hook_run(hook: str, payload: dict) -> list[str]:

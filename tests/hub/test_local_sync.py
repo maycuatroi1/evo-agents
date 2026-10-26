@@ -457,6 +457,126 @@ def test_the_sweep_leaves_alone_a_session_refused_lately_one_too_old_and_one_who
     assert not [path for _, path in runs.calls if path.split("/")[0] in left_alone]
 
 
+# Turns that end with no Stop: the person interrupted, an API error, a session that died, a Stop that never ran
+
+PROMPT = {"type": "user", "message": {"role": "user", "content": "go"}}
+CALL = {
+    "type": "assistant",
+    "message": {
+        "stop_reason": "tool_use",
+        "content": [
+            {"type": "text", "text": "Reading the diff."},
+            {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": "git diff"}},
+        ],
+    },
+}
+RESULT = {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]}}
+DONE = {"type": "assistant", "message": {"stop_reason": "end_turn", "content": [{"type": "text", "text": "Done."}]}}
+STOPPED = {"type": "user", "message": {"content": [{"type": "text", "text": "[Request interrupted by user]"}]}}
+STOPPED_IN_TOOL = {
+    "type": "user",
+    "message": {
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_1",
+                "content": "[Request interrupted by user for tool use]",
+                "is_error": True,
+            }
+        ]
+    },
+}
+API_ERROR = {
+    "type": "assistant",
+    "isApiErrorMessage": True,
+    "message": {"model": "<synthetic>", "stop_reason": "stop_sequence", "content": [{"type": "text", "text": "API"}]},
+}
+META = {"type": "user", "isMeta": True, "message": {"content": "Caveat: local commands below"}}
+SETTLED = local_sync.SETTLE + 5
+
+
+def write_transcript(path: Path, *records: dict, age: float = 0.0) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+    then = time.time() - age
+    os.utime(path, (then, then))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("records", "age", "over"),
+    [
+        ((PROMPT, CALL, RESULT, DONE), SETTLED, True),
+        ((PROMPT, CALL, RESULT, DONE), 5, False),  # the session's own Stop goes first
+        ((PROMPT, CALL, STOPPED_IN_TOOL, STOPPED), SETTLED, True),
+        ((PROMPT, STOPPED), SETTLED, True),
+        ((PROMPT, API_ERROR), SETTLED, True),
+        ((PROMPT, DONE, META), SETTLED, True),
+        ((PROMPT, CALL, {**DONE, "isSidechain": True}), SETTLED, False),  # a subagent's end is not the turn's
+        ((PROMPT, CALL), local_sync.DEAD_AFTER * 10, False),  # a tool may run for hours
+        ((PROMPT, CALL, RESULT), SETTLED, False),  # the model is answering
+        ((PROMPT, CALL, RESULT), local_sync.DEAD_AFTER + 5, True),  # no answer takes that long: the session died
+        ((PROMPT,), local_sync.DEAD_AFTER + 5, True),
+    ],
+)
+def test_a_turn_is_over_when_its_transcript_shows_it_ended_and_settled(own_home, records, age, over):
+    path = write_transcript(own_home / "t.jsonl", *records, age=age)
+    assert local_sync.turn_over(path, time.time()) is over
+
+
+def test_a_missing_transcript_is_no_turn_over(own_home):
+    assert local_sync.turn_over(own_home / "gone.jsonl", time.time()) is False
+
+
+def test_a_stop_ends_on_the_hub_the_turn_another_session_s_person_interrupted(own_home, runs, monkeypatch, capsys):
+    """Claude Code runs no Stop for a turn the person interrupts: the next Stop of any session of the machine reads the
+    transcript and sends that turn's last words and idle, once the transcript has settled."""
+    transcript = write_transcript(own_home / "other.jsonl", PROMPT)
+    earlier = {"session_id": OTHER, "cwd": str(own_home / "other"), "transcript_path": str(transcript)}
+    fire("user-prompt", {**earlier, "prompt": "go"}, monkeypatch, capsys)
+    write_transcript(transcript, PROMPT, CALL, STOPPED_IN_TOOL, STOPPED, age=5)
+
+    fire("user-prompt", payload(own_home, prompt="next"), monkeypatch, capsys)
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert runs.run_of(SESSION)["state"] == "idle" and runs.run_of(OTHER)["state"] == "running"
+
+    then = time.time() - SETTLED
+    os.utime(transcript, (then, then))
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert runs.run_of(OTHER)["state"] == "idle"
+    assert [e["body"]["text"] for e in runs.run_of(OTHER)["events"]] == ["Reading the diff."]
+    sent = len(runs.calls)
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert runs.calls[sent:] == []  # said once
+
+    fire("user-prompt", {**earlier, "prompt": "go on"}, monkeypatch, capsys)
+    assert runs.run_of(OTHER)["state"] == "running"
+
+
+def test_a_session_whose_file_names_no_transcript_is_read_where_claude_code_keeps_it(
+    own_home, runs, monkeypatch, capsys
+):
+    """A file an earlier evo-ak wrote has no transcript path: the sweep finds the session under ~/.claude/projects."""
+    fire("user-prompt", {"session_id": OTHER, "cwd": str(own_home / "other"), "prompt": "go"}, monkeypatch, capsys)
+    assert "transcript" not in json.loads((own_home / ".evo" / "hub" / "local" / f"{OTHER}.json").read_text())
+    write_transcript(own_home / ".claude" / "projects" / "-other" / f"{OTHER}.jsonl", PROMPT, DONE, age=SETTLED)
+    fire("user-prompt", payload(own_home, prompt="next"), monkeypatch, capsys)
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert runs.run_of(OTHER)["state"] == "idle"
+
+
+def test_the_stop_of_a_session_outside_any_hub_project_sweeps_too(own_home, runs, monkeypatch, capsys):
+    monkeypatch.setattr(MemorySync, "project_of", lambda self, where=None: None if where.name == "work" else "demo")
+    transcript = write_transcript(own_home / "other.jsonl", PROMPT)
+    earlier = {"session_id": OTHER, "cwd": str(own_home / "other"), "transcript_path": str(transcript)}
+    fire("user-prompt", {**earlier, "prompt": "go"}, monkeypatch, capsys)
+    write_transcript(transcript, PROMPT, API_ERROR, age=SETTLED)
+
+    fire("user-prompt", payload(own_home, prompt="elsewhere"), monkeypatch, capsys)
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert SESSION not in runs.ids and runs.run_of(OTHER)["state"] == "idle"
+
+
 def test_a_run_the_hub_ended_registers_again_at_the_next_prompt(own_home, fake, monkeypatch, capsys):
     fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
     fire("session-end", payload(own_home), monkeypatch, capsys)
