@@ -60,7 +60,10 @@ here.
   in ``source``) becomes a file of the event, which its content links to instead (``tool_result``), and the run
   sends it as an output of source tool. A subagent's tool results come through the stream too (as messages with its
   ``parent_tool_use_id``; claude-agent-sdk 0.2.170 says so of ``forward_subagent_text``, and run #80 of evo-agents
-  logged the Bash and Read calls of a plan-step subagent), so their images are taken the same way.
+  logged the Bash and Read calls of a plan-step subagent), so their images are taken the same way. Such a result
+  comes on one line of stdout with the image's base64 twice (in the message and in ``tool_use_result``), so the SDK
+  reads lines up to MAX_MESSAGE_BYTES (``max_buffer_size``), not its 1 MiB: run #924 of evo-agents failed on its
+  first Read of a 485 KB screenshot a person attached to a chat message.
 - The run's usage adds up the ``result`` of each turn, with the session's ``total_cost_usd``, and holds
   ``peak_context_tokens``: the largest context a message of the model read in the main thread, its usage's input,
   cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``); and the
@@ -207,6 +210,10 @@ FOLLOW_UP_AFTER = 15.0
 # Seconds the CLI has to open a turn after one in which a background command ended: its notification may have reached
 # the agent in that turn, or wait for the next.
 TURN_GRACE = 5.0
+# The longest line of the CLI's stdout the SDK reads (``max_buffer_size``; its own default is 1 MiB). A Read of a
+# 1.6 MB PNG with Claude Code 2.1.305 wrote a user message of 1,304,597 bytes; the API takes an image of at most 5 MB
+# and a request of at most 32 MB, so a line of a tool's result stays well under this.
+MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 # The results of a session the run's budget stopped, and the cap each one names (Outcome.cap).
 CAP_RESULTS = {"error_max_budget_usd": "cost", "error_max_turns": "turns"}
 # The text of a turn that ended on the account's usage limit, as Claude Code words it: "Claude AI usage limit
@@ -744,6 +751,7 @@ class ClaudeCodeAdapter(QueueAdapter):
             },
             "env": {key: value for key, value in self.context.env.items() if key not in dropped},
             "stderr": self._stderr.append,
+            "max_buffer_size": MAX_MESSAGE_BYTES,
         }
         if self.context.resume_session:
             settings["resume"] = self._session
