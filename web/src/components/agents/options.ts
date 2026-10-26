@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 
 import { agentKeys } from "@/lib/agent-queries";
-import { type Axis, LABEL_PREFIX } from "@/lib/agents";
+import { type Axis, LABEL_PREFIX, POOL_PREFIX } from "@/lib/agents";
 import { AGENT_RUNTIMES, GITHUB_APP, HOST_ENVIRONMENT, TOOLS } from "@/lib/agent-rules";
 import { call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -9,8 +9,8 @@ import type { ApiSource } from "@/lib/queries";
 
 /**
  * What the agent form offers on each axis, read from the hub as the admin sees it: their own secrets by name (and the
- * App's token), the global skills and the project's, the workers they see and those workers' labels, the models those
- * workers list, and the other projects of their grants; the tools, runtimes and host are the API's own words, and a
+ * App's token), the global skills and the project's, the workers they see, those workers' labels and the pools they
+ * own or see a node of, the models those workers list, and the other projects of their grants; the tools, runtimes and host are the API's own words, and a
  * plugin's environment, `<plugin>/<name>`, is typed by hand. A list the hub
  * does not answer is left empty and named in `failed`; the form still takes a value typed by hand on every axis, since
  * an allowlist may name what the admin cannot see (another member's secret or worker).
@@ -20,6 +20,7 @@ type Secret = Schemas["Secret"];
 type Skill = Schemas["Skill"];
 type Worker = Schemas["Worker"];
 type Project = Schemas["Project"];
+type Pool = Schemas["Pool"];
 
 /** One choice of an axis: its value as the allowlist keeps it, a word for its kind, and a line about it. */
 export type AxisOption = { value: string; tag?: string; detail?: string };
@@ -30,6 +31,8 @@ type Sources = {
   skills: Skill[] | null;
   workers: Worker[] | null;
   projects: Project[] | null;
+  /** The visitor's own pools; left out (or null) when not read, and the pools of the workers they see still show. */
+  pools?: Pool[] | null;
 };
 
 const byValue = (a: AxisOption, b: AxisOption) => a.value.localeCompare(b.value);
@@ -61,15 +64,19 @@ export function optionsFrom(sources: Sources, project: string): AgentOptions {
 
   const workers = (sources.workers ?? []).filter((worker) => worker.status !== "revoked");
   const labels = new Map<string, number>();
+  const pools = new Map<string, number>((sources.pools ?? []).map((pool) => [pool.name.toLowerCase(), 0]));
   const models = new Map<string, Set<string>>();
   for (const worker of workers) {
-    for (const label of worker.labels) labels.set(label.toLowerCase(), (labels.get(label.toLowerCase()) ?? 0) + 1);
+    // A key=value label (pool=<name>, os=) is a run selector's, never an allowlist item: the pool shows as pool:<name>.
+    for (const label of worker.labels.filter((each) => !each.includes("="))) labels.set(label.toLowerCase(), (labels.get(label.toLowerCase()) ?? 0) + 1);
+    if (worker.pool) pools.set(worker.pool.toLowerCase(), (pools.get(worker.pool.toLowerCase()) ?? 0) + 1);
     for (const runtime of AGENT_RUNTIMES) {
       for (const model of runtimeModels(worker.runtimes[runtime])) models.set(model, (models.get(model) ?? new Set()).add(runtime));
     }
   }
   const worker: AxisOption[] = [
     ...workers.map((each) => ({ value: each.name.toLowerCase(), tag: "worker", detail: each.owner })).sort(byValue),
+    ...[...pools].map(([pool, count]) => ({ value: `${POOL_PREFIX}${pool}`, tag: "pool", detail: String(count) })).sort(byValue),
     ...[...labels].map(([label, count]) => ({ value: `${LABEL_PREFIX}${label}`, tag: "label", detail: String(count) })).sort(byValue),
   ];
 
@@ -105,13 +112,14 @@ export const agentOptionsQuery = (api: ApiSource, project: string) =>
   queryOptions({
     queryKey: [...agentKeys.all(project), "options"] as const,
     queryFn: async ({ signal }) => {
-      const [secrets, skills, workers, projects] = await Promise.all([
+      const [secrets, skills, workers, projects, pools] = await Promise.all([
         settled(call(api().GET("/v1/secrets", { signal }))),
         settled(call(api().GET("/v1/skills", { params: { query: { project } }, signal }))),
         settled(call(api().GET("/v1/workers", { signal }))),
         settled(call(api().GET("/v1/projects", { signal }))),
+        settled(call(api().GET("/v1/worker-pools", { signal }))),
       ]);
-      return optionsFrom({ secrets, skills, workers, projects }, project);
+      return optionsFrom({ secrets, skills, workers, projects, pools }, project);
     },
     staleTime: 30_000,
   });

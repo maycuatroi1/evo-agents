@@ -25,6 +25,8 @@ export const AXES = ["credential", "tool", "skill", "worker", "project", "model"
 export type Axis = (typeof AXES)[number];
 
 export const LABEL_PREFIX = "label:";
+/** `profiles.POOL_PREFIX`: the worker axis names every node of a worker pool as `pool:<name>`. */
+export const POOL_PREFIX = "pool:";
 /** `author.AUTHOR_SKILL`: the skill an author run (New plan, Revise with agent) writes its plan with. */
 export const AUTHOR_SKILL = "create-exec-plan";
 
@@ -50,12 +52,16 @@ export function allows(permissions: AgentPermissions | null | undefined, axis: A
   return allow.some((item) => item.toLowerCase() === wanted);
 }
 
-/** Whether the worker axis lets worker `name` claim a run: by its name, or by one of its labels as `label:<label>`. */
-export function allowsWorker(permissions: AgentPermissions | null | undefined, name: string, labels: readonly string[]): boolean {
+/**
+ * Whether the worker axis lets worker `name` claim a run: by its name, by one of its labels as `label:<label>`, or as
+ * a node of `pool` as `pool:<name>`.
+ */
+export function allowsWorker(permissions: AgentPermissions | null | undefined, name: string, labels: readonly string[], pool?: string | null): boolean {
   const allow = allowed(permissions, "worker");
   if (allow === null) return true;
   const names = new Set(allow.map((item) => item.toLowerCase()));
-  return names.has(name.toLowerCase()) || labels.some((label) => names.has(`${LABEL_PREFIX}${label.toLowerCase()}`));
+  if (names.has(name.toLowerCase()) || (pool && names.has(`${POOL_PREFIX}${pool.toLowerCase()}`))) return true;
+  return labels.some((label) => names.has(`${LABEL_PREFIX}${label.toLowerCase()}`));
 }
 
 /** The agents a run can go under, the project's default first, then by handle; deleted ones take no new run. */
@@ -87,7 +93,7 @@ export function needsProfileDaemon(agent: Agent): boolean {
   return (["tool", "skill", "model"] as const).some((axis) => allowed(agent.permissions, axis) !== null) || agent.instructions !== "";
 }
 
-type WorkerLike = { name: string; labels: string[]; features?: string[] };
+type WorkerLike = { name: string; labels: string[]; features?: string[]; pool?: string | null };
 
 /**
  * The workers of the visitor's that may claim the agent's runs, in their order: those its worker axis names, and when
@@ -97,7 +103,7 @@ export function agentWorkers<W extends WorkerLike>(workers: readonly W[], agent:
   if (!agent) return [...workers];
   const daemon = needsProfileDaemon(agent);
   return workers.filter(
-    (worker) => allowsWorker(agent.permissions, worker.name, worker.labels) && (!daemon || (worker.features ?? []).includes(AGENT_PROFILES_FEATURE)),
+    (worker) => allowsWorker(agent.permissions, worker.name, worker.labels, worker.pool) && (!daemon || (worker.features ?? []).includes(AGENT_PROFILES_FEATURE)),
   );
 }
 
@@ -122,7 +128,7 @@ export function agentProblems(
   if (models !== null && asked.model && !models.includes(asked.model)) problems.push({ kind: "model", model: asked.model, allow: models });
   const workers = allowed(agent.permissions, "worker");
   if (asked.workers && asked.workers.length > 0 && agentWorkers(asked.workers, agent).length === 0) {
-    const named = asked.workers.some((worker) => allowsWorker(agent.permissions, worker.name, worker.labels));
+    const named = asked.workers.some((worker) => allowsWorker(agent.permissions, worker.name, worker.labels, worker.pool));
     problems.push(named || workers === null ? { kind: "daemon" } : { kind: "workers", allow: workers });
   }
   if (asked.skill && !allows(agent.permissions, "skill", asked.skill)) problems.push({ kind: "skill", skill: asked.skill });

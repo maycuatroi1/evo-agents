@@ -17,6 +17,7 @@ import { browserApi } from "@/lib/api/browser";
 import { addChatAgent, addChatPerson, chatKeys, removeChatAgent, removeChatPerson } from "@/lib/chat-queries";
 import { type Chat, chatsHref, MAX_AGENTS, MAX_PEOPLE } from "@/lib/chats";
 
+import { AgentMenu } from "./agent-menu";
 import { PersonAvatar } from "./faces";
 import { useChatFailure } from "./hooks";
 import { AddAgentForm, AddPersonForm } from "./member-forms";
@@ -45,7 +46,8 @@ function Section({ title, count, children, testId }: { title: string; count: str
  * The chat's members in a sheet (web/DESIGN.md, Chats): its agents (any member adds one of a project they write to,
  * or takes one out) and its people (any member adds one; the creator takes others out; each may leave). The hub
  * checks every change again: a refusal shows at the top of the sheet with the hub's words, a change made is a toast,
- * and the chat's stream tells the other members. A direct chat's sheet is its Details: its agent and its person, for
+ * and the chat's stream tells the other members. An agent's face and name open its menu (`AgentMenu`), whose sheet
+ * takes this one's place. A direct chat's sheet is its Details: its agent and its person, for
  * good (nobody is added, taken out or leaves; a note says to start a group chat for that).
  */
 export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -113,10 +115,14 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
               <ul className="flex flex-col gap-0.5">
                 {chat.agents.map((agent) => (
                   <li key={agent.handle} className={ROW} data-testid="chat-member-agent" data-handle={agent.handle}>
-                    <AgentAvatar agent={agent} />
+                    <AgentMenu agent={agent}>
+                      <AgentAvatar agent={agent} />
+                    </AgentMenu>
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <span className="truncate text-sm font-medium">{agent.name}</span>
+                        <AgentMenu agent={agent} shape="text" testId="agent-menu-name">
+                          <span className="block truncate text-sm font-medium">{agent.name}</span>
+                        </AgentMenu>
                         {agent.is_default ? (
                           <Tag>
                             <Star aria-hidden="true" />

@@ -31,6 +31,7 @@ function useOptionText(axis: Axis) {
     if (option.tag === "githubApp") return { title: option.value, detail: t("githubApp"), mono: true };
     if (option.tag === "host") return { title: option.value, detail: t("host"), mono: true };
     if (option.tag === "label") return { title: option.value, detail: t("labelWorkers", { count: Number(option.detail ?? 0) }), mono: true };
+    if (option.tag === "pool") return { title: option.value, detail: t("poolNodes", { count: Number(option.detail ?? 0) }), mono: true };
     if (option.tag === "custom") return { title: option.value, detail: t("custom"), mono: true };
     if (option.tag === "global" || option.tag === "project") {
       return { title: option.value, detail: [t(`skillScope.${option.tag}`), option.detail].filter(Boolean).join(": "), mono: true };

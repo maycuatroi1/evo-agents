@@ -87397,7 +87397,7 @@
             },
             "worker": {
               "$ref": "#/components/schemas/AgentAxis",
-              "description": "worker names, or label:<label>"
+              "description": "worker names, label:<label>, or pool:<name>"
             },
             "project": {
               "$ref": "#/components/schemas/AgentAxis",

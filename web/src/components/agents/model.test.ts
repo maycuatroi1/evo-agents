@@ -175,8 +175,8 @@ describe("the agent packs an agent attaches", () => {
 });
 
 describe("the form's choices", () => {
-  const worker = (name: string, labels: string[], status = "online", models: string[] = []) =>
-    ({ name, owner: "octo", labels, status, runtimes: { "claude-code": { available: true, models }, codex: { available: false, models: ["gpt-5"] } } }) as never;
+  const worker = (name: string, labels: string[], status = "online", models: string[] = [], pool: string | null = null) =>
+    ({ name, owner: "octo", labels, status, pool, runtimes: { "claude-code": { available: true, models }, codex: { available: false, models: ["gpt-5"] } } }) as never;
 
   it("lists secrets, skills, workers and their labels, models and the other projects as the hub answers them", () => {
     const options = optionsFrom(
@@ -208,6 +208,27 @@ describe("the form's choices", () => {
     expect(options.byAxis.tool.map((option) => option.value)).toEqual(["read", "edit", "bash", "web", "agent"]);
     expect(options.byAxis.runtime.map((option) => option.value)).toEqual(["claude-code", "opencode", "codex"]);
     expect(options.byAxis.environment).toEqual([{ value: "host", tag: "host" }]);
+  });
+
+  it("offers each pool as pool:<name> with its nodes counted, the visitor's empty ones too, and no key=value label", () => {
+    const options = optionsFrom(
+      {
+        secrets: [],
+        skills: [],
+        workers: [worker("vps-1", ["fast", "pool=vps"], "online", [], "VPS"), worker("vps-2", ["pool=vps"], "online", [], "vps"), worker("desk", ["fast"])],
+        projects: [],
+        pools: [{ name: "vps" } as never, { name: "spare" } as never],
+      },
+      "demo",
+    );
+    expect(options.byAxis.worker.map((option) => [option.value, option.tag, option.detail])).toEqual([
+      ["desk", "worker", "octo"],
+      ["vps-1", "worker", "octo"],
+      ["vps-2", "worker", "octo"],
+      ["pool:spare", "pool", "0"],
+      ["pool:vps", "pool", "2"],
+      ["label:fast", "label", "2"],
+    ]);
   });
 
   it("names the lists the hub did not answer, and still offers the App's token and the API's words", () => {

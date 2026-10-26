@@ -1,4 +1,4 @@
-import { type Axis, LABEL_PREFIX } from "@/lib/agents";
+import { type Axis, LABEL_PREFIX, POOL_PREFIX } from "@/lib/agents";
 
 /**
  * What the Agents pages check and draw, beside lib/agents.ts (which the dispatch forms load with every plans and runs
@@ -32,6 +32,7 @@ const SECRET = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const SKILL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const WORKER = /^[a-z0-9][a-z0-9._-]{0,99}$/;
 const LABEL = /^[a-z0-9][a-z0-9._-]{0,39}$/;
+const POOL = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const MCP_SERVER = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const LINE = /^[^\u0000-\u001f\u007f]+$/;
 const PLUGIN_ENVIRONMENT = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9_-]{0,62}$/;
@@ -52,7 +53,8 @@ export function validItem(axis: Axis, item: string): boolean {
     case "skill":
       return SKILL.test(item);
     case "worker":
-      return item.startsWith(LABEL_PREFIX) ? LABEL.test(item.slice(LABEL_PREFIX.length)) : WORKER.test(item);
+      if (item.startsWith(LABEL_PREFIX)) return LABEL.test(item.slice(LABEL_PREFIX.length));
+      return item.startsWith(POOL_PREFIX) ? POOL.test(item.slice(POOL_PREFIX.length)) : WORKER.test(item);
     case "project":
       return HANDLE.test(item);
     case "model":

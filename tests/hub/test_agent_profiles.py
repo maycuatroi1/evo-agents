@@ -246,6 +246,7 @@ def test_a_profile_handle_is_unique_on_the_hub_and_never_a_project_name(client, 
         ({"runtime": {"mode": "allowlist", "allow": ["gemini"]}}, "runtime 'gemini' is none of"),
         ({"credential": {"mode": "all", "allow": ["claude-a"]}}, "an axis of mode all takes no allow list"),
         ({"worker": {"mode": "allowlist", "allow": ["label:"]}}, "is not label:<a worker label>"),
+        ({"worker": {"mode": "allowlist", "allow": ["pool:"]}}, "is not pool:<a worker pool's name>"),
         ({"model": {"mode": "allowlist", "allow": ["two\nlines"]}}, "is not a model's name"),
     ],
 )

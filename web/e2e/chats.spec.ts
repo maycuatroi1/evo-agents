@@ -102,9 +102,9 @@ test("under a mention the thread says at once that the agent got it, then each s
   await expect(line).toHaveText(`${handle}: worker ${workerName} claimed the run`);
   await expect(line.locator(".animate-live-ping")).toHaveCount(1);
   const steps: [string, string | undefined, string][] = [
-    ["checking", undefined, `@${handle} is checking access to the repos`],
-    ["opening", "evo-agents-harness", `@${handle} is opening evo-agents-harness`],
-    ["starting", undefined, `@${handle} is starting up`],
+    ["checking", undefined, `${handle} is checking access to the repos`],
+    ["opening", "evo-agents-harness", `${handle} is opening evo-agents-harness`],
+    ["starting", undefined, `${handle} is starting up`],
   ];
   for (const [index, [setup, repo, said]] of steps.entries()) {
     await setupNote(live, runId, index + 1, setup, repo);

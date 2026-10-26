@@ -16,7 +16,8 @@ allowlist never grows by itself when a secret, a skill or a worker is added. Wha
 - ``credential``: secret names, and ``github-app`` for the token of the hub's GitHub App;
 - ``tool``: the words of TOOLS (``read``, ``edit``, ``bash``, ``web``, ``agent``) and ``mcp:<server>``;
 - ``skill``: skill names, global or of the project, compared ignoring case;
-- ``worker``: worker names, or ``label:<label>`` for every worker carrying that label, compared ignoring case;
+- ``worker``: worker names, ``label:<label>`` for every worker carrying that label, or ``pool:<name>`` for every node
+  of that worker pool, compared ignoring case;
 - ``project``: project names, the other projects whose runs the profile may take (its own always);
 - ``model``: model names, as a runtime names them;
 - ``runtime``: ``claude-code``, ``opencode``, ``codex``, and the runtimes of plugins, ``<plugin>/<name>``
@@ -70,6 +71,7 @@ PALETTE = ("#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#16a34a", "#0
 GITHUB_APP = "github-app"  # the credential allowlist's name for a token of the hub's GitHub App
 MCP_PREFIX = "mcp:"
 LABEL_PREFIX = "label:"
+POOL_PREFIX = "pool:"  # the worker axis's name for every node of a worker pool, those that join later too
 
 # The runtime-neutral words of the tool axis, and what each covers. ``mcp:<server>`` covers the tools of one MCP
 # server. Tools that only keep the agent's own notes (a to-do list) are always there. Each runtime's adapter turns the
@@ -85,6 +87,7 @@ _SECRET = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")  # evo_agents.hub.credentials
 _SKILL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # evo_agents.hub.skills.NAME
 _WORKER = re.compile(r"[a-z0-9][a-z0-9._-]{0,99}")  # a worker's name, lowered
 _LABEL = re.compile(r"[a-z0-9][a-z0-9._-]{0,39}")  # a worker's label, lowered
+_POOL = re.compile(r"[a-z0-9][a-z0-9._-]{0,39}")  # a worker pool's name, lowered
 _MCP_SERVER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _LINE = re.compile(r"[^\x00-\x1f\x7f]+")
 
@@ -110,6 +113,8 @@ def _tool_problem(item: str) -> str | None:
 def _worker_problem(item: str) -> str | None:
     if item.startswith(LABEL_PREFIX):
         return None if _LABEL.fullmatch(item[len(LABEL_PREFIX) :]) else f"{item!r} is not label:<a worker label>"
+    if item.startswith(POOL_PREFIX):
+        return None if _POOL.fullmatch(item[len(POOL_PREFIX) :]) else f"{item!r} is not pool:<a worker pool's name>"
     return None if _WORKER.fullmatch(item) else f"{item!r} is not a worker's name"
 
 
@@ -191,13 +196,20 @@ def allows(permissions: dict | None, axis: str, item: str) -> bool:
     return item in allow
 
 
-def allows_worker(permissions: dict | None, name: str, labels) -> bool:
-    """Whether the worker axis lets a worker named ``name`` with ``labels`` take a run."""
+def worker_names(name: str, labels, pool: str | None = None) -> list[str]:
+    """What the worker axis may name a worker by: its name, label:<label> for each of its own labels, and
+    pool:<name> for a node of a pool; lowered, as the hub compares them."""
+    names = [name.lower(), *(LABEL_PREFIX + label.lower() for label in labels or ())]
+    return names + [POOL_PREFIX + pool.lower()] if pool else names
+
+
+def allows_worker(permissions: dict | None, name: str, labels, pool: str | None = None) -> bool:
+    """Whether the worker axis lets a worker named ``name`` with ``labels``, a node of ``pool`` or of none, take a
+    run."""
     allow = allowed(permissions, "worker")
     if allow is None:
         return True
-    wanted = {name.lower(), *(LABEL_PREFIX + label.lower() for label in labels or ())}
-    return bool(wanted & {entry.lower() for entry in allow})
+    return bool(set(worker_names(name, labels, pool)) & {entry.lower() for entry in allow})
 
 
 def needs_worker(permissions: dict | None, instructions: str | None) -> bool:

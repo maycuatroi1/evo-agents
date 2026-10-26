@@ -964,8 +964,8 @@ Shared pieces built on them:
   right after the agent is created), the instructions, the eight axes (`axis-field.tsx`) and Agent packs
   (`packs-field.tsx`). Each axis is All or Only
   these (`Segmented`); Only these lists what the hub has for it, read when the form opens (`options.ts`: the admin's
-  secrets and `github-app`, the global and project skills, the workers they see and those workers' labels as
-  `label:<label>`, the models the workers list, the other projects of their grants, the API's tool words and
+  secrets and `github-app`, the global and project skills, the workers they see, the pools they own or see a node of
+  as `pool:<name>` and those workers' own labels as `label:<label>`, the models the workers list, the other projects of their grants, the API's tool words and
   runtimes), with a filter past eight, and takes a name typed by hand for what the admin cannot see, refused where it
   is typed when its shape is wrong. Agent packs lists the packs of the plugins the project enabled (`agent-packs`),
   each a checkbox with `<plugin>/<pack>` in mono and its title; a pack checked is pinned at the version installed,
@@ -1029,7 +1029,22 @@ Shared pieces built on them:
   which opens the members sheet as its Details: its agent and its person with nobody to add, take out or leave (a
   `Lock` note says to start a group chat for that), and the budget. Below 768 px Details is its `Info` icon (a 44 px
   target, its word kept as its name) and Direct its `Bot`, so the way back, the face, the name and Details share one
-  row on a phone. Its composer says that every message goes to the agent, no @ needed. Messages
+  row on a phone. Its composer says that every message goes to the agent, no @ needed. An agent's face or name opens
+  its menu (`agent-menu.tsx`): a direct chat's face and name in the head, a group chat's agents' faces there, each
+  agent's face and name in the members sheet, and an agent's face before its message. The menu names it (its face,
+  name, `@handle` and project), then Agent page (`Bot`) and, while it is not deleted, Workers and pools (`Server`)
+  and Accounts (`UserRoundCog`), which open the agent sheet (`agent-sheet.tsx`, on the right, 36 rem from 640 px, the
+  whole width below; the members sheet closes for it) on that tab: its face, name, `@handle` and project with Agent
+  page and Close, then the two tabs, each drawn by the route (`app/(app)/chats/[id]/chat-with-decisions.tsx`), so no
+  feature imports another. Workers and pools (`components/agents/agent-workers-panel.tsx`, loaded when first shown)
+  says where a run handed to the agent goes (a worker of the person who hands it the work, or one shared with them,
+  that the list lets through), then for an admin of the project the worker axis as the agent form draws it
+  (`axis-field.tsx`: All or Only these, the workers, the pools as `pool:<name>` with the nodes the visitor sees, the
+  labels), Undo changes and Save, which is off until something changed and saves a new version against the one shown;
+  an edit made meanwhile is refused (409), the panel shows the agent as it is now and says to choose again. Everyone
+  else, and an admin for the default agent (every permission) or a deleted one, reads the axis as chips under a note
+  that says why. Accounts is the agent page's Accounts card (`components/accounts/agent-accounts-card.tsx`), with the
+  same rights; the project's default agent owns none, and its tab says so in a note. Messages
   (`message-list.tsx`, the line worked out by `line-model.ts`) sit in a `role="log"` region (polite) that scrolls on
   its own and Tab reaches, under a line for each day; it opens at the newest message, follows new ones while the
   visitor reads at the end and offers Jump to the latest when they scrolled up; Show earlier messages reads the page

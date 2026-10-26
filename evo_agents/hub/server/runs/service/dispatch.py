@@ -21,7 +21,7 @@ from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
+from evo_agents.hub.server import audit, autonomy_hold, run_autonomy, worker_placement
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_configs import check_run_layer
@@ -78,6 +78,7 @@ class Pinned:
     features: tuple[str, ...] = ()  # what its daemon said it does besides them (runs.HUB_FEATURES)
     labels: tuple[str, ...] = ()  # its owner's labels, which an agent profile's worker axis may name
     plugins: tuple[str, ...] = ()  # the plugins whose runtimes and environments its owner lets it take
+    pool: str | None = None  # the pool it is a node of, which an agent profile's worker axis may name
 
 
 async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
@@ -100,6 +101,7 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
         w.c.features,
         w.c.labels,
         w.c.plugins,
+        worker_placement.pool_name(w).label("pool"),
     ).where(w.c.id == worker_id)
     row = (await conn.execute(query)).one_or_none()
     if row is None or (row.owner_id != user.user_id and not row.shared_here):  # one answer for both, and for none
@@ -121,7 +123,7 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
         )
     kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
     found = (row.runtimes or {}, row.checkouts or {}, row.agent_version, kinds, features, tuple(row.labels or ()))
-    return Pinned(worker_id, name, *found, plugins=tuple(row.plugins or ()))
+    return Pinned(worker_id, name, *found, plugins=tuple(row.plugins or ()), pool=row.pool)
 
 
 async def pinned_with_identities(
@@ -158,7 +160,15 @@ async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | No
     (the Loop's, ``evo_agents.hub.server.loop.dispatch``): no check of who dispatches; None for no such worker."""
     w = tables.workers
     query = select(
-        w.c.name, w.c.runtimes, w.c.checkouts, w.c.agent_version, w.c.run_kinds, w.c.features, w.c.labels, w.c.plugins
+        w.c.name,
+        w.c.runtimes,
+        w.c.checkouts,
+        w.c.agent_version,
+        w.c.run_kinds,
+        w.c.features,
+        w.c.labels,
+        w.c.plugins,
+        worker_placement.pool_name(w).label("pool"),
     ).where(w.c.id == worker_id)
     row = (await conn.execute(query)).one_or_none()
     if row is None:
@@ -173,6 +183,7 @@ async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | No
         tuple(row.features or ()),
         tuple(row.labels or ()),
         tuple(row.plugins or ()),
+        row.pool,
     )
 
 
