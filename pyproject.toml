@@ -316,6 +316,25 @@ it reads of srs it reads through evo_agents.hub.tables.srs. Move what both need 
 docs/plugins.md, section Core plugins."""
 
 [[tool.importlinter.contracts]]
+id = "docs-feature-own-package"
+name = "The hub feature docs imports none of the features canvas, srs and tasks, no core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.hub.server.docs"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.hub.server.canvas",
+    "evo_agents.hub.server.srs",
+    "evo_agents.hub.server.tasks",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The hub feature docs is one package that leans on the hub alone (its tables, its access rules, the blob store, its \
+server's dependencies). It imports no other feature or core plugin, nor the worker or the command line: those reach \
+it through its manifest and its routes. Move what both need into evo_agents.hub. See docs/plugins.md, section Core \
+plugins."""
+
+[[tool.importlinter.contracts]]
 id = "packages-acyclic"
 name = "The packages of evo_agents import each other without cycles"
 type = "acyclic_siblings"
