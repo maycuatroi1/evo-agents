@@ -714,6 +714,30 @@ def test_claude_code_runs_on_the_model_of_the_run_else_the_environments(tmp_path
     assert model_flag(_claude(tmp_path, _samples, env=none)) == (None, None), "Claude Code chooses, as it would"
 
 
+def test_claude_code_reads_a_line_of_stdout_longer_than_the_sdks_default(tmp_path, monkeypatch):
+    """A Read of an image comes on one line with its base64 twice; run #924 failed on its first, over 1 MiB."""
+    needs("claude_agent_sdk")
+    from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
+
+    monkeypatch.setenv("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+    message = _tool_result("toolu_1", "x" * (3 * 1024 * 1024))
+    cli = tmp_path / "claude"
+    cli.write_text(f"#!{sys.executable}\nimport sys\nsys.stdout.write({json.dumps(message)!r} + '\\n')\n")
+    cli.chmod(0o755)
+    options = _claude(tmp_path, _samples).build_options(str(cli))
+    assert options.max_buffer_size == claude_module.MAX_MESSAGE_BYTES
+
+    async def read() -> list[dict]:
+        transport = SubprocessCLITransport(prompt="", options=options)
+        await transport.connect()
+        try:
+            return [line async for line in transport.read_messages()]
+        finally:
+            await transport.close()
+
+    assert asyncio.run(read()) == [message]
+
+
 # Claude Code on a token of `claude setup-token` the run leased (claude_code's docstring)
 
 DAEMON_KEY = "sk-ant-api03-" + "k" * 32  # stands for an API key in the daemon's own environment
