@@ -462,3 +462,77 @@ def test_task_dispatch_lost_run_goes_on_in_the_next_attempt_with_its_agent_type_
     moved(client, laptop, second, "cancelled")
     (result,) = deliveries(hub_db)
     assert (result[2]["task_id"], result[2]["run_id"], result[2]["state"]) == (first, second, "cancelled")
+
+
+# A branch the task names, and its agent time
+
+
+def test_task_dispatch_on_a_named_branch_of_one_repo_with_more_agent_time_pushes_back_to_it(
+    client, hub, hub_db, github
+):
+    credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
+    github.add_repo(MINE, "evo-agents")
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=ONE_REPO)
+    enabled(client, hub["owner"], daily_usd=5)
+    key = plugin_key(client, hub["plugin_id"])
+    named = {"repo": "evo-agents", "branch": "post/northwind-launch", "minutes": task_runs.MAX_MINUTES}
+    task = handed(client, key, **named)
+    run_id = task["run_id"]
+    own = task_runs.branch_of(run_id)
+    assert task["branch"] == own and task["task_id"] == run_id  # the task's identity stays task/<run>
+    assert task["budget"] == {"max_usd": 5, "max_seconds": task_runs.MAX_MINUTES * 60}
+    assert of_run(hub_db, run_id, "timeout_s", "budget") == [
+        (task_runs.run_timeout(task_runs.MAX_MINUTES), task_runs.run_budget(5, task_runs.MAX_MINUTES))
+    ]
+    assert task_runs.run_timeout(task_runs.MAX_MINUTES) > task_runs.MAX_MINUTES * 60
+    expected = [{"repo": name, "branch": named["branch"] if name == "evo-agents" else own} for name in REPOS]
+    assert of_run(hub_db, run_id, "repos")[0][0] == expected
+    # another task on that branch waits for this one to end
+    busy = hand(client, key, repo="evo-agents", branch=named["branch"])
+    assert busy.status_code == 409 and f"task run #{run_id} works on" in busy.text
+    spec = claim(client, laptop)
+    assert spec["id"] == run_id and spec["budget"]["max_seconds"] == task_runs.MAX_MINUTES * 60
+    assert {"repo": "evo-agents", "branch": named["branch"]} in spec["repos"]
+    prompt = autonomy_card.without_card(spec["prompt"])
+    assert f"- evo-agents: evo-agents/ (on the branch {named['branch']}, which the task names" in prompt
+    moved(client, laptop, run_id, "running", session_id="sess-1")
+    github.push(MINE, "evo-agents", named["branch"], "1" * 40)
+    body = {"repo": "evo-agents", "branch": named["branch"], "head": "1" * 40}
+    opened = in_chats(client, laptop, run_id, "task/pulls", body)
+    assert opened.status_code == 201, opened.text
+    assert github.pull_of(MINE, "evo-agents", named["branch"]).draft is True
+    for wrong in ({"branch": own}, {"branch": "main"}, {"repo": "lumen-kb-docs"}):
+        assert in_chats(client, laptop, run_id, "task/pulls", {**body, **wrong}).status_code == 422, wrong
+    other = in_chats(client, laptop, run_id, "task/pulls", {**body, "repo": "lumen-kb-docs", "branch": own})
+    assert other.status_code == 201, other.text  # the other repos stay on task/<run>
+
+
+def test_task_dispatch_refuses_a_default_branch_or_one_of_another_run_and_more_than_its_minutes(client, hub, hub_db):
+    enabled(client, hub["owner"])
+    key = plugin_key(client, hub["plugin_id"])
+    before = sql(hub_db, select(func.count()).select_from(tables.runs))
+    for body, status, said in (
+        ({"repo": "evo-agents", "branch": "main"}, 422, "is a default branch"),
+        ({"repo": "evo-agents", "branch": "HEAD"}, 422, "is a default branch"),
+        ({"repo": "evo-agents", "branch": "task/12"}, 422, "is a branch of another run"),
+        ({"repo": "evo-agents", "branch": "chat/3"}, 422, "is a branch of another run"),
+        ({"repo": "evo-agents", "branch": "post/../x"}, 422, "not a branch name git takes"),
+        ({"repo": "nowhere", "branch": "post/x"}, 422, "the project has no repo nowhere"),
+        ({"branch": "post/x"}, 422, "names a repo and its branch together"),
+        ({"repo": "evo-agents"}, 422, "names a repo and its branch together"),
+        ({"minutes": task_runs.MAX_MINUTES + 1}, 422, "less than or equal to"),
+        ({"minutes": 0}, 422, "greater than or equal to"),
+    ):
+        response = hand(client, key, **body)
+        assert response.status_code == status and said in response.text, (body, response.text)
+    assert sql(hub_db, select(func.count()).select_from(tables.runs)) == before
+
+
+def test_task_branch_problem_takes_a_branch_of_its_own_and_no_default_branch():
+    assert task_runs.branch_problem("post/northwind-launch") is None
+    assert task_runs.branch_problem("draft-7", default_branch="trunk") is None
+    assert "default branch" in task_runs.branch_problem("trunk", default_branch="trunk")
+    for name in ("", "-x", "a b", "a..b", "a/", "a.lock", "x@{1}", "a//b", "a/.b", "release/1.0", "evo-run/3/x"):
+        assert task_runs.branch_problem(name) is not None, name
+    assert task_runs.run_budget(2.5) == {"max_usd": 2.5, "max_seconds": task_runs.TIME_CAP_SECONDS}
+    assert task_runs.run_timeout() == task_runs.TIMEOUT_MIN * 60 and task_runs.run_timeout(10) == 3600

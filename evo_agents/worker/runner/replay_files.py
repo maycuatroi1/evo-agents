@@ -123,6 +123,26 @@ async def write_at(checkout: Path, ref: str, pairs: Iterable[tuple[str, str]], r
     return written
 
 
+def write_texts(texts: Mapping[str, str | None], root: Path, executable: str | None = None) -> list[str]:
+    """Write, for each path under ``root`` of ``texts``, its text, or remove the file when the text is None: the files
+    a plugin's probe arm places (``probes.arms_problem`` checked them). A file under ``executable`` is made executable;
+    a path whose way is a symbolic link or leaves ``root`` is left out. The paths written."""
+    written = []
+    for dest, text in sorted(texts.items()):
+        target = _target(root, dest)
+        if target is None:
+            continue
+        if text is None:
+            with contextlib.suppress(FileNotFoundError, IsADirectoryError):
+                target.unlink()
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        os.chmod(target, 0o755 if executable and dest.startswith(executable + "/") else 0o644)
+        written.append(dest)
+    return written
+
+
 async def standalone(checkout: Path, base: str, path: Path, env: Mapping[str, str]) -> None:
     """A new repository at ``path`` with the history of ``checkout`` up to commit ``base``, checked out there."""
     path.mkdir(parents=True)

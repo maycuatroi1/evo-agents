@@ -21,6 +21,12 @@ pushes that branch of each repo it changed, never a default branch and never for
 request of it with the workers' App (``runs.pulls``). No task run merges. When the run ends (done, failed or
 cancelled; a lost run's next attempt goes on with the task), the plugin gets the event RESULT_EVENT: the task, the
 run, its state, its branch and its pull requests.
+
+A task may name one repo of the project and a branch of it that is no default branch (``branch_problem``), such as a
+branch of a draft another run or a person opened: the worker checks that branch out of origin for that repo (or starts
+it from the default branch when origin lacks it), the agent works on it, and the worker pushes it back to that same
+branch, never forced; the other repos stay on ``task/<run>``. A task may also ask for up to MAX_MINUTES of agent time
+(``run_budget``, ``run_timeout``); its cost cap stays what is left of the type's cap.
 """
 
 from __future__ import annotations
@@ -40,6 +46,11 @@ MAX_TASK_BYTES = 16 * 1024  # the task's text (runs.request, as schema 0020 boun
 MAX_TITLE_CHARS = 200
 MAX_WORKERS = 16  # the workers an agent type's runs may go to, by name; none named: any the profile allows
 MAX_PULLS = 50  # the draft pull requests a task run keeps (runs.pulls), one for each repo of its project at most
+MAX_MINUTES = 120  # the most agent time a task asks for; none asked: TIME_CAP_SECONDS
+MAX_BRANCH_CHARS = 200
+# branches of other kinds of runs, which a task never names
+OTHER_RUN_PREFIXES = ("task/", "chat/", "curator/", "release/", "evo-run/")
+NAMED_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 BRANCH_PREFIX = "task/"
 BRANCH = re.compile(r"^task/[1-9][0-9]{0,18}$")
 DRAFT_TEXT = "Opened by the hub for the task of agent type {agent_type} of plugin {plugin} (run #{run}). Not merged."
@@ -59,9 +70,41 @@ def task_of(branch: str | None) -> int | None:
     return int(branch[len(BRANCH_PREFIX) :]) if is_task_branch(branch) else None
 
 
-def run_budget(left_usd: float) -> dict:
-    """The caps of a task run when ``left_usd`` of its agent type's cap is left: that cost, and TIME_CAP_SECONDS."""
-    return {"max_usd": round(max(left_usd, 0.0), 4), "max_seconds": TIME_CAP_SECONDS}
+def run_budget(left_usd: float, minutes: int | None = None) -> dict:
+    """The caps of a task run when ``left_usd`` of its agent type's cap is left: that cost, and the ``minutes`` of
+    agent time the task asked for, else TIME_CAP_SECONDS."""
+    seconds = TIME_CAP_SECONDS if minutes is None else int(minutes) * 60
+    return {"max_usd": round(max(left_usd, 0.0), 4), "max_seconds": seconds}
+
+
+def run_timeout(minutes: int | None = None) -> int:
+    """The timeout of a task run, in seconds: TIMEOUT_MIN, or half an hour past the ``minutes`` of agent time the
+    task asked for when that is longer, so the time cap stops the agent before the timeout fails the run."""
+    if minutes is None:
+        return TIMEOUT_MIN * 60
+    return max(TIMEOUT_MIN * 60, (int(minutes) + 30) * 60)
+
+
+def branch_problem(branch: str, default_branch: str | None = None) -> str | None:
+    """Why a task may not name ``branch`` of a repo whose default branch is ``default_branch``, or None: a name git
+    takes, no default branch (main, master, HEAD or the repo's) and no branch of another kind of run."""
+    if (
+        not isinstance(branch, str)
+        or not branch
+        or len(branch) > MAX_BRANCH_CHARS
+        or NAMED_BRANCH.fullmatch(branch) is None
+        or ".." in branch
+        or "//" in branch
+        or "@{" in branch
+        or branch.endswith(("/", ".", ".lock"))
+        or "/." in branch
+    ):
+        return f"{branch!r} is not a branch name git takes"
+    if branch in ("main", "master", "HEAD") or (default_branch and branch == default_branch):
+        return f"{branch} is a default branch: a task never works on one"
+    if branch.startswith(OTHER_RUN_PREFIXES):
+        return f"{branch} is a branch of another run: a task names a branch of its own, such as post/<slug>"
+    return None
 
 
 def spent_problem(spent_usd: float, cap_usd: float, agent_type: str) -> str | None:
@@ -76,12 +119,14 @@ def spent_problem(spent_usd: float, cap_usd: float, agent_type: str) -> str | No
     )
 
 
-def _repo_lines(repos: list) -> list[str]:
+def _repo_lines(repos: list, branch: str | None = None) -> list[str]:
     lines = []
     for entry in repos or []:
         name = entry.get("repo") if isinstance(entry, dict) else entry
         if isinstance(name, str) and name:
-            lines.append(f"- {name}: {name}/")
+            own = entry.get("branch") if isinstance(entry, dict) else None
+            named = f" (on the branch {own}, which the task names, not {branch})" if own and own != branch else ""
+            lines.append(f"- {name}: {name}/{named}")
     return lines or ["- none: this run changes no code"]
 
 
@@ -116,7 +161,7 @@ def build_task_prompt(
         'whose "summary" says what you did, what you changed and what is left.',
         "",
         "Repositories of this run, each a worktree under the current directory:",
-        *_repo_lines(repos or []),
+        *_repo_lines(repos or [], branch),
         "",
         "# The task",
     ]

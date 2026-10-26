@@ -1,7 +1,7 @@
 {
   "api_version": [
     1,
-    3
+    4
   ],
   "names": {
     "ANSWER_EVENT": {
@@ -926,6 +926,10 @@
       "kind": "constant",
       "value": "200"
     },
+    "MAX_PROBE_REF_CHARS": {
+      "kind": "constant",
+      "value": "200"
+    },
     "MAX_QUESTION_BYTES": {
       "kind": "constant",
       "value": "4096"
@@ -933,6 +937,10 @@
     "MAX_REF_CHARS": {
       "kind": "constant",
       "value": "200"
+    },
+    "MAX_TASK_MINUTES": {
+      "kind": "constant",
+      "value": "120"
     },
     "Member": {
       "kind": "dataclass",
@@ -2399,6 +2407,72 @@
         }
       ]
     },
+    "add_probe": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "ref",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "repo",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "task",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "verify",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "on",
+          "kind": "keyword_only",
+          "annotation": "Mapping[str, str]",
+          "default": null
+        },
+        {
+          "name": "off",
+          "kind": "keyword_only",
+          "annotation": "Mapping[str, str]",
+          "default": null
+        },
+        {
+          "name": "commit",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "int"
+    },
     "admins_notified": {
       "kind": "async function",
       "params": [
@@ -3046,6 +3120,24 @@
         },
         {
           "name": "for_user",
+          "kind": "keyword_only",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "repo",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "branch",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "minutes",
           "kind": "keyword_only",
           "annotation": "int | None",
           "default": "None"
@@ -4851,6 +4943,42 @@
         }
       ],
       "returns": "Session | None"
+    },
+    "remove_probe": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "ref",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "note",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "bool"
     },
     "reply_in_chat": {
       "kind": "async function",

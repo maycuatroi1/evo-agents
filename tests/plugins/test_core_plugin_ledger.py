@@ -1,7 +1,7 @@
-"""northwind-ledger, the sample core plugin of API 1.3 (tests/fixtures/core_plugins/northwind_ledger), on a live hub
+"""northwind-ledger, the sample core plugin of API 1.4 (tests/fixtures/core_plugins/northwind_ledger), on a live hub
 (plan plugin-market, step 4): its routes write its own tables, which its chain of migrations made, and reach the hub
 through the API alone (a caller's access, the hub's reads, an event, a notice of its own kind, a join link, a build of
-the knowledge graph, a task for its agent type, the configs of all projects, the audit log); its page is framed from
+the knowledge graph, a task for its agent type, the configs of all projects, the audit log, the probe of a rule of its own); its page is framed from
 the files of its package with the hub's UI kit; its CLI commands come from the hub. Its chain of migrations is
 ``tests/hub/test_plugin_migrations.py``'s; what it may import ``test_core_plugin_imports.py``'s."""
 
@@ -304,3 +304,53 @@ def test_core_plugin_pushes_a_signal_as_an_ingest_key_named_after_it(ledger):
     me = hub.plugin("northwind_ledger.server")
     values = on_hub(client, lambda conn: hub.read_signals(conn, me, PROJECT, "ledger.open"))
     assert [value.value for value in values] == [3]
+
+
+# The probes of its own rules (API 1.4)
+
+RULE_ON = {"AGENTS.md": "# Ledger\n\nRound every amount to the cent.\n"}
+RULE_OFF = {"AGENTS.md": "# Ledger\n"}
+
+
+def test_core_plugin_adds_and_removes_a_probe_of_its_own_rule_with_no_change(ledger):
+    client, headers, db = ledger.client, ledger.headers, ledger.db
+    me = hub.plugin("northwind_ledger.server")
+
+    def adding(ref="ledger.cents", repo="evo-agents", on=RULE_ON, off=RULE_OFF):
+        return lambda conn: hub.add_probe(
+            conn, me, PROJECT, ref, repo=repo, task="Add a fee of 1.005", verify="grep -q 1.01 fees.txt", on=on, off=off
+        )
+
+    with pytest.raises(ValueError, match="the probe's ref"):
+        on_hub(client, adding(ref="no spaces here"))
+    with pytest.raises(ValueError, match="the probe's arms"):
+        on_hub(client, adding(off=RULE_ON))  # the same files in both arms measure nothing
+    with pytest.raises(ValueError, match="the probe's arms"):
+        on_hub(client, adding(on={"../outside": "x"}))
+    with pytest.raises(ValueError, match="has no repo lumen-site"):
+        on_hub(client, adding(repo="lumen-site"))
+
+    first = on_hub(client, adding())
+    second = on_hub(client, adding())  # the same rule again: it takes the first one's place
+    pr = tables.curator_probes
+    rows = sql(db, select(pr.c.id, pr.c.state, pr.c.source, pr.c.ref, pr.c.replaces).order_by(pr.c.id))
+    assert rows == [
+        (first, "retired", "plugin", "ledger.cents", None),
+        (second, "active", "plugin", "ledger.cents", first),
+    ]
+    assert sql(db, select(pr.c.arms).where(pr.c.id == second)) == [({"on": RULE_ON, "off": RULE_OFF},)]
+
+    path = f"/v1/projects/{PROJECT}/curator/probes"
+    listed = client.get(path, params={"state": "active"}, headers=headers["other"])
+    assert listed.status_code == 200, listed.text
+    (probe,) = listed.json()["probes"]
+    assert (probe["id"], probe["source"], probe["plugin"], probe["ref"]) == (second, "plugin", PLUGIN, "ledger.cents")
+    assert probe["change_id"] is None and probe["verify"] is None  # the answer key: admins alone read it
+    shown = client.get(f"{path}/{second}", headers=headers["owner"])
+    assert shown.status_code == 200 and shown.json()["verify"] == "grep -q 1.01 fees.txt"
+
+    assert on_hub(client, lambda conn: hub.remove_probe(conn, me, PROJECT, "ledger.cents")) is True
+    assert on_hub(client, lambda conn: hub.remove_probe(conn, me, PROJECT, "ledger.cents")) is False
+    assert sql(db, select(pr.c.state, pr.c.retired_note).where(pr.c.id == second)) == [
+        ("retired", "removed by its plugin")
+    ]

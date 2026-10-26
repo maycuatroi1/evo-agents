@@ -1,5 +1,7 @@
 """The probes of the Curator on the hub (``evo_agents.hub.probes`` holds their shape): one row of curator_probes each,
-for a proposal and then for the change accepting it made, or for a merged change a review run or an admin gave one.
+for a proposal and then for the change accepting it made, or for a merged change a review run or an admin gave one,
+or for a rule of a core plugin's own (source plugin: ``ref`` the rule's key, ``arms`` the files each arm places, which
+``evo_agents.hub.server.core_plugin_api`` adds and removes).
 
 A probe names the repo of its task, the base commit (``commit``; none: the tip of the repo's default branch when it was
 made), the task text the agent of a probe run is given, and the verify that exits 0 when that agent does not repeat the
@@ -139,7 +141,9 @@ class Probe(BaseModel):
     task: str
     verify: str | None = Field(description="the answer key: the project's admins alone read it, null for the others")
     state: Literal[probes.STATES]
-    source: Literal[probes.SOURCES] = Field(description="who wrote it: its proposal, a review run or an admin")
+    source: Literal[probes.SOURCES] = Field(
+        description="who wrote it: its proposal, a review run, an admin, or a core plugin (plugin) for a rule of its own"
+    )
     created_by: str | None
     created_run_id: int | None
     retired_at: datetime | None
@@ -147,6 +151,8 @@ class Probe(BaseModel):
     created_at: datetime
     updated_at: datetime
     replaces: int | None = Field(None, description="the probe, not reproduced two weeks in a row, this one replaced")
+    plugin: str | None = Field(None, description="source plugin: the core plugin whose rule it measures")
+    ref: str | None = Field(None, description="source plugin: the key of the plugin's rule it measures")
 
 
 class ProbeList(BaseModel):
@@ -161,7 +167,7 @@ def verify_shown(access: ProjectAccess, user: Principal) -> bool:
 
 def query():
     """The columns of a probe's view, its label and the login of who made it."""
-    pr, u = tables.curator_probes, tables.users
+    pr, u, pl = tables.curator_probes, tables.users, tables.plugins
     return select(
         pr.c.id,
         pr.c.project_id,
@@ -180,8 +186,10 @@ def query():
         pr.c.created_at,
         pr.c.updated_at,
         pr.c.replaces,
+        pl.c.name.label("plugin"),
+        pr.c.ref,
         pr.c.label,
-    ).select_from(pr.outerjoin(u, u.c.id == pr.c.created_by))
+    ).select_from(pr.outerjoin(u, u.c.id == pr.c.created_by).outerjoin(pl, pl.c.id == pr.c.plugin_id))
 
 
 def view(project: str, row, *, shown: bool) -> Probe:
@@ -203,9 +211,12 @@ async def store(
     user_id: int | None = None,
     run_id: int | None = None,
     replaces: int | None = None,
+    plugin_id: int | None = None,
+    ref: str | None = None,
+    arms: dict | None = None,
 ) -> int:
-    """Store ``probe`` (checked and masked already) for a proposal or a change of the project, in place of probe
-    ``replaces`` if any; its id."""
+    """Store ``probe`` (checked and masked already) for a proposal or a change of the project, or for the rule ``ref``
+    of plugin ``plugin_id`` with its ``arms`` (source plugin), in place of probe ``replaces`` if any; its id."""
     pr = tables.curator_probes
     values = {
         "project_id": project_id,
@@ -220,6 +231,9 @@ async def store(
         "created_by": user_id,
         "created_run_id": run_id,
         "replaces": replaces,
+        "plugin_id": plugin_id,
+        "ref": ref,
+        "arms": arms,
     }
     return (await conn.execute(insert(pr).values(**values).returning(pr.c.id))).scalar_one()
 

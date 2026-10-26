@@ -14,7 +14,10 @@ agent types and tasks, 404 for any other.
   (``task_runs.spent_problem``). Otherwise a run of kind task, dispatched by ``run_as``
   with the credential kind machine, under the type's profile, on the branch ``task/<run>`` of each repo of the project,
   with what is left of the cap as its cost cap (``task_runs.run_budget``), queued for a worker of ``run_as`` the type
-  names (``claims``). Audited as task.dispatch in the project, ``run_as`` its actor.
+  names (``claims``). Audited as task.dispatch in the project, ``run_as`` its actor. A task that names ``repo`` and
+  ``branch`` runs on that branch of that repo instead: 422 for a repo the project lacks or a branch a task may not
+  name (``task_runs.branch_problem``: a default branch, or a branch of another kind of run), 409 while another task
+  run of the project that is not over works on it. ``minutes`` asks for up to MAX_MINUTES of agent time.
 - GET /v1/plugin-api/projects/{p}/tasks/{task}: a task the plugin handed, by the id its dispatch answered: the latest
   attempt of its run, its state, branch and pull requests, ids and states only.
 
@@ -36,7 +39,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -82,6 +85,33 @@ class TaskIn(BaseModel):
     title: str | None = Field(
         None, max_length=task_runs.MAX_TITLE_CHARS, description="one line the run's list shows; default: the task's"
     )
+    repo: str | None = Field(
+        None,
+        min_length=1,
+        max_length=200,
+        pattern=r"^[^\x00-\x1f\x7f]+$",
+        description="the repo of the project whose ``branch`` the run works on; with ``branch`` only",
+    )
+    branch: str | None = Field(
+        None,
+        min_length=1,
+        max_length=task_runs.MAX_BRANCH_CHARS,
+        description="a branch of ``repo`` that is no default branch, which the run checks out and pushes back to, "
+        "never forced; default: task/<run> of each repo",
+    )
+    minutes: int | None = Field(
+        None,
+        ge=1,
+        le=task_runs.MAX_MINUTES,
+        description=f"the agent time the run may take, at most {task_runs.MAX_MINUTES}; default: "
+        f"{task_runs.TIME_CAP_SECONDS // 60}",
+    )
+
+    @model_validator(mode="after")
+    def _repo_with_branch(self) -> TaskIn:
+        if (self.repo is None) != (self.branch is None):
+            raise ValueError("a task names a repo and its branch together, or neither")
+        return self
 
 
 class TaskBudget(BaseModel):
@@ -113,7 +143,11 @@ class TaskQueued(Task):
 
 class TaskPushed(BaseModel):
     repo: str = Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\x7f]+$")
-    branch: str = Field(min_length=1, max_length=255, description="the run's branch, task/<id>")
+    branch: str = Field(
+        min_length=1,
+        max_length=255,
+        description="the run's branch, task/<id>, or the branch its task names for the repo",
+    )
     head: str = Field(pattern=OBJECT_NAME, description="the commit the branch has now")
 
 
@@ -219,9 +253,40 @@ def _title(body: TaskIn, name: str) -> str:
     return runs.step_title({"title": body.title or body.task}) or f"task of agent type {name}"
 
 
-async def _queue(conn: AsyncConnection, enabled, row, body: TaskIn, left: float, for_id: int | None = None) -> int:
-    """Queue the task run of ``body`` for agent type ``row`` on the branch task/<its id> of each repo of the project;
-    its principal its run_as, or the person ``for_id`` it is for, bounded by the run_as too (``run_autonomy``)."""
+async def branch_refusal(
+    conn: AsyncConnection, project_id: int, names: list[str], body: TaskIn
+) -> tuple[int, str] | None:
+    """(status, why) the task of ``body`` may not work on the branch it names, or None (none named included): its
+    repo is one of ``names``, the project's; the branch one a task may name (``task_runs.branch_problem``); and no
+    task run of the project that is not over works on it."""
+    if body.repo is None or body.branch is None:
+        return None
+    if body.repo not in names:
+        return 422, f"the project has no repo {body.repo}: a task names one of {', '.join(names) or 'none'}"
+    pr = tables.project_repos
+    query = select(pr.c.default_branch).where(pr.c.project_id == project_id, pr.c.name == body.repo)
+    problem = task_runs.branch_problem(body.branch, (await conn.execute(query)).scalar_one_or_none())
+    if problem is not None:
+        return 422, problem
+    r = tables.runs
+    busy = select(r.c.id).where(
+        r.c.project_id == project_id,
+        r.c.kind == "task",
+        r.c.state.in_(runs.ACTIVE_STATES),
+        r.c.repos.contains([{"repo": body.repo, "branch": body.branch}]),
+    )
+    found = (await conn.execute(busy.limit(1))).scalar_one_or_none()
+    if found is not None:
+        return 409, f"task run #{found} works on {body.branch} of {body.repo} now: the task waits for it to end"
+    return None
+
+
+async def _queue(
+    conn: AsyncConnection, enabled, row, body: TaskIn, left: float, names: list[str], for_id: int | None = None
+) -> int:
+    """Queue the task run of ``body`` for agent type ``row`` on the branch task/<its id> of each repo of ``names``,
+    the project's, but the repo whose branch the task names, on that one; its principal its run_as, or the person
+    ``for_id`` it is for, bounded by the run_as too (``run_autonomy``)."""
     profile = await by_id(conn, row.profile_id)
     allow = profiles.allowed(profile.permissions, "model")
     values = {
@@ -235,18 +300,18 @@ async def _queue(conn: AsyncConnection, enabled, row, body: TaskIn, left: float,
         "model": allow[0] if allow else None,
         "mode": "headless",
         "approval": "auto",
-        "timeout_s": task_runs.TIMEOUT_MIN * 60,
+        "timeout_s": task_runs.run_timeout(body.minutes),
         "profile_id": profile.id,
         "profile_version": profile.version,
-        "budget": task_runs.run_budget(left),
+        "budget": task_runs.run_budget(left, body.minutes),
         "request": body.task,
         "agent_type_id": row.id,
     }
-    names = await project_repos(conn, enabled.project_id)
     also = () if for_id is None else (row.run_as_id,)
     run_id = await insert_run(conn, values, run_autonomy.For(user_id=for_id, also=also, repos=tuple(names)))
     branch = task_runs.branch_of(run_id)
-    repos = [{"repo": name, "branch": branch} for name in names] or null()  # SQL NULL, not a JSON null
+    named = {body.repo: body.branch} if body.repo and body.branch else {}
+    repos = [{"repo": name, "branch": named.get(name, branch)} for name in names] or null()  # SQL NULL, not JSON null
     r = tables.runs
     await conn.execute(update(r).values(branch=branch, repos=repos, pulls=[]).where(r.c.id == run_id))
     await notify_queued(conn, run_id)
@@ -274,10 +339,15 @@ async def hand_own_task(
     task: str,
     title: str | None = None,
     for_id: int | None = None,
+    *,
+    repo: str | None = None,
+    branch: str | None = None,
+    minutes: int | None = None,
 ) -> tuple[int | None, str | None]:
     """A core plugin hands ``task`` to its own agent type ``name`` in project ``project_id``, in the caller's
     transaction: (the task run, None), or (None, why it was not dispatched) for each refusal of the API's route but
-    the token's and the grant's. ``task`` is cut to MAX_TASK_BYTES; ``for_id``, the person the run is for (``_queue``).
+    the token's and the grant's. ``task`` is cut to MAX_TASK_BYTES; ``for_id``, the person the run is for (``_queue``);
+    ``repo`` and ``branch``, the branch of one repo the run works on, and ``minutes``, its agent time (``TaskIn``).
     """
     enabled = await plugin_calls.enabled_in(conn, plugin, project_id)
     if enabled is None:
@@ -290,10 +360,21 @@ async def hand_own_task(
     problem = task_runs.spent_problem(spent, row.daily_usd, name)
     if problem is not None:
         return None, problem
-    body = TaskIn(
-        task=runs.clip(task, task_runs.MAX_TASK_BYTES), title=(title or "")[: task_runs.MAX_TITLE_CHARS] or None
-    )
-    run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent, for_id)
+    try:
+        body = TaskIn(
+            task=runs.clip(task, task_runs.MAX_TASK_BYTES),
+            title=(title or "")[: task_runs.MAX_TITLE_CHARS] or None,
+            repo=repo,
+            branch=branch,
+            minutes=minutes,
+        )
+    except ValidationError as exc:
+        return None, "; ".join(str(error["msg"]) for error in exc.errors())
+    names = await project_repos(conn, project_id)
+    refusal = await branch_refusal(conn, project_id, names, body)
+    if refusal is not None:
+        return None, refusal[1]
+    run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent, names, for_id)
     await _audited(conn, enabled, row, run_id)
     log.info(
         "task dispatched", extra={"project_id": project_id, "plugin": plugin, "agent_type": name, "run_id": run_id}
@@ -319,10 +400,14 @@ async def dispatch_task(request: Request, project: ProjectName, name: TypeName, 
         problem = task_runs.spent_problem(spent, row.daily_usd, name)
         if problem is not None:
             raise HTTPException(429, problem)
-        run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent)
+        names = await project_repos(conn, enabled.project_id)
+        refusal = await branch_refusal(conn, enabled.project_id, names, body)
+        if refusal is not None:
+            raise HTTPException(*refusal)
+        run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent, names)
         await _audited(conn, enabled, row, run_id)
         found = (await conn.execute(_task_select().where(tables.runs.c.id == run_id))).one()
-        budget = task_runs.run_budget(row.daily_usd - spent)
+        budget = task_runs.run_budget(row.daily_usd - spent, body.minutes)
     log.info(
         "task dispatched", extra={"project": project, "plugin": enabled.name, "agent_type": name, "run_id": run_id}
     )
@@ -402,10 +487,16 @@ async def _pushed_run(conn: AsyncConnection, user, run_id: int, body: TaskPushed
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     if row.kind != "task":
         raise HTTPException(404, f"run {run_id} is a {row.kind} run: only a task run's branch gets a pull request here")
-    if body.branch != row.branch or not task_runs.is_task_branch(body.branch):
-        raise HTTPException(422, f"run {run_id} pushes {row.branch}, not {body.branch}")
-    if body.repo not in [entry.get("repo") for entry in row.repos or [] if isinstance(entry, dict)]:
+    entries = {entry.get("repo"): entry.get("branch") for entry in row.repos or [] if isinstance(entry, dict)}
+    if body.repo not in entries:
         raise HTTPException(422, f"run {run_id} does not work in {body.repo}")
+    own = entries[body.repo] if entries[body.repo] != row.branch else None  # the branch its task names for the repo
+    if own is not None:
+        fits = body.branch == own and task_runs.branch_problem(own) is None
+    else:
+        fits = body.branch == row.branch and task_runs.is_task_branch(body.branch)
+    if not fits:
+        raise HTTPException(422, f"run {run_id} pushes {own or row.branch} of {body.repo}, not {body.branch}")
     pr = tables.project_repos
     query = select(pr.c.origin).where(pr.c.project_id == row.project_id, pr.c.name == body.repo)
     return row.title, (await conn.execute(query)).scalar_one_or_none()
