@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from types import SimpleNamespace
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -386,7 +387,9 @@ def test_the_summary_is_made_from_templates():
 @pytest.fixture
 def away(client, members, hub_db) -> dict:
     """Owner, with a browser that takes pushes, away from the hub and from Today for nine hours, with a failed run an
-    hour ago; bea with a browser too, seen an hour ago. Owner's summary is due now, at their digest_at in UTC."""
+    hour ago; bea with a browser too, seen an hour ago. Owner's summary is due now, at their digest_at in a fixed-offset
+    zone where it is noon, whatever the wall clock, so no step of a test crosses a local midnight; bea's digest_at, in
+    the same zone, is twelve hours away, so her default (07:30 in the hub's zone) never falls due by the clock of CI."""
     now = db_now(hub_db)
     wid = add_worker(client, members[OWNER], "mac-mini")["id"]
     run_id = add_run(hub_db, wid, A, ROLLOUT, "failed", OWNER, step="1", finished_at=now - timedelta(hours=1))
@@ -395,9 +398,14 @@ def away(client, members, hub_db) -> dict:
         phones[login] = browser(login)
         response = client.post("/v1/me/push/devices", json=phones[login].body(), headers=members[login])
         assert response.status_code == 201, response.text
-    utc = now.astimezone(UTC)
-    settings = {"time_zone": "UTC", "digest_at": f"{utc:%H:%M}"}
-    assert client.put("/v1/me/notification-settings", json=settings, headers=members[OWNER]).status_code == 200
+    ahead = (12 - now.astimezone(UTC).hour) % 24
+    ahead -= 24 if ahead > 12 else 0
+    zone = f"Etc/GMT{-ahead:+d}" if ahead else "UTC"  # POSIX signs: Etc/GMT-5 is UTC+5
+    local = now.astimezone(ZoneInfo(zone))
+    for login, digest_at in ((OWNER, local), (BEA, local + timedelta(hours=12))):
+        settings = {"time_zone": zone, "digest_at": f"{digest_at:%H:%M}"}
+        response = client.put("/v1/me/notification-settings", json=settings, headers=members[login])
+        assert response.status_code == 200, response.text
     users = tables.users
     for login, ago in ((OWNER, timedelta(hours=9)), (BEA, timedelta(hours=1))):
         sql(hub_db, update(users).values(last_seen_at=now - ago).where(users.c.login == login))
@@ -439,7 +447,7 @@ def test_a_member_away_gets_one_summary_push_at_their_time_with_a_link_home(clie
         None,
     )
     assert service.to(away["phones"][BEA]) == []
-    # The next day it goes again, once; bea, away by then, waits for her own digest_at, 07:30 in the hub's zone.
+    # The next day it goes again, once; bea, away by then, waits for her own digest_at, twelve hours off.
     assert digests(client, now + timedelta(days=1)) == {"not_due": 1, "today": 1}
     assert len(summaries(hub_db)) == 2
 
@@ -476,8 +484,8 @@ def test_the_summary_push_is_due_at_digest_at_in_the_members_time_zone_for_three
     now = away["now"]
     assert digests(client, now - 2 * MINUTE) == {"not_due": 1}
     assert digests(client, now + timedelta(hours=3)) == {"not_due": 1}  # three hours late: it waits a day
-    # In Tokyo (UTC+9 all year) the same digest_at is nine hours gone, or fifteen hours ahead.
-    tokyo = {"time_zone": "Asia/Tokyo"}
+    # In Tokyo (UTC+9 all year) a digest_at of now in UTC is nine hours gone, or fifteen hours ahead.
+    tokyo = {"time_zone": "Asia/Tokyo", "digest_at": f"{now.astimezone(UTC):%H:%M}"}
     assert client.put("/v1/me/notification-settings", json=tokyo, headers=members[OWNER]).status_code == 200
     assert digests(client, now) == {"not_due": 1}
     there = {"digest_at": f"{now.astimezone(UTC) + timedelta(hours=9):%H:%M}"}
