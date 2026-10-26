@@ -8036,6 +8036,7 @@
       },
       "probeName": "Probe #{id}",
       "ids": "probe #{probe}, thay đổi #{change}",
+      "idsNoChange": "probe #{probe}",
       "runtimeModel": "Runtime tự chọn",
       "failed": "{failed} trên {runs} thất bại",
       "notRun": "Chưa chạy",
@@ -8071,7 +8072,8 @@
       "sources": {
         "proposal": "Đề xuất này",
         "review": "Một lượt review",
-        "admin": "Một admin"
+        "admin": "Một admin",
+        "plugin": "Một plugin"
       },
       "replaces": "Viết thay cho probe #{id}, probe không làm lỗi tái hiện hai tuần liền.",
       "task": "Tác vụ",

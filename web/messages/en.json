@@ -8036,6 +8036,7 @@
       },
       "probeName": "Probe #{id}",
       "ids": "probe #{probe}, change #{change}",
+      "idsNoChange": "probe #{probe}",
       "runtimeModel": "Runtime's choice",
       "failed": "{failed} of {runs} failed",
       "notRun": "Not run",
@@ -8071,7 +8072,8 @@
       "sources": {
         "proposal": "This proposal",
         "review": "A review run",
-        "admin": "An admin"
+        "admin": "An admin",
+        "plugin": "A plugin"
       },
       "replaces": "Written in place of probe #{id}, which did not bring the mistake back two weeks in a row.",
       "task": "Task",
