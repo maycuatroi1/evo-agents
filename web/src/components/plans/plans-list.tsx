@@ -28,6 +28,7 @@ import { plansQuery } from "@/lib/plan-queries";
 import { type PlanArea, type PlanSummary, percent } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
+import { CompletePlanButton } from "./complete-plan";
 import { planHref } from "./links";
 import { ReadOnlyNotice } from "./plan-header";
 import { CompactProgress } from "./progress";
@@ -86,7 +87,9 @@ function PlansTable({
       cell: (info) => {
         const plan = info.row.original;
         return (
-          <RunPlanButton
+          <div className="flex items-center justify-end gap-2">
+            {activePlanRun(activity.runs, plan.plan_id) ? null : <CompletePlanButton project={project} plan={plan} />}
+            <RunPlanButton
             project={project}
             planId={plan.plan_id}
             pending={plan.steps_total - plan.steps_done}
@@ -97,7 +100,8 @@ function PlansTable({
             variant="outline"
             layout="row"
             testId="plans-run-plan"
-          />
+            />
+          </div>
         );
       },
     });

@@ -24683,6 +24683,12 @@ export interface components {
         PlanComplete: {
             /** If Revision */
             if_revision?: number | null;
+            /**
+             * Mark Steps Done
+             * @description mark every step that is neither done nor descoped done first, instead of refusing the plan
+             * @default false
+             */
+            mark_steps_done: boolean;
         };
         /**
          * PlanCopy

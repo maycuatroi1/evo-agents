@@ -146,6 +146,9 @@ class PlanPatch(BaseModel):
 
 class PlanComplete(BaseModel):
     if_revision: int | None = Field(None, ge=1)
+    mark_steps_done: bool = Field(
+        False, description="mark every step that is neither done nor descoped done first, instead of refusing the plan"
+    )
 
 
 class PlanAbandon(BaseModel):

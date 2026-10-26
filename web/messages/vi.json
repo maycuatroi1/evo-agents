@@ -1370,6 +1370,17 @@
         "actions": "Thao tác"
       }
     },
+    "complete": {
+      "button": "Done",
+      "title": "Chuyển plan {plan} sang done?",
+      "description": "Plan chuyển sang mục Đã hoàn tất.",
+      "descriptionOpen": "{count, plural, other {# bước chưa xong}} sẽ được đánh dấu done, rồi plan chuyển sang mục Đã hoàn tất.",
+      "confirm": "Chuyển sang done",
+      "pending": "Đang chuyển…",
+      "cancel": "Huỷ",
+      "done": "Plan {plan} đã chuyển sang done",
+      "conflict": "Plan vừa đổi trên hub. Tải lại trang rồi thử lại."
+    },
     "overview": {
       "metaTitle": "Plan {planId}",
       "goal": "Mục tiêu",
