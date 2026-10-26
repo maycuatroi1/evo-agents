@@ -56,7 +56,7 @@ def _changes(metadata: MetaData) -> Table:
         _id(),
         Column("project_id", BigInteger, nullable=False),
         Column("proposal_id", BigInteger, nullable=False),
-        Column("plan_id", Text),
+        Column("plan_id", Text),  # with repo, branch and forge: null only while open or closed (0161)
         Column("repo", Text),
         Column("branch", Text),
         Column("forge", Text),
