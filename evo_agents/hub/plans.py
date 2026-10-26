@@ -165,6 +165,21 @@ def undone_steps(body: dict) -> list[str]:
     ]
 
 
+def steps_marked_done(body: dict, today: str) -> dict:
+    """A copy of ``body`` whose steps that are neither done nor descoped are done on ``today``, as complete with
+    ``mark_steps_done`` stores it. A step that is not a mapping is left for ``undone_steps`` to name."""
+    steps = body.get("steps")
+    if not isinstance(steps, list):
+        return body
+    marked = [
+        {**step, "status": "done", "done_at": today}
+        if isinstance(step, dict) and step.get("status") not in CLOSED_STEP_STATUSES
+        else step
+        for step in steps
+    ]
+    return {**body, "steps": marked}
+
+
 def _verify(step) -> str:
     verify = step.get("verify") if isinstance(step, dict) else None
     return verify.strip() if isinstance(verify, str) else ""

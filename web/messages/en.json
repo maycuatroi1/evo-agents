@@ -1370,6 +1370,17 @@
         "actions": "Actions"
       }
     },
+    "complete": {
+      "button": "Done",
+      "title": "Mark plan {plan} done?",
+      "description": "The plan moves to Completed.",
+      "descriptionOpen": "{count, plural, one {# step that is not done} other {# steps that are not done}} will be marked done, then the plan moves to Completed.",
+      "confirm": "Mark done",
+      "pending": "Marking done…",
+      "cancel": "Cancel",
+      "done": "Plan {plan} marked done",
+      "conflict": "The plan changed on the hub. Reload the page and try again."
+    },
     "overview": {
       "metaTitle": "Plan {planId}",
       "goal": "Goal",
