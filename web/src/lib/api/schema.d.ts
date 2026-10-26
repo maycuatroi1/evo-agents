@@ -4042,6 +4042,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/changes/{change_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Change
+         * @description Close a change left open with no pull request, saying why; the admins of the project alone may.
+         */
+        post: operations["close_change_v1_projects__project__curator_changes__change_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/plans/{plan_id}/build": {
         parameters: {
             query?: never;
@@ -14812,6 +14832,14 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ChangeClose */
+        ChangeClose: {
+            /**
+             * Reason
+             * @description why it is closed: its reason and ledger say it
+             */
+            reason: string;
         };
         /** ChangeList */
         ChangeList: {
@@ -52351,6 +52379,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangeList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_change_v1_projects__project__curator_changes__change_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                change_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Change"];
                 };
             };
             /** @description Unauthorized */
