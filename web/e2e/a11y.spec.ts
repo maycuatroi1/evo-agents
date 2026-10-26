@@ -92,6 +92,7 @@ import {
   submitVersion,
   USE_CASE,
 } from "./support/srs";
+import { docsPath, enableDocs, guidePath, seedGuide } from "./support/docs";
 import { packSkill, publishSkill } from "./support/skills";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
@@ -1924,6 +1925,26 @@ const PAGES: Entry[] = [
       await page.locator("#main").getByTestId("notes-form").getByRole("textbox").fill("Ship on Friday");
       await page.locator("#main").getByTestId("notes-add").click();
       await expect(page.locator("#main").getByTestId("notes-list")).toContainText("Ship on Friday");
+    },
+  },
+  {
+    name: "Docs: the documents, a document with its image, its history and its editor",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "internal");
+      await enableDocs(me, project);
+      await seedGuide(me, project);
+      await open(page, docsPath(project, "/documents"));
+      await expect(page.locator("#main").getByTestId("docs-documents-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "Docs documents");
+      await open(page, guidePath(project));
+      await expect(page.locator("#main").getByTestId("markdown-image")).toBeVisible();
+      await expectNoSeriousViolations(page, "Docs document");
+      await open(page, guidePath(project, "/history"));
+      await expect(page.locator("#main").getByTestId("docs-versions-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "Docs history");
+      await open(page, guidePath(project, "/edit"));
+      await expect(page.locator("#main").getByTestId("docs-editor")).toBeVisible();
     },
   },
   {
