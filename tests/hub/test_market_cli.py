@@ -168,3 +168,42 @@ def test_market_request_and_publisher_commands(hub, capsys):
         ("POST", "/v1/plugin-publishers"),
         ("DELETE", "/v1/plugin-publishers/3"),
     ]
+
+
+def test_bundle_upload_wraps_a_sigstore_bundle_into_an_envelope(hub, tmp_path, capsys):
+    import base64
+    import hashlib
+
+    data = b"lumen-notes 1.0.0"
+    digest = hashlib.sha256(data).digest()
+    sigstore = {
+        "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+        "messageSignature": {"messageDigest": {"algorithm": "SHA2_256", "digest": base64.b64encode(digest).decode()}},
+    }
+    (tmp_path / "lumen-notes.tar.gz").write_bytes(data)
+    (tmp_path / "lumen-notes.tar.gz.sigstore.json").write_text(json.dumps(sigstore))
+    listing = {
+        "plugin": "lumen-notes",
+        "publisher": "lumen",
+        "state": "listed",
+        "usd_per_hub_month": 19.0,
+        "bundles": [{"version": "1.0.0"}],
+        "active_licenses": 0,
+    }
+    made = hub({("POST", "/v1/seller/listings/lumen-notes/bundles"): listing})
+    bundle, signature = tmp_path / "lumen-notes.tar.gz", tmp_path / "lumen-notes.tar.gz.sigstore.json"
+    args = ["hub", "market", "bundle", "upload", "lumen-notes", str(bundle), "--signature", str(signature)]
+
+    assert main(args) == 0
+    sent = made.calls[0][2]["signature"]
+    assert sent == {"kind": "sigstore", "sha256": digest.hex(), "bundle": sigstore}
+
+    (tmp_path / "envelope.json").write_text(json.dumps(sent))
+    assert main([*args[:-1], str(tmp_path / "envelope.json")]) == 0
+    assert made.calls[1][2]["signature"] == sent
+    assert "lumen-notes (lumen): listed" in capsys.readouterr().out
+
+    (tmp_path / "bad.json").write_text("{}")
+    assert main([*args[:-1], str(tmp_path / "bad.json")]) != 0
+    assert "neither a Sigstore bundle nor an envelope" in capsys.readouterr().err
+    assert len(made.calls) == 2
