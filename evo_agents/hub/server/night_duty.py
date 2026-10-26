@@ -181,6 +181,7 @@ def _pinned(worker_id: int, row) -> Pinned:
         tuple(row.features or ()),
         tuple(row.labels or ()),
         tuple(row.plugins or ()),
+        row.place_pool,
     )
 
 

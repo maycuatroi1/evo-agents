@@ -11893,7 +11893,7 @@ export interface components {
             tool?: components["schemas"]["AgentAxis"];
             /** @description skill names, global or the project's */
             skill?: components["schemas"]["AgentAxis"];
-            /** @description worker names, or label:<label> */
+            /** @description worker names, label:<label>, or pool:<name> */
             worker?: components["schemas"]["AgentAxis"];
             /** @description the other projects whose runs it may take */
             project?: components["schemas"]["AgentAxis"];

@@ -3468,7 +3468,7 @@
       "worker": {
         "title": "Workers",
         "noun": "workers",
-        "hint": "The workers that may claim its runs, by name or by label.",
+        "hint": "The workers that may claim its runs, by name, by label or by pool.",
         "all": "Any worker of the person who dispatches"
       },
       "project": {
@@ -3594,7 +3594,7 @@
           "credential": "A secret's name, or github-app",
           "tool": "mcp:server-name",
           "skill": "A skill's name",
-          "worker": "A worker's name, or label:name",
+          "worker": "A worker's name, label:name or pool:name",
           "project": "A project's name",
           "model": "A model, as its runtime names it",
           "runtime": "claude-code, opencode or codex",
@@ -3605,7 +3605,7 @@
           "credential": "A secret's name is lowercase letters, digits, dots, hyphens and underscores, at most 64.",
           "tool": "A tool is read, edit, bash, web, agent, or mcp: followed by a server's name.",
           "skill": "A skill's name is letters, digits, dots, hyphens and underscores, at most 100.",
-          "worker": "A worker's name, or label: with a worker's label.",
+          "worker": "A worker's name, label: with a worker's label, or pool: with a pool's name.",
           "project": "A project's name is lowercase letters, digits and hyphens.",
           "model": "A model is one line of at most 200 characters.",
           "runtime": "A runtime is claude-code, opencode or codex.",
@@ -3622,7 +3622,8 @@
           "global": "shared",
           "project": "this project"
         },
-        "host": "the worker's own machine"
+        "host": "the worker's own machine",
+        "poolNodes": "{count, plural, one {# node you see} other {# nodes you see}}"
       },
       "packs": {
         "title": "Agent packs",
@@ -3741,6 +3742,19 @@
       "memories": {
         "title": "Memory"
       }
+    },
+    "workers": {
+      "lead": "When someone hands @{handle} work, in a chat or as a run, it goes to one of their workers, or one shared with them, that this list lets through. Pick workers by name, by label, or a pool: a pool covers each of its nodes, those that join later too.",
+      "conflict": "Someone changed this agent meanwhile. The panel now shows it as it is: choose again.",
+      "saved": "Saved where @{handle} runs",
+      "savedText": "Its next runs go only to workers this list lets through.",
+      "reset": "Undo changes",
+      "save": "Save",
+      "saving": "Saving…",
+      "nothing": "Nothing allowed: no worker takes its runs.",
+      "allowed": "Allowed workers, labels and pools",
+      "defaultNote": "The project's default agent keeps every permission: any worker of the person who hands it work takes its runs.",
+      "deletedNote": "This agent was deleted: it takes no new run, so where its runs go no longer changes."
     }
   },
   "chats": {
@@ -4048,6 +4062,24 @@
       "legendAdded": "added",
       "legendRemoved": "removed or replaced",
       "legendSame": "unchanged"
+    },
+    "agentMenu": {
+      "open": "Open the menu of {name}",
+      "project": "Project",
+      "page": "Agent page",
+      "workers": "Workers and pools",
+      "accounts": "Accounts"
+    },
+    "agentSheet": {
+      "project": "Project",
+      "page": "Agent page",
+      "close": "Close",
+      "tabs": "Settings of {name}",
+      "tab": {
+        "workers": "Workers and pools",
+        "accounts": "Accounts"
+      },
+      "defaultAccounts": "The project's default agent owns no accounts: its runs take the secrets of the person who hands them work."
     }
   },
   "accounts": {

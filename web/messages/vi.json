@@ -3468,7 +3468,7 @@
       "worker": {
         "title": "Worker",
         "noun": "worker",
-        "hint": "Các worker được nhận run của agent, theo tên hoặc theo label.",
+        "hint": "Các worker được nhận run của agent, theo tên, theo label hoặc theo pool.",
         "all": "Mọi worker của người giao run"
       },
       "project": {
@@ -3594,7 +3594,7 @@
           "credential": "Tên một secret, hoặc github-app",
           "tool": "mcp:tên-server",
           "skill": "Tên một skill",
-          "worker": "Tên một worker, hoặc label:tên",
+          "worker": "Tên một worker, label:tên hoặc pool:tên",
           "project": "Tên một dự án",
           "model": "Một model, theo tên runtime của nó đặt",
           "runtime": "claude-code, opencode hoặc codex",
@@ -3605,7 +3605,7 @@
           "credential": "Tên secret gồm chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới, tối đa 64 ký tự.",
           "tool": "Tool là read, edit, bash, web, agent, hoặc mcp: rồi tên một server.",
           "skill": "Tên skill gồm chữ, chữ số, dấu chấm, gạch ngang và gạch dưới, tối đa 100 ký tự.",
-          "worker": "Tên một worker, hoặc label: kèm label của worker.",
+          "worker": "Tên một worker, label: kèm label của worker, hoặc pool: kèm tên pool.",
           "project": "Tên dự án gồm chữ thường, chữ số và dấu gạch ngang.",
           "model": "Model là một dòng, tối đa 200 ký tự.",
           "runtime": "Runtime là claude-code, opencode hoặc codex.",
@@ -3622,7 +3622,8 @@
           "global": "dùng chung",
           "project": "của dự án này"
         },
-        "host": "chính máy của worker"
+        "host": "chính máy của worker",
+        "poolNodes": "{count, plural, other {# node bạn thấy}}"
       },
       "packs": {
         "title": "Gói agent",
@@ -3741,6 +3742,19 @@
       "memories": {
         "title": "Memory"
       }
+    },
+    "workers": {
+      "lead": "Khi có người giao việc cho @{handle}, trong chat hay bằng một run, việc đó chạy trên một worker của người ấy, hoặc worker được chia sẻ cho họ, mà danh sách này cho phép. Chọn worker theo tên, theo label, hoặc một pool: pool gồm mọi node của nó, cả node vào sau.",
+      "conflict": "Agent này vừa được người khác sửa. Bảng đã hiện bản mới nhất: hãy chọn lại.",
+      "saved": "Đã lưu nơi @{handle} chạy",
+      "savedText": "Các run tiếp theo chỉ chạy trên worker mà danh sách này cho phép.",
+      "reset": "Hoàn tác",
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "nothing": "Không cho phép gì: không worker nào nhận run của agent.",
+      "allowed": "Worker, label và pool được phép",
+      "defaultNote": "Agent mặc định của dự án giữ mọi quyền: mọi worker của người giao việc đều nhận run của nó.",
+      "deletedNote": "Agent này đã bị xoá: nó không nhận run mới, nên nơi chạy không đổi được nữa."
     }
   },
   "chats": {
@@ -4048,6 +4062,24 @@
       "legendAdded": "dòng thêm",
       "legendRemoved": "dòng xoá hoặc thay thế",
       "legendSame": "giữ nguyên"
+    },
+    "agentMenu": {
+      "open": "Mở menu của {name}",
+      "project": "Dự án",
+      "page": "Trang agent",
+      "workers": "Worker và pool",
+      "accounts": "Account"
+    },
+    "agentSheet": {
+      "project": "Dự án",
+      "page": "Trang agent",
+      "close": "Đóng",
+      "tabs": "Cấu hình của {name}",
+      "tab": {
+        "workers": "Worker và pool",
+        "accounts": "Account"
+      },
+      "defaultAccounts": "Agent mặc định của dự án không có account riêng: run của nó dùng secret của người giao việc."
     }
   },
   "accounts": {

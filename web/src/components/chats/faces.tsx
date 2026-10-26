@@ -7,7 +7,7 @@ import type { ChatAuthor } from "@/lib/chats";
 import { cn, initials } from "@/lib/utils";
 
 /** The colour an agent goes by when the hub sends none (never for an agent it knows): neutral-solid. */
-const NO_COLOUR = "#6b7383";
+export const NO_COLOUR = "#6b7383";
 
 export type FaceSize = "sm" | "default" | "lg";
 
