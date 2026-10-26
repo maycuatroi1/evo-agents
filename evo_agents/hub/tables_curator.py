@@ -56,7 +56,7 @@ def _changes(metadata: MetaData) -> Table:
         _id(),
         Column("project_id", BigInteger, nullable=False),
         Column("proposal_id", BigInteger, nullable=False),
-        Column("plan_id", Text),
+        Column("plan_id", Text),  # with repo, branch and forge: null only while open or closed (0161)
         Column("repo", Text),
         Column("branch", Text),
         Column("forge", Text),
@@ -329,7 +329,7 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
 
 def probe_tables(metadata: MetaData) -> Table:
     """curator_probes (0130), added to ``metadata``: a probe of a proposal, then of its change, or of a core plugin's
-    rule (0161)."""
+    rule (0162)."""
     probes = Table(
         "curator_probes",
         metadata,
@@ -352,7 +352,7 @@ def probe_tables(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _stamp("updated_at"),
         Column("replaces", BigInteger),  # the probe, not reproduced two weeks in a row, this one replaced (0133)
-        Column("plugin_id", BigInteger),  # source plugin (0161): the core plugin whose rule the probe measures
+        Column("plugin_id", BigInteger),  # source plugin (0162): the core plugin whose rule the probe measures
         Column("ref", Text),  # source plugin: the key of that rule, one active probe per project, plugin and ref
         # source plugin: {"on": {path: text}, "off": {path: text}}, the files each arm places; None is SQL NULL
         Column("arms", JSONB(none_as_null=True)),
@@ -405,7 +405,7 @@ def probe_run_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -
         _id(),
         Column("project_id", BigInteger, nullable=False),
         Column("probe_id", BigInteger, nullable=False),
-        Column("change_id", BigInteger),  # None: the probe of a plugin's rule (0161), which has no change
+        Column("change_id", BigInteger),  # None: the probe of a plugin's rule (0162), which has no change
         Column("week", Date, nullable=False),  # the Monday of the ISO week, in the charter's time zone
         Column("runtime", Text, nullable=False),
         Column("model", Text),  # None: the runtime's own choice

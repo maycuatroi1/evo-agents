@@ -1183,6 +1183,43 @@ def test_curator_plan_changes_and_protection_on_the_command_line(world, tmp_path
         assert f"1 change(s) of the Curator in {PROJECT}" in ok(curator("changes")).out
 
 
+def test_close_an_admin_closes_a_change_left_open_with_no_pull_request(world, tmp_path, monkeypatch, capsys):
+    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-identity", "path": "tests/test_x.py"}]
+    accepted(world, paths=two)  # it cannot become the Curator's plan: its change is open, with no plan, no branch
+    change = one_change(world)
+    assert (change["state"], change["plan_id"], change["branch"], change["pr_number"]) == ("open", None, None, None)
+    url, owner = path("changes", str(change["id"]), "close"), world.headers["owner"]
+    why = {"reason": "memory #212 covers it"}
+    assert world.client.post(url, json=why, headers=world.headers["other"]).status_code == 403  # a writer
+    assert world.client.post(url, json={"reason": "  "}, headers=owner).status_code == 422
+    assert world.client.post(path("changes", "99", "close"), json=why, headers=owner).status_code == 404
+    with serving(create_app(world.app.state.config)) as served:
+        token = owner["Authorization"].removeprefix("Bearer ")
+        home = write_credentials(tmp_path / "owner", served, "owner", token)
+
+        def curator(*args: str):
+            return cli(monkeypatch, capsys, home, "hub", "curator", *args, "--project", PROJECT)
+
+        closed = as_json(curator("change", "close", str(change["id"]), "--reason", why["reason"], "--json"))
+        assert_json_keys("hub curator change close", closed)
+        assert (closed["state"], closed["reason"]) == ("closed", why["reason"])
+        assert ok(curator("changes")).out.splitlines()[-1] == f"#{change['id']}: memory #212 covers it"
+        refused = curator("change", "close", str(change["id"]), "--reason", why["reason"])
+        assert refused.code != 0 and "only a change left open is closed by hand" in refused.err
+    again = world.client.post(url, json=why, headers=owner)
+    assert again.status_code == 409 and "only a change left open is closed by hand" in again.text
+    ledger = world.client.get(path("proposals", str(change["proposal_id"]), "ledger"), headers=owner).json()
+    line = ledger["lines"][-1]
+    assert (line["action"], line["actor"], line["actor_login"]) == ("closed", "user", "owner")
+    assert line["what"] == f"owner closed change #{change['id']}: memory #212 covers it"
+    (target,) = sql(world.db, select(tables.audit.c.target).where(tables.audit.c.action == "curator.close"))
+    assert target[0] == f"{PROJECT} change:{change['id']} proposal:{change['proposal_id']}"
+    c = tables.curator_changes
+    sql(world.db, update(c).values(state="open", pr_number=3, pr_url="https://github.com/o/r/pull/3"))
+    refused = world.client.post(url, json=why, headers=owner)
+    assert refused.status_code == 409 and "close that on GitHub" in refused.text
+
+
 def test_curator_plan_schema_0017_goes_down_to_0016_and_up_again(world):
     through_the_judge(world)
     db = world.db

@@ -53,7 +53,7 @@ ACTIONS = (
     "judged",  # the Judge's verdict (agent), or the hub's signs of score hacking (curator)
     "merged",  # into the default branch, by the hub (curator) or by hand (user)
     "left_open",  # its change stays open for its owner, with why (curator)
-    "closed",  # its pull request was closed without a merge (user)
+    "closed",  # its pull request was closed without a merge, or an admin closed a change with none (user)
     "outcome",  # the figures counted again after the merge: keep, revert or unclear (curator)
     "skill_release",  # the hub published a global skill from its merge, or its version before again (curator)
     "promoted",  # accepting it wrote an agent's memories into a shared memory of the project (curator)

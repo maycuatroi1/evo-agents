@@ -23,7 +23,9 @@ prints the change. ``curator findings`` lists what the review runs found (GET ..
 figures`` prints the figures of the latest night, or of ``--night`` (GET .../curator/figures).
 
 ``curator changes`` lists what the accepted proposals of tier 0 to 2 became: the Curator's plan, its branch, its pull
-request, the Judge's verdict and the merge, newest first (GET .../curator/changes); ``curator replay tasks|show``
+request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator change close ID --reason
+TEXT`` closes a change left open with no pull request, such as one whose proposal named no repo, which only an admin of
+the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|show``
 (``evo_agents.hub.replay_cli``) the replays that measure them, ``curator history status|clusters|sessions|search|lines``
 (``evo_agents.hub.history_cli``) the night's history run, the clusters of its facets and the whole history, and
 ``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember, and
@@ -592,6 +594,20 @@ def cmd_changes(args) -> int:
 
 
 @_client_command
+def cmd_change_close(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    change = hub.call("POST", _curator_path(project, "changes", str(args.id), "close"), {"reason": args.reason})
+    if args.json:
+        _print_json(change)
+        return 0
+    print(
+        f"Change #{change['id']} of {project} (proposal #{change['proposal_id']}) is {change['state']}: {change['reason']}"
+    )
+    return 0
+
+
+@_client_command
 def cmd_protection(args) -> int:
     hub, _ = _signed_in()
     project = _project(args)
@@ -762,6 +778,16 @@ def register_curator(hsub) -> None:
     with_project(changes)
     json_option(changes, returns_object("project", "changes", schema="ChangeList"))
     changes.set_defaults(func=cmd_changes)
+    change = csub.add_parser("change", help="one change of the Curator: close one left open with no pull request")
+    chgsub = change.add_subparsers(dest="change_command", required=True)
+    close = chgsub.add_parser(
+        "close", help="close a change left open with no pull request, saying why; an admin of the project only"
+    )
+    close.add_argument("id", type=int, help="the change's id, as `curator changes` lists it")
+    close.add_argument("--reason", required=True, help="why it is closed, in one line")
+    with_project(close)
+    json_option(close, returns_object(*CHANGE_KEYS, schema="Change"))
+    close.set_defaults(func=cmd_change_close)
 
     for register in (_register_protection, register_replay, register_history, register_playbook, register_probe):
         register(csub, with_project)

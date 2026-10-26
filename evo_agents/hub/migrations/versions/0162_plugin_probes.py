@@ -1,7 +1,7 @@
 """The probes of a core plugin's own rules: source plugin, with no proposal or change (plan editorial-on-hub, step 3).
 
-Revision ID: 0161
-Revises: 0160
+Revision ID: 0162
+Revises: 0161
 Create Date: 2026-10-26
 
 The names below are copies of ``evo_agents.hub.tables_curator``, ``evo_agents.hub.probes`` and ``evo_agents.hub.runs``
@@ -23,8 +23,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0161"
-down_revision = "0160"
+revision = "0162"
+down_revision = "0161"
 branch_labels = None
 depends_on = None
 
