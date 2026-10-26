@@ -10,7 +10,7 @@ import { renderVi } from "@/test/render";
 
 import { CompletePlanButton } from "./complete-plan";
 
-const api = vi.hoisted(() => ({ posts: [] as { path: string; body: unknown }[], status: 200 }));
+const api = vi.hoisted(() => ({ posts: [] as { path: string; body: unknown; csrf: string | null }[], status: 200 }));
 
 vi.mock("@/lib/api/browser", () => ({
   browserApi: () =>
@@ -20,7 +20,7 @@ vi.mock("@/lib/api/browser", () => ({
         const url = new URL(request.url);
         if (url.pathname === "/v1/auth/web/csrf") return Response.json({ csrf: "csrf-1", header: "X-Evo-CSRF" });
         if (request.method === "POST") {
-          api.posts.push({ path: url.pathname, body: await request.json() });
+          api.posts.push({ path: url.pathname, body: await request.json(), csrf: request.headers.get("X-Evo-CSRF") });
           if (api.status !== 200) return Response.json({ error: "conflict", message: "busy" }, { status: api.status });
           return Response.json({ plan_id: "agent-hub", area: "completed", revision: 5, changed: true });
         }
@@ -63,8 +63,20 @@ describe("CompletePlanButton", () => {
     await userEvent.click(screen.getByTestId("plans-complete-confirm-confirm"));
     await waitFor(() => expect(screen.queryByTestId("plans-complete-confirm")).not.toBeInTheDocument());
     expect(api.posts).toEqual([
-      { path: "/v1/projects/demo/plans/agent-hub/complete", body: { if_revision: 4, mark_steps_done: true } },
+      {
+        path: "/v1/projects/demo/plans/agent-hub/complete",
+        body: { if_revision: 4, mark_steps_done: true },
+        csrf: "csrf-1",
+      },
     ]);
+  });
+
+  it("names the writer role on a 403, not the admin console's wording", async () => {
+    api.status = 403;
+    renderButton();
+    await userEvent.click(screen.getByTestId("plans-complete"));
+    await userEvent.click(screen.getByTestId("plans-complete-confirm-confirm"));
+    expect(await screen.findByText(/chuyển plan sang done cần vai trò writer/)).toBeInTheDocument();
   });
 
   it("keeps the confirmation open with the refusal on a 409", async () => {

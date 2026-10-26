@@ -1379,7 +1379,8 @@
       "pending": "Đang chuyển…",
       "cancel": "Huỷ",
       "done": "Plan {plan} đã chuyển sang done",
-      "conflict": "Plan vừa đổi trên hub. Tải lại trang rồi thử lại."
+      "conflict": "Plan vừa đổi trên hub. Tải lại trang rồi thử lại.",
+      "forbidden": "Hub từ chối: chuyển plan sang done cần vai trò writer trên dự án này. Tải lại trang nếu vai trò của bạn vừa đổi."
     },
     "overview": {
       "metaTitle": "Plan {planId}",
