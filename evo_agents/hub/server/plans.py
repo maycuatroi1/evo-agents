@@ -16,7 +16,8 @@ revision whose body names no problem says so in its warnings, and stores it all 
   revision records the run (``run_id``, which the revisions show).
 - PATCH sets keys of one item of a section, by index or (for steps) by step id, as ``evo harness step`` does, and
   needs ``if_revision`` too. A client that gets the 409 reads the plan again and retries on the new revision.
-- POST .../complete moves the plan to the completed area, only when every step is done or descoped.
+- POST .../complete moves the plan to the completed area, only when every step is done or descoped, or with
+  ``mark_steps_done`` after marking each other step done with today's date.
 - POST .../abandon moves an active or completed plan to the completed area as abandoned (or superseded by another
   plan), with a date and a reason, leaving each step's status as it was; POST .../reopen puts an abandoned or
   superseded plan back in the active area.
@@ -62,6 +63,7 @@ from evo_agents.hub.plans import (
     reopened_body,
     step_index,
     step_key,
+    steps_marked_done,
     summarize,
     undone_steps,
     unrunnable_verify,
@@ -858,8 +860,10 @@ async def apply_patch(
 async def complete(
     request: Request, project: ProjectName, plan_id: PlanId, user: CurrentUser, payload: PlanComplete | None = None
 ):
-    """Move the plan to the completed area; refused while a step is not done, as evo-cli's complete_plan."""
+    """Move the plan to the completed area; refused while a step is not done, as evo-cli's complete_plan, unless
+    ``mark_steps_done`` marks those steps done in the same revision."""
     given = payload.if_revision if payload else None
+    mark = bool(payload and payload.mark_steps_done)
     try:
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
@@ -871,7 +875,9 @@ async def complete(
             if held.area == "completed":
                 _logged(project, held, "unchanged", user)
                 return _written(access, held, created=False, changed=False, warnings=[])
-            undone = undone_steps(held.body)
+            marked = undone_steps(held.body) if mark else []
+            body = steps_marked_done(held.body, datetime.now(UTC).strftime("%Y-%m-%d")) if marked else held.body
+            undone = undone_steps(body)
             if undone:
                 raise PlanError(
                     409,
@@ -885,8 +891,10 @@ async def complete(
                 held,
                 area="completed",
                 label=label,
-                body=held.body,
-                summary="completed: moved from active",
+                body=body,
+                summary=f"completed: moved from active, {len(marked)} steps marked done"
+                if marked
+                else "completed: moved from active",
                 action=PLAN_COMPLETE,
             )
             _logged(project, stored, "completed", user)
