@@ -111,6 +111,22 @@ describe("MessageList", () => {
     expect(onReply).not.toHaveBeenCalled();
   });
 
+  it("marks the members a message names, their names without the @, but not in code, a link or a path", () => {
+    render("group", [
+      message(1, 1, { author: REVIEWER, body: "Chào octo, octo/demo có `@reviewer` và [octo](https://github.com/octo)." }),
+      message(2, 2, { body: "@reviewer làm luôn đi, @REVIEWER nhé, @nobody thì không" }),
+    ]);
+    const marks = (id: number) => within(item(id)).queryAllByTestId("message-mention").map((mark) => [mark.dataset.mention, mark.textContent]);
+    expect(marks(1)).toEqual([["octo", "octo"]]);
+    expect(marks(2)).toEqual([
+      ["reviewer", "Code reviewer"],
+      ["reviewer", "Code reviewer"],
+    ]);
+    expect(within(item(2)).getByTestId("message-body")).toHaveTextContent("Code reviewer làm luôn đi, Code reviewer nhé, @nobody thì không");
+    // The agent's head: its name, then its handle (they differ) without the @.
+    expect(within(item(1)).getByTestId("message-agent-handle")).toHaveTextContent(/^reviewer$/);
+  });
+
   it("tells a direct chat with nothing yet that every message goes to its agent", () => {
     render("direct", []);
     expect(screen.getByTestId("chat-empty")).toHaveTextContent("mọi tin đều tới Code reviewer");
