@@ -1379,7 +1379,8 @@
       "pending": "Marking done…",
       "cancel": "Cancel",
       "done": "Plan {plan} marked done",
-      "conflict": "The plan changed on the hub. Reload the page and try again."
+      "conflict": "The plan changed on the hub. Reload the page and try again.",
+      "forbidden": "The hub refused: marking a plan done needs the writer role on this project. Reload the page if your role changed."
     },
     "overview": {
       "metaTitle": "Plan {planId}",
