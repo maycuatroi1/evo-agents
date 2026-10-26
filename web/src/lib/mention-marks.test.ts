@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chatMentionMarks, type MentionMark, splitMentions } from "./mention-marks";
+import { chatMentionMarks, type MentionMark, plainMentions, splitMentions, summaryMentionMarks } from "./mention-marks";
 
 const marks = chatMentionMarks({
   agents: [
@@ -31,5 +31,12 @@ describe("splitMentions", () => {
     const none: MentionMark[] = [];
     expect(splitMentions("@evo-lms", none)).toEqual(["@evo-lms"]);
     expect(splitMentions("", marks)).toEqual([]);
+  });
+});
+
+describe("plainMentions", () => {
+  it("writes each member a preview mentions without the @, an agent by its label", () => {
+    expect(plainMentions("@evo-lms làm luôn, @Reviewer xem, a@b.com, @nobody", marks)).toBe("evo-lms làm luôn, Code reviewer xem, a@b.com, @nobody");
+    expect(plainMentions("@reviewer and @canhwindy", summaryMentionMarks({ agents: ["reviewer"], people: ["canhwindy"] }))).toBe("reviewer and canhwindy");
   });
 });

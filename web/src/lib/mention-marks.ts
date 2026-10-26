@@ -61,6 +61,21 @@ export function splitMentions(text: string, marks: readonly MentionMark[]): Ment
   return pieces;
 }
 
+/** The marks of a chat as the list of chats knows it: handles and logins alone, each shown as written. */
+export function summaryMentionMarks(chat: { agents: readonly string[]; people: readonly string[] }): MentionMark[] {
+  return [
+    ...chat.agents.map((handle): MentionMark => ({ name: handle, label: handle, kind: "agent", bare: false })),
+    ...chat.people.map((login): MentionMark => ({ name: login, label: login, kind: "person", bare: false })),
+  ];
+}
+
+/** `text` with each member it mentions as its label, without the `@`: a preview of a message in one line. */
+export function plainMentions(text: string, marks: readonly MentionMark[]): string {
+  return splitMentions(text, marks)
+    .map((piece) => (typeof piece === "string" ? piece : piece.label))
+    .join("");
+}
+
 type MdNode = { type: string; value?: string; children?: MdNode[]; data?: Record<string, unknown> };
 
 // Where a name is not a mention: code, a link's or an image's text, raw HTML (shown as text).

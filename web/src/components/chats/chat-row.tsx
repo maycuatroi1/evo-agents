@@ -5,6 +5,7 @@ import { type DateTimeFormatOptions, useFormatter, useTimeZone, useTranslations 
 import { useId, useSyncExternalStore } from "react";
 
 import { chatHref, type ChatLastMessage, chatName, type ChatSummary, isMine, listTime, type ListTime, summaryFace } from "@/lib/chats";
+import { type MentionMark, plainMentions, summaryMentionMarks } from "@/lib/mention-marks";
 import { cn } from "@/lib/utils";
 
 import { ChatAvatar } from "./chat-avatar";
@@ -48,13 +49,14 @@ const TIME_STYLE: Record<ListTime, DateTimeFormatOptions> = {
   year: { year: "numeric", month: "short", day: "numeric" },
 };
 
-/** "Author: text" of a chat's last message: the visitor as You, an agent by name, a person by login. */
+/** "Author: text" of a chat's last message: the visitor as You, an agent by name, a person by login; the members the
+ * text mentions without their `@`. */
 function useLastLine() {
   const t = useTranslations("chats.list");
-  return (last: ChatLastMessage | null, me: string | null): string => {
+  return (last: ChatLastMessage | null, me: string | null, marks: readonly MentionMark[]): string => {
     if (!last) return t("noMessages");
     const author = isMine(last.author, me) ? t("you") : last.author.kind === "hub" ? t("hub") : (last.author.login ?? last.author.name);
-    return t("lastMessage", { author, text: last.hidden || last.preview === null ? t("hiddenMessage") : last.preview });
+    return t("lastMessage", { author, text: last.hidden || last.preview === null ? t("hiddenMessage") : plainMentions(last.preview, marks) });
   };
 }
 
@@ -76,7 +78,7 @@ export function ChatRow({ chat, active, me }: { chat: ChatSummary; active: boole
   const when = chat.last_message?.created_at ?? chat.last_message_at ?? chat.created_at;
   const date = new Date(when);
   const style = now === null ? "date" : listTime(date, new Date(now), timeZone);
-  const last = lastLine(chat.last_message, me);
+  const last = lastLine(chat.last_message, me, summaryMentionMarks(chat));
   return (
     <li>
       <Link
