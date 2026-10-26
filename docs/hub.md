@@ -2143,6 +2143,56 @@ the goal owners of a project whose Curator sends no brief; the Curator's brief c
 (`docs/notifications.md`, Notices). Schema 0096 lets `notifications.notice_kind` take both; going back to 0095 deletes
 them.
 
+## Docs
+
+The feature docs (`evo_agents.hub.server.docs`, migration 0163) keeps a project's documents: guides and notes in
+Markdown, with images, read on the hub's web by the project's members. A project has it once a layer of its features
+turns it on (Branding and features, below): an admin of the project with `evo-agents hub plugin enable docs --project
+P` or on the project's Plugins page, or a hub admin in Features. Its page is Docs in the project's menu.
+
+A document is Markdown under a slug of the project (`^[a-z0-9][a-z0-9-]{0,99}$`). Each save is the next version of it,
+never changed after: its title, its body (500,000 characters at most), what it changed and who wrote it. A save whose
+title, body and images are those of the latest version writes nothing. A save that names `base_version` is refused
+with 409 unless the document is at that version, and with 0 unless it does not exist yet, so an editor never writes
+over a version it did not read and a new document never lands on another of the same slug. Without it, the save goes on
+top.
+
+**Images.** A writer uploads an image as the body of `POST /v1/x/docs/{project}/images`: a PNG, JPEG, WebP or GIF image
+of at most 10 MiB, checked by its first bytes (never SVG, which can carry a script). The hub streams it into its own
+blob store and keeps it once per project by its SHA-256 (`docs_images`, which the collection of unreferenced blobs
+counts as a reference, so it is never deleted). A version names each image it shows by the name its Markdown gives it,
+`![The board](shots/board.png "Apps > Tasks")`: up to five path segments of letters, digits, `.`, `_` and `-`, none
+starting with a dot. Every image a version names must be an image of the project. The web shows an image whose source
+is such a name, with its title as the caption, from `GET .../documents/{slug}/images/{sha256}`, which the hub serves
+to the readers of a document that shows it (`nosniff`, a sandbox CSP, its hash as the ETag); it loads no other image.
+
+**Who reads and writes.** Readers of the project read, writers create documents, save versions and upload images. A
+document carries a label, the project's default or one an admin gives it when creating it (`label`), and every version
+and image of it is read under that label through the sink X-Evo-Sink names, else the project's hub sink, as plans are.
+A writer who could not read the label a new document would carry gets 422 instead of a document they cannot see.
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /v1/x/docs/{project}/documents` | readers | the documents, each with its latest version |
+| `GET .../documents/{slug}` | readers | the document, its versions, and one version whole (`version`, the latest by default) |
+| `GET .../documents/{slug}/versions` | readers | every version, the newest first |
+| `GET .../documents/{slug}/images/{sha256}` | readers | an image a version of the document shows |
+| `POST /v1/x/docs/{project}/images` | writers | upload an image; its hash, media type, size, and whether the project held it |
+| `PUT .../documents/{slug}` | writers | save the next version, or create the document at version 1 |
+
+`evo-agents hub docs list|show|history|put` is the client. `put FILE` uploads every image the Markdown shows from a
+file beside it, once each, renames a path the hub does not take as a name under `images/`, takes the title from the
+file's first heading `# Title` (which then leaves the body) and saves the next version; `show SLUG --out DIR` writes the
+Markdown and its images back. The agent of a run reads documents with the tool `docs__read` of the hub's /mcp, as the
+person it works for (the person who mentioned it in a chat, else who dispatched the run) and, on another member's
+worker, only what that member reads too.
+
+```sh
+evo-agents hub docs put guide.md --project demo --summary "screenshots of the board"
+evo-agents hub docs list --project demo
+evo-agents hub docs show guide --project demo --version 1 --out /tmp/guide
+```
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
@@ -2917,11 +2967,11 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 | `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` and the worker's `/v1/worker/kg/{project}...` answer 404, the `kg_*` tools of `/mcp` return that error, and the heartbeat names the project to no worker for its graph |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
 | `seller` | the hub | off by default; off means no Selling page, `/v1/seller...` and the public `/v1/seller-api/...` answer 404, and the hub sells no plugin (`docs/market.md`, section Selling plugins) |
-| `canvas`, `srs`, `tasks` | the hub or a project | off by default; off means no page of it in the project's menu, its routes under `/v1/x/<name>/{project}...` answer 404, its `<name>__*` tools of `/mcp` return that error, and its events, jobs and sources of the knowledge graph skip the project (`docs/plugins.md`, Core plugins) |
+| `canvas`, `srs`, `tasks`, `docs` | the hub or a project | off by default; off means no page of it in the project's menu, its routes under `/v1/x/<name>/{project}...` answer 404, its `<name>__*` tools of `/mcp` return that error, and its events, jobs and sources of the knowledge graph skip the project (`docs/plugins.md`, Core plugins) |
 
-A feature is on until a layer turns it off, but for canvas, srs and tasks, plugins until migration 0147: each is off
-until a layer turns it on, and 0147 turned it on for every project that had enabled the plugin. An admin of the
-project turns one on or off for the project with `hub plugin enable` or `disable`, as for a plugin. A project's layer, where it sets a feature, wins over the hub's, so a hub
+A feature is on until a layer turns it off, but for canvas, srs and tasks, plugins until migration 0147, and docs: each
+is off until a layer turns it on, and 0147 turned the first three on for every project that had enabled the plugin. An
+admin of the project turns one on or off for the project with `hub plugin enable` or `disable`, as for a plugin. A project's layer, where it sets a feature, wins over the hub's, so a hub
 admin may turn a feature off for the whole hub and back on for one project. The 404 comes after authentication, so a
 request without a credential still gets 401, and a caller who cannot see the project gets the 404 of a project that
 does not exist. The web leaves out of its menus what is off for the project it shows, and answers 404 to its pages.
@@ -2954,7 +3004,8 @@ be limited to that one bucket. Keys:
   blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
   blobs holding a secret that an admin's scrub deleted (see above), and the parts of session transcripts an admin or
   the retention deleted (Session transcripts, above), and the outputs of runs deleted by hand or with their run's
-  events (Outputs of runs, above), and only once no row refers to them. The `blobs` table says which projects hold
+  events (Outputs of runs, above), and only once no row refers to them. The images of a project's documents (Docs,
+  above) are never deleted. The `blobs` table says which projects hold
   each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 

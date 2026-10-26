@@ -433,15 +433,16 @@ evo-ak ships its core plugins builder, pm, crm, marketing and browser in `evo_ag
 entry points, so every install has them, the hub's image among them. No package of evo_agents imports them
 (import-linter contract core-plugins-by-entry-point): the hub reaches them through their manifests.
 
-canvas, srs and tasks are features of the hub, not plugins (plan plugin-market, migration 0147). Their code lives in
-the hub (`evo_agents/hub/server/{canvas,srs,tasks}`) and keeps its manifest, which the hub registers itself
+canvas, srs and tasks are features of the hub, not plugins (plan plugin-market, migration 0147), and so is docs, the
+documents of a project (`docs/hub.md`, Docs; migration 0163). Their code lives in the hub
+(`evo_agents/hub/server/{canvas,srs,tasks,docs}`) and keeps its manifest, which the hub registers itself
 (`evo_agents.hub.plugin_calls.BUILTIN`), with no entry point in the group `evo_agents.plugins`. They run on the same
 extension points as before: the same routes under `/v1/x/<name>/`, MCP tools, jobs, events, notices, sources of the
 knowledge graph, agent types and packs, and the same layers of config (`plugin_configs`, `hub plugin config`). The
 store marks them `plugins.builtin`: `hub plugin list`, GET /v1/plugins and /admin/plugins leave them out, and the
 store installs, upgrades and removes none of them. A project has one on through its features (`docs/hub.md`,
-Features): off by default, on for each project that enabled the plugin before 0147, and turned on or off by a hub
-admin in Features or by an admin of the project on its Plugins page, where each is listed with `builtin` true. While
+Features): off by default, on for each project that enabled canvas, srs or tasks before 0147, and turned on or off by
+a hub admin in Features or by an admin of the project on its Plugins page, where each is listed with `builtin` true. While
 on, it may do what its manifest asks for, with no grant of its own to keep. Going back below 0147 puts back the rows of
 `project_plugins` that 0147 kept in `retired_project_plugins`.
 
