@@ -138,7 +138,7 @@ describe("MessageItem documents", () => {
     renderVi(
       <OpenDocContext.Provider value={open}>
         <ul>
-          <MessageItem message={shown} chat={{ agents: [] }} me="mai" onReact={vi.fn()} reacting={null} />
+          <MessageItem message={shown} chat={{ agents: [], people: [] }} me="mai" onReact={vi.fn()} reacting={null} />
         </ul>
       </OpenDocContext.Provider>,
     );
@@ -151,7 +151,7 @@ describe("MessageItem documents", () => {
   it("offers nothing where the page has no panel", () => {
     renderVi(
       <ul>
-        <MessageItem message={message(5, { attachments: [attachment(1, "plan.md")] })} chat={{ agents: [] }} me="mai" onReact={vi.fn()} reacting={null} />
+        <MessageItem message={message(5, { attachments: [attachment(1, "plan.md")] })} chat={{ agents: [], people: [] }} me="mai" onReact={vi.fn()} reacting={null} />
       </ul>,
     );
     expect(screen.queryByTestId("message-docs")).toBeNull();

@@ -2,13 +2,14 @@
 
 import { BookOpen, MessageSquareReply, Reply } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, type Ref, useContext } from "react";
+import { type ReactNode, type Ref, useContext, useMemo } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
 import { OutputStrip } from "@/components/data/output-strip";
 import { linkedFiles } from "@/lib/attachments";
 import { Button } from "@/components/ui/button";
 import { type Chat, type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
+import { chatMentionMarks } from "@/lib/mention-marks";
 import { baseName } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +40,7 @@ export type MessageSlot = (message: GroupMessage) => ReactNode;
 
 type Props = MessageActions & {
   message: GroupMessage;
-  chat: Pick<Chat, "agents">;
+  chat: Pick<Chat, "agents" | "people">;
   me: string | null;
   /** The replies of the thread it starts, and the latest one held: what its summary says. Left out in a thread. */
   thread?: { count: number; last: GroupMessage | null; authors: ChatAuthor[] } | null;
@@ -67,7 +68,7 @@ const ACTIONS = {
 /**
  * One message of a chat as a chat app draws it (web/DESIGN.md, Chats): the visitor's own on the right in a `brand-soft`
  * bubble with no face; anyone else's on the left in a `muted` bubble after their face and name, shown once for messages
- * that run on. The text is Markdown that is never HTML; under the bubble, the files of its run it carries (an agent's,
+ * that run on. The text is Markdown that is never HTML, the chat's members it names marked without their `@`; under the bubble, the files of its run it carries (an agent's,
  * as chips that open the viewer, the bytes served to who reads the message), where it leads (its pull requests, a mention
  * the hub refused), how far each run it handed work to is (`message-progress.tsx`), what
  * the page puts under it, its reactions, and for a message that starts a thread, how many replies it has and a way
@@ -81,6 +82,7 @@ export function MessageItem(props: Props) {
   const tAttach = useTranslations("attachments");
   const attached = linkedFiles(message.attachments, message.created_at);
   const format = useFormatter();
+  const marks = useMemo(() => chatMentionMarks(chat), [chat]);
   const mine = isMine(message.author, me);
   const side = mine ? "mine" : "theirs";
   const busy = reacting === message.id;
@@ -128,6 +130,7 @@ export function MessageItem(props: Props) {
             <SafeMarkdown
               className="leading-6 [&_:not(pre)>code]:bg-card [&_p]:my-0 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:bg-card"
               testId="message-body"
+              mentions={marks}
             >
               {message.body}
             </SafeMarkdown>
