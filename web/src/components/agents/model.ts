@@ -133,13 +133,14 @@ export function permissionsBody(permissions: Record<Axis, AxisDraft>): AgentPerm
   ) as AgentPermissions;
 }
 
+/** Whether two drafts of one axis say the same: the mode, and for an allowlist the same items in the same order. */
+export function sameAxis(left: AxisDraft, right: AxisDraft): boolean {
+  if (left.mode !== right.mode) return false;
+  return left.mode === "all" || (left.allow.length === right.allow.length && left.allow.every((item, index) => item === right.allow[index]));
+}
+
 function samePermissions(a: Record<Axis, AxisDraft>, b: Record<Axis, AxisDraft>): boolean {
-  return AXES.every((axis) => {
-    const left = a[axis];
-    const right = b[axis];
-    if (left.mode !== right.mode) return false;
-    return left.mode === "all" || (left.allow.length === right.allow.length && left.allow.every((item, index) => item === right.allow[index]));
-  });
+  return AXES.every((axis) => sameAxis(a[axis], b[axis]));
 }
 
 export function createBody(draft: AgentDraft): AgentCreate {

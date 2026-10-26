@@ -244,6 +244,21 @@ def test_a_chat_mention_without_a_fit_worker_says_why_in_the_thread_and_makes_no
     assert "old-daemon has no free slot" in other["mentions"][0]["refusal"]
 
 
+def test_a_chat_mention_of_an_agent_limited_to_a_pool_goes_to_a_node_of_that_pool(client, hub, hub_db):
+    chat_worker(client, hub["owner"], "studio")  # the most repos, but not a node of the pool
+    node = chat_worker(client, hub["owner"], "vps-1", checkouts=ONE_REPO)
+    made = client.post("/v1/worker-pools", json={"name": "vps", "projects": [PROJECT]}, headers=hub["owner"])
+    assert made.status_code == 201, made.text
+    sql(hub_db, update(tables.workers).where(tables.workers.c.id == node["id"]).values(pool_id=made.json()["id"]))
+    assert client.post("/v1/worker/doctor", json={"findings": []}, headers=node["headers"]).status_code == 200
+    agent(client, hub["owner"], "pooled", permissions={"worker": {"mode": "allowlist", "allow": ["pool:vps"]}})
+    chat = created(client, hub["owner"], agents=["pooled"])
+    mention = sent(client, hub["owner"], chat["id"], "@pooled look at the diff")
+    ((made_run, *_),) = chat_runs_of(hub_db)
+    assert [(m["run_id"], m["refusal"]) for m in mention["mentions"]] == [(made_run, None)]
+    assert run_of(client, hub["owner"], made_run)["pinned_worker_id"] == node["id"]
+
+
 def test_a_chat_message_hands_work_to_three_agents_at_most(client, hub, hub_db):
     chat_worker(client, hub["owner"], "studio", slots=4)
     for handle in ("third", "fourth"):

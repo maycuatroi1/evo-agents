@@ -156,7 +156,7 @@ async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess,
         return
     pinned = asked.pinned
     if pinned is not None:
-        if not profiles.allows_worker(profile.permissions, pinned.name, pinned.labels):
+        if not profiles.allows_worker(profile.permissions, pinned.name, pinned.labels, pinned.pool):
             raise _refuse(profile, f"does not allow worker {pinned.name}: {_workers_text(profile)}")
         return
     w, wp = tables.workers, tables.worker_projects
@@ -164,7 +164,7 @@ async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess,
     mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id, user.user_id))
     listed = select(w.c.name, w.c.labels, *worker_placement.columns(w))
     rows = await conn.execute(listed.where(mine_or_shared, w.c.revoked_at.is_(None), serves))
-    allowed = [row for row in rows if profiles.allows_worker(profile.permissions, row.name, row.labels)]
+    allowed = [row for row in rows if profiles.allows_worker(profile.permissions, row.name, row.labels, row.place_pool)]
     if not allowed:
         raise _refuse(
             profile,
@@ -352,16 +352,17 @@ def claim_clause(
     plugin_runtimes: list[str] = (),
     environments: list[str] = (),
     plugins: list[str] = (),
+    pool: str | None = None,
 ) -> object:
-    """Whether the profile of a queued run (``runs``, correlated) lets this worker take it: named by name or label on
-    the worker axis, one of its ``runtimes`` of the core on the runtime axis, or for a run of a plugin's runtime one
+    """Whether the profile of a queued run (``runs``, correlated) lets this worker take it: named by name, label or
+    ``pool`` (the pool it is a node of) on the worker axis, one of its ``runtimes`` of the core on the runtime axis, or for a run of a plugin's runtime one
     of its ``plugin_runtimes``, host or one of the plugins' ``environments`` it takes on the environment axis, a
     daemon that applies profiles (``features``) when the profile needs one, and one that builds agent packs when it
     attaches some, each of a plugin of ``plugins``, those its owner accepted. Always for a run without a profile. And,
     for a run with an autonomy snapshot, the workers, environments and daemon it allows (``run_autonomy.claim_clause``)."""
     r = tables.runs
     v, permissions = _rules()
-    names = [name.lower(), *(profiles.LABEL_PREFIX + label.lower() for label in labels or ())]
+    names = profiles.worker_names(name, labels, pool)
     allow = permissions["runtime"]["allow"]
     conditions = [
         v.c.profile_id == r.c.profile_id,

@@ -147,6 +147,7 @@ class Placement:
     taints: tuple[str, ...]
     auto: tuple[str, ...]
     unready: str | None
+    pool: str | None = None  # the pool it is a node of, which a profile's worker axis may name (pool:<name>)
 
     @property
     def ready(self) -> bool:
@@ -161,7 +162,8 @@ class Placement:
             m["place_pool"], m["place_doctor_at"], m["place_doctor_fresh"], m["place_findings"], m["place_accepted"]
         )
         labels = tuple(normalized([*(m["place_labels"] or ()), *auto]))
-        return cls(labels=labels, taints=tuple(normalized(m["place_taints"])), auto=auto, unready=reason)
+        taints = tuple(normalized(m["place_taints"]))
+        return cls(labels=labels, taints=taints, auto=auto, unready=reason, pool=m["place_pool"])
 
     def missing(self, selector) -> list[str]:
         """The labels of ``selector`` the worker lacks."""

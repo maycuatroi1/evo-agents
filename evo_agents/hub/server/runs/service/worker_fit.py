@@ -153,6 +153,7 @@ def worker_problems(
     packs = profiles.packs_unfit(
         profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
     )
+    node = worker_placement.Placement.of(row)
     checks = (
         (not row.online, "is offline"),
         (row.drained_at is not None, "is draining"),
@@ -162,7 +163,7 @@ def worker_problems(
         (row.others > 0, "holds a run of another member, and a shared worker runs one member's runs at a time"),
         (not row.checkouts, "has no checkout, and claims nothing"),
         (
-            not profiles.allows_worker(profile.permissions, row.name, row.labels or ()),
+            not profiles.allows_worker(profile.permissions, row.name, row.labels or (), node.pool),
             f"is not one @{profile.handle} allows",
         ),
         (not usable_runtimes(row, profile), f"has no runtime @{profile.handle} allows"),
@@ -178,7 +179,7 @@ def worker_problems(
             "config dir of its own (feature agent_home): update its daemon",
         ),
     )
-    placed = worker_placement.Placement.of(row).problems(selector, tolerations, pinned=pinned)
+    placed = node.problems(selector, tolerations, pinned=pinned)
     return [why for failed, why in checks if failed] + placed
 
 

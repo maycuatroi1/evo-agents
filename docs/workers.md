@@ -273,7 +273,10 @@ the run's own selector and tolerations. A worker's owner sets its own taints wit
 (`{"taints": [...]}`, the whole list) or in the Settings card of its page: a laptop with the taint `laptop` takes
 only the runs that tolerate it, or those pinned to it. Chat runs carry no selector or tolerations, so the pick of a
 chat run's worker passes over a tainted or not-ready worker. The worker axis of an agent profile checks the selector
-and taints when the profile limits workers and the run is not pinned, and answers 422 naming what is missing.
+and taints when the profile limits workers and the run is not pinned, and answers 422 naming what is missing. It may
+name a pool as `pool:<name>`: every node of a pool of that name then takes the agent's runs, those that join later
+too, at dispatch, at the claim and in the pick of a chat run's worker (`label:<label>` names a worker's own labels,
+never the pool's). A chat's agent menu sets it on the web, in the agent sheet's Workers and pools.
 
 **Where the night shift goes.** A charter names `worker` or `pool` (`docs/curator.md`, The charter). A pool's
 schedule queues its runs with the selector `pool=<name>`, tolerating the pool's taints, instead of pinning them, so

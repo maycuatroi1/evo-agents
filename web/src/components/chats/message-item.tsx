@@ -13,8 +13,9 @@ import { chatMentionMarks } from "@/lib/mention-marks";
 import { baseName } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
+import { AgentMenu } from "./agent-menu";
 import { docKey, messageDocs, OpenDocContext } from "./doc-model";
-import { AuthorAvatar } from "./faces";
+import { AuthorAvatar, NO_COLOUR } from "./faces";
 import type { Quote } from "./line-model";
 import { MessageHead, ReplyQuote, ThreadSummary } from "./message-parts";
 import { MessageLinks, MessageRuns } from "./message-links";
@@ -112,7 +113,7 @@ export function MessageItem(props: Props) {
         runOn ? "pt-0.5" : "pt-3",
       )}
     >
-      {mine ? null : runOn ? <span className="w-8 shrink-0" aria-hidden="true" /> : <AuthorAvatar author={message.author} className="mt-0.5" />}
+      {mine ? null : runOn ? <span className="w-8 shrink-0" aria-hidden="true" /> : <Face author={message.author} />}
       <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side])}>
         <MessageHead id={`${id}-head`} message={message} me={me} mine={mine} runOn={runOn} />
         {quote && onQuote ? <ReplyQuote quote={quote} me={me} marks={marks} onShow={onQuote} /> : null}
@@ -170,6 +171,18 @@ export function MessageItem(props: Props) {
         ) : null}
       </div>
     </li>
+  );
+}
+
+/** The author's face before the message: an agent's opens its menu (`AgentMenu`), where the page has the agent sheet. */
+function Face({ author }: { author: ChatAuthor }) {
+  const face = <AuthorAvatar author={author} />;
+  if (author.kind !== "agent" || !author.handle || !author.project) return <span className="mt-0.5 shrink-0">{face}</span>;
+  const agent = { project: author.project, handle: author.handle, name: author.name, color: author.color ?? NO_COLOUR, icon_url: author.icon_url ?? null, deleted: author.deleted };
+  return (
+    <span className="mt-0.5 shrink-0 self-start">
+      <AgentMenu agent={agent}>{face}</AgentMenu>
+    </span>
   );
 }
 

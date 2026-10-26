@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { agentHref } from "@/lib/agent-queries";
 import { agentAuthor, type Chat, type ChatAgent, chatsHref } from "@/lib/chats";
 
+import { AgentMenu } from "./agent-menu";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatImageControl } from "./chat-image-control";
 
@@ -40,7 +41,8 @@ function BackLink() {
  * head says who is in it, with Members, which opens the sheet that adds and takes them out. A direct chat's head is its
  * agent's, laid out as a messenger's: its avatar, its name on one line with Direct, under the name its @handle linking
  * to the agent's page, its project and the visibility, and Details at the end of the name's row, which opens the same
- * sheet without adding or taking out anyone; below 768 px Details and Direct are their icons, so the name, Direct and
+ * sheet without adding or taking out anyone; its face and its name open the agent's menu (`AgentMenu`), as a group
+ * chat's agents' faces do; below 768 px Details and Direct are their icons, so the name, Direct and
  * Details share one row on a phone. Under 1024 px a back link to the list stands before the face, in the row of the face and the
  * title, so it stays beside them when the head wraps at 375 px.
  */
@@ -86,9 +88,11 @@ function GroupHead({ chat, me, onMembers, image }: { chat: Chat; me: string | nu
       actions={
         <>
           {agents.length ? (
-            <span className="hidden -space-x-1.5 sm:flex" aria-hidden="true">
+            <span className="hidden -space-x-1.5 sm:flex" data-testid="chat-head-agents">
               {agents.slice(0, 4).map((agent) => (
-                <AgentAvatar key={agent.handle} agent={agent} size="sm" className="ring-2 ring-card" />
+                <AgentMenu key={`${agent.project}/${agent.handle}`} agent={agent} align="end">
+                  <AgentAvatar agent={agent} size="sm" className="ring-2 ring-card" />
+                </AgentMenu>
               ))}
             </span>
           ) : null}
@@ -110,14 +114,18 @@ function DirectHead({ chat, agent, onDetails }: { chat: Chat; agent: ChatAgent; 
     <header className="flex min-w-0 items-start gap-2 md:gap-3" data-testid="chat-header">
       <div className="flex shrink-0 items-center gap-2 md:gap-3">
         <BackLink />
-        <ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} size="lg" />
+        <AgentMenu agent={agent}>
+          <ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} size="lg" />
+        </AgentMenu>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-h-11 min-w-0 items-center gap-2 md:min-h-10">
           <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight" title={agent.name}>
-            <span id="chat-title" data-testid="chat-title">
-              {agent.name}
-            </span>
+            <AgentMenu agent={agent} shape="text" testId="agent-menu-name">
+              <span id="chat-title" data-testid="chat-title">
+                {agent.name}
+              </span>
+            </AgentMenu>
           </h1>
           <Tag data-testid="chat-direct-tag">
             <Bot aria-hidden="true" />

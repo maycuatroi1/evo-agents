@@ -23,6 +23,8 @@ import { chatKeys, chatPageQuery, chatQuery, COMPOSE_PARAM, toggleReaction } fro
 import { type Chat, type ChatPage, chatsHref, type ChatSummary, type GroupMessage } from "@/lib/chats";
 import { chatMentionMarks, plainMentions } from "@/lib/mention-marks";
 
+import { AgentActionsContext, type AgentTab, type AgentTarget } from "./agent-menu";
+import type { AgentPanels } from "./agent-sheet";
 import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
 import { OpenDocContext } from "./doc-model";
@@ -38,6 +40,8 @@ import { useChatFeed } from "./use-chat-feed";
 
 /** The members' sheet opens on demand: its code loads when the chat's head asks for it. */
 const MembersSheet = dynamic(() => import("./members-sheet").then((module) => module.MembersSheet), { ssr: false });
+/** The agent sheet too, which an agent's menu opens. */
+const AgentSheet = dynamic(() => import("./agent-sheet").then((module) => module.AgentSheet), { ssr: false });
 
 const CARD = "flex min-h-0 flex-col overflow-hidden rounded-md border bg-card shadow-raised";
 /** Tailwind's 2xl (96rem, 1536 px): from there the thread is a column beside the chat, below it a sheet. */
@@ -60,12 +64,24 @@ const useNothingUnder: UseUnder = () => undefined;
  * shows that message marked, in its thread when it is a reply of a group chat or older than the page read.
  * `?compose=1` (where an agent's avatar and its Chat button lead) focuses the composer, then leaves the address. In a
  * direct chat Reply answers a message from the chat's own composer, in its thread, so the agent's session goes on.
+ * With `agentPanels`, an agent's face or name opens its menu (`agent-menu.tsx`), whose Workers and pools and Accounts
+ * open the agent sheet (`agent-sheet.tsx`) on that tab, drawn by the page.
  */
-export function ChatView({ chatId, initialError, useUnder = useNothingUnder }: { chatId: number; initialError: ApiErrorInfo | null; useUnder?: UseUnder }) {
+export function ChatView({
+  chatId,
+  initialError,
+  useUnder = useNothingUnder,
+  agentPanels,
+}: {
+  chatId: number;
+  initialError: ApiErrorInfo | null;
+  useUnder?: UseUnder;
+  agentPanels?: AgentPanels;
+}) {
   const state = useHubQuery(chatPageQuery(browserApi, chatId), initialError);
   return (
     <QueryView state={state} loading={<ChatLoading />}>
-      {(page) => <Conversation key={chatId} page={page} useUnder={useUnder} />}
+      {(page) => <Conversation key={chatId} page={page} useUnder={useUnder} agentPanels={agentPanels} />}
     </QueryView>
   );
 }
@@ -83,7 +99,7 @@ function numberParam(value: string | null): number | null {
   return value && /^[1-9][0-9]{0,17}$/.test(value) ? Number(value) : null;
 }
 
-function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }) {
+function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnder: UseUnder; agentPanels?: AgentPanels }) {
   const t = useTranslations("chats.view");
   const tDoc = useTranslations("chats.doc");
   const queryClient = useQueryClient();
@@ -114,6 +130,17 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   const [thread, setThread] = useState<number | null>(() => numberParam(params.get("thread")));
   const [highlight, setHighlight] = useState<number | null>(() => numberParam(params.get("message")));
   const [members, setMembers] = useState(false);
+  // The agent sheet, on the agent and tab its menu picked: an agent of the chat brings whether it is its project's
+  // default; the members' sheet closes, so one sheet shows at a time.
+  const [agentSheet, setAgentSheet] = useState<{ agent: AgentTarget; tab: AgentTab } | null>(null);
+  const openAgent = useCallback(
+    (agent: AgentTarget, tab: AgentTab) => {
+      const known = chat.agents.find((each) => each.handle === agent.handle && each.project === agent.project);
+      setMembers(false);
+      setAgentSheet({ agent: known ? { ...agent, is_default: known.is_default } : agent, tab });
+    },
+    [chat.agents],
+  );
   const opener = useRef<HTMLElement | null>(null);
   // The Markdown document read beside the chat (doc-panel.tsx), by its name, and what opened it: the composer stays in
   // reach, and Close gives the focus back.
@@ -219,6 +246,7 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
 
   return (
     <OpenDocContext.Provider value={openDoc}>
+    <AgentActionsContext.Provider value={agentPanels ? openAgent : null}>
     <div className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`}>
         <FileDropFrame className="flex min-h-0 flex-1 flex-col" data-testid="chat-drop">
@@ -301,7 +329,16 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
         </Sheet>
       ) : null}
       <MembersSheet chat={chat} me={me} open={members} onOpenChange={setMembers} />
+      {agentPanels ? (
+        <AgentSheet
+          target={agentSheet}
+          panels={agentPanels}
+          onTab={(tab) => setAgentSheet((current) => (current ? { ...current, tab } : current))}
+          onOpenChange={(open) => (open ? undefined : setAgentSheet(null))}
+        />
+      ) : null}
     </div>
+    </AgentActionsContext.Provider>
     </OpenDocContext.Provider>
   );
 }

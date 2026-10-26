@@ -470,7 +470,7 @@ async def _claim_once(
             steady=is_steady,
             shared=shared,
             profile_gate=and_(
-                claim_clause(name, labels, runtimes, features, offered, environments, plugins),
+                claim_clause(name, labels, runtimes, features, offered, environments, plugins, node.pool),
                 browsers.claim_gate(worker_id, features),
                 gateway_accounts.claim_gate(version),
                 node.gate(worker_id),
