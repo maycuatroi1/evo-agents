@@ -21,6 +21,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { chatKeys, chatPageQuery, chatQuery, COMPOSE_PARAM, toggleReaction } from "@/lib/chat-queries";
 import { type Chat, type ChatPage, chatsHref, type ChatSummary, type GroupMessage } from "@/lib/chats";
+import { chatMentionMarks, plainMentions } from "@/lib/mention-marks";
 
 import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
@@ -261,7 +262,7 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
                 hint={direct ? t(replying ? "directReplyHint" : "directHint", { name: agentName }) : t("hint")}
                 testId="chat-composer"
                 focusKey={replying ? `reply-${replyFocus}` : compose}
-                replying={replying ? { name: authorLabel(replying.author, me), text: preview(replying.body), onCancel: () => setReplying(null) } : null}
+                replying={replying ? { name: authorLabel(replying.author, me), text: plainMentions(preview(replying.body), chatMentionMarks(chat)), onCancel: () => setReplying(null) } : null}
               />
             </div>
           )}

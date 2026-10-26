@@ -436,7 +436,7 @@ test("the row of agents opens the member's direct chat with an agent, its compos
   await expect(head).toHaveAttribute("data-kind", "direct");
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Code reviewer");
   await expect(head.getByTestId("chat-avatar")).toHaveAttribute("data-face", "agent");
-  await expect(head.getByTestId("chat-agent-link")).toHaveText(`@${handle}`);
+  await expect(head.getByTestId("chat-agent-link")).toHaveText(handle);
   await expect(head.getByTestId("chat-agent-link")).toHaveAttribute("href", `/p/${project}/agents/${handle}`);
   await expect(head.getByTestId("chat-agent-project")).toContainText(project);
   await expect(head.getByTestId("chat-members-open")).toHaveCount(0);

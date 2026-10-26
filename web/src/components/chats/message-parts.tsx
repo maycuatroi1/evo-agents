@@ -4,6 +4,7 @@ import { CornerDownRight } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
+import { type MentionMark, plainMentions } from "@/lib/mention-marks";
 import { cn } from "@/lib/utils";
 
 import { AuthorName } from "./author";
@@ -59,12 +60,12 @@ export function useAuthorLabel() {
  * In a direct chat, above an answer that does not sit right under what it answers: that message, its author and one
  * line of its words, which shows it (in the line, or its thread when the page does not hold it).
  */
-export function ReplyQuote({ quote, me, onShow }: { quote: Quote; me: string | null; onShow: (quote: Quote) => void }) {
+export function ReplyQuote({ quote, me, marks, onShow }: { quote: Quote; me: string | null; marks: readonly MentionMark[]; onShow: (quote: Quote) => void }) {
   const t = useTranslations("chats.message");
   const label = useAuthorLabel();
   const answered = quote.message;
   const name = answered ? label(answered.author, me) : null;
-  const text = answered ? preview(answered.body) : null;
+  const text = answered ? plainMentions(preview(answered.body), marks) : null;
   return (
     <button
       type="button"

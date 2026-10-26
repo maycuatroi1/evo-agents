@@ -128,7 +128,7 @@ function DirectHead({ chat, agent, onDetails }: { chat: Chat; agent: ChatAgent; 
         <p className="text-[13px] leading-[18px] text-muted-foreground [overflow-wrap:anywhere]" data-slot="page-sub">
           <span className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1" data-testid="chat-who">
             <Link href={agentHref(agent.project, agent.handle)} className={`${NAME_LINK} max-w-full truncate font-mono text-[13px] font-normal`} title={t("agentPage", { name: agent.name })} data-testid="chat-agent-link">
-              @{agent.handle}
+              {agent.handle}
             </Link>
             <span className="inline-flex min-w-0 items-center gap-1" data-testid="chat-agent-project">
               <FolderKanban className="size-3.5 shrink-0" aria-hidden="true" />
