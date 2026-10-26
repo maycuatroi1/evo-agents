@@ -117211,6 +117211,12 @@
                 }
               ],
               "title": "If Revision"
+            },
+            "mark_steps_done": {
+              "type": "boolean",
+              "title": "Mark Steps Done",
+              "description": "mark every step that is neither done nor descoped done first, instead of refusing the plan",
+              "default": false
             }
           },
           "type": "object",

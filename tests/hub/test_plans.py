@@ -916,6 +916,23 @@ def test_complete_needs_every_step_done_and_moves_the_plan_once(client, github, 
 
 
 @needs_pg
+def test_complete_with_mark_steps_done_closes_the_open_steps_in_the_same_revision(client, github, hub_db):
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    assert put(alice, draft(steps=3)).status_code == 200
+    patch_item(alice, PROJECT, "rollout", "steps", {"status": "descoped", "descoped_at": "2026-10-18"}, step=1)
+    response = client.post(plan_url("rollout", "complete"), json={"mark_steps_done": True}, headers=alice.headers)
+    assert response.status_code == 200, response.text
+    done = response.json()
+    assert (done["area"], done["revision"], done["changed"]) == ("completed", 3, True)
+    steps = done["body"]["steps"]
+    assert [step["status"] for step in steps] == ["descoped", "done", "done"]
+    assert "done_at" not in steps[0] and steps[1]["done_at"] == steps[2]["done_at"]
+    summary = alice.call("GET", plan_url("rollout", "revisions"))[0]["summary"]
+    assert summary == "completed: moved from active, 2 steps marked done"
+
+
+@needs_pg
 def test_abandon_and_reopen_move_the_plan_and_keep_step_statuses(client, github, hub_db):
     hubs = setup_project(client, github)
     alice = hubs["alice"]
