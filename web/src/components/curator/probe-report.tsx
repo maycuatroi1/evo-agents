@@ -87,7 +87,7 @@ function WeekSummary({ week }: { week: ProbeWeek }) {
 }
 
 /** A probe as a row names it: its task's first line, a link to its proposal when it has one, and its ids. */
-function ProbeName({ project, id, change, probe }: { project: string; id: number; change: number; probe: Probe | undefined }) {
+function ProbeName({ project, id, change, probe }: { project: string; id: number; change: number | null; probe: Probe | undefined }) {
   const t = useTranslations("curator.probes");
   const name = probe ? taskLine(probe.task) : t("probeName", { id });
   return (
@@ -99,7 +99,7 @@ function ProbeName({ project, id, change, probe }: { project: string; id: number
       ) : (
         <span className="text-pretty text-foreground [overflow-wrap:anywhere]">{name}</span>
       )}
-      <span className="font-mono text-xs text-fg-subtle tabular-nums">{t("ids", { probe: id, change })}</span>
+      <span className="font-mono text-xs text-fg-subtle tabular-nums">{change === null ? t("idsNoChange", { probe: id }) : t("ids", { probe: id, change })}</span>
     </span>
   );
 }
