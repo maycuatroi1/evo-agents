@@ -1089,8 +1089,12 @@ Shared pieces built on them:
   `aria-pressed`), named by the emoji's name, the count and who put it ("Eyes: 1, by @reviewer"); pressing one puts the
   visitor's or takes it off, and Add a reaction opens a grid of 16 named emoji, the three an agent's run puts by rule
   first. A thread (`thread-panel.tsx`) is the message that starts it, a line with the count, its replies as bubbles that
-  run on as in the chat, and a composer that answers in it; a column of 26 rem beside the chat from 2xl (where the
-  sidebar and the list leave it room), a sheet from the right below; it reads the whole thread once opened. `?thread=ID`
+  run on as in the chat, and a composer that answers in it; a column beside the chat from xl, 45 % of the chat's
+  width by default (at least 22 rem), a sheet from the right below (up to 42 rem); it reads the whole thread once opened.
+  The bar between the chat and the column (`thread-width.tsx`, a window splitter: drag, or the arrows with Home and
+  End, double click for the default) sets its share between 30 and 70 %, kept in the browser for the next thread.
+  Expand (`Maximize2`) in the thread's head gives it the whole chat view (the whole width as a sheet), its messages and
+  composer kept to 56 rem, and Collapse puts it back; closing the thread leaves the mode. `?thread=ID`
   opens one, and `?message=ID`, where a notice links, shows that message marked (a `brand` ring on its bubble) and
   focused: in its thread when it is a reply of a group chat or older than the page read, otherwise where it sits in the
   line. A chat run (the triage agent of a failed run) that asks ends its turn with a decision open: the kit's
