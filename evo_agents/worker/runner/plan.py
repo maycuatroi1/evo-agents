@@ -1,7 +1,9 @@
 """A plan run (kind ``plan``, ``PlanRun``): every step of a plan not done yet, in one session, or in a session for
 each step when it was dispatched with ``session_per_step`` (``sessions``).
 
-1. ``leased``: the daemon takes the run's leases for all its repos, then makes the directory
+1. ``leased``: the daemon takes the run's leases for all its repos and checks what the run needs (``access.check``),
+   among which that a credential its agent has opens a pull request in each repo on GitHub whose branch in the plan
+   is not a default branch (``pull_repos``), as the agent lands that branch through one; then it makes the directory
    ``~/.evo/worker/worktrees/<project>-<run>`` with a worktree of each repo of the run in it (``directory``), each on
    the branch the plan names for that repo (``evo-run/<run>/<repo>`` when that branch is checked out elsewhere; the
    push still goes to the plan's branch), and writes the plan as claimed to ``.evo-run/plan.yaml`` there. A repo the
@@ -34,6 +36,7 @@ reports a step done, ``evo-agents worker step`` asks the daemon to push (``PlanR
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -105,7 +108,8 @@ class PlanRun:
         await access.take_credentials(run, names)
         run.check()
         verify_commands = runs.open_verify(self.plan_body())
-        await access.check(run, names, path=access.run_path(run), pushes=names, verify=verify_commands)
+        pulls = await self.pull_repos(repos)
+        await access.check(run, names, path=access.run_path(run), pushes=names, pulls=pulls, verify=verify_commands)
         run.check()
         await self.prepare(repos)
         run.check()
@@ -124,6 +128,30 @@ class PlanRun:
         await run.reports.end("done", diffstat=diffstat, summary=run.summary, usage=usage)
 
     # The directory and its worktrees
+
+    async def pull_repos(self, repos: list[dict]) -> list[str]:
+        """The repos whose branch the run's agent lands through a pull request it opens itself, which the preflight
+        checks it can open (``access.opens_pull``): each one whose branch in the plan is not a default branch of the
+        repo (``origin.protected_branches``: the remote's HEAD as its checkout here last saw it, the hub's
+        default_branch, main and master), since a plan that names the default branch is pushed to it and opens none.
+        None for a Builder of the Curator, whose pull requests the hub opens."""
+        if self.builder:
+            return []
+        run = self.run
+        found = []
+        for entry in repos:
+            name, branch = entry.get("repo"), entry.get("branch")
+            if not isinstance(name, str) or not name or not isinstance(branch, str) or not branch:
+                continue
+            checkout = run.daemon.checkout_for(run.project, name)
+            remote_head = None
+            if checkout is not None:
+                with contextlib.suppress(gitops.GitError, OSError):
+                    remote_head = await gitops.remote_default_branch(checkout)
+            hub_default = default_branch_of(run.daemon.config, run.project, name)
+            if branch not in origin.protected_branches(remote_head, hub_default):
+                found.append(name)
+        return found
 
     def plan_body(self) -> dict:
         plan = self.run.spec.get("plan")
