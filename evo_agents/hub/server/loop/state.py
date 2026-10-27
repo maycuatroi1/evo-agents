@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import loop_jobs, tables
+from evo_agents.hub.server.loop import srs_ledger
 from evo_agents.hub.server.loop.model import CANCELLED, CANCELLED_EVENT, FINISHED
 
 log = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ async def policy_written(conn: AsyncConnection, project_id: int, on: bool) -> No
         return
     await conn.execute(update(s).where(s.c.project_id == project_id).values(enabled=False, updated_at=func.now()))
     cancelled = await cancel_open(conn, project_id, "loop_off")
+    await srs_ledger.sync(conn, project_id)  # the use cases of the items just cancelled leave delivering
     log.info("loop off", extra={"project_id": project_id, "cancelled": cancelled})
 
 
