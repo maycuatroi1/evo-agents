@@ -1921,6 +1921,9 @@ so the Reviewer reads the whole history (`docs/curator.md`, "The whole history")
   `until`, `login` and
   `runtime`, each hit with a few words around the match (`ts_headline`) and the evidence that names it
   (`transcript:ID[:FILE]:LINE` or `run:ID:SEQ`; a chat's message has none).
+  The answer has `reranked` (boolean): true when a ranker of a plugin the project enabled put the page in a new order
+  (`docs/plugins.md`, Rankers); each hit's `rank` stays the ts_rank. `kg_search` adds `reranked` to its
+  `structuredContent` when the project has a ranker.
 - `GET /v1/projects/{p}/transcripts/{session}/lines?line=` reads the lines of one transcript file (`file`, `main` by
   default) around a line (`before` and `after`, 10 by default, 100 at most) from the blob store, each as its entries.
 

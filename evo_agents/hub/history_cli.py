@@ -31,7 +31,7 @@ from evo_agents.hub.plan_cli import project_of_args
 STATUS_KEYS = ("project", "budget_usd", "runtime", "model", "llm", "runs", "clusters", "hidden")
 CLUSTER_LIST_KEYS = ("project", "min_sessions", "clusters", "hidden", "counted_at")
 SESSIONS_KEYS = ("project", "items", "total", "limit", "offset")
-SEARCH_KEYS = ("project", "query", "sources", "hits", "total", "limit", "offset")
+SEARCH_KEYS = ("project", "query", "sources", "hits", "total", "limit", "offset", "reranked")
 LINES_KEYS = (
     "project",
     "session_id",

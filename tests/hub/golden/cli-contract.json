@@ -5384,7 +5384,8 @@
           "hits",
           "total",
           "limit",
-          "offset"
+          "offset",
+          "reranked"
         ],
         "schema": "HistorySearch"
       }
@@ -19140,6 +19141,54 @@
         "schema": "Run"
       }
     },
+    "hub run-cause": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "restore"
+          ]
+        },
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "failure_cause",
+          "was"
+        ],
+        "schema": "CauseRestored"
+      }
+    },
     "hub secret delete": {
       "positionals": [
         {
@@ -23523,54 +23572,6 @@
         }
       ],
       "json": null
-    },
-    "hub run-cause": {
-      "positionals": [
-        {
-          "name": "action",
-          "metavar": "ACTION",
-          "value": "string",
-          "required": true,
-          "repeatable": false,
-          "choices": [
-            "restore"
-          ]
-        },
-        {
-          "name": "run",
-          "metavar": "RUN",
-          "value": "integer",
-          "required": true,
-          "repeatable": false
-        }
-      ],
-      "options": [
-        {
-          "flags": [
-            "--project"
-          ],
-          "value": "string",
-          "required": true,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--json"
-          ],
-          "value": null,
-          "required": false,
-          "repeatable": false
-        }
-      ],
-      "json": {
-        "kind": "object",
-        "keys": [
-          "run_id",
-          "failure_cause",
-          "was"
-        ],
-        "schema": "CauseRestored"
-      }
     }
   },
   "openapi": {
@@ -31879,6 +31880,69 @@
                 }
               },
               "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/cause/restore": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Restore Cause",
+          "description": "Give a failed run back the cause it had before a core plugin classified it; the run's log says who did.",
+          "operationId": "restore_cause_v1_projects__project__runs__run_id__cause_restore_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CauseRestored"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
             },
             "422": {
               "description": "Validation Error",
@@ -87847,69 +87911,6 @@
             }
           }
         }
-      },
-      "/v1/projects/{project}/runs/{run_id}/cause/restore": {
-        "post": {
-          "tags": [
-            "runs"
-          ],
-          "summary": "Restore Cause",
-          "description": "Give a failed run back the cause it had before a core plugin classified it; the run's log says who did.",
-          "operationId": "restore_cause_v1_projects__project__runs__run_id__cause_restore_post",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "run_id",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "integer",
-                "title": "Run Id"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/CauseRestored"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "422": {
-              "description": "Validation Error",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              }
-            }
-          }
-        }
       }
     },
     "components": {
@@ -96872,6 +96873,45 @@
             "copyright"
           ],
           "title": "CatalogSource"
+        },
+        "CauseRestored": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause",
+              "description": "the cause the run has now: the one the hub had guessed"
+            },
+            "was": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Was",
+              "description": "the cause the plugin had given it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "failure_cause",
+            "was"
+          ],
+          "title": "CauseRestored"
         },
         "CeilingSet": {
           "properties": {
@@ -107519,6 +107559,12 @@
             "offset": {
               "type": "integer",
               "title": "Offset"
+            },
+            "reranked": {
+              "type": "boolean",
+              "title": "Reranked",
+              "description": "a ranker of a plugin the project enabled put the hits of this page in a new order; each hit's rank is still the ts_rank of its words",
+              "default": false
             }
           },
           "type": "object",
@@ -150092,6 +150138,25 @@
           ],
           "title": "TrustedSigner"
         },
+        "Undismissed": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint"
+            },
+            "was_by": {
+              "type": "string",
+              "title": "Was By",
+              "description": "who had dismissed it: a login, or plugin:<id> for a core plugin"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "was_by"
+          ],
+          "title": "Undismissed"
+        },
         "UnitCreate": {
           "properties": {
             "slug": {
@@ -152787,64 +152852,6 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
-        },
-        "CauseRestored": {
-          "properties": {
-            "run_id": {
-              "type": "integer",
-              "title": "Run Id"
-            },
-            "failure_cause": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Failure Cause",
-              "description": "the cause the run has now: the one the hub had guessed"
-            },
-            "was": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Was",
-              "description": "the cause the plugin had given it"
-            }
-          },
-          "type": "object",
-          "required": [
-            "run_id",
-            "failure_cause",
-            "was"
-          ],
-          "title": "CauseRestored"
-        },
-        "Undismissed": {
-          "properties": {
-            "fingerprint": {
-              "type": "string",
-              "title": "Fingerprint"
-            },
-            "was_by": {
-              "type": "string",
-              "title": "Was By",
-              "description": "who had dismissed it: a login, or plugin:<id> for a core plugin"
-            }
-          },
-          "type": "object",
-          "required": [
-            "fingerprint",
-            "was_by"
-          ],
-          "title": "Undismissed"
         }
       }
     }

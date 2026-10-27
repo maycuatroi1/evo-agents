@@ -95,7 +95,7 @@ from evo_agents.hub.kg_ingest import (
 )
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server import audit, run_audience
+from evo_agents.hub.server import audit, rankers, run_audience
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -912,6 +912,8 @@ async def tool_result(
     except ArtifactMismatch as exc:
         log.error("kg graph artifact refused", extra={"project": project, "build_id": graphs[0].build_id})
         raise HTTPException(502, str(exc)) from None
+    if tool == "kg_search" and isinstance(arguments.get("query"), str):
+        result = await rankers.rerank_kg(state, access, arguments["query"], result)  # plugins' rankers (their point)
     shown = run_audience.revealed(result) if user.scope is not None else frozenset()
     if shown:  # noted before the result goes back, so a memory the agent writes after reading it carries it
         async with state.engine.begin() as conn:
