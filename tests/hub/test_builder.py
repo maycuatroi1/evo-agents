@@ -1206,6 +1206,47 @@ def test_builder_plugin_install_proposal_is_for_a_hub_admin_and_installs_the_rel
     assert run_inbox(client, run) == [], "an install hands @builder nothing"
 
 
+def test_builder_plugin_install_of_a_trusted_owner_is_decided_by_the_admin_of_a_self_managed_project(
+    client, hub, hub_db, tmp_path
+):
+    from tests.hub.test_market import MarketGitHub
+    from tests.plugins.market_samples import LUMEN_REPO, lumen_release
+    from tests.plugins.samples import FakeSigstore
+
+    github = MarketGitHub()
+    github.releases[LUMEN_REPO] = [lumen_release(tmp_path / "v1", "1.0.0")]
+    client.app.state.market_transport = github.transport()
+    client.app.state.plugin_sigstore = FakeSigstore()
+    run = started(client, hub, "@builder install the lumen notes plugin")
+    asked = {"repo": LUMEN_REPO, "tag": "v1.0.0"}
+    before = made_proposal(client, run["agent"], kind="plugin_install", summary="Install lumen notes", set=asked)
+    assert shown(client, hub["owner"], before)["approver"] == "hub_admin"
+    # a hub admin turns the state on for another owner: the install of this repo stays a hub admin's
+    body = {"enabled": True, "trusted_owners": ["northwind"]}
+    url = f"/v1/admin/projects/{PROJECT}/self-managed"
+    assert client.put(url, json=body, headers=hub["admin"]).status_code == 200
+    other_owner = made_proposal(client, run["agent"], kind="plugin_install", summary="Install again", set=asked)
+    assert shown(client, hub["owner"], other_owner)["approver"] == "hub_admin"
+    assert "needs a hub admin" in message(answer(client, hub["owner"], other_owner, "approve"), 403)
+    # lumen-labs trusted (written in capitals: owners are compared without case): the project's admin decides
+    body = {"enabled": True, "trusted_owners": ["Lumen-Labs"]}
+    assert client.put(url, json=body, headers=hub["admin"]).status_code == 200
+    own = made_proposal(client, run["agent"], kind="plugin_install", summary="Install a third time", set=asked)
+    assert shown(client, hub["owner"], own)["approver"] == "project_admin"
+    assert shown(client, hub["owner"], before)["approver"] == "project_admin"
+    assert notices(hub_db)[-1] == (OWNER, own, "plugin_install")
+    assert "needs the admin role" in message(answer(client, hub["other"], own, "approve"), 403)
+    done = answer(client, hub["owner"], own, "approve")
+    assert done.status_code == 200, done.text
+    assert done.json()["state"] == "applied"
+    assert done.json()["outcome"] == f"the hub installed plugin lumen-notes 1.0.0 for project {PROJECT} alone"
+    plugins, publishers = tables.plugins, tables.plugin_publishers
+    project_id = sql(hub_db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    held = select(plugins.c.installed_version, plugins.c.project_id).where(plugins.c.name == "lumen-notes")
+    assert sql(hub_db, held) == [("1.0.0", project_id)]
+    assert sql(hub_db, select(publishers.c.publisher)) == [], "the hub trusts no publisher for it"
+
+
 def test_builder_plugin_listing_proposal_hands_the_run_a_pull_request_or_a_paid_listing(client, hub, hub_db):
     run = started(client, hub, "@builder list our stock plugin")
     listing = {"repo": "northwind/northwind-stock", "tag": "v0.1.0", "industries": ["retail"]}

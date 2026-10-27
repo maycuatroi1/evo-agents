@@ -108,7 +108,9 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         Column("disabled_at", DateTime(timezone=True)),
         _stamp("created_at"),
         Column("builtin", Boolean, nullable=False, server_default=false()),  # a feature of the hub (0147)
+        Column("project_id", BigInteger),  # the one project it is installed for, null for the hub's (0170)
         ForeignKeyConstraint(["installed_by"], ["users.id"], ondelete="RESTRICT", name="plugins_installed_by_fkey"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="plugins_project_id_fkey"),
         ForeignKeyConstraint(
             ["id", "installed_version"],
             ["plugin_versions.plugin_id", "plugin_versions.version"],

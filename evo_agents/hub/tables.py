@@ -139,6 +139,8 @@ projects = Table(
     Column("cluster", Text),
     Column("workspace", Text),
     Column("harness_path", Text),
+    Column("self_managed", Boolean, nullable=False, server_default=false()),  # 0170
+    Column("trusted_owners", ARRAY(Text), nullable=False, server_default="{}"),  # 0170
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="projects_created_by_fkey"),
     PrimaryKeyConstraint("id", name="projects_pkey"),
     UniqueConstraint("name", name="projects_name_key"),

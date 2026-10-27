@@ -1,5 +1,6 @@
 """Hub administration, for the logins listed in EVO_HUB_ADMINS only: users, grants, what needs an admin, row counts,
-and the retention of built graphs.
+and the retention of built graphs. (The admins of a self-managed project give grants on it through
+``evo_agents.hub.server.project_admin``.)
 
 GET /v1/admin/overview answers what an admin may have to act on, in one read: members and how many were seen lately,
 tokens about to expire or long unused, the grants of each project, the bytes the blob store holds and the objects
@@ -334,6 +335,33 @@ project_ladder = _project  # the invite links (evo_agents.hub.server.invites) ch
 upsert_grant = _upsert_grant  # ... and give a grant as a hub admin's does
 
 
+async def give_grant(
+    conn: AsyncConnection, user, project: str, login: str, body: GrantRequest
+) -> tuple[Grant, list[int]]:
+    """Give ``login`` the grant ``body`` on ``project``, or change the one it holds, as ``user`` does, with its audit
+    row; the grant, and the runs whose credential leases were taken back (``revoke_taken`` gives them back at GitHub
+    once the transaction commits)."""
+    project_id, ladder = await _project(conn, project)
+    if body.max_level not in ladder:
+        levels = ", ".join(ladder)
+        raise HTTPException(422, f"max-level must be a level of project {project} ({levels}), not {body.max_level}")
+    users = tables.users
+    made = await conn.execute(pg_insert(users).values(login=login).on_conflict_do_nothing().returning(users.c.id))
+    made_id = made.scalar()
+    if made_id is not None:  # a login that never signed in: its seat at the root comes with its row
+        await org_store.place_user(conn, made_id)
+    found = await conn.execute(select(users.c.id, users.c.login).where(func.lower(users.c.login) == func.lower(login)))
+    grantee_id, grantee = found.one()
+    upserted = await conn.execute(_upsert_grant(grantee_id, project_id, body.role, body.max_level, user.user_id))
+    created = upserted.scalar_one()
+    target = f"{project}/{grantee} role={body.role} max_level={body.max_level}"
+    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_PUT, target=target)
+    taken = []
+    if not has_role(body.role, "writer"):
+        taken = await _take_back_leases(conn, user, project_id, grantee_id, f"grant-{body.role}")
+    return Grant(project=project, login=grantee, role=body.role, max_level=body.max_level, created=created), taken
+
+
 @router.put(
     "/projects/{project}/grants/{login}",
     response_model=Grant,
@@ -343,28 +371,9 @@ upsert_grant = _upsert_grant  # ... and give a grant as a hub admin's does
 async def grant(request: Request, body: GrantRequest, project: ProjectName, login: Login, user: AdminUser) -> Grant:
     """Give ``login`` a role on ``project``, or change the one it has."""
     async with request.app.state.engine.begin() as conn:
-        project_id, ladder = await _project(conn, project)
-        if body.max_level not in ladder:
-            levels = ", ".join(ladder)
-            raise HTTPException(422, f"max-level must be a level of project {project} ({levels}), not {body.max_level}")
-        users = tables.users
-        made = await conn.execute(pg_insert(users).values(login=login).on_conflict_do_nothing().returning(users.c.id))
-        made_id = made.scalar()
-        if made_id is not None:  # a login that never signed in: its seat at the root comes with its row
-            await org_store.place_user(conn, made_id)
-        found = await conn.execute(
-            select(users.c.id, users.c.login).where(func.lower(users.c.login) == func.lower(login))
-        )
-        grantee_id, grantee = found.one()
-        upserted = await conn.execute(_upsert_grant(grantee_id, project_id, body.role, body.max_level, user.user_id))
-        created = upserted.scalar_one()
-        target = f"{project}/{grantee} role={body.role} max_level={body.max_level}"
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_PUT, target=target)
-        taken = []
-        if not has_role(body.role, "writer"):
-            taken = await _take_back_leases(conn, user, project_id, grantee_id, f"grant-{body.role}")
+        given, taken = await give_grant(conn, user, project, login, body)
     await _revoke_taken(request, taken)
-    return Grant(project=project, login=grantee, role=body.role, max_level=body.max_level, created=created)
+    return given
 
 
 async def _take_back_leases(conn: AsyncConnection, user, project_id: int, member_id: int, by: str) -> list[int]:
@@ -387,6 +396,31 @@ async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
         await credentials.revoke_tokens(state.engine, state.sealer, credentials.revoker(state), run_id=run_id)
 
 
+async def take_grant(conn: AsyncConnection, user, project: str, login: str) -> list[int]:
+    """Take away the role ``login`` has on ``project``, as ``user`` does, with its audit row; the runs whose credential
+    leases were given back, for ``revoke_taken``. 404 when ``login`` holds none."""
+    project_id, _ = await _project(conn, project)
+    grants, users = tables.grants, tables.users
+    deleted = await conn.execute(
+        delete(grants)
+        .where(
+            grants.c.user_id == users.c.id,
+            grants.c.project_id == project_id,
+            func.lower(users.c.login) == func.lower(login),
+        )
+        .returning(users.c.login, users.c.id)
+    )
+    row = deleted.first()
+    if row is None:
+        raise HTTPException(404, f"{login} has no grant on project {project}")
+    target = f"{project}/{row.login}"
+    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_DELETE, target=target)
+    return await _take_back_leases(conn, user, project_id, row.id, "grant-deleted")
+
+
+revoke_taken = _revoke_taken  # ... and the route of a self-managed project's admin gives the leases back as well
+
+
 @router.delete(
     "/projects/{project}/grants/{login}",
     status_code=204,
@@ -397,25 +431,7 @@ async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
 async def revoke(request: Request, project: ProjectName, login: Login, user: AdminUser) -> Response:
     """Take away the role ``login`` has on ``project``."""
     async with request.app.state.engine.begin() as conn:
-        project_id, _ = await _project(conn, project)
-        grants, users = tables.grants, tables.users
-        deleted = await conn.execute(
-            delete(grants)
-            .where(
-                grants.c.user_id == users.c.id,
-                grants.c.project_id == project_id,
-                func.lower(users.c.login) == func.lower(login),
-            )
-            .returning(users.c.login, users.c.id)
-        )
-        row = deleted.first()
-        if row is None:
-            raise HTTPException(404, f"{login} has no grant on project {project}")
-        target = f"{project}/{row.login}"
-        await audit.record(
-            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_DELETE, target=target
-        )
-        taken = await _take_back_leases(conn, user, project_id, row.id, "grant-deleted")
+        taken = await take_grant(conn, user, project, login)
     await _revoke_taken(request, taken)
     return Response(status_code=204)
 
