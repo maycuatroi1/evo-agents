@@ -293,6 +293,11 @@ A leading `~/` is expanded, since Claude Code passes the value as written; a bla
 relative path is refused, because hooks start in whatever directory the session is in. The worker doctor still checks
 `~/.evo/hub/token` only.
 
+`EVO_HUB_TOKEN` and `EVO_HUB_URL`, both set and not blank, come before any login on disk, `EVO_HUB_HOME`'s included:
+the worker daemon sets them for the agent of a run its owner lets run as them, so `evo-agents hub ...` in that run
+acts as the owner with no login on the worker ([credentials.md](credentials.md#a-run-that-runs-as-its-owner)). One of
+them alone changes nothing, and `hub logout` refuses while they are set.
+
 In the browser, the web sends you to GitHub (`/v1/auth/web/login`, with state and PKCE), and the callback sets the
 session cookie (HttpOnly, Secure, SameSite=Lax), then sends you back to the page named by `?next=` on the login
 route. Only a relative path of the hub is taken there (one leading `/`, not `//` or `/\`, no scheme or host,
@@ -1148,6 +1153,7 @@ evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
 evo-agents hub run dispatch rollout 7 --account claude-b     # this account of yours, kept, never failed over
 evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
 evo-agents hub run plan rollout --session-per-step            # the same, each step in a new session with the handoff
+evo-agents hub run plan rollout --as-me                       # its agent calls the hub as you, secrets, tokens and workers aside
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
 evo-agents hub run show 41
 evo-agents hub run logs 41 --follow                           # the live log, until the run ends
@@ -1160,6 +1166,7 @@ evo-agents hub run rerun 41                                   # the step again, 
 evo-agents hub run rerun 41 --account-by-rule                # the same, the rules picking the account
 evo-agents hub run candidates 41                              # after it failed: which worker or agent could run it again, and why
 evo-agents hub run credentials 41                             # the leases the run got, never their values
+evo-agents hub run access 41 --revoke                         # it no longer runs as you: its token ends at once
 evo-agents hub run author "a plan to move the hub's blobs to R2" --worker mac-mini  # an agent writes a new plan
 evo-agents hub run author "split step 3 in two" --plan rollout --worker mac-mini   # or revises one
 evo-agents hub run chat 42                                    # an author run's chat, and whose turn it is

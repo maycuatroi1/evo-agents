@@ -34,10 +34,13 @@ from urllib.parse import quote
 from evo_agents.hub.access import ROLES
 from evo_agents.hub.client import EXIT_FAILED as EXIT_FAILED  # cli_memory and cli_skills take it from here
 from evo_agents.hub.client import (
+    TOKEN_VARIABLE,
+    URL_VARIABLE,
     Hub,
     HubError,
     NotSignedIn,
     check_url,
+    env_credentials,
     exit_status,
     hub_dir,
     load_credentials,
@@ -46,6 +49,7 @@ from evo_agents.hub.client import (
 )
 from evo_agents.hub.contract import json_option, returns_array, returns_map, returns_object
 
+ENV_PAIR = f"{TOKEN_VARIABLE} and {URL_VARIABLE}"  # the token and hub that come before any login (env_credentials)
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
 WHOAMI_KEYS = ("login", "admin", "token", "grants")
 TOKEN_KEYS = ("id", "kind", "host", "created_at", "last_used_at", "expires_at", "revoked_at", "state", "current")
@@ -141,11 +145,18 @@ def cmd_login(args) -> int:
     signed = login(check_url(url))
     role = " (admin)" if signed.get("admin") else ""
     print(f"Signed in to {check_url(url)} as {signed['login']}{role}; the token is in {hub_dir() / 'token'}.")
+    if env_credentials() is not None:
+        print(f"note: {ENV_PAIR} are set, so commands use them, not this login, until they are unset.")
     return 0
 
 
 @_client_command
 def cmd_logout(args) -> int:
+    if env_credentials() is not None:
+        raise HubError(
+            f"signed in with {ENV_PAIR}, which logout does not touch: unset them; the login in {hub_dir()} is left "
+            "as it is"
+        )
     try:
         hub, credentials = _signed_in()
     except NotSignedIn:

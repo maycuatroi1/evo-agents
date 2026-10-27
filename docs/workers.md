@@ -573,7 +573,11 @@ commands again in the repo's worktree, commits and pushes that repo's branch, an
 `in_progress` back as `pending` with a note.
 
 The agent talks to the hub through four commands that use the worker's token and the run's id (`EVO_RUN_ID`), not a
-token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outside a run they refuse to run.
+token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outside a run they refuse to run. A run its
+owner lets run as them (`--as-me` on `hub run dispatch` and `hub run plan`, or `hub run access RUN --as-me`) also
+gets a token of its own in `EVO_HUB_TOKEN`, with the hub's URL in `EVO_HUB_URL`, so `evo-agents hub ...` acts as the
+owner on the hub's REST API, secrets, tokens and workers aside, with no login on the worker; those four commands keep
+the worker's token ([credentials.md](credentials.md#a-run-that-runs-as-its-owner)).
 
 `POST /v1/projects/{p}/plan-runs` (writer) takes `plan_id`, `worker_id` (optional, one of the caller's own workers:
 403 for any other id, 409 for a revoked worker, one that does not serve the project, or one that could never claim
@@ -1708,7 +1712,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
 | `evo-agents worker plan [--json]` | for the agent of a plan run: prints the run's plan as the hub holds it now |
 | `evo-agents worker git-credential --run N get\|store\|erase` | git's credential helper for run N, named by the run's git configuration: `get` answers from the run's leases through its socket, `store` and `erase` do nothing (see [docs/credentials.md](credentials.md)) |
-| `evo-agents worker env --run N` | prints what run N's leases add to its agent's environment as `export` lines; an interactive pane evaluates it |
+| `evo-agents worker env --run N` | prints what run N's leases add to its agent's environment as `export` lines, `EVO_HUB_TOKEN` and `EVO_HUB_URL` among them for a run that runs as its owner ([credentials.md](credentials.md#a-run-that-runs-as-its-owner)); an interactive pane evaluates it |
 
 `join` and `register` refuse a machine that is a worker already, unless `--replace` is given. When the machine is
 signed in to the same hub, they keep the repos of the worker's projects as the hub lists them, and `run` reads them

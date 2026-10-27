@@ -5,7 +5,10 @@ $EVO_HUB_HOME when it is set, where ``config.json`` holds ``{url, login}`` and `
 directory is mode 0700 and both files 0600. One machine keeps a login per hub that way: a harness whose project lives
 on another hub sets EVO_HUB_HOME (in the ``env`` of its .claude/settings.json, say) to the directory of that login.
 Each file is written to a temporary file in the same directory, flushed to disk and renamed over the old one, so a
-crash leaves the old file or the new one, never half a token.
+crash leaves the old file or the new one, never half a token. EVO_HUB_TOKEN and EVO_HUB_URL, both set, come before any
+login on disk (``env_credentials``): the worker daemon sets them for the agent of a run its owner lets run as them
+(``docs/credentials.md``, "A run that runs as its owner"), so ``evo-agents hub ...`` in that run acts as the owner
+with no login on the worker; ``hub logout`` leaves them, and the login on disk, alone.
 
 Requests carry the token as a Bearer header and never follow a redirect, which would hand the header to whatever
 host the redirect names. A hub URL must be https, or http to a loopback address for local runs. Every request has
@@ -46,6 +49,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents import __version__
+from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 
 DEFAULT_GITHUB_URL = "https://github.com"
 GITHUB_URL_VARIABLE = "EVO_HUB_GITHUB_URL"
@@ -68,6 +72,9 @@ DIR_MODE = 0o700
 FILE_MODE = 0o600
 LOGIN_HINT = "run `evo-agents hub login --url URL`"
 HOME_VARIABLE = "EVO_HUB_HOME"  # the directory of the login, instead of ~/.evo/hub
+# A token and its hub that come before any login on disk, both set: a run's own token (evr_...) as its daemon sets them
+TOKEN_VARIABLE = HUB_TOKEN_ENV
+URL_VARIABLE = HUB_URL_ENV
 TRANSIENT = frozenset({408, 429, 502, 503, 504})  # answers that may not come again
 
 
@@ -124,13 +131,15 @@ def transient(exc: HubError) -> bool:
 @dataclass(frozen=True)
 class Credentials:
     url: str
-    login: str
+    login: str  # empty for those of TOKEN_VARIABLE, which name no login: GET /v1/auth/whoami says it
     token: str
     run: int | None = None  # a worker token's, for the agent of this run (``evo_agents.hub.mcp_proxy``)
+    from_env: bool = False  # read from TOKEN_VARIABLE and URL_VARIABLE, not from a login directory
 
     def __repr__(self) -> str:  # the token stays out of tracebacks
         run = "" if self.run is None else f", run={self.run}"
-        return f"Credentials(url={self.url!r}, login={self.login!r}{run})"
+        source = f", from {TOKEN_VARIABLE}" if self.from_env else ""
+        return f"Credentials(url={self.url!r}, login={self.login!r}{run}{source})"
 
 
 def hub_dir() -> Path:
@@ -206,7 +215,25 @@ def save_credentials(url: str, login: str, token: str) -> Path:
     return directory
 
 
+def env_credentials(environ: Mapping[str, str] | None = None) -> Credentials | None:
+    """The token of TOKEN_VARIABLE for the hub of URL_VARIABLE when both are set and not blank, as the worker daemon
+    sets them for the agent of a run that runs as its owner; None when either is unset or blank. A URL ``check_url``
+    refuses raises HubError: the token never goes over plain http to another host."""
+    environ = os.environ if environ is None else environ
+    token, url = environ.get(TOKEN_VARIABLE, "").strip(), environ.get(URL_VARIABLE, "").strip()
+    if not token or not url:
+        return None
+    return Credentials(check_url(url, URL_VARIABLE), "", token, from_env=True)
+
+
 def load_credentials() -> Credentials:
+    """What a command signs in with: ``env_credentials`` when both variables are set, else the login of ``hub_dir``
+    (``saved_credentials``). Raises NotSignedIn when there is neither."""
+    return env_credentials() or saved_credentials()
+
+
+def saved_credentials() -> Credentials:
+    """The login ``evo-agents hub login`` saved in ``hub_dir``, whatever TOKEN_VARIABLE says."""
     directory = hub_dir()
     try:
         config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
@@ -608,7 +635,7 @@ def login(
     if not isinstance(signed, dict) or not isinstance(signed.get("token"), str) or not signed.get("login"):
         raise HubError(f"the hub at {hub.url} did not answer the sign-in with a token")
     try:
-        previous = load_credentials()
+        previous = saved_credentials()
     except HubError:
         previous = None
     save_credentials(hub.url, signed["login"], signed["token"])

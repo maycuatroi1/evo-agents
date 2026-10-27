@@ -203,6 +203,22 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     }
 
 
+def test_as_me_on_dispatch_and_plan_and_run_access_are_in_the_contract():
+    """Criterion a4 of owner-run-access: ``hub run dispatch|plan --as-me``, ``hub run access RUN --as-me|--revoke``
+    printing the Run, and ``as_owner`` among the keys of every command that prints one."""
+    printed = commands()
+    for name in ("hub run dispatch", "hub run plan"):
+        flags = {o["flags"][0]: o for o in printed[name]["options"]}
+        assert flags["--as-me"]["value"] is None and not flags["--as-me"]["required"], name
+    access = printed["hub run access"]
+    assert [(p["name"], p["value"], p["required"]) for p in access["positionals"]] == [("run", "integer", True)]
+    assert {o["flags"][0] for o in access["options"]} == {"--as-me", "--revoke", "--project", "--json"}
+    assert access["json"]["schema"] == "Run" and "as_owner" in access["json"]["keys"]
+    for name in ("hub run show", "hub run plan", "hub run rerun", "hub run dispatch"):
+        assert "as_owner" in printed[name]["json"]["keys"], name
+    assert "--as-me" not in {o["flags"][0] for o in printed["hub run rerun"]["options"]}, "a rerun keeps the choice"
+
+
 def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_prints_the_label():
     """Criterion a2 of chat-bridges: ``hub chat label CHAT LEVEL``, ``--default`` to unset; ``hub chat show --json``
     has chat.label, as the Chat it prints."""

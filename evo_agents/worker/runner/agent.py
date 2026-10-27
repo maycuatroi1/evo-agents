@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import browser_login, curator, runs
+from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
 from evo_agents.worker import autonomy_hook, environments, interactive, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
@@ -247,6 +248,8 @@ class Agent:
                 "EVO_RUN_STEP": str(run.spec.get("step_key") or ""),
             }
         )
+        for key in (HUB_TOKEN_ENV, HUB_URL_ENV):  # the run's token of the hub: from its lease, never the daemon's
+            env.pop(key, None)
         env.update(run.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
         route = run.credentials.gateway  # the hub's gateway route: no Claude login, nor key, beside it
         for key in [key for key in env if gateway.drops(route, key)]:
