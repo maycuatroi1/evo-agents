@@ -608,12 +608,12 @@ def test_a_plugin_written_for_another_api_version_is_left_out_with_the_reason(mo
     sample = importlib.import_module("northwind_chat")
     installing(monkeypatch, NORTHWIND)
     assert [plugin.manifest.id for plugin in core_plugins()] == [PLUGIN]
-    monkeypatch.setattr(sample, "API", (1, 6))
+    monkeypatch.setattr(sample, "API", (1, 7))
     with caplog.at_level(logging.WARNING, logger=core.__name__):
         assert core_plugins() == []
     (record,) = [record for record in caplog.records if record.getMessage() == "core plugin not loaded"]
     assert record.entry_point == PLUGIN
-    assert record.error == "UnsupportedApi: northwind_chat needs core plugin API 1.6; this hub serves 1.5"
+    assert record.error == "UnsupportedApi: northwind_chat needs core plugin API 1.7; this hub serves 1.6"
     plugin_calls.core_registry.cache_clear()
 
 

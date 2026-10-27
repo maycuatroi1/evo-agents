@@ -1,4 +1,4 @@
-"""The API of the hub for core plugins, version 1.5: the one module of ``evo_agents.hub`` a core plugin imports
+"""The API of the hub for core plugins, version 1.6: the one module of ``evo_agents.hub`` a core plugin imports
 (``from evo_agents.hub.server import core_plugin_api as hub``), whose ``__all__`` is the whole of it. ``docs/plugins.md``
 (The core plugin API) is the contract; ``tests/plugins/golden/core-plugin-api.json`` holds its surface.
 
@@ -53,6 +53,14 @@ Version 1.5 added the bridges of group chats to groups of a channel of the plugi
 what goes out to the group, ``bridge_send`` and ``bridge_attach`` for what comes in, with ``Bridge``, ``BridgeMessage``,
 ``BridgeFile`` and ``BRIDGE_EVENT``, the event a plugin's manifest names to get a bridged chat's new messages, run progress and reactions
 (``docs/chat-bridges.md``).
+
+Version 1.6 added the decisions a plugin that sends a project's text to a model takes part in. The plugin declares its
+sinks in its manifest (key ``egress``, ``Plugin.egress`` of ``EgressSink``), and each text read returns only what the
+project's policy lets that sink read (``Cleared``): ``read_run_failure``, ``read_review_queue``, ``read_corrections`` and
+``read_accepted_rules``. The writes act as the plugin: ``classify_run_failure`` (a cause the hub had guessed),
+``decide_graph`` (a decision on the graph, active or proposed) and ``dismiss_review_item``; a writer undoes each from
+the web and the CLI. The payload of the ``run.state`` event gained ``failure_cause`` and ``failure_cause_inferred`` on a
+move to ``failed``.
 
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
 naming both otherwise; a plugin calls it in the function its entry point names, so a hub of another version leaves the
@@ -124,6 +132,25 @@ from evo_agents.hub.server.core_plugin_api._channels import (
     set_channel_state,
     unlink_by_login,
     unlink_channel,
+)
+from evo_agents.hub.server.core_plugin_api._decision import (
+    AcceptedRule,
+    CauseClassified,
+    Cleared,
+    CorrectionText,
+    DecisionTaken,
+    DismissedItem,
+    ReviewItemText,
+    ReviewNodeText,
+    RunEventText,
+    RunFailure,
+    classify_run_failure,
+    decide_graph,
+    dismiss_review_item,
+    read_accepted_rules,
+    read_corrections,
+    read_review_queue,
+    read_run_failure,
 )
 from evo_agents.hub.server.core_plugin_api._loop import (
     ClaimCardRef,
@@ -231,6 +258,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     DecisionAnswer,
     DecisionRef,
     DirectChat,
+    EgressSink,
     GoalRef,
     GrantRef,
     Invite,
@@ -281,7 +309,7 @@ from evo_agents.hub.server.notifications import (
     Undeliverable,
 )
 
-API_VERSION: tuple[int, int] = (1, 5)
+API_VERSION: tuple[int, int] = (1, 6)
 
 WebSession = Annotated[Session, Depends(web_session)]
 Caller = Annotated[Session, Depends(caller)]
@@ -302,6 +330,23 @@ def require(major: int, minor: int) -> None:
 __all__ = [
     "ANSWER_EVENT",
     "API_VERSION",
+    "AcceptedRule",
+    "CauseClassified",
+    "Cleared",
+    "CorrectionText",
+    "DecisionTaken",
+    "DismissedItem",
+    "ReviewItemText",
+    "ReviewNodeText",
+    "RunEventText",
+    "RunFailure",
+    "classify_run_failure",
+    "decide_graph",
+    "dismiss_review_item",
+    "read_accepted_rules",
+    "read_corrections",
+    "read_review_queue",
+    "read_run_failure",
     "BRIDGE_EVENT",
     "AgentAnswer",
     "AgentQuestion",
@@ -350,6 +395,7 @@ __all__ = [
     "PROJECT_NAME",
     "PlanRef",
     "PlanStepChangeRef",
+    "EgressSink",
     "Plugin",
     "PluginConfig",
     "PluginSchemaError",

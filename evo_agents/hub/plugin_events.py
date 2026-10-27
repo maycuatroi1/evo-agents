@@ -143,11 +143,26 @@ async def emit(
     return len(found)
 
 
-async def emit_run_state(conn: AsyncConnection, run_id: int, row, old: str, new: str, actor: str) -> int:
+async def emit_run_state(
+    conn: AsyncConnection,
+    run_id: int,
+    row,
+    old: str,
+    new: str,
+    actor: str,
+    *,
+    failure_cause: str | None = None,
+    inferred: bool = False,
+) -> int:
     """Store the ``run.state`` event of run ``run_id``, which ``actor`` moved from ``old`` to ``new``: ``row`` is what
-    ``run_state.move_run`` got back from its UPDATE (project_id, kind, plan_id and step_key)."""
+    ``run_state.move_run`` got back from its UPDATE (project_id, kind, plan_id and step_key). A move to ``failed``
+    adds ``failure_cause``, the run's cause when it has one, and ``failure_cause_inferred``, true when the hub guessed
+    it from the error (plugin API 1.6); every other move has neither key."""
     change = {"run_id": run_id, "run_kind": row.kind, "from": old, "to": new, "actor": actor}
-    return await emit(conn, "run.state", row.project_id, {**change, "plan_id": row.plan_id, "step": row.step_key})
+    payload = {**change, "plan_id": row.plan_id, "step": row.step_key}
+    if new == "failed" and failure_cause:
+        payload |= {"failure_cause": failure_cause, "failure_cause_inferred": inferred}
+    return await emit(conn, "run.state", row.project_id, payload)
 
 
 async def emit_task_result(conn: AsyncConnection, project_id: int, plugin_id: int, payload: dict) -> int:
