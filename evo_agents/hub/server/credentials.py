@@ -107,6 +107,7 @@ from evo_agents.hub.credentials import (
     Lease,
     agent_lease_name,
     github_permissions,
+    github_pull_requests,
     github_repo,
     github_workflows,
     matches,
@@ -758,7 +759,13 @@ async def _ask_github(
     writes = [where for repo, where in survey.github.items() if repo not in survey.read_only]
     if not writes:
         return tokens, reasons
-    found = await app.tokens(writes, pusher, github_permissions(kind), workflows=github_workflows(kind))
+    found = await app.tokens(
+        writes,
+        pusher,
+        github_permissions(kind),
+        workflows=github_workflows(kind),
+        pull_requests=github_pull_requests(kind),
+    )
     for repo, (owner, name) in survey.github.items():
         if f"{owner}/{name}" in found.missing and repo not in survey.read_only:
             reasons[repo] = found.missing[f"{owner}/{name}"]
