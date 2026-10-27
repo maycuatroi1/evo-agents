@@ -32104,6 +32104,11 @@ export interface components {
              * @default false
              */
             as_owner: boolean;
+            /**
+             * As Owner Since
+             * @description when its owner let it run as them: at dispatch, or later through PUT .../access or the answer to a credential request; the run that resumes a parked run, and the next attempt of a lost one, keep the time of the run before it. Null while it does not run as its owner
+             */
+            as_owner_since?: string | null;
         };
         /** RunAccount */
         RunAccount: {

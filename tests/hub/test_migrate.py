@@ -4563,3 +4563,23 @@ def test_0167_keeps_what_a_credential_request_asks_for_and_going_back_drops_it(h
     move_to(hub_db, "0166", down=True)
     assert "credential_request" not in columns(hub_db, "decisions")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0167") :]
+
+
+def test_0168_says_since_when_a_run_runs_as_its_owner_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0167")
+    r = hub_tables.runs
+    assert "as_owner_since" not in columns(hub_db, "runs")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        let = one(conn, _author_run(ids, as_owner=True))
+        plain = one(conn, _author_run(ids))
+    move_to(hub_db, "0168")
+    since = select(r.c.id, r.c.as_owner_since == r.c.queued_at, r.c.as_owner_since.is_(None)).order_by(r.c.id)
+    assert query(hub_db, since) == [(let, True, False), (plain, None, True)], "a run let before gets its queue time"
+    with live.connect(hub_db) as conn:
+        conn.execute(update(r).values(as_owner=False, as_owner_since=None).where(r.c.id == let))  # stopped
+        with pytest.raises(errors.CheckViolation):  # a run that does not run as its owner has no such time
+            conn.execute(update(r).values(as_owner_since=func.now()).where(r.c.id == plain))
+    move_to(hub_db, "0167", down=True)
+    assert "as_owner_since" not in columns(hub_db, "runs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0168") :]

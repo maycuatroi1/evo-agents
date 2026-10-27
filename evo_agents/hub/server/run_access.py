@@ -189,7 +189,7 @@ async def token_revoked(conn: AsyncConnection, user: Principal, token_id: int) -
     ).one_or_none()
     if found is None:
         return
-    await conn.execute(update(r).values(as_owner=False).where(r.c.id == found.id))
+    await conn.execute(update(r).values(as_owner=False, as_owner_since=None).where(r.c.id == found.id))
     await end_access(conn, found.id)
     if found.as_owner:
         target = f"{run_target(found.name, found.plan_id, found.step_key, found.id)} by=token"

@@ -68,4 +68,4 @@ RUN_KEYS += ("session_run_id", "session_turn", "session_turns", "session_title")
 RUN_KEYS += ("principal", "autonomy")  # whom it acts for, and the autonomy snapshot (docs/autonomy.md)
 RUN_KEYS += ("selector", "tolerations")  # where it goes: the labels it asks of its worker, the taints it tolerates
 RUN_KEYS += ("plan_progress",)  # a plan run's steps done of its plan; null for any other kind
-RUN_KEYS += ("as_owner",)  # its owner lets it call the hub as them (evo_agents.hub.server.run_access)
+RUN_KEYS += ("as_owner", "as_owner_since")  # its owner lets it call the hub as them, since then (server/run_access.py)
