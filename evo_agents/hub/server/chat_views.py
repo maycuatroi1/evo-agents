@@ -59,6 +59,19 @@ class ChatPerson(BaseModel):
     avatar_url: str | None = Field(description="their GitHub avatar; null for a login that never signed in")
 
 
+class ChatBridge(BaseModel):
+    id: int
+    kind: str = Field(description="the kind of channel of the group, as its core plugin names it")
+    external_id: str = Field(description="the group's id on that channel")
+    linked_by: str | None = Field(description="the chat admin whose code bridged it")
+    linked_at: datetime
+
+
+class BridgedTo(BaseModel):
+    bridge_id: int
+    kind: str
+
+
 class ChatAgent(BaseModel):
     handle: str
     project: str
@@ -138,6 +151,12 @@ class GroupMessage(BaseModel):
         default_factory=list,
         description="the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes",
     )
+    via: str | None = Field(
+        None, description="the kind of channel it came in by, from a group bridged to the chat; null when sent here"
+    )
+    bridged_to: list[BridgedTo] = Field(
+        default_factory=list, description="the bridges it went out on, to their groups, oldest first"
+    )
 
 
 class Chat(BaseModel):
@@ -163,6 +182,9 @@ class Chat(BaseModel):
     )
     label_admin: bool = Field(
         False, description="whether the reader is an admin of every project of its agents, so may set its level"
+    )
+    bridges: list[ChatBridge] = Field(
+        default_factory=list, description="the groups of a core plugin's channel the chat is bridged to, oldest first"
     )
     restricted: bool = Field(description="a project of its agents is restricted: its notices name it and link only")
     last_seq: int = Field(description="the number of its last event")
@@ -349,12 +371,28 @@ async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
         label_level=chat.label_level,
         label_levels=label_levels(chat),
         label_admin=await label_admin(conn, chat),
+        bridges=await bridges_of(conn, chat.chat_id),
         restricted=chat.restricted,
         last_seq=seq,
         last_read_seq=read,
         kind=chat.kind,
         image_url=chats.image_url(chat.chat_id, image),
     )
+
+
+async def bridges_of(conn: AsyncConnection, chat_id: int) -> list[ChatBridge]:
+    """The linked bridges of chat ``chat_id``, oldest first."""
+    b, u = tables.chat_bridges, tables.users
+    query = (
+        select(b.c.id, b.c.kind, b.c.external_id, u.c.login, b.c.linked_at)
+        .select_from(b.outerjoin(u, u.c.id == b.c.linked_by))
+        .where(b.c.chat_id == chat_id, b.c.unlinked_at.is_(None))
+        .order_by(b.c.id)
+    )
+    return [
+        ChatBridge(id=r.id, kind=r.kind, external_id=r.external_id, linked_by=r.login, linked_at=r.linked_at)
+        for r in await conn.execute(query)
+    ]
 
 
 async def person_avatars(conn: AsyncConnection, logins) -> dict[str, str | None]:
@@ -385,6 +423,7 @@ def message_select():
         cm.c.body,
         cm.c.label,
         cm.c.created_at,
+        cm.c.via,
     ).select_from(cm.outerjoin(u, u.c.id == cm.c.author_user_id))
 
 
@@ -432,6 +471,20 @@ async def _reactions(conn: AsyncConnection, ids: list[int], reader_id: int) -> d
     return {message_id: list(emojis.values()) for message_id, emojis in grouped.items()}
 
 
+async def _bridged(conn: AsyncConnection, ids: list[int]) -> dict[int, list[BridgedTo]]:
+    bm, b = tables.chat_bridge_messages, tables.chat_bridges
+    query = (
+        select(bm.c.message_id, b.c.id, b.c.kind)
+        .join_from(bm, b, b.c.id == bm.c.bridge_id)
+        .where(one_of(bm.c.message_id, ids), bm.c.direction == "out")
+        .order_by(bm.c.message_id, b.c.id)
+    )
+    found: dict[int, list[BridgedTo]] = defaultdict(list)
+    for row in await conn.execute(query):
+        found[row.message_id].append(BridgedTo(bridge_id=row.id, kind=row.kind))
+    return found
+
+
 async def _reply_counts(conn: AsyncConnection, ids: list[int]) -> dict[int, int]:
     cm = tables.chat_messages
     query = (
@@ -463,6 +516,7 @@ async def messages_view(
     replies = await _reply_counts(conn, ids)
     files = await _outputs(conn, shown)
     attached = await attachment_store.of_messages(conn, ids)
+    bridged = await _bridged(conn, ids)
     return [
         GroupMessage(
             id=row.id,
@@ -480,6 +534,8 @@ async def messages_view(
             progress=(progress or {}).get(row.id, []),
             outputs=files.get(row.id, []),
             attachments=linked(attached.get(row.id, []), f"/v1/chats/{row.chat_id}"),
+            via=row.via,
+            bridged_to=bridged.get(row.id, []),
         )
         for row in shown
     ]

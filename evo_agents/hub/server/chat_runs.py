@@ -34,8 +34,8 @@ from dataclasses import dataclass, replace
 from sqlalchemy import func, insert, literal, null, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import chat_bridge_events, chats, profiles, runs, tables
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
 from evo_agents.hub.server import attachment_store, autonomy_hold, gateway_accounts, run_autonomy
@@ -726,6 +726,7 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     if found is None:
         return None
     await wake(conn, found.chat_id)
+    await chat_bridge_events.progress(conn, found.chat_id, found.message_id, run_id, new)
     await status_reaction(conn, message_id=found.message_id, profile_id=found.profile_id, state=new)
     if new in runs.TERMINAL_STATES:  # what it sent after its last message goes under that one
         await attach_leftovers(conn, run_id)

@@ -46,10 +46,19 @@ class FakeNorthwind:
         return self.to(group_id, user_id)[-1]
 
 
-def text(body: str, *, group_id: str = GROUP, user_id: str = USER, reply_to: str | None = None) -> dict:
-    """An update of a chat user's message."""
+def text(
+    body: str,
+    *,
+    group_id: str = GROUP,
+    user_id: str = USER,
+    reply_to: str | None = None,
+    message_id: str | None = None,
+    file: dict | None = None,
+) -> dict:
+    """An update of a chat user's message: its id in the group when given, and a file ({name, data} in base64)."""
     found = {"group_id": group_id, "user_id": user_id, "text": body}
-    return found if reply_to is None else {**found, "reply_to": reply_to}
+    extra = {"reply_to": reply_to, "message_id": message_id, "file": file}
+    return {**found, **{key: value for key, value in extra.items() if value is not None}}
 
 
 def button(data: str, *, group_id: str = GROUP, user_id: str = USER) -> dict:

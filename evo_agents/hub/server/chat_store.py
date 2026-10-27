@@ -22,7 +22,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, kg_sources, plugin_events, tables
+from evo_agents.hub import chat_bridge_events, chats, kg_sources, plugin_events, tables
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.chat_access import ChatAccess
@@ -134,9 +134,12 @@ async def insert_message(
     author_user_id: int | None = None,
     author_profile_id: int | None = None,
     run_id: int | None = None,
+    via: str | None = None,
+    via_bridge: int | None = None,
 ) -> tuple[int, int]:
     """Store a message of a person, an agent or the hub (neither) in the chat, with the chat's label now, and its
-    event, and queue the builds of the graphs that hold it; (its id, its seq)."""
+    event, hand it to the chat's bridges but ``via_bridge``, the one it came in by (``via`` its kind of channel), and
+    queue the builds of the graphs that hold it; (its id, its seq)."""
     seq = await next_seq(conn, chat.chat_id)
     cm = tables.chat_messages
     statement = (
@@ -150,6 +153,7 @@ async def insert_message(
             run_id=run_id,
             body=body,
             label=chat.label,
+            via=via,
         )
         .returning(cm.c.id)
     )
@@ -161,6 +165,10 @@ async def insert_message(
         await plugin_events.emit(conn, "chat.message", project.id, {**said, "run_id": run_id})
         if await kg_sources.reads_chats(conn, project.id):
             await queue_if_configured(JobQueue.in_transaction(), conn, project.id, project.name)
+    projects = [project.id for project in chat.projects]
+    await chat_bridge_events.message(
+        conn, chat.chat_id, {**said, "run_id": run_id}, projects=projects, via_bridge=via_bridge
+    )
     return message_id, seq
 
 
@@ -243,6 +251,8 @@ async def _reaction_event(conn, chat_id: int, kind: str, message_id: int, emoji:
     count = await emoji_count(conn, message_id, emoji)
     body = {"message_id": message_id, "emoji": emoji, "by": by.model_dump(mode="json"), "count": count}
     await write_event(conn, chat_id, kind, body)
+    added = kind == "reaction_added"
+    await chat_bridge_events.reaction(conn, chat_id, message_id, emoji, added=added, count=count)
 
 
 async def status_reaction(conn: AsyncConnection, *, message_id: int, profile_id: int, state: str) -> str | None:

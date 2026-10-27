@@ -1,4 +1,4 @@
-"""``evo-agents hub chat create|list|show|send|react|label``: the group chats the signed-in member is in
+"""``evo-agents hub chat create|list|show|send|react|label|unbridge``: the group chats the signed-in member is in
 (``evo_agents.hub.chats``), over /v1/chats.
 
 ``create`` makes a chat with a title, ``--member LOGIN`` and ``--agent HANDLE`` repeated for the people and agents it
@@ -9,7 +9,10 @@ in. ``send`` sends a message, from the argument or from a file (``--file PATH``,
 ``--reply-to``; a ``@name`` of a member mentions them. ``--attach FILE`` (repeated) uploads files the message
 carries (``evo_agents.hub.attach_cli``); with one, the text may be left out. ``react`` puts an emoji on a message,
 ``--remove`` takes it off. ``label CHAT LEVEL`` sets the chat's level, at or below the default level of every project of
-its agents (the admin role on each), and ``label CHAT --default`` takes it off. ``--json`` prints what the hub answered. Standard library only, like the rest of the client.
+its agents (the admin role on each), and ``label CHAT --default`` takes it off. ``show`` lists the groups the chat is
+bridged to (``docs/chat-bridges.md``), each message the kind of channel it came in by and the bridges it went out to;
+``unbridge CHAT BRIDGE`` takes a bridge off, as a chat admin or a hub admin. ``--json`` prints what the hub answered.
+Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ CHAT_KEYS = (
     "last_read_seq",
     "kind",
     "image_url",
+    "bridges",
 )
 SUMMARY_KEYS = (
     "id",
@@ -73,6 +77,8 @@ MESSAGE_KEYS = (
     "progress",
     "outputs",
     "attachments",
+    "via",
+    "bridged_to",
 )
 PAGE_KEYS = ("chat", "messages", "more")
 
@@ -103,7 +109,9 @@ def _reactions(message: dict) -> str:
 def _print_message(message: dict) -> None:
     thread = f", in the thread of #{message['thread_root_id']}" if message["thread_root_id"] else ""
     replies = f", {message['reply_count']} replies" if message["reply_count"] else ""
-    print(f"#{message['id']} {_author(message['author'])} at {when(message['created_at'])} UTC{thread}{replies}")
+    via = f", from {message['via']}" if message.get("via") else ""
+    head = f"#{message['id']} {_author(message['author'])} at {when(message['created_at'])} UTC{via}{thread}{replies}"
+    print(head)
     for line in message["body"].splitlines() or [""]:
         print(f"  {line}")
     refused = [m["refusal"] for m in message["mentions"] if m.get("refusal")]
@@ -123,6 +131,9 @@ def _print_chat(chat: dict) -> None:
     levels = sorted({item["level"] for item in chat.get("label") or [] if isinstance(item.get("level"), str)})
     shown = ", ".join(levels) or "-"
     print(f"  label: {shown}" + (f" (set to {chat['label_level']})" if chat.get("label_level") else ""))
+    bridges = [f"#{b['id']} {b['kind']} {b['external_id']}" for b in chat.get("bridges") or []]
+    if bridges:
+        print(f"  bridged to: {', '.join(bridges)}")
 
 
 # Commands
@@ -242,6 +253,18 @@ def cmd_label(args) -> int:
     return 0
 
 
+@client_command
+def cmd_unbridge(args) -> int:
+    hub, _ = signed_in()
+    chat = hub.call("DELETE", f"{_path(args.chat)}/bridges/{args.bridge}")
+    if args.json:
+        print_json(chat)
+    else:
+        print(f"Bridge {args.bridge} of chat {args.chat} is off.")
+        _print_chat(chat)
+    return 0
+
+
 # Registering
 
 
@@ -294,3 +317,11 @@ def register_chats(hsub) -> None:
     label.add_argument("--default", action="store_true", help="take the level set off: the projects' default again")
     json_option(label, returns_object(*CHAT_KEYS, schema="Chat"))
     label.set_defaults(func=cmd_label)
+
+    unbridge = csub.add_parser(
+        "unbridge", help="take a bridge of the chat to a group off (an admin of its projects, or a hub admin)"
+    )
+    unbridge.add_argument("chat", metavar="CHAT", type=int, help="the chat's id")
+    unbridge.add_argument("bridge", metavar="BRIDGE", type=int, help="the bridge's id (`evo-agents hub chat show`)")
+    json_option(unbridge, returns_object(*CHAT_KEYS, schema="Chat"))
+    unbridge.set_defaults(func=cmd_unbridge)
