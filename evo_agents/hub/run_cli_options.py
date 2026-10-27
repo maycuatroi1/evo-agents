@@ -21,7 +21,12 @@ the worker starts before the agent's first turn and closes when the run ends the
 ``evo-agents worker browser install`` takes it. ``--identity NAME`` on ``dispatch`` and ``plan``, once for each, opens
 that Chromium with browser identities (``evo-agents hub browser identity list``), which implies ``--browser``: the run
 goes to the worker that holds them and waits while another run uses one. A rerun keeps the browser of the run it
-reruns, and its identities. Standard library only, like the rest of the client.
+reruns, and its identities.
+
+``--as-me`` on ``dispatch`` and ``plan`` lets the run's agent call the hub's API as you, secrets, tokens and workers
+aside, through a token of the run's own that ends with it (``docs/credentials.md``, "A run that runs as its owner"); a
+rerun and the run that resumes a parked one keep the choice, and ``hub run access`` changes it afterwards
+(``run_cli_access``). Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -123,6 +128,23 @@ def browser_body(args) -> dict:
     return body
 
 
+AS_ME_HELP = (
+    "let the run's agent call the hub's API as you, with your grants and hub admin if you are one, but never your "
+    "secrets, tokens or workers, through a token of the run's own that ends with the run; a step, plan or author run "
+    "only, and `hub run access RUN --revoke` stops it"
+)
+
+
+def as_me_option(parser) -> None:
+    """``--as-me``: the run runs as you (``AS_ME_HELP``)."""
+    parser.add_argument("--as-me", action="store_true", help=AS_ME_HELP)
+
+
+def as_me_body(args) -> dict:
+    """What a dispatch or a plan run sends of ``--as-me``: only when asked, so an older hub takes the rest."""
+    return {"as_me": True} if getattr(args, "as_me", False) else {}
+
+
 def placement_option(parser) -> None:
     """``--pool``, ``--label`` and ``--tolerate``: the worker that takes the run (``worker_placement`` on the hub)."""
     parser.add_argument(
@@ -211,6 +233,7 @@ def dispatch_options(dispatch) -> None:
     dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
     browser_option(dispatch, identities=True)
     placement_option(dispatch)
+    as_me_option(dispatch)
 
 
 def list_options(listed) -> None:
@@ -271,6 +294,7 @@ def plan_options(plan, with_model) -> None:
     browser_option(plan, identities=True)
     placement_option(plan)
     account_option(plan)
+    as_me_option(plan)
 
 
 def author_options(authored) -> None:

@@ -8,8 +8,8 @@ your request with the create-exec-plan skill on a worker of yours (POST /v1/proj
 of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
 .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
 until the hub sends ``end``. ``send`` leaves a message for the run's agent, files too with ``--attach``
-(``run_cli_send``), and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the owner's controls;
-``outputs`` lists the files its agent made (``run_cli_outputs``).
+(``run_cli_send``), and ``cancel``, ``approve``, ``takeover``, ``handback``, ``rerun`` and ``access`` are the owner's
+controls (``access`` in ``run_cli_access``); ``outputs`` lists the files its agent made (``run_cli_outputs``).
 ``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub App, the owner only, never a value. Every command after
 ``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's
 message on stderr, such as why a worker whose owner set it to take runs dispatched from the web only refuses a run
@@ -51,10 +51,12 @@ from evo_agents.hub.cli_client import _client_command, _print_json, _project_pat
 from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
+from evo_agents.hub.run_cli_access import register_access
 from evo_agents.hub.run_cli_candidates import register_candidates
 from evo_agents.hub.run_cli_keys import RUN_KEYS
 from evo_agents.hub.run_cli_options import (
     account_option,
+    as_me_body,
     author_options,
     browser_body,
     dispatch_options,
@@ -344,6 +346,11 @@ def follow(
 # Commands
 
 
+def _as_you(run: dict) -> str:
+    """What a queued run says of ``as_owner``: nothing for a run that does not run as its owner."""
+    return "; it runs as you, secrets, tokens and workers aside" if run.get("as_owner") else ""
+
+
 def _runtime(run: dict) -> str:
     """The runtime a run asked for, with its model when it named one."""
     return run["requested_runtime"] + (f" (model {run['model']})" if run.get("model") else "")
@@ -357,6 +364,7 @@ def cmd_dispatch(args) -> int:
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args), **placement_body(args)}
+    body.update(as_me_body(args))
     chosen = {
         "runtime": args.runtime,
         "model": args.model,
@@ -376,7 +384,7 @@ def cmd_dispatch(args) -> int:
         pinned = f", on worker #{run['pinned_worker_id']} only" if run["pinned_worker_id"] else ""
         print(
             f"Queued run #{run['id']}: {_step(run)}, repo {run['repo']}; runtime {_runtime(run)}, "
-            f"{run['mode']}, approval {run['approval']}, timeout {run['timeout_min']} min{pinned}."
+            f"{run['mode']}, approval {run['approval']}, timeout {run['timeout_min']} min{pinned}{_as_you(run)}."
         )
     print(f"Follow it with `evo-agents hub run logs {queued[0]['id']} --follow{_with_project(args, project)}`.")
     return 0
@@ -389,7 +397,7 @@ def cmd_plan(args) -> int:
         return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), **browser_body(args), **placement_body(args)}
+    body = {"plan_id": _plan_id(args.plan), **browser_body(args), **placement_body(args), **as_me_body(args)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
@@ -404,7 +412,7 @@ def cmd_plan(args) -> int:
     each = ", each in a new session" if run.get("session_per_step") else ""
     print(
         f"Queued plan run #{run['id']}: {_step(run)}, every step not done yet{each}, in {_repos(run)}; runtime "
-        f"{_runtime(run)}, {run['mode']}, timeout {_timeout(run)} of agent time{pinned}."
+        f"{_runtime(run)}, {run['mode']}, timeout {_timeout(run)} of agent time{pinned}{_as_you(run)}."
     )
     where = _with_project(args, project)
     print(
@@ -551,7 +559,7 @@ def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
     lines += [
         ("worker", worker),
         ("runtime", f"{runtime}, {run['mode']}{approval}, timeout {_timeout(run)}"),
-        ("dispatched", f"by {run['dispatched_by']} at {_when(run['queued_at'])} UTC"),
+        ("dispatched", f"by {run['dispatched_by']} at {_when(run['queued_at'])} UTC{_as_owner(run)}"),
     ]
     if run["run_seconds"]:
         lines.append(("agent time", f"{run['run_seconds'] // 60} min used of {_timeout(run)}"))
@@ -602,6 +610,11 @@ def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
         lines.append(("uploaded", ", ".join(blobs)))
     lines.append(("events", f"{run['last_seq']}"))
     return lines
+
+
+def _as_owner(run: dict) -> str:
+    """What `run show` says of ``as_owner`` after who dispatched the run."""
+    return "; it runs as them on the hub's API, secrets, tokens and workers aside" if run.get("as_owner") else ""
 
 
 def _steady_wait(run: dict) -> str:
@@ -923,6 +936,7 @@ def register_runs(hsub) -> None:
 
     register_candidates(rsub, with_run, _project)
     register_outputs(rsub, with_run, _project)
+    register_access(rsub, with_run, _project, RUN)
     for action, (help_text, said) in CONTROLS.items():
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")
         with_run(parser)

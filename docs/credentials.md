@@ -843,7 +843,77 @@ session that has it) does the same inside a run: with `--backend auto` or `hub` 
 worker token and `X-Evo-Run`, so the run reads its project's graph on the hub whether or not the machine is signed in
 or knows the worktree's project. A worker machine needs no machine token at all. The scope is the run the request
 names, not a token of the agent's own: the agent holds the worker's token as its daemon does (see "The agent can act
-as its worker" below).
+as its worker" below). A run that runs as its owner also reaches the hub's REST API as them (next section); its scope
+on `/mcp` stays the one above.
+
+## A run that runs as its owner
+
+The owner of a run of a step, a plan run or an author run can let its agent call the hub's REST API as them, with
+their grants on every project and hub admin when they are one, but never their secrets, tokens or workers. A run of
+the Curator, a release run, a chat run and the hub's other kinds never run as their owner. The agent then needs no
+login on the worker: `evo-agents hub ...` in the run signs in as the owner with a token of the run's own.
+
+**Choosing it.** The owner chooses per run, never for a whole project:
+
+```sh
+evo-agents hub run dispatch rollout 5 --as-me                 # the step's run runs as you
+evo-agents hub run plan rollout --as-me                       # the plan run runs as you
+evo-agents hub run access 41 --as-me                          # a run already queued or held: let it from now on
+evo-agents hub run access 41 --revoke                         # stop it: its token ends at once
+```
+
+`--as-me` sends `as_me: true` with `POST /v1/projects/{p}/runs` or `.../plan-runs`; `hub run access` is `PUT
+/v1/projects/{p}/runs/{id}/access` with `{"as_me": true|false}`, which only the member who dispatched the run may call,
+on a run that has not ended (409 otherwise). A rerun keeps the choice of the run it reruns unless its body names
+`as_me`, and the run that resumes a parked run and the next attempt of a lost one keep it too. `hub run show` says
+"it runs as them on the hub's API" after who dispatched it, and its `--json`, like every Run the hub answers, carries
+`as_owner`.
+
+**The token.** While a worker holds such a run, the hub adds one lease to its answer to the worker's ask for
+credentials: kind `hub`, provider `run-access`, named `run-access:<owner>` (as `hub run credentials` lists it), its
+value the run's token `evr_...`. It is a token of kind `run` of the owner, `run:<id>` as its host in `hub token list`,
+stored as a SHA-256 like every token and sealed in the lease, so a second ask hands the same token back. It
+authenticates only while its lease is out, the run is held by that worker and still let, the owner still holds writer
+on the run's project and the worker is not revoked: the run ending, being parked or given back, the reaper, the
+owner's `--revoke`, `hub token revoke` of that token, the lost grant or the revoked worker end it at once, and every
+later call gets 401. A run that resumes gets a new token at its first ask.
+
+**What it never reaches.** Each path of these groups answers 403 with the reason (`run_access_rules.py`), whatever
+the method, and a route added later under one of their prefixes is refused with the group: secrets and everything
+that holds a credential's value (`/v1/secrets`, `/v1/shares`, the accounts and provider accounts, browser identities,
+a run's credentials), tokens, invite links and signing in (`/v1/auth/*` but `whoami`), workers with their pools, the
+terminal and the live view of a run, and the access of any run, its own included, so no run grants running as its owner
+onward. Writes of the owner's autonomy (`/v1/autonomy*`, `/v1/org/ceilings`, a project's policy) are refused, reads
+are not. On the routes open to it, the token may not answer a decision of its own run, nor send `as_me` with a
+dispatch, a plan run or a rerun. Each write made with it, refused or not, adds the audit row `run_access.write` naming
+the run, the method, the path and the status; `run_access.grant` and `run_access.revoke` record each change of the
+choice, and the `credential.lease` row names the token by id. No log line, event, audit row or error holds its value.
+
+**How the daemon hands it over.** The daemon puts the token into the agent's environment as `EVO_HUB_TOKEN` and the
+hub's URL as `EVO_HUB_URL`: the URL the daemon itself reaches the hub at, the one the token was made through, else the
+lease's own; `https`, or `http` to a loopback address, as for any hub URL (`run_access_env` in
+`evo_agents/worker/credentials.py`). The value is masked in worker.log and in the run's events like every lease value,
+and an interactive pane gets both variables from `eval "$(evo-agents worker env --run N)"`, never in its script. That
+lease is the one way the two variables get there: an `env` secret may not name a variable starting with `EVO_`
+(`env_name_refusal`), the daemon drops the ones its own environment holds from every run's agent, and a run of the
+Curator or a release run gets none even if a lease came. A daemon older than this release keeps the lease, masks it and
+puts nothing of it into the agent's environment; the run then goes on as one not let.
+
+**The command line in the run.** `evo-agents hub ...` takes `EVO_HUB_TOKEN` and `EVO_HUB_URL`, when both are set and
+neither is blank, before the login of `~/.evo/hub` and of `EVO_HUB_HOME` (`env_credentials` in
+`evo_agents/hub/client.py`), so `evo-agents hub whoami` in the run prints the owner's login and `token N: run on
+run:<id>`. One of the two alone changes nothing. `hub logout` refuses while they are set and deletes no file; `hub
+login` still saves its login, which commands use once the two are unset. The SessionStart hook of the run's agent reads
+the owner's memories with them. `evo-agents hub mcp` and `evo-agents kg serve` never send the run's token: inside a
+run they keep the worker token and the scope of "The agent and the hub", and fall back to the login on disk, as
+before.
+
+**The risk.** For as long as the run holds the token, whatever steers its agent acts as the owner on the hub, within
+the groups above: a prompt injected through a page, an issue or a file the agent reads can read every project the
+owner reads, dispatch runs as the owner and change plans, memories and decisions of other runs. Let a run run as you
+only when its work needs your account, and cut it with `evo-agents hub run access RUN --revoke`, `evo-agents hub run
+cancel RUN`, or `evo-agents hub token revoke ID` of the token `hub token list` shows with host `run:<id>`; the audit
+rows `run_access.write` say what it wrote.
 
 ## Who may hand a worker its work
 

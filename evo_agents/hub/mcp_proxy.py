@@ -58,7 +58,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from evo_agents import __version__
-from evo_agents.hub.client import CONNECTIONS, Credentials, HubError, Unreachable, check_url, load_credentials
+from evo_agents.hub.client import (
+    CONNECTIONS,
+    Credentials,
+    HubError,
+    Unreachable,
+    check_url,
+    load_credentials,
+    saved_credentials,
+)
 from evo_agents.hub.mcp_tools import (
     CHAT_TOOL_NAMES,
     HANDSHAKE_VERSIONS,
@@ -257,8 +265,13 @@ def run_credentials() -> Credentials | None:
 
 def session_credentials() -> Credentials:
     """What a message goes with: ``run_credentials`` inside a run of this machine's worker; else the machine token of
-    ``evo-agents hub login``. Read again for every message, never kept."""
-    return run_credentials() or load_credentials()
+    ``evo-agents hub login``, or outside a run the token of EVO_HUB_TOKEN (``client.env_credentials``). Inside a run
+    that variable holds the run's own token of the hub, for its REST API alone: /mcp keeps the run's scope, so it is
+    never sent there. Read again for every message, never kept."""
+    found = run_credentials()
+    if found is not None:
+        return found
+    return saved_credentials() if current_run() is not None else load_credentials()
 
 
 READ_TOOLS = KG_TOOL_NAMES | CHAT_TOOL_NAMES  # the tools whose results join the session label

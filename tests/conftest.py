@@ -32,8 +32,10 @@ if os.name == "nt":
 @pytest.fixture(autouse=True)
 def _no_hub_home_of_this_machine(monkeypatch):
     """No EVO_HUB_HOME of the shell running pytest: a test that points HOME at a temporary directory expects the
-    hub login under it, and must never read, overwrite or delete the login of the machine somewhere else."""
-    monkeypatch.delenv("EVO_HUB_HOME", raising=False)
+    hub login under it, and must never read, overwrite or delete the login of the machine somewhere else. Nor the
+    EVO_HUB_TOKEN and EVO_HUB_URL of a run that runs as its owner, which come before any login."""
+    for name in ("EVO_HUB_HOME", "EVO_HUB_TOKEN", "EVO_HUB_URL"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)

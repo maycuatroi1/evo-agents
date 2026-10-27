@@ -7,9 +7,18 @@ it is refused secrets, tokens and signing in, workers, the run's own decision, t
 run as the owner, with 403 and why (a2); it lives while the run is held and its lease out, ends at once with the run,
 the lease, the grant, the worker or the owner's stop, a resumed run gets a new one, and the audit names each grant,
 stop and write, never the token (a3); and the API side of the choice: dispatch, plan run, rerun, the access route and
-the run's view (a4)."""
+the run's view (a4).
 
+Step 2 adds the worker and the command line: what the daemon puts into the agent's environment from the lease
+(``worker.credentials.run_access_env``), with which ``evo-agents hub ...`` acts as the owner on a worker with no login
+(a1), and ``hub run dispatch|plan --as-me`` and ``hub run access`` (a4). The command line runs in this process, its
+requests sent to the in-process hub (``through``)."""
+
+import json
+import os
 from datetime import timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,9 +29,12 @@ if not pg.DSN:
 
 from sqlalchemy import func, select, update
 
+from evo_agents.cli import main
+from evo_agents.hub import client as hub_client
 from evo_agents.hub import runs, tables
-from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, RUN_ACCESS, Lease, env_name_refusal
+from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, HUB_URL_ENV, RUN_ACCESS, Lease, env_name_refusal
 from evo_agents.hub.server import run_access_rules
+from evo_agents.worker.credentials import run_access_env
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import ADMIN, bearer, sql, table_dump
 from tests.hub.test_credentials_api import (
@@ -565,3 +577,159 @@ def test_access_only_the_owner_changes_it_and_only_on_a_run_that_has_not_ended(c
         == 404
     )
     assert OTHER  # the other member sees the run but may not change it
+
+
+# Step 2: the worker and the command line
+
+
+def through(client):
+    """``client._send`` that hands each request of the command line to the in-process hub at HUB_URL."""
+
+    def send(method, url, headers, data, timeout):
+        assert url.startswith(HUB_URL + "/"), url
+        content = data.read() if hasattr(data, "read") else data
+        response = client.request(method, url.removeprefix(HUB_URL), headers=headers, content=content)
+        return response.status_code, response.content
+
+    return send
+
+
+def saved_login(directory: Path, login: str, token: str, url: str = HUB_URL) -> Path:
+    """A login directory as `hub login` leaves it."""
+    directory.mkdir(parents=True, mode=0o700)
+    (directory / "token").write_text(token + "\n", encoding="utf-8")
+    (directory / "config.json").write_text(json.dumps({"url": url, "login": login}), encoding="utf-8")
+    for name in ("token", "config.json"):
+        os.chmod(directory / name, 0o600)
+    return directory
+
+
+def token_of(headers: dict) -> str:
+    return headers["Authorization"].removeprefix("Bearer ")
+
+
+def command(monkeypatch, capsys, env: dict[str, str], *args: str) -> SimpleNamespace:
+    """``evo-agents ARGS`` in this process with ``env`` added to its environment."""
+    with monkeypatch.context() as patched:
+        for name, value in env.items():
+            patched.setenv(name, value)
+        code = main(list(args))
+    out, err = capsys.readouterr()
+    return SimpleNamespace(code=code, out=out, err=err)
+
+
+def agent_env(answer: dict) -> dict[str, str]:
+    """What the daemon puts into the agent's environment from the leases of ``answer``: the run's token of the hub
+    and the hub's URL (``run_access_env``; with no hub URL of the daemon, the lease's own)."""
+    env, refusal = run_access_env([Lease.from_json(item) for item in answer["leases"]], None, guarded=False)
+    assert refusal is None
+    return env
+
+
+def test_in_the_run_hub_commands_acts_as_owner_with_no_login_on_the_worker(
+    client, hub, hub_db, tmp_path, monkeypatch, capsys
+):
+    second_project(client, hub)
+    monkeypatch.setattr(hub_client, "_send", through(client))
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id = step_run(client, hub["owner"], "notes", worker, as_me=True)
+    env = agent_env(leased(client, worker, run_id))
+    assert set(env) == {HUB_TOKEN_ENV, HUB_URL_ENV} and env[HUB_URL_ENV] == HUB_URL
+    # the worker's machine has no login of its own; the harness's EVO_HUB_HOME names another member's, on another hub
+    monkeypatch.setenv("HOME", str(tmp_path / "worker-home"))
+    other = saved_login(tmp_path / "hub-lumen", OTHER, "evh_" + "L" * 43, "https://hub.lumen.example")
+    env = {**env, "EVO_HUB_HOME": str(other)}
+
+    me = command(monkeypatch, capsys, env, "hub", "whoami")
+    assert me.code == 0, me.err
+    assert me.out.splitlines()[0] == f"{OWNER} on {HUB_URL}"
+    assert f": run on run:{run_id}," in me.out.splitlines()[1]
+    grants = json.loads(command(monkeypatch, capsys, env, "hub", "whoami", "--json").out)["grants"]
+    assert {grant["project"] for grant in grants} == {PROJECT, SECOND}, "the owner's grants on every project"
+    shown = command(monkeypatch, capsys, env, "hub", "run", "show", str(run_id), "--project", PROJECT, "--json")
+    assert shown.code == 0, shown.err
+    assert json.loads(shown.out)["as_owner"] is True
+    assert (
+        "runs as them on the hub's API"
+        in command(monkeypatch, capsys, env, "hub", "run", "show", str(run_id), "--project", PROJECT).out
+    )
+    refused = command(monkeypatch, capsys, env, "hub", "secret", "list")
+    assert refused.code == 1 and "error: " in refused.err and env[HUB_TOKEN_ENV] not in refused.err
+
+    # the run ends: its token goes with it, and the command says the hub refused it
+    assert report(client, worker, run_id, "failed", error="the agent gave up").status_code == 200
+    ended = command(monkeypatch, capsys, env, "hub", "whoami")
+    assert ended.code == 1 and "run's token is revoked, expired or unknown" in ended.err
+    # a run its owner did not let run as them: no variable, and the worker's own login, or none, as before
+    plain = step_run(client, hub["owner"], "notes", worker)
+    assert agent_env(leased(client, worker, plain)) == {}
+    nobody = command(monkeypatch, capsys, {}, "hub", "whoami")
+    assert nobody.code == 1 and "not signed in to a hub" in nobody.err
+
+
+def test_as_me_and_access_from_the_command_line(client, hub, hub_db, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(hub_client, "_send", through(client))
+    monkeypatch.setenv("HOME", str(tmp_path / "laptop"))
+    saved_login(tmp_path / "laptop" / ".evo" / "hub", OWNER, token_of(hub["owner"]))
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
+    where = ("--project", PROJECT)
+
+    planned = command(monkeypatch, capsys, {}, "hub", "run", "plan", PLAN, "--as-me", *where, "--json")
+    assert planned.code == 0, planned.err
+    plan_run = json.loads(planned.out)
+    assert plan_run["as_owner"] is True
+    cancelled = client.post(f"/v1/projects/{PROJECT}/runs/{plan_run['id']}/cancel", headers=hub["owner"])
+    assert cancelled.status_code == 200, cancelled.text
+
+    pinned = ("--worker", str(worker["id"]))
+    dispatched = command(
+        monkeypatch, capsys, {}, "hub", "run", "dispatch", PLAN, str(STEPS["notes"]), *pinned, "--as-me", *where
+    )
+    assert dispatched.code == 0, dispatched.err
+    assert "; it runs as you, secrets, tokens and workers aside." in dispatched.out
+    run_id = int(dispatched.out.split("Queued run #", 1)[1].split(":", 1)[0])
+    assert view(client, hub["owner"], run_id)["as_owner"] is True
+    plain = command(monkeypatch, capsys, {}, "hub", "run", "dispatch", PLAN, str(STEPS["evo-agents"]), *where)
+    assert plain.code == 0, plain.err
+    assert "runs as you" not in plain.out, "without --as-me the run does not run as you"
+
+    revoked = command(monkeypatch, capsys, {}, "hub", "run", "access", str(run_id), "--revoke", *where, "--json")
+    assert revoked.code == 0, revoked.err
+    assert json.loads(revoked.out)["as_owner"] is False
+    granted = command(monkeypatch, capsys, {}, "hub", "run", "access", str(run_id), "--as-me", *where)
+    assert granted.code == 0, granted.err
+    assert granted.out.startswith(f"Run #{run_id} runs as you:")
+    assert view(client, hub["owner"], run_id)["as_owner"] is True
+    with pytest.raises(SystemExit) as neither:
+        main(["hub", "run", "access", str(run_id), *where])
+    assert neither.value.code == 2
+    assert "one of the arguments --as-me --revoke is required" in capsys.readouterr().err
+
+    # another member may not change it, and neither may the run's own token
+    other = command(
+        monkeypatch,
+        capsys,
+        {HUB_TOKEN_ENV: token_of(hub["other"]), HUB_URL_ENV: HUB_URL},
+        "hub",
+        "run",
+        "access",
+        str(run_id),
+        "--revoke",
+        *where,
+    )
+    assert other.code == 1 and f"only {OWNER}, who dispatched run {run_id}" in other.err
+    assert claim(client, worker)["id"] == run_id
+    token = run_token(client, worker, run_id)
+    onward = command(
+        monkeypatch,
+        capsys,
+        {HUB_TOKEN_ENV: token, HUB_URL_ENV: HUB_URL},
+        "hub",
+        "run",
+        "access",
+        str(run_id),
+        "--revoke",
+        *where,
+    )
+    assert onward.code == 1 and onward.err.startswith("error: ") and token not in onward.err
+    assert view(client, hub["owner"], run_id)["as_owner"] is True
