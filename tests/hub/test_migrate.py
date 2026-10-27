@@ -4533,3 +4533,33 @@ def test_0166_run_access_takes_tokens_of_runs_and_their_leases_and_going_back_re
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(t.tokens).values(user_id=ids["user"], kind="run", **hashed))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0166") :]
+
+
+def test_0167_keeps_what_a_credential_request_asks_for_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0166")
+    t = hub_tables
+    assert "credential_request" not in columns(hub_db, "decisions")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        before = one(conn, _decision_row(ids, run_id, "wait-helper"))
+    move_to(hub_db, "0167")
+    d = t.decisions
+    assert query(hub_db, select(d.c.credential_request).where(d.c.id == before)) == [(None,)]
+    request = {"env_var": "NORTHWIND_DEPLOY_KEY", "secret_name": "northwind-deploy-key", "hub_account": True}
+    with live.connect(hub_db) as conn:
+        kept = one(
+            conn, _decision_row(ids, run_id, "wait-helper").values(category="credential", credential_request=request)
+        )
+        one(conn, _decision_row(ids, run_id, "wait-helper").values(category="credential"))  # asked as before: none
+        for bad in (
+            {"credential_request": request},  # on a decision of another category
+            {"category": "credential", "credential_request": [request]},
+            {"category": "credential", "credential_request": "NORTHWIND_DEPLOY_KEY"},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(_decision_row(ids, run_id, "wait-helper").values(**bad))
+    assert query(hub_db, select(d.c.credential_request).where(d.c.id == kept)) == [(request,)]
+    move_to(hub_db, "0166", down=True)
+    assert "credential_request" not in columns(hub_db, "decisions")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0167") :]

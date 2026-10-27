@@ -12350,6 +12350,11 @@ export interface components {
              * @description the owner's own words, at most 4 KiB
              */
             text?: string | null;
+            /**
+             * Secret
+             * @description a credential request's variable: its value, which the hub keeps as the owner's secret of kind env for the run's project and never shows again; with option value or both, which it stands for when left out
+             */
+            secret?: string | null;
         };
         /** ApnsDeviceIn */
         ApnsDeviceIn: {
@@ -16577,6 +16582,28 @@ export interface components {
             expires_at: string | null;
         };
         /**
+         * CredentialRequest
+         * @description What a decision of category credential asks the run's owner for; never a value.
+         */
+        CredentialRequest: {
+            /**
+             * Env Var
+             * @description the variable of the agent's environment the run needs, such as an API key; never one that steers the shell, git or the worker (EVO_*, GIT_* ...)
+             */
+            env_var?: string | null;
+            /**
+             * Secret Name
+             * @description the name of the owner's secret that keeps its value; the variable in lower case with - for _ when left out
+             */
+            secret_name?: string | null;
+            /**
+             * Hub Account
+             * @description whether the run asks to run as its owner on the hub
+             * @default false
+             */
+            hub_account: boolean;
+        };
+        /**
          * CredentialShare
          * @description A share of a secret or an account, as its owner sees it.
          */
@@ -17092,6 +17119,8 @@ export interface components {
              * @description the files of its run it carries, oldest first, each with the decision's URL of its bytes
              */
             outputs?: components["schemas"]["RunOutput"][];
+            /** @description what a decision of category credential asks the run's owner for: a variable's value, kept as their secret secret_name, their hub account, or both; null for any other decision */
+            credential_request?: components["schemas"]["CredentialRequest"] | null;
         };
         /** DecisionAsk */
         DecisionAsk: {
@@ -17108,8 +17137,11 @@ export interface components {
              * @description markdown, at most 16 KiB of UTF-8
              */
             context?: string | null;
-            /** Options */
-            options: components["schemas"]["OptionIn"][];
+            /**
+             * Options
+             * @description 2 to 6; none for a credential request, which takes the hub's
+             */
+            options?: components["schemas"]["OptionIn"][];
             /**
              * Recommended
              * @description the key of the option the agent recommends
@@ -17145,6 +17177,8 @@ export interface components {
              * @description outputs of the run the question carries, such as the screenshot it is about
              */
             output_ids?: number[];
+            /** @description category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options */
+            credential_request?: components["schemas"]["CredentialRequest"] | null;
         };
         /**
          * DecisionBoard
@@ -21313,8 +21347,11 @@ export interface components {
              * @description markdown, at most 16 KiB of UTF-8
              */
             context?: string | null;
-            /** Options */
-            options: components["schemas"]["OptionIn"][];
+            /**
+             * Options
+             * @description 2 to 6; none for a credential request, which takes the hub's
+             */
+            options?: components["schemas"]["OptionIn"][];
             /**
              * Recommended
              * @description the key of the option the agent recommends
@@ -21350,6 +21387,8 @@ export interface components {
              * @description outputs of the run the question carries, such as the screenshot it is about
              */
             output_ids?: number[];
+            /** @description category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options */
+            credential_request?: components["schemas"]["CredentialRequest"] | null;
         };
         /** LocalLogin */
         LocalLogin: {

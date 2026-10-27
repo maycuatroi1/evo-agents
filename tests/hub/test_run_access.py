@@ -15,6 +15,7 @@ Step 2 adds the worker and the command line: what the daemon puts into the agent
 requests sent to the in-process hub (``through``)."""
 
 import asyncio
+import io
 import json
 import os
 from dataclasses import replace
@@ -37,8 +38,16 @@ from evo_agents.core_plugins.builder import errors as builder_errors
 from evo_agents.core_plugins.builder import proposals as builder_proposals
 from evo_agents.core_plugins.builder import server as builder_server
 from evo_agents.hub import client as hub_client
-from evo_agents.hub import runs, tables
-from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, HUB_URL_ENV, RUN_ACCESS, Lease, env_name_refusal
+from evo_agents.hub import credential_requests, runs, tables
+from evo_agents.hub.credentials import (
+    HUB_KIND,
+    HUB_TOKEN_ENV,
+    HUB_URL_ENV,
+    MAX_SECRET_BYTES,
+    RUN_ACCESS,
+    Lease,
+    env_name_refusal,
+)
 from evo_agents.hub.server import (
     autonomy_policies,
     autonomy_stops,
@@ -74,6 +83,7 @@ from tests.hub.test_chat_runs import ADMIN_GRANT, chat_worker
 from tests.hub.test_chats import OPEN_SINKS
 from tests.hub.test_credentials_api import (
     DISPATCHED,
+    GITLAB_KB,
     OTHER,
     OWNER,
     PLAN,
@@ -1101,4 +1111,238 @@ def test_as_me_and_access_from_the_command_line(client, hub, hub_db, tmp_path, m
         *where,
     )
     assert onward.code == 1 and onward.err.startswith("error: ") and token not in onward.err
+    assert view(client, hub["owner"], run_id)["as_owner"] is True
+
+
+# Step 3: a run asks for the credential it lacks, and goes on with what its owner gives (a5)
+
+NEEDED = "NORTHWIND_DEPLOY_KEY"  # the variable the run asks for: the key of the service it deploys to
+NEEDED_SECRET = "northwind-deploy-key"  # the secret that keeps it when the agent proposes no name
+ANSWER_URL = "/v1/projects/{project}/decisions/{decision_id}/answer"
+
+
+def credential_run(client, hub, worker: dict, request: dict, **body) -> tuple[int, dict]:
+    """A plan run of the owner's, claimed and running on ``worker``, that asked for ``request`` and waits: (its id, the
+    decision)."""
+    dispatched = client.post(
+        f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN, "worker_id": worker["id"]}, headers=hub["owner"]
+    )
+    assert dispatched.status_code == 201, dispatched.text
+    run_id = claim(client, worker)["id"]
+    moved(client, worker, run_id, "running", session_id="0199a3c1-0000-7000-8000-00000000000d")
+    question = {"category": "credential", "question": "The deploy needs its key.", "credential_request": request}
+    asked = client.post(f"/v1/worker/runs/{run_id}/decisions", json={**question, **body}, headers=worker["headers"])
+    assert asked.status_code == 201, asked.text
+    moved(client, worker, run_id, "waiting")
+    return run_id, asked.json()
+
+
+def answer_of(client, headers, decision_id: int, **body):
+    return client.post(ANSWER_URL.format(project=PROJECT, decision_id=decision_id), json=body, headers=headers)
+
+
+def inbox_texts(client, worker: dict, run_id: int) -> list[str]:
+    response = client.post(f"/v1/worker/runs/{run_id}/inbox", json={}, headers=worker["headers"])
+    assert response.status_code == 200, response.text
+    return [message["text"] for message in response.json()["messages"]]
+
+
+def owners_secrets(client, hub) -> dict:
+    listed = client.get("/v1/secrets", headers=hub["owner"])
+    assert listed.status_code == 200, listed.text
+    return {secret["name"]: secret for secret in listed.json()}
+
+
+def test_credential_request_asks_the_owner_with_the_hubs_options_and_refuses_what_no_secret_takes(client, hub, hub_db):
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, asked = credential_run(
+        client, hub, worker, {"env_var": NEEDED, "hub_account": True}, recommended=credential_requests.BOTH
+    )
+    assert asked["credential_request"] == {"env_var": NEEDED, "secret_name": NEEDED_SECRET, "hub_account": True}
+    assert [option["key"] for option in asked["options"]] == ["both", "value", "as_me", "refuse"]
+    assert asked["recommended"] == "both" and asked["category"] == "credential"
+    assert asked["asked_of"] == OWNER, "a credential is its owner's to give"
+    assert "--secret" in next(option["description"] for option in asked["options"] if option["key"] == "value")
+    shown = client.get(f"/v1/projects/{PROJECT}/decisions/{asked['id']}", headers=hub["other"])
+    assert shown.status_code == 200 and shown.json()["credential_request"] == asked["credential_request"]
+    # a decision of any other kind shows none, as before
+    plain = client.post(f"/v1/worker/runs/{run_id}/decisions", json=QUESTION, headers=worker["headers"])
+    assert plain.status_code == 201 and plain.json()["credential_request"] is None
+
+    url = f"/v1/worker/runs/{run_id}/decisions"
+    base = {"category": "credential", "question": "The deploy needs its key."}
+    for request, extra, why in (
+        ({"env_var": "EVO_HUB_TOKEN"}, {}, "steers the shell, git or the worker"),
+        ({"env_var": "GIT_ASKPASS"}, {}, "steers the shell, git or the worker"),
+        ({"env_var": "LD_PRELOAD"}, {}, "steers the shell, git or the worker"),
+        ({"env_var": "PYTHONPATH"}, {}, "steers the shell, git or the worker"),
+        ({"env_var": "lower_case"}, {}, "is not a variable name"),
+        ({}, {}, "names the variable the run needs"),
+        ({"secret_name": "deploy"}, {"hub_account": True}, "name the variable too"),
+        ({"env_var": NEEDED, "secret_name": "Not A Name"}, {}, "is not a secret's name"),
+        ({"env_var": NEEDED}, {"category": "scope"}, "is a decision of category credential"),
+        ({"env_var": NEEDED}, {"options": QUESTION["options"]}, "takes the hub's options"),
+        ({"env_var": NEEDED}, {"recommended": "postgres"}, "is not one of"),
+    ):
+        request = {**request, **{key: value for key, value in extra.items() if key == "hub_account"}}
+        body = {**base, "credential_request": request, **{k: v for k, v in extra.items() if k != "hub_account"}}
+        refused = client.post(url, json=body, headers=worker["headers"])
+        assert refused.status_code == 422, (request, extra, refused.text)
+        assert why in json.dumps(refused.json()["detail"]), (why, refused.json())
+    single = {**QUESTION, "options": QUESTION["options"][:1]}
+    assert client.post(url, json=single, headers=worker["headers"]).status_code == 422, "2 to 6 options, as before"
+
+
+def test_credential_request_answered_with_a_pasted_value_leases_it_to_the_waiting_run_and_never_shows_it(
+    client, hub, hub_db, caplog
+):
+    caplog.set_level("DEBUG")
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, asked = credential_run(client, hub, worker, {"env_var": NEEDED})
+    assert [option["key"] for option in asked["options"]] == ["value", "refuse"]
+    assert NEEDED_SECRET not in by_name(leased(client, worker, run_id)), "nothing to lease before the answer"
+    value = sample("deploy-key-")
+
+    answered = answer_of(client, hub["owner"], asked["id"], secret=value)  # the value stands for option value
+    assert answered.status_code == 200, answered.text
+    decision = answered.json()
+    assert (decision["state"], decision["answer_option"], decision["answered_by"]) == ("answered", "value", OWNER)
+    assert decision["answer_run_id"] == run_id, "the run waits: the answer goes to its own inbox"
+    assert f"secret {NEEDED_SECRET} of kind env for project {PROJECT}" in decision["answer_text"]
+    assert credential_requests.ENV_COMMAND in decision["answer_text"]
+    secret = owners_secrets(client, hub)[NEEDED_SECRET]
+    assert (secret["kind"], secret["env_var"], secret["projects"], secret["workers"]) == (
+        "env",
+        NEEDED,
+        [PROJECT],
+        ["mac-mini"],
+    ), "bound to the run's project, on the run's worker"
+    (message,) = inbox_texts(client, worker, run_id)
+    assert message.startswith(f"Answer to decision #{asked['id']} (credential)") and NEEDED_SECRET in message
+    # the run waits on its worker: its next ask of the leases gets the value
+    lease = by_name(leased(client, worker, run_id))[NEEDED_SECRET]
+    assert (lease["env_var"], lease["value"]) == (NEEDED, value)
+    put = audit_of(hub_db, "secret.put")
+    assert put == [(f"secret:{secret_ids_of(hub_db, NEEDED_SECRET)} decision:{asked['id']}", OWNER, None, "machine")]
+    assert audit_of(hub_db, "decision.answer")[-1][0].endswith(f"decision:{asked['id']} run:{run_id} option=value")
+    assert audit_of(hub_db, "run_access.grant") == [], "a value lets no run run as its owner"
+    # the value is nowhere but sealed: no decision, message, event, audit row or log line holds it
+    assert value not in table_dump(hub_db)
+    logged = caplog.text + "\n".join(f"{record.getMessage()} {vars(record)!r}" for record in caplog.records)
+    assert value not in logged
+    assert value not in answered.text
+
+
+def secret_ids_of(db, name: str) -> int:
+    s, u = tables.secrets, tables.users
+    ((secret_id,),) = sql(
+        db,
+        select(s.c.id)
+        .join_from(s, u, u.c.id == s.c.owner_id)
+        .where(u.c.login == OWNER, s.c.name == name, s.c.deleted_at.is_(None)),
+    )
+    return secret_id
+
+
+def test_credential_request_answered_with_both_replaces_the_owners_secret_and_resumes_the_parked_run_as_owner(
+    client, hub, hub_db
+):
+    old, new = sample("old-"), sample("new-")
+    credentials_api.env_secret(client, hub["owner"], "deploy", NEEDED, old)
+    before = set(owners_secrets(client, hub))
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, asked = credential_run(client, hub, worker, {"env_var": NEEDED, "hub_account": True})
+    assert by_name(leased(client, worker, run_id))["deploy"]["value"] == old
+    assert hub_lease(leased(client, worker, run_id)) is None, "the run does not run as its owner yet"
+    r = tables.runs
+    waited = func.now() - timedelta(seconds=runs.DECISION_WAIT_SECONDS + 1)
+    sql(hub_db, update(r).values(waiting_since=waited).where(r.c.id == run_id))
+    assert reap(client)["parked"] == 1 and state_of(hub_db, run_id) == "parked"
+
+    answered = answer_of(client, hub["owner"], asked["id"], option="both", secret=new, text="Use the staging key.")
+    assert answered.status_code == 200, answered.text
+    decision = answered.json()
+    assert decision["answer_option"] == "both" and decision["answer_text"].startswith("Use the staging key.\n\n")
+    assert "their secret deploy of kind env" in decision["answer_text"], "the secret it had for the variable"
+    assert "lets the run run as them on the hub" in decision["answer_text"]
+    assert set(owners_secrets(client, hub)) == before, "replaced, not one more"
+    resumed = claim(client, worker)
+    assert resumed["resume_of_run_id"] == run_id and decision["answer_run_id"] == resumed["id"]
+    assert view(client, hub["owner"], resumed["id"])["as_owner"] is True
+    leases = leased(client, worker, resumed["id"])
+    assert by_name(leases)["deploy"]["value"] == new, "the run that resumes is leased the new value"
+    token = hub_lease(leases)["value"]
+    assert whoami(client, token).json()["login"] == OWNER
+    assert audit_of(hub_db, "run_access.grant") == [
+        (f"{PROJECT}/{PLAN} run:{run_id} by=decision:{asked['id']}", OWNER, PROJECT, "machine")
+    ]
+    assert new not in table_dump(hub_db) and old not in table_dump(hub_db)
+
+
+def test_credential_request_answer_refusals_say_why_without_the_value(client, hub, hub_db):
+    credentials_api.git_secret(client, hub["owner"], "taken", GITLAB_KB, sample("glpat-"))
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
+    run_id, asked = credential_run(client, hub, worker, {"env_var": NEEDED, "secret_name": "taken"})
+    plain = client.post(f"/v1/worker/runs/{run_id}/decisions", json=QUESTION, headers=worker["headers"])
+    assert plain.status_code == 201, plain.text
+    value = sample("deploy-key-")
+    for headers, body, status, why in (
+        (hub["other"], {"secret": value}, 403, f"only {OWNER}, who dispatched its run, may answer"),
+        (hub["owner"], {"option": "value"}, 422, "gives the value of NORTHWIND_DEPLOY_KEY: paste it with"),
+        (hub["owner"], {"option": "refuse", "secret": value}, 422, "takes no value"),
+        (hub["owner"], {"secret": value, "text": f"it is {value}"}, 422, "your words hold the value"),
+        (hub["owner"], {"secret": "x" * (MAX_SECRET_BYTES + 1)}, 422, "does not match the API"),
+        (hub["owner"], {"secret": "a\x00b"}, 422, "may not hold a NUL"),
+        (hub["owner"], {"secret": value}, 409, "your secret taken is for something else"),
+    ):
+        refused = answer_of(client, headers, asked["id"], **body)
+        assert refused.status_code == status, (body.keys(), refused.text)
+        assert why in refused.json()["message"], refused.json()
+        assert value not in refused.text and "x" * 100 not in refused.text
+    refused = answer_of(client, hub["owner"], plain.json()["id"], option="postgres", secret=value)
+    assert refused.status_code == 422 and "asks for no variable's value" in refused.json()["message"]
+    assert value not in refused.text
+    d = tables.decisions
+    assert sql(hub_db, select(d.c.state).where(d.c.id == asked["id"])) == [("open",)]
+    assert NEEDED_SECRET not in owners_secrets(client, hub) and value not in table_dump(hub_db)
+    # refusing gives nothing and needs no value
+    refusal = answer_of(client, hub["owner"], asked["id"], option="refuse")
+    assert refusal.status_code == 200 and refusal.json()["answer_text"] is None
+    assert audit_of(hub_db, "secret.put")[-1][0].startswith("secret:") and len(audit_of(hub_db, "secret.put")) == 1
+
+
+def test_credential_request_answered_from_the_command_line_with_the_value_on_stdin(
+    client, hub, hub_db, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(hub_client, "_send", through(client))
+    monkeypatch.setenv("HOME", str(tmp_path / "laptop"))
+    saved_login(tmp_path / "laptop" / ".evo" / "hub", OWNER, token_of(hub["owner"]))
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, asked = credential_run(client, hub, worker, {"env_var": NEEDED, "hub_account": True})
+    where = ("--project", PROJECT)
+
+    shown = command(monkeypatch, capsys, {}, "hub", "decision", "show", str(asked["id"]), *where)
+    assert shown.code == 0, shown.err
+    assert f"the value of {NEEDED}, kept as your secret {NEEDED_SECRET}" in shown.out
+    assert "your hub account" in shown.out and "--secret" in shown.out
+    contract = json.loads(
+        command(monkeypatch, capsys, {}, "hub", "decision", "show", str(asked["id"]), *where, "--json").out
+    )
+    assert contract["credential_request"]["env_var"] == NEEDED
+
+    wrong = command(
+        monkeypatch, capsys, {}, "hub", "decision", "answer", str(asked["id"]), "--secret", "--option", "refuse", *where
+    )
+    assert wrong.code == 2 and "--secret goes with option value or both" in wrong.err
+    value = sample("deploy-key-")
+    monkeypatch.setattr("sys.stdin", io.StringIO(value + "\n"))
+    answered = command(
+        monkeypatch, capsys, {}, "hub", "decision", "answer", str(asked["id"]), "--secret", "--option", "both", *where
+    )
+    assert answered.code == 0, answered.err
+    assert answered.out.startswith(f"Answered decision #{asked['id']} with option both")
+    assert f"their secret {NEEDED_SECRET} of kind env" in answered.out
+    assert value not in answered.out + answered.err
+    lease = by_name(leased(client, worker, run_id))[NEEDED_SECRET]
+    assert lease["value"] == value, "the final line break of stdin dropped"
     assert view(client, hub["owner"], run_id)["as_owner"] is True

@@ -28,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 
 from aiohttp import WSMsgType, web
 
-from evo_agents.hub import runs
+from evo_agents.hub import credential_requests, runs
 from evo_agents.hub.history import HISTORY_KEY_HEADER
 from evo_agents.hub.judge import JUDGE_KEY_HEADER
 from evo_agents.hub.probes import PROBE_KEY_HEADER
@@ -1296,6 +1296,12 @@ class FakeHub:
             body.get("category") == runs.CHAT_DECISION_CATEGORY
         ):
             return _error(422, "invalid", "not a decision category of this kind of run")
+        request = body.get("credential_request")
+        if request is not None and not body.get("options"):  # a credential request takes the hub's options
+            given = credential_requests.options(
+                request.get("env_var"), request.get("secret_name"), bool(request.get("hub_account"))
+            )
+            body["options"] = given
         if not 2 <= len(body.get("options") or []) <= 6:
             return _error(422, "invalid", "2 to 6 options")
         decision_id = next(self._decision_ids)

@@ -59,7 +59,7 @@ from datetime import UTC, datetime
 from urllib.parse import quote
 
 from evo_agents import __version__
-from evo_agents.hub import decision_asks, runs
+from evo_agents.hub import credential_requests, decision_asks, runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import (
@@ -701,23 +701,64 @@ def cmd_step(args) -> int:
     return with_hub(agent, work)
 
 
-@worker_command
-def cmd_ask(args) -> int:
-    agent = agent_run("ask", runs.RESUME_KINDS)
-    options = [decision_option(text) for text in args.option]
+def credential_request(args) -> dict | None:
+    """The credential request of ``worker ask`` (``--env-var``, ``--secret-name``, ``--hub-account``), as the hub takes
+    it; None when the agent asks none. Refused as the hub would refuse it, before it is asked."""
+    env_var, secret_name = getattr(args, "env_var", None), getattr(args, "secret_name", None)
+    hub_account = bool(getattr(args, "hub_account", False))
+    if env_var is None and secret_name is None and not hub_account:
+        return None
+    if args.category != credential_requests.CATEGORY:
+        raise WorkerStateError(
+            f"--env-var, --secret-name and --hub-account ask for a credential: use --category "
+            f"{credential_requests.CATEGORY}"
+        )
+    if args.option or args.wait_option:
+        raise WorkerStateError(
+            "a credential request takes the hub's options (paste the value, the owner's hub account, both, refuse): "
+            "leave out --option and --wait-option"
+        )
+    refusal = credential_requests.request_refusal(env_var, secret_name, hub_account)
+    if refusal is not None:
+        raise WorkerStateError(refusal)
+    request: dict = {"hub_account": hub_account}
+    if env_var is not None:
+        request |= {"env_var": env_var, "secret_name": secret_name or credential_requests.default_secret_name(env_var)}
+    return request
+
+
+def _asked_options(args) -> list[dict]:
+    """The options of ``worker ask`` that asks no credential: 2 to 6, each with a key of its own."""
+    options = [decision_option(text) for text in args.option or []]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
     if not fewest <= len(options) <= most or len(set(keys)) != len(keys):
         raise WorkerStateError(f"a decision offers {fewest} to {most} options, each with a key of its own")
-    if args.recommended is not None and args.recommended not in keys:
-        raise WorkerStateError(f"--recommended names one of the options: {', '.join(keys)}")
     for key in args.wait_option or []:
         if key not in keys:
             raise WorkerStateError(f"--wait-option names one of the options: {', '.join(keys)}")
         options[keys.index(key)]["waits"] = True
     if all(option.get("waits") for option in options):
         raise WorkerStateError("a decision needs an option that answers it: --wait-option names every one")
+    return options
+
+
+@worker_command
+def cmd_ask(args) -> int:
+    agent = agent_run("ask", runs.RESUME_KINDS)
+    request = credential_request(args)
+    if request is None:
+        options = _asked_options(args)
+        keys = [option["key"] for option in options]
+    else:  # the hub gives it these options
+        options = []
+        given = credential_requests.options(request.get("env_var"), request.get("secret_name"), request["hub_account"])
+        keys = [option["key"] for option in given]
+    if args.recommended is not None and args.recommended not in keys:
+        raise WorkerStateError(f"--recommended names one of the options: {', '.join(keys)}")
     body: dict = {"category": args.category, "question": args.question, "options": options}
+    if request is not None:
+        body["credential_request"] = request
     context = read_text(args.context_file, "context", runs.MAX_DECISION_CONTEXT_BYTES) if args.context_file else None
     if context is not None:
         body["context"] = context
@@ -733,8 +774,13 @@ def cmd_ask(args) -> int:
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
 
-    decision_id = _noted_decision(agent, with_hub(agent, work))
+    decision_id = _noted_decision(agent, with_hub(agent, work), credential=request is not None)
     print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")
+    if request is not None:
+        print(
+            "Once the owner gives what it asks for, the worker takes the run's leases again: read them with "
+            f"`{credential_requests.ENV_COMMAND}` before the command that needs them."
+        )
     if agent.record.get("kind") == "author":
         print(
             "Ask the other decisions of this turn now, then end your turn with your message to the member in the chat: "
@@ -750,12 +796,16 @@ def cmd_ask(args) -> int:
     return 0
 
 
-def _noted_decision(agent: _AgentRun, answer) -> int:
-    """The id of the decision the hub answered with, noted in the run's file of decisions, which the daemon waits on."""
+def _noted_decision(agent: _AgentRun, answer, *, credential: bool = False) -> int:
+    """The id of the decision the hub answered with, noted in the run's file of decisions, which the daemon waits on;
+    a credential request is noted as one, so the daemon takes the run's leases again once it is answered."""
     decision_id = answer.get("id") if isinstance(answer, dict) else None
     if not isinstance(decision_id, int):
         raise HubError("the hub did not answer with the decision's id")
-    noted = json.dumps({"id": decision_id, "asked_at": datetime.now(UTC).isoformat(timespec="seconds")})
+    line = {"id": decision_id, "asked_at": datetime.now(UTC).isoformat(timespec="seconds")}
+    if credential:
+        line[credential_requests.NOTED] = True
+    noted = json.dumps(line)
     with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:
         handle.write(noted + "\n")
     return decision_id
@@ -975,9 +1025,25 @@ def _register_ask(wsub) -> None:
     ask.add_argument(
         "--option",
         action="append",
-        required=True,
         metavar="KEY=LABEL[:DESCRIPTION]",
-        help="an option; repeat it, 2 to 6 times",
+        help="an option; repeat it, 2 to 6 times; none for a credential request, which takes the hub's",
+    )
+    ask.add_argument(
+        "--env-var",
+        metavar="NAME",
+        help="with --category credential: the variable of your environment the run needs, such as an API key; the "
+        "owner pastes its value, which you then read with `evo-agents worker env --run N`",
+    )
+    ask.add_argument(
+        "--secret-name",
+        metavar="NAME",
+        help="with --env-var: the name of the owner's secret that keeps it (default: the variable in lower case, - "
+        "for _)",
+    )
+    ask.add_argument(
+        "--hub-account",
+        action="store_true",
+        help="with --category credential: the owner's account on the hub, so `evo-agents hub ...` runs as them",
     )
     ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
     ask.add_argument(

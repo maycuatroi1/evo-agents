@@ -220,6 +220,15 @@ saves the browser's profile to the identity and the agent goes on signed in; Ski
 is open returns the open decision. A run that cannot wait (a step run) gets no decision: its identity is set
 `needs_login` and the run fails.
 
+### A credential request
+
+The agent of a run that lacks a credential, a variable such as an API key or the owner's account on the hub, asks a
+decision of category `credential` with `evo-agents worker ask --env-var NAME --hub-account`
+([credentials.md](credentials.md#a-run-that-asks-for-a-credential)). It is asked of the run's owner, with the hub's
+options (`value`, `as_me`, `both`, `refuse`), and the owner answers the value with `hub decision answer ID --secret`
+or the web's password field, never in words. Telegram answers it with `as_me` or `refuse` alone: an option that gives
+the value needs it pasted, and 422 says so.
+
 ### A wait
 
 The agent of a plan run that needs a time, or something that happens on the hub, waits for it rather than asking its
