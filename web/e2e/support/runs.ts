@@ -165,7 +165,7 @@ export async function dispatch(account: Account, project: string, steps: string[
   return call(
     api.POST("/v1/projects/{project}/runs", {
       params: { path: { project } },
-      body: { plan_id: RUN_PLAN, steps, runtime: "any", mode: "headless", approval: "review", timeout_min: 60, browser: false, identities: [], ...extra },
+      body: { plan_id: RUN_PLAN, steps, runtime: "any", mode: "headless", approval: "review", timeout_min: 60, browser: false, identities: [], as_me: false, ...extra },
     }),
   );
 }
@@ -406,6 +406,8 @@ export type DecisionAsk = {
   evidence?: string[];
   /** Outputs of the run the question carries (`worker ask --attach`). */
   output_ids?: number[];
+  /** A credential request (`worker ask --category credential --env-var ... --hub-account`): the hub gives its options. */
+  credential_request?: { env_var?: string | null; secret_name?: string | null; hub_account?: boolean };
 };
 
 /** The agent's `evo-agents worker ask`: a decision of the run, answered by its owner. Returns its id. */

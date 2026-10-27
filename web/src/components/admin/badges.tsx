@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, CircleCheck, CircleDot, Clock, FolderPlus, Globe, Hourglass, Laptop, MonitorCheck, Server, ShieldCheck, UserPlus } from "lucide-react";
+import { Activity, Ban, CircleCheck, CircleDot, Clock, FolderPlus, Globe, Hourglass, Laptop, MonitorCheck, Server, ShieldCheck, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
@@ -36,7 +36,7 @@ export function NotSignedInBadge() {
 
 export function TokenKindBadge({ kind }: { kind: AdminToken["kind"] }) {
   const t = useTranslations("admin.tokens.kinds");
-  const Icon = kind === "machine" ? Laptop : kind === "worker" ? Server : Globe;
+  const Icon = kind === "machine" ? Laptop : kind === "worker" ? Server : kind === "run" ? Activity : Globe;
   return (
     <Tag>
       <Icon aria-hidden="true" />

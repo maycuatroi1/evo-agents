@@ -8,6 +8,8 @@ import { useId } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { CredentialNeeds } from "./credential-decisions";
+import { credentialRequest } from "./credential-model";
 import { type EvidenceLink, evidenceLink } from "./evidence-links";
 import type { Decision } from "./queries";
 
@@ -40,8 +42,8 @@ function EvidenceItem({ link, screen }: { link: EvidenceLink; screen: boolean })
 }
 
 /**
- * What a question rests on, under its context on the DecisionCard and on the phone's decision screen: why the agent
- * recommends its option, whether the act it asks about can be undone and how, and its evidence, each ref a link to the
+ * What a question rests on, under its context on the DecisionCard and on the phone's decision screen: what a credential
+ * request asks for, why the agent recommends its option, whether the act it asks about can be undone and how, and its evidence, each ref a link to the
  * hub's page of it (a run, a run's files, a problem's evidence, a memory, a file in the knowledge graph) or to its
  * https page in a new tab. A question that says none of them shows nothing.
  */
@@ -52,10 +54,12 @@ export function DecisionGrounds({ decision, screen = false }: { decision: Decisi
   const pick = reason ? (decision.options.find((option) => option.key === decision.recommended)?.label ?? null) : null;
   const reversible = decision.reversible ?? null;
   const evidence = decision.evidence ?? [];
-  if (!reason && reversible === null && evidence.length === 0) return null;
+  const asks = credentialRequest(decision) !== null;
+  if (!asks && !reason && reversible === null && evidence.length === 0) return null;
   const text = screen ? "text-[15px] leading-[22px]" : "text-[13px] leading-[19px]";
   return (
     <section aria-label={t("label")} className={cn("flex min-w-0 flex-col gap-3 rounded-md border bg-surface-sunken p-3", screen && "p-3.5")} data-testid="decision-grounds">
+      <CredentialNeeds decision={decision} text={text} />
       {reason ? (
         <div className="flex min-w-0 items-start gap-2.5" data-testid="decision-reason">
           <Lightbulb className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />

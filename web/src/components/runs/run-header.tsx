@@ -16,6 +16,7 @@ import { isSessionTurn } from "./chat-session";
 import { ChatSessionHead } from "./chat-session-turns";
 import { runTiming } from "./model";
 import { isActiveState, type Run } from "./queries";
+import { AsOwnerBadge } from "./run-access";
 import { usePlanProgress } from "./run-plan-steps";
 import { useGap } from "./run-timeline";
 
@@ -130,6 +131,8 @@ export function RunHeader({
         ) : pending ? (
           <span className="block h-3.5 w-24 animate-pulse rounded-md bg-muted" />
         ) : null}
+        {/* A run acting as its owner says so while it may; its Hub access card has who, since when and Revoke. */}
+        {isActiveState(run.state) ? <AsOwnerBadge run={run} className="shrink-0" /> : null}
         {/* A run going as it should (running, verifying) needs no words: the line says only what is not usual. */}
         <span className={cn("tabular-nums", STATE_TONE[run.state], (run.state === "running" || run.state === "verifying") && "sr-only")} data-testid="run-status-line">
           {line}

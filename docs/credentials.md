@@ -867,7 +867,14 @@ evo-agents hub run access 41 --revoke                         # stop it: its tok
 on a run that has not ended (409 otherwise). A rerun keeps the choice of the run it reruns unless its body names
 `as_me`, and the run that resumes a parked run and the next attempt of a lost one keep it too. `hub run show` says
 "it runs as them on the hub's API" after who dispatched it, and its `--json`, like every Run the hub answers, carries
-`as_owner`.
+`as_owner` and `as_owner_since`, when the owner let it (the time of the run before it for a run that resumes or retries
+one; null while it does not run as them).
+
+On the web, Dispatch and Run plan have the checkbox "Run as me on the hub", off by default, which says what the agent
+gets and what it never gets and, once checked, the risk below; the form sends `as_me` either way. The page of a run that
+runs as its owner shows a Hub access card to everyone who reads the run: as whom it runs, who let it and since when, and
+when it ends; the owner alone gets Revoke while the run is active, which asks first and is `hub run access RUN
+--revoke`. The run's head carries the same "Runs as" tag while it is active.
 
 **The token.** While a worker holds such a run, the hub adds one lease to its answer to the worker's ask for
 credentials: kind `hub`, provider `run-access`, named `run-access:<owner>` (as `hub run credentials` lists it), its
@@ -945,8 +952,9 @@ hub admin, what a hub admin changes outside the groups (features, branding, mark
 answer a decision, change a grant or anyone's autonomy, nor reach a secret or a token. A chat label it changes moves
 which members read a chat, and a sink it changes moves where a project's messages may go: both are written in the audit
 as `run_access.write`. Let a run run as you only when its work needs your account, and cut it with `evo-agents hub run
-access RUN --revoke`, `evo-agents hub run cancel RUN`, or `evo-agents hub token revoke ID` of the token `hub token list`
-shows with host `run:<id>`; the audit rows `run_access.write` say what it wrote.
+access RUN --revoke` (Revoke on the run's page), `evo-agents hub run cancel RUN`, or `evo-agents hub token revoke ID`
+of the token `hub token list` shows with host `run:<id>` (kind Run token on the admin's Tokens page); the audit rows
+`run_access.write` say what it wrote.
 
 ## A run that asks for a credential
 
@@ -986,6 +994,13 @@ something else is 409 and changes nothing. `as_me` and `both` let the run run as
 does (a run of the Curator or a release run never does; 409), with the audit row `run_access.grant` ending
 `by=decision:<id>`. Only the member who dispatched the run gives either (403 for a lead the decision escalated to, who
 may still refuse); a run's token answers no decision at all.
+
+On the web the decision says what the run asks for among its grounds, to anyone who reads it. The owner's form opens on
+`value` when the request names a variable (nothing is picked for the account alone) with a password field for it: no
+`name`, never filled by the page, read when the answer is sent and emptied at that moment whatever the hub answers, and
+sent outside the cache of the page's queries. It refuses a missing value, one over 16 KiB, a NUL or the value inside the
+owner's note before anything leaves. Picking `as_me` or `both` shows what the run's agent may then do; the send button
+names what the answer gives. The phone's decision screen has the same form, its field at 16 px.
 
 The decision's answer carries a sentence of the hub's after the owner's words: which secret keeps the value, by name,
 and whether the run now runs as its owner, never the value. The value is in no decision, answer, inbox message, event,
