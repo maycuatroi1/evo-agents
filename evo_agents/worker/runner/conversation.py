@@ -3,14 +3,16 @@ and the turns of a review run's and a judge run's agent.
 
 After each turn, the owner's messages that came in the meantime start the next turn in the same session. A turn
 that ends with a decision of the run open (a plan run), or any turn (an author run, whose agent talks with its owner
-in the run's chat), moves the run to ``waiting``: the daemon keeps it, with its slot and lease, and the time it waits
-does not count toward its timeout. The owner's answer comes through the inbox and goes to a new turn of the agent in
+in the run's chat), moves the run to ``waiting``: the daemon keeps it, with its slot and lease, for the few minutes
+the hub lets a run wait before it parks it (``runs.DECISION_WAIT_SECONDS``), and the time it waits does not count
+toward its timeout. The owner's answer comes through the inbox and goes to a new turn of the agent in
 the same session (``running`` again): for a plan run the first answer, for an author run every answer to the decisions
 its agent asked that are open at the end of its turn, or a reply in its chat (``transitions.author_wakes``). A run the
-hub parks (no answer within a day) stops at the end of its turn, keeps its session and worktrees, and frees its slot;
+hub parks (no answer within those minutes, or a wait for a time or an event of the hub at once) stops at the end of its
+turn, keeps its session and worktrees, and frees its slot;
 the run that resumes it, claimed with ``resume_of_run_id``, goes on in them (``Conversation.adopt``). A chat run waits
-for no reply, only for the answer to a decision of its agent, as a plan run does (``wait_for_owner``); the hub parks it
-sooner (``runs.CHAT_DECISION_WAIT_SECONDS``). One that asked none ends done with its turn, and the run that goes on in
+for no reply, only for the answer to a decision of its agent, as a plan run does (``wait_for_owner``), and is parked the
+same way. One that asked none ends done with its turn, and the run that goes on in
 its session adopts them the same way.
 """
 

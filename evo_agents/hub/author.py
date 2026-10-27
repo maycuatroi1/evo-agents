@@ -28,7 +28,7 @@ changes the progress the hub holds (``progress_problem``): that is what plan and
 The agent talks with the member in the run's chat, never through a question tool. The last message of each of its
 turns is a message of the chat (the worker posts it, POST /v1/worker/runs/{id}/chat, at most MAX_CHAT_BYTES), and the
 run then waits for the member's reply (``waiting``): the time it waits does not count toward its timeout, the worker
-keeps its slot until DECISION_WAIT_SECONDS, and then the run is parked as a plan run waiting for a decision is. The
+keeps its slot for DECISION_WAIT_SECONDS, and then the run is parked as a plan run waiting for a decision is. The
 member replies with a message to the run (POST .../runs/{id}/messages, ``evo-agents hub run send``), which starts the
 agent's next turn in the same session (REPLY_PROMPT); a reply to a parked author run queues the run that resumes it on
 the same worker, in that session (RESUME_PROMPT). The run waits after every turn, the plan on the hub or not, so the

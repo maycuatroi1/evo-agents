@@ -3,9 +3,11 @@ open on an option that says not yet (``evo_agents.hub.server.run_waits``, ``deci
 
 The checks: a wait is an open decision of category wait that notifies nobody and lets the run wait; the reaper wakes it
 when its time comes, or sooner on an event of its project of its kind whose payload contains what it names, written
-after it was asked, and never on another; a parked run resumes, by the reaper, when its wait wakes, and is not
-cancelled while its wait has not come; the owner may wake it sooner; the route refuses a wait it cannot keep; and an
-option that waits leaves the decision open, tells the agent nothing and takes no words."""
+after it was asked, and never on another; a run that waits only for a wait that wakes later than the minutes a run keeps
+its slot is parked at once, so it holds no worker, and one that wakes sooner keeps the slot; a parked run resumes, by
+the reaper, when its wait wakes, and is not cancelled while its wait has not come; the owner may wake it sooner; the
+route refuses a wait it cannot keep; and an option that waits leaves the decision open, tells the agent nothing and
+takes no words."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -67,7 +69,7 @@ def waited(client, worker: dict, run_id: int, **body) -> dict:
     return response.json()
 
 
-def soon(hours: int = 1) -> str:
+def soon(hours: float = 1) -> str:
     return (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
 
 
@@ -106,7 +108,7 @@ def a_waiting_run(client, hub, **body) -> tuple[dict, dict, dict]:
 
 
 def test_a_wait_is_an_open_decision_that_notifies_nobody_and_wakes_when_its_time_comes(client, hub, hub_db):
-    until = soon(5)
+    until = soon(5 / 60)  # within the minutes a run keeps its slot: it is not parked
     worker, run, wait = a_waiting_run(client, hub, until=until)
     assert (wait["category"], wait["state"], wait["question"], wait["step_key"]) == ("wait", "open", REASON, "2")
     assert datetime.fromisoformat(wait["wake_at"]) == datetime.fromisoformat(until)
@@ -121,6 +123,7 @@ def test_a_wait_is_an_open_decision_that_notifies_nobody_and_wakes_when_its_time
     recover(client)
     assert decision(client, hub["owner"], wait["id"])["state"] == "open"  # its time has not come
     assert inbox(client, worker, run["id"]) == []
+    assert run_view(client, hub["owner"], run["id"])["state"] == "waiting"
 
     came(hub_db, wait["id"])
     recover(client)
@@ -146,6 +149,7 @@ def test_a_wait_wakes_on_an_event_of_its_kind_that_contains_what_it_names_and_ca
     record_event(client, hub_db, hub_events.BASELINE, {"v": 1, "canvas": "lumen", "number": 4})  # another canvas
     recover(client)
     assert decision(client, hub["owner"], wait["id"])["state"] == "open"
+    assert run_view(client, hub["owner"], run["id"])["state"] == "parked"  # it wakes in days: no slot held meanwhile
 
     event_id = record_event(client, hub_db, hub_events.BASELINE, {"v": 1, "canvas": "evo-agents", "number": 2})
     recover(client)
@@ -153,9 +157,12 @@ def test_a_wait_wakes_on_an_event_of_its_kind_that_contains_what_it_names_and_ca
     assert woke["state"] == "answered"
     assert woke["answer_text"].startswith(f"Decision #{wait['id']} (wait) woke: event canvas.baseline #{event_id} ")
     assert '"number": 2' in woke["answer_text"]
-    (message,) = inbox(client, worker, run["id"])
+    new_id = woke["answer_run_id"]
+    assert claim(client, worker)["id"] == new_id
+    moved(client, worker, new_id, "running")
+    (message,) = inbox(client, worker, new_id)
     assert message["decision_id"] == wait["id"]
-    assert [body["decision"] for (body,) in event_bodies(hub_db, run["id"], "system") if "decision" in body][-1] == {
+    assert [body["decision"] for (body,) in event_bodies(hub_db, new_id, "system") if "decision" in body][-1] == {
         "id": wait["id"],
         "category": "wait",
     }
@@ -164,10 +171,9 @@ def test_a_wait_wakes_on_an_event_of_its_kind_that_contains_what_it_names_and_ca
 def test_a_parked_run_resumes_by_the_reaper_when_its_wait_wakes_and_stays_parked_until_then(client, hub, hub_db):
     worker, run, wait = a_waiting_run(client, hub, until=soon(100))
     parked_id = run["id"]
-    park(hub_db, parked_id)
-    recover(client)
+    recover(client)  # the first pass parks it: nobody answers a wait
     assert run_view(client, hub["owner"], parked_id)["state"] == "parked"
-    assert last_reason(hub_db, parked_id) == [("its wait for a time or an event of the hub went on past 24 hours",)]
+    assert last_reason(hub_db, parked_id) == [("it waits for a time or an event of the hub, which resumes it",)]
 
     set_run(hub_db, parked_id, parked_at=func.now() - timedelta(days=runs.PARKED_DAYS, seconds=1))
     recover(client)
@@ -186,6 +192,19 @@ def test_a_parked_run_resumes_by_the_reaper_when_its_wait_wakes_and_stays_parked
     moved(client, worker, new_id, "running")
     (message,) = inbox(client, worker, new_id)
     assert message["decision_id"] == wait["id"]
+
+
+def test_a_run_with_a_question_open_beside_its_wait_keeps_its_slot_the_minutes_any_run_does(client, hub, hub_db):
+    worker, run = started(client, hub)
+    moved(client, worker, run["id"], "running", session_id=SESSION)
+    waited(client, worker, run["id"], until=soon(100))
+    asked(client, worker, run["id"])
+    moved(client, worker, run["id"], "waiting")
+    recover(client)
+    assert run_view(client, hub["owner"], run["id"])["state"] == "waiting"  # its owner may answer at once
+    park(hub_db, run["id"])
+    recover(client)
+    assert last_reason(hub_db, run["id"]) == [("nobody answered its decision within 10 minutes",)]
 
 
 def test_a_parked_run_whose_wait_came_is_cancelled_a_week_on_as_any(client, hub, hub_db):

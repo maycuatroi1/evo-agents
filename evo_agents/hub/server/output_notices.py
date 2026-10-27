@@ -116,8 +116,7 @@ class NotificationSettings(BaseModel):
     hide_details: bool = Field(False, description=HIDE_DETAILS)
     tiers: list[TierSetting] = Field(description="each kind of notification and its tier")
     quiet_hours: QuietHours | None = Field(
-        description="when an interrupt waits to be pushed until they end, but a decision whose run parks within two "
-        "hours; null: none"
+        description="when an interrupt waits to be pushed until they end, a decision's too; null: none"
     )
     time_zone: str = Field(description="the IANA time zone of the quiet hours and digest_at")
     time_zone_chosen: bool = Field(description="false: the hub's time zone, EVO_HUB_WEB_TIME_ZONE")

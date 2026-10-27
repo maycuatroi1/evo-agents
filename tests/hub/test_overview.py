@@ -37,7 +37,7 @@ GRANTS = {
 }
 SESSION_ZONE = "Asia/Ho_Chi_Minh"  # UTC+7 all year
 OPTIONS = [{"key": "yes", "label": "Go on"}, {"key": "no", "label": "Stop here"}]
-WAIT = timedelta(hours=24)  # EVO_HUB_DECISION_WAIT_SECONDS by default
+WAIT = timedelta(minutes=10)  # EVO_HUB_DECISION_WAIT_SECONDS by default
 
 
 @pytest.fixture
