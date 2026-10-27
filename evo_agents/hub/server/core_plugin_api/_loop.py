@@ -247,14 +247,14 @@ async def measure_goals(conn: AsyncConnection, plugin: Plugin, project: str, at:
     project_id = await enabled_project(conn, plugin, project)
     g, r = tables.goals, tables.goal_revisions
     query = (
-        select(g.c.number, r.c.statement, r.c.metric)
+        select(g.c.id, g.c.number, r.c.statement, r.c.metric)
         .join_from(g, r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
         .where(g.c.project_id == project_id, r.c.status == ACTIVE, r.c.metric.is_not(None))
         .order_by(r.c.rank, g.c.number)
     )
     found = []
     for row in (await conn.execute(query)).all():
-        value = await view.measure(conn, project_id, row.metric, at)
+        value = await view.measure(conn, project_id, row.metric, at, goal_id=row.id)
         target, comparator = row.metric.get("target"), row.metric.get("comparator")
         hit = None if value is None or comparator not in view.COMPARE else view.COMPARE[comparator](value, target)
         found.append(

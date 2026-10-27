@@ -71,6 +71,8 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("canvas_id", BigInteger),
         Column("problem_id", BigInteger),  # 0134
         Column("opportunity_id", BigInteger),  # 0145, never with a problem
+        Column("srs_document_id", BigInteger),  # 0170
+        Column("srs_heading", Text),  # 0170, the code or title of a heading of that document; never without it
         Column("rank", Integer, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
         Column("status", Text, nullable=False),
@@ -85,6 +87,11 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         ForeignKeyConstraint(["opportunity_id"], ["opportunities.id"], name=f"{name}_opportunity_id_fkey"),
         CheckConstraint(
             or_(column("problem_id").is_(None), column("opportunity_id").is_(None)), name=f"{name}_one_answer_check"
+        ),
+        ForeignKeyConstraint(["srs_document_id"], ["srs_documents.id"], name=f"{name}_srs_document_id_fkey"),
+        CheckConstraint(
+            or_(column("srs_heading").is_(None), column("srs_document_id").is_not(None)),
+            name=f"{name}_srs_heading_check",
         ),
         _key(name, "owner_id", "users", ondelete="RESTRICT"),
         _key(name, "created_by", "users", ondelete="RESTRICT"),

@@ -9,8 +9,11 @@ says another. A metric is ``--metric KEY`` with ``--aggregate``, ``--comparator`
 ``--window-days`` and ``--tenant`` optional; on a goal that has one, an option given replaces its part alone.
 ``--problem P-<number>`` names the problem of the project the goal answers (``evo-agents hub problem``), one that is
 not dropped, and ``--opportunity O-<number>`` the opportunity of the project it answers (``evo-agents hub
-opportunity``); a goal answers a problem or an opportunity, so giving one replaces the other. ``--no-metric``,
-``--no-deadline``, ``--no-canvas``, ``--no-problem`` and ``--no-opportunity`` clear those. ``close REF
+opportunity``); a goal answers a problem or an opportunity, so giving one replaces the other. ``--srs-document SLUG``
+aims the goal at an SRS document of the project and ``--srs-heading`` limits it to the use cases under a heading of it;
+with the metric ``srs.backlog.open``, which the hub counts so no signal is pushed, the goal is reached when every
+approved use case of it is delivered. ``--no-metric``, ``--no-srs-document``, ``--no-srs-heading``, ``--no-deadline``,
+``--no-canvas``, ``--no-problem`` and ``--no-opportunity`` clear those. ``close REF
 --reason`` closes a goal: achieved, dropped or expired.
 
 Every member of the project reads its goals; writing one needs the admin role on the project. Every command finds its
@@ -45,6 +48,8 @@ GOAL_KEYS = (
     "canvas",
     "problem",
     "opportunity",
+    "srs_document",
+    "srs_heading",
     "rank",
     "owner",
     "status",
@@ -69,6 +74,8 @@ WRITTEN_FIELDS = (
     "canvas",
     "problem",
     "opportunity",
+    "srs_document",
+    "srs_heading",
     "rank",
     "owner",
     "status",
@@ -80,11 +87,20 @@ GIVEN_FIELDS = (
     "canvas",
     "problem",
     "opportunity",
+    "srs_document",
+    "srs_heading",
     "rank",
     "owner",
     "status",
 )  # one field an option
-CLEARED_FIELDS = ("deadline", "canvas", "problem", "opportunity")  # each with its --no-<field>
+CLEARED_FIELDS = (
+    "deadline",
+    "canvas",
+    "problem",
+    "opportunity",
+    "srs_document",
+    "srs_heading",
+)  # each with its --no-<field>
 
 
 def _project(args) -> str:
@@ -156,10 +172,10 @@ def _show(goal: dict, revisions: list[dict]) -> None:
     print(f"Goal {goal['code']}{alias} of project {goal['project']}, revision {goal['revision']}")
     print(f"  statement: {goal['statement']}")
     print(f"  metric: {goals.metric_text(goal['metric'])}")
-    for name in ("deadline", "canvas", "problem", "opportunity", "rank", "owner"):
+    for name in ("deadline", "canvas", "problem", "opportunity", "srs_document", "srs_heading", "rank", "owner"):
         value = goal.get(name)
-        if name == "opportunity" and value is None:
-            continue  # shown only on a goal that answers one: the lines of a goal of a problem stay as they were
+        if name in ("opportunity", "srs_document", "srs_heading") and value is None:
+            continue  # shown only on a goal that has one: the lines of a goal of a problem stay as they were
         print(f"  {name}: {'-' if value is None else value}")
     print(f"  status: {_status(goal)}")
     written = f"  written by {goal['created_by']} at {when(goal['created_at'])} UTC"
@@ -215,6 +231,8 @@ def _body(args, held: dict) -> tuple[dict | None, str | None]:
     if args.opportunity is not None:
         body["problem"] = None
     body |= {name: None for name in CLEARED_FIELDS if getattr(args, f"no_{name}")}
+    if args.no_srs_document and args.srs_heading is None:
+        body["srs_heading"] = None  # a heading belongs to the document it is in
     if not body["statement"]:
         return None, "a new goal needs --statement"
     if args.status is not None:
@@ -320,6 +338,15 @@ def _write_options(parser) -> None:
         "--opportunity", metavar="O-N", help="the opportunity of the project the goal answers, not dropped"
     )
     parser.add_argument("--no-opportunity", action="store_true", help="clear the opportunity")
+    parser.add_argument(
+        "--srs-document",
+        metavar="SLUG",
+        help="the SRS document of the project whose approved use cases the goal delivers; with metric "
+        "srs.backlog.open, the hub counts the use cases not delivered yet",
+    )
+    parser.add_argument("--no-srs-document", action="store_true", help="clear the SRS document and its heading")
+    parser.add_argument("--srs-heading", metavar="HEADING", help="limit the goal to the use cases under this heading")
+    parser.add_argument("--no-srs-heading", action="store_true", help="clear the heading")
     parser.add_argument("--rank", type=int, metavar="N", help="its place among the goals, 1 first")
     parser.add_argument("--owner", metavar="LOGIN", help="a member with the writer role or above")
     parser.add_argument("--status", choices=(goals.ACTIVE, goals.PAUSED), help="active or paused")

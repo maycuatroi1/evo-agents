@@ -16,7 +16,9 @@ Tables goals and goal_revisions, schema 0091.
 A metric names a key of kind number of the project's registry of signals; a canvas, one of the project's canvases;
 a problem (plan problem-oriented-hub, criterion a2), one of the project's problems that is not dropped
 (``evo_agents.hub.server.problems``), or an opportunity (plan opportunity-intake) that is not dropped, never both; the
-owner, a member with the writer role or above. An archived key or canvas, or
+owner, a member with the writer role or above; an SRS document of the project that is not archived (``srs_document``, its
+slug) with a heading of it (``srs_heading``) to limit to, which the metric ``srs.backlog.open`` of the hub's own counts the
+backlog of (plan srs-backlog-loop; no key of the registry of signals is needed for it). An archived key or canvas, or
 a dropped problem, a revision names already may stay. Writes
 of one project's goals wait for each other (a transaction-level advisory lock). Each revision adds an audit row
 ``goal.set`` naming the goal, the revision and the fields whose value it changed, never a value.
@@ -51,8 +53,11 @@ from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.srs_backlog import BACKLOG_METRIC
 from evo_agents.hub.tables_canvas import SLUG
 from evo_agents.hub.tables_signals import KEY_NAME, MAX_KEY_NAME_CHARS
+from evo_agents.hub.tables_srs import MAX_ITEM_TITLE_CHARS
+from evo_agents.hub.tables_srs import SLUG as SRS_SLUG
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +114,13 @@ class ProjectGoal(BaseModel):
         description="the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers "
         "a problem or an opportunity, never both",
     )
+    srs_document: str | None = Field(
+        default=None,
+        description="the slug of the SRS document whose approved use cases the goal delivers; null: none",
+    )
+    srs_heading: str | None = Field(
+        default=None, description="the code or title of a heading of that document the goal is limited to; null: all"
+    )
     rank: int = Field(description="its place among the project's goals, 1 first")
     owner: str
     status: Literal[goals.STATUSES]
@@ -141,6 +153,19 @@ class ProjectGoalWrite(BaseModel):
         pattern=opportunity_model.REF,
         description="the code (O-<number>) of an opportunity of the project that is not dropped; null: none. Not "
         "with a problem",
+    )
+    srs_document: str | None = Field(
+        None,
+        pattern=SRS_SLUG,
+        description="the slug of a document of the project, not archived, whose approved use cases the goal delivers; "
+        f"null: none. The metric {BACKLOG_METRIC} needs one",
+    )
+    srs_heading: str | None = Field(
+        None,
+        min_length=1,
+        max_length=MAX_ITEM_TITLE_CHARS,
+        description="the code or title of a heading of that document to limit the goal to; null: all. Not without a "
+        "document",
     )
     rank: int | None = Field(
         None, ge=1, le=goals.MAX_RANK, description="null: kept, or after the project's other goals for a new one"
@@ -193,7 +218,7 @@ class GoalRevision(BaseModel):
 def _select():
     """A goal at a revision, with its owner's and writer's logins, its canvas's slug and its problem's number."""
     g, r, c, pr = tables.goals, tables.goal_revisions, tables.canvas.canvases, tables.problems
-    op = tables.opportunities
+    op, sd = tables.opportunities, tables.srs.documents
     owner, writer = tables.users.alias("owner"), tables.users.alias("writer")
     return (
         select(
@@ -210,6 +235,9 @@ def _select():
             pr.c.number.label("problem_number"),
             r.c.opportunity_id,
             op.c.number.label("opportunity_number"),
+            r.c.srs_document_id,
+            sd.c.slug.label("srs_document"),
+            r.c.srs_heading,
             r.c.rank,
             r.c.owner_id,
             owner.c.login.label("owner"),
@@ -225,6 +253,7 @@ def _select():
         .outerjoin(c, c.c.id == r.c.canvas_id)
         .outerjoin(pr, pr.c.id == r.c.problem_id)
         .outerjoin(op, op.c.id == r.c.opportunity_id)
+        .outerjoin(sd, sd.c.id == r.c.srs_document_id)
     )
 
 
@@ -255,6 +284,8 @@ def view(project: str, row) -> ProjectGoal:
         canvas=row.canvas,
         problem=_problem_code(row),
         opportunity=_opportunity_code(row),
+        srs_document=row.srs_document,
+        srs_heading=row.srs_heading,
         rank=row.rank,
         owner=row.owner,
         status=row.status,
@@ -282,6 +313,8 @@ def fields_of(row) -> dict:
         "canvas": row.canvas,
         "problem": _problem_code(row),
         "opportunity": _opportunity_code(row),
+        "srs_document": row.srs_document,
+        "srs_heading": row.srs_heading,
         "rank": row.rank,
         "owner": row.owner,
         "status": row.status,
@@ -298,6 +331,8 @@ def _stored(row) -> dict:
         "canvas_id": row.canvas_id,
         "problem_id": row.problem_id,
         "opportunity_id": row.opportunity_id,
+        "srs_document_id": row.srs_document_id,
+        "srs_heading": row.srs_heading,
         "rank": row.rank,
         "owner_id": row.owner_id,
         "status": row.status,
@@ -369,6 +404,8 @@ async def adopt_charter_goals(conn: AsyncConnection, project_id: int, project: s
             "canvas_id": None,
             "problem_id": None,
             "opportunity_id": None,
+            "srs_document_id": None,
+            "srs_heading": None,
             "rank": min(rank + offset, goals.MAX_RANK),
             "owner_id": charter.created_by,
             "status": goals.ACTIVE,
@@ -508,6 +545,21 @@ async def _opportunity(
     return row.id, []
 
 
+async def _srs_document(
+    conn: AsyncConnection, access: ProjectAccess, slug: str, held: int | None
+) -> tuple[int | None, list]:
+    """The id of SRS document ``slug`` of the project, for a goal whose document is ``held`` now, and why it cannot
+    be."""
+    d = tables.srs.documents
+    query = select(d.c.id, d.c.archived_at).where(d.c.project_id == access.project_id, d.c.slug == slug)
+    row = (await conn.execute(query)).first()
+    if row is None:
+        return None, [f"srs_document: project {access.name} has no SRS document {slug}"]
+    if row.archived_at is not None and row.id != held:
+        return None, [f"srs_document: document {slug} is archived"]
+    return row.id, []
+
+
 async def _values(
     conn: AsyncConnection, access: ProjectAccess, body: ProjectGoalWrite, held, writer_id: int
 ) -> tuple[dict, list[str]]:
@@ -535,8 +587,19 @@ async def _values(
                 conn, access, body.opportunity, held.opportunity_id if held is not None else None
             )
             problems += said
+    srs_document_id = None
+    if body.srs_document is not None:
+        srs_document_id, said = await _srs_document(
+            conn, access, body.srs_document, held.srs_document_id if held is not None else None
+        )
+        problems += said
+    if body.srs_heading is not None and body.srs_document is None:
+        problems.append("srs_heading: a heading belongs to the SRS document the goal aims at; name srs_document")
     metric = body.metric.model_dump(exclude_none=True) if body.metric is not None else None
-    if body.metric is not None:
+    if body.metric is not None and body.metric.key == BACKLOG_METRIC:  # the hub computes it: no key of the registry
+        if body.srs_document is None:
+            problems.append(f"metric.key: {BACKLOG_METRIC} counts the backlog of an SRS document; name srs_document")
+    elif body.metric is not None:
         problems += await metric_problems(conn, access, body.metric.key, held.metric if held is not None else None)
     rank = body.rank or (held.rank if held is not None else await _next_rank(conn, access.project_id))
     values = {
@@ -546,6 +609,8 @@ async def _values(
         "canvas_id": canvas_id,
         "problem_id": problem_id,
         "opportunity_id": opportunity_id,
+        "srs_document_id": srs_document_id,
+        "srs_heading": body.srs_heading,
         "rank": rank,
         "owner_id": owner_id,
         "status": body.status,

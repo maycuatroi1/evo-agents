@@ -30,6 +30,7 @@ from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.merge_gate import GITLAB_STATE, MERGE_SHA
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.autonomy_policies import effective_policy, newest, project_repos
+from evo_agents.hub.server.loop import backlog
 from evo_agents.hub.server.loop.model import (
     ACTIVE,
     ALWAYS,
@@ -53,6 +54,7 @@ from evo_agents.hub.server.loop.model import (
     View,
 )
 from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.srs_backlog import BACKLOG_METRIC
 from evo_agents.plugins import config as plugin_config
 
 TASKS = "tasks"  # the core plugin whose tasks a build waits on
@@ -74,11 +76,21 @@ CLOSED_MERGE = "closed"  # merge_gate.STATES: it left the queue; merged by a per
 
 
 async def measure(
-    conn: AsyncConnection, project_id: int, metric: dict, now: datetime, *, bounded: bool = False
+    conn: AsyncConnection,
+    project_id: int,
+    metric: dict,
+    now: datetime,
+    *,
+    bounded: bool = False,
+    goal_id: int | None = None,
 ) -> float | None:
     """The value of ``metric`` now; None when its key is no number key of the project or no signal is in its window.
     ``bounded`` leaves out the signals measured after ``now``, so a moment in the past gets the value it had then
-    (Today compares a problem's metric with its value seven days ago)."""
+    (Today compares a problem's metric with its value seven days ago). The key ``srs.backlog.open`` is the hub's own:
+    the size of the backlog of goal ``goal_id`` (None for no goal, or one that aims at no SRS document), no signal."""
+    if metric.get("key") == BACKLOG_METRIC:
+        backlog_size = await backlog.open_of(conn, goal_id) if goal_id is not None else None
+        return None if backlog_size is None else float(backlog_size)
     k, s = tables.signal_keys, tables.signals
     key_id = await conn.scalar(
         select(k.c.id).where(k.c.project_id == project_id, k.c.name == metric.get("key"), k.c.kind == NUMBER)
@@ -107,11 +119,13 @@ async def measure(
     return float(value) if count and value is not None else None
 
 
-async def reached(conn: AsyncConnection, project_id: int, metric: dict | None, now: datetime) -> bool | None:
-    """Whether goal metric ``metric`` meets its target now; None without a metric or a value."""
+async def reached(
+    conn: AsyncConnection, project_id: int, metric: dict | None, now: datetime, goal_id: int | None = None
+) -> bool | None:
+    """Whether goal metric ``metric`` of goal ``goal_id`` meets its target now; None without a metric or a value."""
     if not metric or metric.get("comparator") not in COMPARE or metric.get("target") is None:
         return None
-    value = await measure(conn, project_id, metric, now)
+    value = await measure(conn, project_id, metric, now, goal_id=goal_id)
     return None if value is None else COMPARE[metric["comparator"]](value, metric["target"])
 
 
@@ -136,7 +150,7 @@ async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> dict[
     )
     found = {}
     for row in await conn.execute(query):
-        measured = await reached(conn, project_id, row.metric, now) if row.status == ACTIVE else None
+        measured = await reached(conn, project_id, row.metric, now, row.id) if row.status == ACTIVE else None
         found[row.id] = GoalView(
             row.id,
             goals.code(row.number),

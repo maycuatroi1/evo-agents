@@ -9,7 +9,10 @@ It may also have a deadline, the canvas whose product it drives, the problem of 
 ``evo_agents.hub.problems``; at most one, and not a dropped one) or the opportunity of the project it answers
 (``O-<number>``, ``evo_agents.hub.opportunities``; a goal answers a problem or an opportunity, not both), a rank among the project's goals (1 is the first),
 an owner (a member with the writer role or above) and a status: active, paused, or closed with a reason (achieved,
-dropped, expired). A goal has no budget. A goal without a metric is read by the Curator, and nothing else is done for
+dropped, expired). It may aim at one SRS document of the project (``srs_document``, its slug), limited to the use cases
+under one heading of it (``srs_heading``, a code or title; never without a document): its backlog is then the document's
+approved use cases not delivered yet (``evo_agents.hub.srs_backlog``), and the metric ``srs.backlog.open`` counts them
+with no signal pushed. A goal has no budget. A goal without a metric is read by the Curator, and nothing else is done for
 it.
 
 Its code is ``G-<number>``, given in order within the project and never given again: a goal is closed, never
@@ -47,6 +50,8 @@ FIELDS = (
     "canvas",
     "problem",
     "opportunity",
+    "srs_document",
+    "srs_heading",
     "rank",
     "owner",
     "status",
@@ -58,6 +63,8 @@ CLEARABLE = (
     "canvas",
     "problem",
     "opportunity",
+    "srs_document",
+    "srs_heading",
     "close_reason",
 )  # the fields a revision may leave empty
 METRIC_FIELDS = ("key", "aggregate", "window_days", "comparator", "target", "tenant")
@@ -111,4 +118,6 @@ def curator_line(goal: Mapping) -> dict:
         what += f"; answers problem {goal['problem']}"
     if goal.get("opportunity"):
         what += f"; answers opportunity {goal['opportunity']}"
+    if goal.get("srs_document"):
+        what += f"; delivers the use cases of SRS document {goal['srs_document']}"
     return {"id": ref, "what": what}
