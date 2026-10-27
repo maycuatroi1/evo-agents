@@ -3,7 +3,7 @@
     "evo-kg": {
       "alwaysLoad": true,
       "command": "sh",
-      "args": ["-c", "pin=$1; shift; command -v uvx >/dev/null 2>&1 && uvx --from \"$pin\" evo-agents --version </dev/null >/dev/null && exec uvx --offline --from \"$pin\" evo-agents \"$@\"; command -v evo-agents >/dev/null 2>&1 || { echo \"$0: $* did not start: uvx could not run $pin and evo-agents is not on the PATH\" >&2; exit 1; }; echo \"$0: uvx could not run $pin, so evo-agents from PATH runs $*\" >&2; exec evo-agents \"$@\"", "evo-kg", "evo-ak==0.49.2", "kg", "serve", "--sink", "claude-code@anthropic"]
+      "args": ["-c", "pin=$1; shift; command -v uvx >/dev/null 2>&1 && uvx --from \"$pin\" evo-agents --version </dev/null >/dev/null && exec uvx --offline --from \"$pin\" evo-agents \"$@\"; command -v evo-agents >/dev/null 2>&1 || { echo \"$0: $* did not start: uvx could not run $pin and evo-agents is not on the PATH\" >&2; exit 1; }; echo \"$0: uvx could not run $pin, so evo-agents from PATH runs $*\" >&2; exec evo-agents \"$@\"", "evo-kg", "evo-ak==0.49.3", "kg", "serve", "--sink", "claude-code@anthropic"]
     }
   }
 }
