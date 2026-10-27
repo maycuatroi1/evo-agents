@@ -10,7 +10,7 @@ user asks with ``/ask``.
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 6)  # the version of the API this plugin is written for
+API = (1, 7)  # the version of the API this plugin is written for
 SERVER = "northwind_chat.server"
 KIND = "northwind"
 

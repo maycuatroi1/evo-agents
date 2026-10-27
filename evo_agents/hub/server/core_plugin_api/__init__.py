@@ -1,4 +1,4 @@
-"""The API of the hub for core plugins, version 1.6: the one module of ``evo_agents.hub`` a core plugin imports
+"""The API of the hub for core plugins, version 1.7: the one module of ``evo_agents.hub`` a core plugin imports
 (``from evo_agents.hub.server import core_plugin_api as hub``), whose ``__all__`` is the whole of it. ``docs/plugins.md``
 (The core plugin API) is the contract; ``tests/plugins/golden/core-plugin-api.json`` holds its surface.
 
@@ -61,6 +61,10 @@ project's policy lets that sink read (``Cleared``): ``read_run_failure``, ``read
 ``decide_graph`` (a decision on the graph, active or proposed) and ``dismiss_review_item``; a writer undoes each from
 the web and the CLI. The payload of the ``run.state`` event gained ``failure_cause`` and ``failure_cause_inferred`` on a
 move to ``failed``.
+
+Version 1.7 gave ``read_review_queue`` the keyword ``rules``: only the items of those review rules
+(``evo_agents.kg.review.RULES``) come back and ``limit`` counts after the filter, so a plugin reaches the rules the
+hub lists late.
 
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
 naming both otherwise; a plugin calls it in the function its entry point names, so a hub of another version leaves the
@@ -309,7 +313,7 @@ from evo_agents.hub.server.notifications import (
     Undeliverable,
 )
 
-API_VERSION: tuple[int, int] = (1, 6)
+API_VERSION: tuple[int, int] = (1, 7)
 
 WebSession = Annotated[Session, Depends(web_session)]
 Caller = Annotated[Session, Depends(caller)]
