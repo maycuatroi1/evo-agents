@@ -41,13 +41,14 @@ from datetime import UTC, date, datetime, time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 from sqlalchemy import and_, false, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import excerpts, facet_job, history, history_index, review, tables
 from evo_agents.hub import transcripts as local
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server import rankers
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.digests import SessionId
@@ -130,6 +131,7 @@ class HistoryHit(BaseModel):
     chat: str | None = Field(description="the chat's title")
     login: str | None = Field(description="the member whose session or run it is, or the chat message's author")
     runtime: str | None
+    _gate: tuple | None = PrivateAttr(default=None)  # what tells whether a sink may read it (``_cleared``); not served
 
 
 class HistorySearch(BaseModel):
@@ -140,6 +142,11 @@ class HistorySearch(BaseModel):
     total: int = Field(description="hits found, at most SCAN_HITS of each source")
     limit: int
     offset: int
+    reranked: bool = Field(
+        default=False,
+        description="a ranker of a plugin the project enabled put the hits of this page in a new order; each hit's "
+        "rank is still the ts_rank of its words",
+    )
 
 
 class TranscriptLine(BaseModel):
@@ -376,6 +383,13 @@ def _between(column, since, until):
     return found
 
 
+def _gated(hit: HistoryHit, gate: tuple) -> HistoryHit:
+    """``hit`` with what tells whether a sink may read it: ("label", a label as stored), ("chat", the label of a chat
+    message) or ("run", kind, plan id, dispatcher)."""
+    hit._gate = gate
+    return hit
+
+
 async def _transcript_hits(conn, access, through, query, since, until, login, runtime) -> list[HistoryHit]:
     lines, t, u = tables.history_lines, tables.session_transcripts, tables.users
     rank = func.ts_rank(lines.c.search, query)
@@ -414,22 +428,25 @@ async def _transcript_hits(conn, access, through, query, since, until, login, ru
         if through is None or not access.visible(row.label, through):
             continue
         found.append(
-            HistoryHit(
-                source="transcript",
-                at=row.at,
-                role=row.role,
-                text=row.snippet,
-                rank=float(row.rank),
-                evidence=line_evidence(row.session_id, row.file, row.line),
-                session_id=row.session_id,
-                file=row.file,
-                line=row.line,
-                run_id=None,
-                run_kind=None,
-                chat_id=None,
-                chat=None,
-                login=row.login,
-                runtime=row.runtime,
+            _gated(
+                HistoryHit(
+                    source="transcript",
+                    at=row.at,
+                    role=row.role,
+                    text=row.snippet,
+                    rank=float(row.rank),
+                    evidence=line_evidence(row.session_id, row.file, row.line),
+                    session_id=row.session_id,
+                    file=row.file,
+                    line=row.line,
+                    run_id=None,
+                    run_kind=None,
+                    chat_id=None,
+                    chat=None,
+                    login=row.login,
+                    runtime=row.runtime,
+                ),
+                ("label", row.label),
             )
         )
     return found
@@ -458,6 +475,8 @@ async def _run_hits(conn, access, runs_read: RunReader, query, since, until, log
             _headline(lines.c.text, query).label("snippet"),
             rank.label("rank"),
             r.c.kind,
+            r.c.plan_id,
+            r.c.dispatched_by,
             r.c.runtime,
             u.c.login,
         )
@@ -468,22 +487,25 @@ async def _run_hits(conn, access, runs_read: RunReader, query, since, until, log
         .limit(SCAN_HITS)
     )
     return [
-        HistoryHit(
-            source="run",
-            at=row.at,
-            role=row.role,
-            text=row.snippet,
-            rank=float(row.rank),
-            evidence=f"run:{row.run_id}:{row.line}",
-            session_id=None,
-            file=None,
-            line=row.line,
-            run_id=row.run_id,
-            run_kind=row.kind,
-            chat_id=None,
-            chat=None,
-            login=row.login,
-            runtime=row.runtime,
+        _gated(
+            HistoryHit(
+                source="run",
+                at=row.at,
+                role=row.role,
+                text=row.snippet,
+                rank=float(row.rank),
+                evidence=f"run:{row.run_id}:{row.line}",
+                session_id=None,
+                file=None,
+                line=row.line,
+                run_id=row.run_id,
+                run_kind=row.kind,
+                chat_id=None,
+                chat=None,
+                login=row.login,
+                runtime=row.runtime,
+            ),
+            ("run", row.kind, row.plan_id, row.dispatched_by),
         )
         for row in await conn.execute(statement)
     ]
@@ -542,25 +564,67 @@ async def _chat_hits(conn, user: Principal, access, through, query, since, until
         if not cleared[row.chat_id] or not reader.sees(row.label) or not _through_sink(access, row.label, through):
             continue
         found.append(
-            HistoryHit(
-                source="chat",
-                at=row.created_at,
-                role="agent" if row.author_profile_id is not None else "person",
-                text=row.snippet,
-                rank=float(row.rank),
-                evidence=None,
-                session_id=None,
-                file=None,
-                line=row.seq,
-                run_id=None,
-                run_kind=None,
-                chat_id=row.chat_id,
-                chat=row.title,
-                login=row.author,
-                runtime=None,
+            _gated(
+                HistoryHit(
+                    source="chat",
+                    at=row.created_at,
+                    role="agent" if row.author_profile_id is not None else "person",
+                    text=row.snippet,
+                    rank=float(row.rank),
+                    evidence=None,
+                    session_id=None,
+                    file=None,
+                    line=row.seq,
+                    run_id=None,
+                    run_kind=None,
+                    chat_id=row.chat_id,
+                    chat=row.title,
+                    login=row.author,
+                    runtime=None,
+                ),
+                ("chat", row.label),
             )
         )
     return found
+
+
+def _hit_id(hit: HistoryHit) -> str:
+    return hit.evidence or f"chat:{hit.chat_id}:{hit.line}"
+
+
+async def _cleared(conn, user: Principal, access, sink: str, hits: list[HistoryHit]) -> list[bool]:
+    """Which of ``hits`` ``sink`` may read, as ``rankers.clears`` decides it for a label; a run through the sink's reading
+    of the plans (``readable_run``'s rule, for the sink named); a hit without a gate is not read."""
+    rules = access.rules
+    reader = None
+    found = []
+    for hit in hits:
+        gate = hit._gate
+        if gate is None:
+            found.append(False)
+        elif gate[0] == "label":
+            found.append(rankers.clears(rules, gate[1], sink))
+        elif gate[0] == "chat":
+            named = [item for item in gate[1] or [] if isinstance(item, dict) and item.get("projects") == [access.name]]
+            found.append(len(named) == 1 and rankers.clears(rules, named[0], sink))
+        else:
+            reader = reader or await run_reader(conn, user, access, sink)
+            found.append(reader.reads(gate[1], gate[2], gate[3]))
+    return found
+
+
+async def _reranked(conn, state, user: Principal, access, text: str, page: list[HistoryHit]) -> list[HistoryHit] | None:
+    """``page`` in the order the project's rankers give it, or None when no ranker changed anything."""
+    found = await rankers.project_rankers(conn, access.name, access.project_id, access.rules)
+    if not found or len(page) < 2:
+        return None
+    cleared = {sink: await _cleared(conn, user, access, sink, page) for sink in {each.sink for each in found}}
+    seen = [rankers.RankHit(_hit_id(hit), rankers.cut(hit.text), hit.source) for hit in page]
+    order = await rankers.rerank(state, found, text, "history", seen, cleared)
+    if order is None:
+        return None
+    by_id = {_hit_id(hit): hit for hit in page}
+    return [by_id[each] for each in order]
 
 
 async def search_history(
@@ -577,8 +641,11 @@ async def search_history(
     runtime: str | None = None,
     limit: int = 20,
     offset: int = 0,
+    state=None,
 ) -> HistorySearch:
-    """The hits of ``text`` in the project's history ``user`` may read, best first (see the module)."""
+    """The hits of ``text`` in the project's history ``user`` may read, best first (see the module). With the app's
+    ``state``, the rankers of the plugins the project enabled put the page asked for in their order
+    (``evo_agents.hub.server.rankers``)."""
     chats = agent_reads_chats(user)
     if not chats and "chat" in (sources or ()):
         raise HTTPException(403, NO_CHAT)
@@ -596,14 +663,17 @@ async def search_history(
         hits += await _chat_hits(conn, user, access, through, query, start, end, login)
     floor = datetime.min.replace(tzinfo=UTC)
     hits.sort(key=lambda hit: (-hit.rank, -(hit.at or floor).timestamp()))
+    page = hits[offset : offset + limit]
+    moved = await _reranked(conn, state, user, access, text, page) if state is not None else None
     return HistorySearch(
         project=access.name,
         query=text,
         sources=asked,
-        hits=hits[offset : offset + limit],
+        hits=page if moved is None else moved,
         total=len(hits),
         limit=limit,
         offset=offset,
+        reranked=moved is not None,
     )
 
 
@@ -638,6 +708,7 @@ async def history_search(
             runtime=runtime,
             limit=limit,
             offset=offset,
+            state=request.app.state,
         )
 
 

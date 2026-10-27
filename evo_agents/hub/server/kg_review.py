@@ -6,6 +6,9 @@
 - POST /v1/kg/{project}/review/{fingerprint}/dismiss {reason}: a writer dismisses an item they can see, with a reason.
   The dismissal is kept by the item's fingerprint, so it holds in every later build that finds the same item;
   dismissing it again replaces the reason. 404 for an item the writer cannot see, as for one that does not exist.
+- DELETE /v1/kg/{project}/review/{fingerprint}/dismiss: a writer takes a dismissal back, whoever made it (a member, or
+  a core plugin through its API), so the item is open again; 404 for an item the writer cannot see or that is not
+  dismissed. The audit row names the item and who had dismissed it.
 
 Access and visibility are those of the graph's other web reads (``evo_agents.hub.server.kg_web``): a grant on the
 project, the grant's ceiling with the member's audience, and every node through ``Session.visible``.
@@ -24,6 +27,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_decisions import plugin_actor
 from evo_agents.hub.kg_web import WebSession
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
@@ -60,7 +64,7 @@ class ReviewNode(BaseModel):
 
 class Dismissal(BaseModel):
     reason: str
-    by: str = Field(description="the login of the writer who dismissed it")
+    by: str = Field(description="the login of the writer who dismissed it; plugin:<id> for a core plugin")
     at: datetime
     build_id: int | None = Field(description="the build they saw the item in; null once that build is gone")
 
@@ -113,12 +117,17 @@ Fingerprint = Annotated[str, PathParam(pattern=r"^r:[0-9a-f]{16}$", description=
 async def _dismissals(conn, project_id: int) -> dict[str, Dismissal]:
     d, u = tables.kg_review_dismissals, tables.users
     rows = await conn.execute(
-        select(d.c.fingerprint, d.c.reason, u.c.login, d.c.dismissed_at, d.c.build_id)
-        .join(u, u.c.id == d.c.dismissed_by)
+        select(d.c.fingerprint, d.c.reason, u.c.login, d.c.dismissed_by_plugin, d.c.dismissed_at, d.c.build_id)
+        .join(u, u.c.id == d.c.dismissed_by, isouter=True)
         .where(d.c.project_id == project_id)
     )
     return {
-        row.fingerprint: Dismissal(reason=row.reason, by=row.login, at=row.dismissed_at, build_id=row.build_id)
+        row.fingerprint: Dismissal(
+            reason=row.reason,
+            by=row.login or plugin_actor(row.dismissed_by_plugin),
+            at=row.dismissed_at,
+            build_id=row.build_id,
+        )
         for row in rows
     }
 
@@ -202,6 +211,7 @@ async def dismiss_item(
                         "rule": saved.excluded.rule,
                         "reason": saved.excluded.reason,
                         "dismissed_by": saved.excluded.dismissed_by,
+                        "dismissed_by_plugin": None,
                         "build_id": saved.excluded.build_id,
                         "dismissed_at": func.now(),
                     },
@@ -217,3 +227,48 @@ async def dismiss_item(
             project_id=access.project_id,
         )
     return Dismissal(reason=body.reason, by=user.login, at=row.dismissed_at, build_id=ref.build_id)
+
+
+class Undismissed(BaseModel):
+    fingerprint: str
+    was_by: str = Field(description="who had dismissed it: a login, or plugin:<id> for a core plugin")
+
+
+@router.delete("/{project}/review/{fingerprint}/dismiss", response_model=Undismissed)
+async def undismiss_item(
+    request: Request, project: ProjectName, fingerprint: Fingerprint, user: CurrentUser
+) -> Undismissed:
+    """Take a dismissal of an item of the review queue you can see back: the item is open again."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        _reader(access)
+        if not has_role(access.role, "writer"):
+            raise HTTPException(403, f"reopening a review item of project {access.name} needs the writer role on it")
+    data, ref = await _read(request, user, project, WebSession.review)
+    if ref is None:
+        raise _no_graph(project)
+    if not any(i["fingerprint"] == fingerprint for i in data["items"]):
+        raise HTTPException(404, f"no review item with that fingerprint is visible to you in project {project}")
+    d, u = tables.kg_review_dismissals, tables.users
+    async with request.app.state.engine.begin() as conn:
+        row = (
+            await conn.execute(
+                select(u.c.login, d.c.dismissed_by_plugin)
+                .select_from(d.join(u, u.c.id == d.c.dismissed_by, isouter=True))
+                .where(d.c.project_id == access.project_id, d.c.fingerprint == fingerprint)
+                .with_for_update(of=d)
+            )
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(404, f"no review item with that fingerprint is dismissed in project {project}")
+        by = row.login or plugin_actor(row.dismissed_by_plugin)
+        await conn.execute(d.delete().where(d.c.project_id == access.project_id, d.c.fingerprint == fingerprint))
+        await audit.record(
+            conn,
+            actor_id=user.user_id,
+            token_id=user.token_id,
+            action=audit.KG_REVIEW,
+            target=f"{project} item={fingerprint} reopened dismissed_by={by}",
+            project_id=access.project_id,
+        )
+    return Undismissed(fingerprint=fingerprint, was_by=by)

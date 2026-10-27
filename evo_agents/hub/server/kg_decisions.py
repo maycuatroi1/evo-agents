@@ -30,7 +30,15 @@ from sqlalchemy import func, select
 from evo_agents.hub import kg_decisions, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
-from evo_agents.hub.kg_decisions import ABSENT, HIDDEN, MAX_REASON_CHARS, MAX_REF_CHARS, TRANSITIONS, seen_state
+from evo_agents.hub.kg_decisions import (
+    ABSENT,
+    HIDDEN,
+    MAX_REASON_CHARS,
+    MAX_REF_CHARS,
+    TRANSITIONS,
+    plugin_actor,
+    seen_state,
+)
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -55,7 +63,10 @@ router = APIRouter(
 class KgDecisionEvent(BaseModel):
     rev: int = Field(description="the project's decision revision this step made")
     action: Literal["propose", "decide", "accept", "reject", "undo"]
-    by: str = Field(description="the login of the member, or of the agent's owner, who took the step")
+    by: str = Field(
+        description="the login of the member, or of the agent's owner, who took the step; plugin:<id> for a core "
+        "plugin that took it as itself"
+    )
     at: datetime
     reason: str
     build_id: int | None = Field(description="the build the graph was at; null once that build is gone")
@@ -133,8 +144,8 @@ async def _rows(conn, project_id: int) -> tuple[list, dict[int, list[KgDecisionE
     d, e, u = tables.kg_decisions, tables.kg_decision_events, tables.users
     rows = list((await conn.execute(select(d).where(d.c.project_id == project_id).order_by(d.c.number.desc()))).all())
     events = await conn.execute(
-        select(e.c.decision_id, e.c.rev, e.c.action, u.c.login, e.c.at, e.c.reason, e.c.build_id)
-        .join(u, u.c.id == e.c.actor_id)
+        select(e.c.decision_id, e.c.rev, e.c.action, u.c.login, e.c.actor_plugin, e.c.at, e.c.reason, e.c.build_id)
+        .join(u, u.c.id == e.c.actor_id, isouter=True)
         .where(e.c.project_id == project_id)
         .order_by(e.c.rev)
     )
@@ -143,7 +154,14 @@ async def _rows(conn, project_id: int) -> tuple[list, dict[int, list[KgDecisionE
     for ev in events:
         rev = ev.rev
         history.setdefault(ev.decision_id, []).append(
-            KgDecisionEvent(rev=ev.rev, action=ev.action, by=ev.login, at=ev.at, reason=ev.reason, build_id=ev.build_id)
+            KgDecisionEvent(
+                rev=ev.rev,
+                action=ev.action,
+                by=ev.login or plugin_actor(ev.actor_plugin),
+                at=ev.at,
+                reason=ev.reason,
+                build_id=ev.build_id,
+            )
         )
     return rows, history, rev
 

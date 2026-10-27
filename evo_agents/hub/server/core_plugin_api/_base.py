@@ -22,6 +22,7 @@ from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server import member_channels
 from evo_agents.hub.server.core_plugin_api._types import (
     Clearance,
+    EgressSink,
     NotACorePlugin,
     Plugin,
     PluginConfig,
@@ -75,7 +76,8 @@ def plugin(module: str) -> Plugin:
     if best is None:
         raise NotACorePlugin(f"module {module} is in the package of no core plugin of this process")
     manifest = best[1]
-    return issue_plugin(manifest.id, tuple(item["name"] for item in manifest.contributions("channels")))
+    egress = tuple(EgressSink(item["id"], item["kind"], item["host"]) for item in manifest.egress)
+    return issue_plugin(manifest.id, tuple(item["name"] for item in manifest.contributions("channels")), egress)
 
 
 # The callers of a plugin's routes
