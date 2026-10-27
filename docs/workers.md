@@ -359,7 +359,7 @@ or busy depending on whether it holds runs.
 | `verifying` | the agent has finished; the daemon runs its verify commands again |
 | `waiting` | a plan run whose agent ended its turn with a decision open; the worker keeps the run and the session |
 | `review` | verified; waits for the owner to approve |
-| `parked` | a plan run that waited 24 hours for an answer; the worker let it go and kept the session and worktrees |
+| `parked` | a run that waited 10 minutes for an answer, or waits only for a time or an event of the hub; the worker let it go and kept the session and worktrees |
 | `done` | approved, or verified with approval `auto` |
 | `failed` | the agent, the checkout or a verify command failed, the run timed out, or the last attempt's lease ran out |
 | `lost` | its worker stopped extending the lease, and another attempt was queued |
@@ -385,7 +385,7 @@ does not name. The `worker` is the worker that holds the run, the `owner` is the
 | `verifying` | `done` (approval `auto`, every verify command exited 0), `review` (approval `review`) | worker |
 | `running` | `waiting` (the agent's turn ended with a decision open) | worker |
 | `waiting` | `running` (the answer reached the agent) | worker |
-| `waiting` | `parked` (no answer within 24 hours) | reaper |
+| `waiting` | `parked` (no answer within 10 minutes, or a wait for a time or an event at once) | reaper |
 | `review` | `done` (approve), `cancelled` | owner |
 | `parked` | `done` (the owner answered, and the run that resumes it is queued) | owner |
 | `parked` | `done` (a wait of the run woke, and the run that resumes it is queued) | reaper |
@@ -669,17 +669,17 @@ dispatch of them, nor a plan run.
 
 ### The chat of an author run
 
-The agent talks with the member who dispatched the run in the run's chat, never through a question tool. After each
-turn the worker posts the agent's last message to the chat (`POST /v1/worker/runs/{id}/chat`, at most 16 KiB of UTF-8;
-the hub keeps it as a `system` event of its own whose body holds `"chat": "agent"`) and reports `waiting`, which an
-author run may without a decision of its own. The run waits as a plan run waits for an answer: the worker keeps it,
-its slot and its lease, the time it waits does not count toward its timeout, and the hub sends the owner the notice
-`author_waiting` (`docs/notifications.md`). The owner replies with `POST .../runs/{id}/messages` or `evo-agents hub
-run send RUN TEXT`; the reply goes through the inbox to the agent's next turn in the same session. A run that waited a
-day (`EVO_HUB_DECISION_WAIT_SECONDS`) is `parked` with the reason `nobody replied in its chat within 24 hours`: the
-worker lets it go and keeps its directory, worktrees, skills and session. A reply to a parked author run queues the run
-that resumes it, an author run pinned to the same worker with `resume_of_run_id`, the session, request, repos, model,
-timeout and agent time of the parked one, which ends `done` (`resumed as #N`); the message goes to the new run's
+The agent talks with the member who dispatched the run in the run's chat, never through a question tool. After each turn
+the worker posts the agent's last message to the chat (`POST /v1/worker/runs/{id}/chat`, at most 16 KiB of UTF-8; the
+hub keeps it as a `system` event of its own whose body holds `"chat": "agent"`) and reports `waiting`, which an author
+run may without a decision of its own. The run waits as a plan run waits for an answer: the worker keeps it, its slot
+and its lease, the time it waits does not count toward its timeout, and the hub sends the owner the notice
+`author_waiting` (`docs/notifications.md`). The owner replies with `POST .../runs/{id}/messages` or `evo-agents hub run
+send RUN TEXT`; the reply goes through the inbox to the agent's next turn in the same session. A run that waited 10
+minutes (`EVO_HUB_DECISION_WAIT_SECONDS`) is `parked` with the reason `nobody replied in its chat within 10 minutes`:
+the worker lets it go and keeps its directory, worktrees, skills and session. A reply to a parked author run queues the
+run that resumes it, an author run pinned to the same worker with `resume_of_run_id`, the session, request, repos,
+model, timeout and agent time of the parked one, which ends `done` (`resumed as #N`); the message goes to the new run's
 inbox and its answer names that run (`run_id`). A run parked 7 days is cancelled, and a message to it is 409.
 
 The run waits after every turn, the plan on the hub or not, so the member can ask for changes in the same chat; it
@@ -935,12 +935,14 @@ answer, and when none is left it ends its turn: the run is `waiting`, the worker
 the owner sees the decision in the Inbox on the web. The answer goes to the run's inbox as a message naming the
 decision, the worker hands it to the agent in the same session, and the run is `running` again.
 
-A run that waits 24 hours (`DECISION_WAIT_SECONDS`; `EVO_HUB_DECISION_WAIT_SECONDS` of the hub's job worker changes
-it) is `parked`: the next heartbeat tells the worker to stop the agent at the end of its turn, the slot is free, and the
-worker keeps the agent's session and the worktrees. An answer then queues a new plan run pinned to the same worker,
-with `resume_of_run_id` naming the parked run, which goes on in the same session and worktrees; the parked run is
-`done`. A run parked for 7 days (`PARKED_DAYS`) is `cancelled` and its decisions expire. A waiting run whose cancel
-was asked for is cancelled instead of parked, and revoking a worker cancels the runs parked on it, since no other
+No wait holds a worker for long. A run that waits 10 minutes (`DECISION_WAIT_SECONDS`; `EVO_HUB_DECISION_WAIT_SECONDS`
+of the hub's job worker changes it) is `parked`, and one whose open decisions are all waits for a time or an event of
+the hub (`evo-agents worker wait`) that wake later than that is parked at the reaper's next pass, since nobody answers
+those: the next heartbeat tells the worker to stop the agent at the end of its turn, the slot is free, and the worker
+keeps the agent's session and the worktrees. An answer, or a wait that wakes, then queues a new plan run pinned to the
+same worker, with `resume_of_run_id` naming the parked run, which goes on in the same session and worktrees; the parked
+run is `done`. A run parked for 7 days (`PARKED_DAYS`) is `cancelled` and its decisions expire. A waiting run whose
+cancel was asked for is cancelled instead of parked, and revoking a worker cancels the runs parked on it, since no other
 worker has their session.
 
 The worker reports `waiting` (`POST /v1/worker/runs/{id}/state`) when the agent's turn ended with a decision open;
@@ -1655,7 +1657,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | attempts per dispatch | 3 |
 | slots per worker | 1 to 16 |
 | run timeout | 5 to 240 minutes; a plan run 2, 4, 8 or 24 hours of agent time |
-| decision | 2 to 6 options, context 16 KiB; parked after 24 hours waiting, cancelled 7 days later |
+| decision | 2 to 6 options, context 16 KiB; parked after 10 minutes waiting, cancelled 7 days later |
 | prompt of a plan run | 32 KiB, its list of steps 14 KiB |
 | prompt of a step's session | 32 KiB, its handoff 1,000 to 4,000 tokens (3 bytes a token) |
 | sessions a plan run's usage lists | the latest 100 (`sessions_left_out` counts the others) |
@@ -3002,7 +3004,7 @@ service starts the new version instead of starting the old one again and again
 the hub answered 5xx or 429, 1 for another refusal, 2 for a wrong command line.
 
 A daemon that dies without ending its runs (SIGKILL, or a service manager whose 60 seconds ran out, which can happen
-while a plan run waits up to a day for its owner's answer) leaves each run's `agent.json`, and may leave the agents
+while a run's agent ends its turn) leaves each run's `agent.json`, and may leave the agents
 running, since each has a process group of its own. The next daemon, before it claims anything, names those runs in
 its first heartbeat that gets an answer and stops each one's agent: SIGTERM to the process group, and to the groups of
 its leader's descendants, then SIGKILL to what is left 10 seconds later; nothing is sent when the leader's pid now

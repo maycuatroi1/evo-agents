@@ -11388,7 +11388,7 @@
     "schedule": {
       "title": "Quiet hours and summary",
       "quiet": "Quiet hours",
-      "quietHint": "Push waits until they end, except a question whose run would park within two hours.",
+      "quietHint": "Push waits until they end, questions included: a run that waits frees its worker and goes on once you answer.",
       "start": "From",
       "end": "Until",
       "overnight": "From {start} tonight until {end} tomorrow.",

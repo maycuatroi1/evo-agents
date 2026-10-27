@@ -1,15 +1,16 @@
 """The agent of a plan run waits for a time or an event of the hub (``evo-agents worker wait``) instead of asking its
 owner to say when it came: POST /v1/worker/runs/{run}/waits, and the hub's own answer when it comes.
 
-The route stores a decision of category ``wait`` (``runs.WAIT_DECISION_CATEGORY``) whose question is the agent's
-reason, whose context says what the run waits for, and whose options let the person asked cut it short: Go on now and
-Stop waiting. It notifies nobody, since it asks nobody anything, but it is open like any decision: the daemon moves the
-run to waiting at the end of the agent's turn, and the reaper parks it after a day as it parks any
-(``run_state.park_waiting``). ``wake_at`` is when it wakes at the latest: ``until``, or MAX_WAIT_DAYS from now when
+The route stores a decision of category ``wait`` (``runs.WAIT_DECISION_CATEGORY``) whose question is the agent's reason,
+whose context says what the run waits for, and whose options let the person asked cut it short: Go on now and Stop
+waiting. It notifies nobody, since it asks nobody anything, but it is open like any decision: the daemon moves the run
+to waiting at the end of the agent's turn, and the reaper parks it at its next pass, since nobody answers it, so the
+wait holds no worker (``run_state.park_waiting``); a wait that wakes within ``runs.DECISION_WAIT_SECONDS`` keeps the
+slot as a decision does that long. ``wake_at`` is when it wakes at the latest: ``until``, or MAX_WAIT_DAYS from now when
 only ``on`` is given, and never later than that, so a parked run is still there (``run_state.expire_parked`` leaves a
-run alone while a wait of it has not come). ``wake_on`` is the event that wakes it sooner: an event of the run's
-project in hub_events of kind ``on`` (``hub_events.KINDS``, or a kind a core plugin records of its own) whose payload
-contains ``contains``, written after the wait was asked (``after`` is the project's last event then).
+run alone while a wait of it has not come). ``wake_on`` is the event that wakes it sooner: an event of the run's project
+in hub_events of kind ``on`` (``hub_events.KINDS``, or a kind a core plugin records of its own) whose payload contains
+``contains``, written after the wait was asked (``after`` is the project's last event then).
 
 ``wake_waits``, on each pass of the reaper (``run_state.recover_runs``), answers every open wait whose event or time
 came, each in a transaction of its own under the locks an answer takes (``decisions.lock_run_of``): the decision is
