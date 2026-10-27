@@ -414,7 +414,9 @@ def test_git_history_gives_each_commit_the_files_it_changed(tmp_path):
     assert merged["props"]["paths"] == ["config.yaml"] and merged["props"]["merge"] is True  # against main's side
     assert merged["id"] == f"app:commit:{merge}" and merged["rev"] == merge and merged["title"] == f"app@{merge[:10]}"
     assert merged["props"]["parents"][1] == feature and merged["props"]["files"] == 1
-    assert "body" not in merged and "uri" not in merged  # no message; a source by path has no forge to link to
+    assert merged["body"] == {"format": "text", "text": "Merge feature"} and merged["label"] == {"integrity": "U"}
+    assert commits[feature]["body"]["text"] == "feature: edit the config"  # the message is the item's text
+    assert "uri" not in merged  # a source by path has no forge to link to
     assert listing_of(msgs, "app:commit:") == {"type": "listing", "scope": "app:commit:", "complete": True, "count": 4}
 
 
@@ -625,7 +627,7 @@ def github_pull(number: int, updated: str, **extra) -> dict:
         "html_url": f"https://github.com/acme/demo-app/pull/{number}",
         "created_at": "2026-09-01T00:00:00Z",
         "updated_at": updated,
-        "body": "Free text of the pull request that must never be read.",
+        "body": "Free text of the pull request, read for the codes it names.",
         **extra,
     }
 
@@ -647,7 +649,7 @@ def github(monkeypatch):
     return fake
 
 
-def test_git_reads_the_pull_requests_of_a_repo_on_github_without_their_text(tmp_path, kg_env, github):
+def test_git_reads_the_pull_requests_of_a_repo_on_github_with_their_body_but_no_comment(tmp_path, kg_env, github):
     project = make_project(tmp_path, kg_env)
     head = git(tmp_path / "demo-app", "rev-parse", "HEAD").strip()
     merged = github_pull(7, "2026-10-02T00:00:00Z", merged_at="2026-10-02T00:00:00Z", merge_commit_sha=head)
@@ -659,6 +661,7 @@ def test_git_reads_the_pull_requests_of_a_repo_on_github_without_their_text(tmp_
     pull = corpus.get("app:pr:7").record
     assert pull["kind"] == "pr" and pull["title"] == "Change 7" and pull["label"] == {"integrity": "U"}
     assert pull["uri"] == "https://github.com/acme/demo-app/pull/7"
+    assert corpus.body_text(pull) == "Free text of the pull request, read for the codes it names."
     assert pull["props"] == {
         "repo": "app",
         "github": "acme/demo-app",

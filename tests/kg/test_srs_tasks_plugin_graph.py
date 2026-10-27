@@ -15,6 +15,7 @@ is read: labels, ids, identifiers. Nothing touches ~/.evo/kg or a hub.
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -409,3 +410,47 @@ def test_srs_identifiers_find_codes_inside_text_and_come_before_the_projects_own
     }
     assert [entry["id"] for entry in merged["sources"]] == ["harness", "code", "plugin.srs"]
     assert knowledge_with(KNOWLEDGE, []) is KNOWLEDGE  # no plugin source: the config as it is
+
+
+def test_use_cases_of_a_document_no_version_approved_are_nodes_marked_by_their_approval():
+    """A document with no approved version gives its use cases as nodes (no fragment, so no text of the draft), and a
+    document whose newer version adds one gives it next to those of the approved version."""
+    refunds, snap = snapshot(REFUNDS, "refunds", "r")
+    next(found for found in snap.doc.items if found.code == "UC PAY-1").aliases = ["UC  41"]
+    draft = replace(snap, version=replace(snap.version, state="in_review", number=1))
+    row = replace(refunds, approved_version=None, latest_version=1, latest_state="in_review")
+    made = srs_kg.document_item("plugin.srs", row, None, pending=draft)
+    assert "fragments" not in made and made["props"]["version"] is None
+    assert made["props"]["graph"]["edges"] == []
+    (node,) = made["props"]["graph"]["nodes"]
+    assert node["id"] == "usecase:UC PAY-1" and "anchor" not in node
+    assert node["props"] == {"code": "UC PAY-1", "approval": "in_review", "aliases": ["UC 41"]}
+
+    sample, approved = snapshot(SAMPLE_SRS.read_text(encoding="utf-8"), "demo-shop", "k")
+    both = [found for found in approved.doc.items if found.code]
+    news = replace(
+        approved, doc=copy.deepcopy(approved.doc), version=replace(approved.version, state="draft", number=3)
+    )
+    news.doc.items.append(replace(next(f for f in both if f.kind == "use_case"), code="UC ORD-99", key="k99"))
+    made = srs_kg.document_item("plugin.srs", replace(sample, latest_version=3), approved, pending=news)
+    states = {
+        n["id"]: n["props"]["approval"] for n in made["props"]["graph"]["nodes"] if n["id"].startswith("usecase:")
+    }
+    assert states["usecase:UC ORD-99"] == "draft" and states["usecase:UC ORD-1"] == "approved"
+    assert set(states.values()) == {"approved", "draft"} and list(states).count("usecase:UC ORD-99") == 1
+
+
+def test_aliases_of_use_cases_are_identifiers_that_map_each_to_its_code():
+    refunds, snap = snapshot(REFUNDS, "refunds", "r")
+    next(found for found in snap.doc.items if found.code == "UC PAY-1").aliases = ["UC 41", "UC 42"]
+    items = [srs_kg.document_item("plugin.srs", refunds, snap)]
+    entries = srs_kg.identifiers(template_of(), srs_kg._aliases(items))
+    (found,) = [entry for entry in entries if entry.get("aliases")]
+    assert found["kind"] == "UseCase" and found["aliases"] == {"UC 41": "UC PAY-1", "UC 42": "UC PAY-1"}
+    assert re.findall(found["pattern"], "UC 41, UC  42 and UC 411 or XUC 41") == ["UC 41", "UC  42"]
+    checked("plugin.srs", "srs", {"items": [], "identifiers": entries}, KNOWLEDGE, PROJECT)  # the hub takes them
+    with pytest.raises(SourceFailure):
+        bad = [{"kind": "UseCase", "pattern": "UC 4", "aliases": {"UC 4": 1}}]
+        checked("plugin.srs", "srs", {"items": [], "identifiers": bad}, KNOWLEDGE, PROJECT)
+    many = srs_kg.alias_entries("UseCase", {f"UC {n}": "UC PAY-1" for n in range(1, 400)})
+    assert len(many) > 1 and all(len(entry["pattern"]) <= srs_kg.PATTERN_CHARS for entry in many)

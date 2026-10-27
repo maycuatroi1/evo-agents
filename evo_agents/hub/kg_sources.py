@@ -69,6 +69,7 @@ ITEM_KEYS = frozenset({"id", "kind", "rev_time", "uri", "parent", "title", "body
 IDENTIFIER_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 MAX_IDENTIFIERS = 50  # patterns one source adds
 MAX_PATTERN_CHARS = 500
+MAX_ALIASES = 1000  # alias codes of one identifier
 CURSOR_KEYS = frozenset({"item", "at"})
 HUB = "hub"  # what PluginSource.plugin names for a source of the hub's own
 READS_CHATS = PERMISSION["chat.message"]  # chats:read: a plugin granted it reads the project's group chats
@@ -139,7 +140,8 @@ def _item(source: str, raw, ladder: tuple[str, ...], project: str) -> dict | Non
 
 def _identifiers(source: str, raw) -> tuple[dict, ...]:
     """The identifiers of a source's answer, checked: a kind as an ontology names one, a pattern that compiles and
-    never matches nothing."""
+    never matches nothing, and optionally ``aliases``, the codes the pattern finds that stand for another code
+    ({alias: code}, at most MAX_ALIASES): the link stage links a mention of an alias to the node of its code."""
     if raw is None:
         return ()
     if not isinstance(raw, list) or len(raw) > MAX_IDENTIFIERS:
@@ -158,8 +160,18 @@ def _identifiers(source: str, raw) -> tuple[dict, ...]:
             raise SourceFailure(f"source {source} answered a pattern that does not compile") from None
         if empty:
             raise SourceFailure(f"source {source} answered a pattern that matches nothing at all")
-        if {"kind": kind, "pattern": pattern} not in found:
-            found.append({"kind": kind, "pattern": pattern})
+        aliases = entry.get("aliases")
+        if aliases is not None and (
+            not isinstance(aliases, dict)
+            or len(aliases) > MAX_ALIASES
+            or not all(isinstance(a, str) and isinstance(c, str) and a and c for a, c in aliases.items())
+        ):
+            raise SourceFailure(
+                f"source {source} answered aliases that are not {{alias: code}} of at most {MAX_ALIASES}"
+            )
+        wanted = {"kind": kind, "pattern": pattern, **({"aliases": dict(aliases)} if aliases else {})}
+        if wanted not in found:
+            found.append(wanted)
     return tuple(found)
 
 
@@ -285,7 +297,7 @@ def knowledge_with(knowledge: dict, sources: list[PluginSource]) -> dict:
         if entry not in identifiers:
             identifiers.append(dict(entry))
     for entry in knowledge.get("identifiers") or []:
-        if {"kind": entry.get("kind"), "pattern": entry.get("pattern")} not in identifiers:
+        if (entry.get("kind"), entry.get("pattern")) not in {(i["kind"], i["pattern"]) for i in identifiers}:
             identifiers.append(entry)
     found = {**knowledge, "sources": kept + added}
     if identifiers:
