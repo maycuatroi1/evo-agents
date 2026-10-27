@@ -264,6 +264,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `agent_types` | `name`, `title`, `description`, `profile`, `packs`, `environment`, `jobs`, `events`, `pages` | a template of an agent profile with the plugin's own packs, environment, jobs, events and pages it uses, which a project enables and the plugin hands tasks to | the same (section Agent types) |
 | `cli` | `name`, `help`, `http` (`method`, `path`), `project`, `args` (each `name`, `type`, `in`, `flag`, `positional`, `choices`, `required`, `repeatable`, `help`, `default`, `metavar`, `values`, `group`), `when` (each `arg`, `http`), `confirm` (`flag`, `text`), `client`, `output` (`json`, `table`, `text`, `render`, `keys`, `schema`) | a command `evo-agents hub <id> <name>`, which the CLI reads from the hub and runs as a call of the plugin's route (section Commands of the CLI) | the same |
 | `notice_kinds` | `name` (the plugin's table prefix, then a word), `title`, `description` | a kind of notice the plugin sends with `core_plugin_api.notify`, which members' notification settings list | (core only) |
+| `rankers` | `name`, `python` (`module:function`), `sink`, `title`, `description` | a function that puts the hits of `history_search` and `kg_search` in a new order (core plugins only, version 1; section Rankers); the plugin declares `egress`, and `sink` names one of its sinks, left out when it has one |
 
 **Commands of the CLI** (`cli`, version 1). A plugin adds commands to `evo-agents hub <id> <command>` without a
 release of the CLI. `GET /v1/cli/plugins` answers any member signed in with `{"version": 1, "plugins": [{"id",
@@ -669,7 +670,7 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.5, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.6, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
 `tests/plugins/test_core_plugin_api.py` drives through a fake chat service; `tests/fixtures/core_plugins/northwind_ledger`
@@ -682,7 +683,7 @@ easy to write and keeps it working from one release to the next.
 
 **Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
 point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
-("northwind_chat needs core plugin API 1.6; this hub serves 1.5"), and `core_plugins()` leaves the plugin out with that
+("northwind_chat needs core plugin API 1.7; this hub serves 1.6"), and `core_plugins()` leaves the plugin out with that
 reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
 for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
 
@@ -707,6 +708,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | 1.3 | the pull request of branch `feat/lean-core-features` (plan plugin-market): a plugin's own tables (`plugin_metadata`, `adopt_tables`, `own_tables`, `HUB_KEYS`, `PluginSchemaError`), a caller's access (`project_access`, `has_role`, `ROLES`, `ProjectRef`), the hub's reads (`read_*`, `step_key` and their refs), writes (`emit_event`, `push_signal`, `create_invite`, `queue_kg_build`, `notify`), agents and chat runs (`enabled_agent_type`, `hand_task`, `chat_run_of`, `run_session`, `reply_in_chat`), `project_configs`, `Session.machine` | the release after 0.44.2 | none yet: 1.2.0 does not load on 1.3 |
 | 1.4 | the pull request of branch `feat/editorial-api` (plan editorial-on-hub): a task's branch and agent time (`hand_task(repo=, branch=, minutes=)`, `MAX_TASK_MINUTES`), the probes of a plugin's own rules (`add_probe`, `remove_probe`, `MAX_PROBE_REF_CHARS`) | the release after the one that carries 1.3 | none yet: a plugin of 1.3 does not load on 1.4 |
 | 1.5 | the pull request of branch `feat/chat-bridges` (plan chat-bridges): a group chat's bridges to a group of a plugin's channel (`bridge_code`, `bridge_link`, `bridge_find`, `bridge_read`, `bridge_unlink`, `bridge_move`, `bridge_set_state`, `bridge_message`, `bridge_file`, `bridge_sent`, `bridge_send`, `bridge_attach`, `Bridge`, `BridgeMessage`, `BridgeFile`, `BRIDGE_EVENT`) | the release after the one that carries 1.4 | none yet: a plugin of 1.4 does not load on 1.5 |
+| 1.6 | the pull request of branch `feat/decision-plugin-api` (plan jev-decisions): the manifest key `egress`, label-gated reads of a project's text (`read_run_failure`, `read_review_queue`, `read_corrections`, `read_accepted_rules`), writes as the plugin (`classify_run_failure`, `decide_graph`, `dismiss_review_item`), `EgressSink`, `Cleared` and the result types | the release after the one that carries 1.5 | none yet: a plugin of 1.5 does not load on 1.6 |
 
 **A plugin of the market (1.3).** Each function takes the connection of the caller's transaction and the plugin's
 handle (`plugin(__name__)`), and works only in a project that enables the plugin: another project, or one that does not
@@ -809,6 +811,38 @@ core plugin). Both functions run in the plugin's transaction; neither needs a me
 | `ask_agent_type(conn, plugin, project, agent_type, question, *, asker, ref, cleared)` | queues a question run of the plugin's agent type `agent_type` in `project` and gives `AgentQuestion(question_id, run_id, project, agent_type, ref, made)`. `asker` names the person as the plugin knows them, `ref` is the plugin's key of the question, unique per message it answers, and `cleared` the `Clearance` of the place the answer goes. Checks, in order: 422 for a `question` empty once stripped, longer than `MAX_QUESTION_BYTES` (4096) bytes of UTF-8 or holding NUL, and an `asker` or `ref` that is not one line of 1 to `MAX_ASKER_CHARS` or `MAX_REF_CHARS` (200) characters; 404 for a project that does not enable the plugin, or a type it did not enable, turned off or that the plugin's version does not contribute; a `ref` the plugin asked before in the project gives that question back with `made` False, whatever the question or the type, and checks nothing more; 409 for a deleted profile or a `run_as` who no longer holds writer, and when no worker of `run_as` the type may run on takes question runs now (each worker's reasons; one that is only busy takes it); 403 for a project kept from `cleared`, as `restricted` reads it; 429 once the runs of the type reached its cap. Audited `<plugin>.ask`, `run_as` its actor, the target naming the question, the run and the asker |
 | `read_agent_answer(conn, plugin, question_id)` | `AgentAnswer(question_id, ref, project, agent_type, run_id, state, text, label, failure_cause)` of a question of the plugin, as it stands: `state` is `pending` until the run ended, then `done` (`text` the answer, at most `MAX_ANSWER_CHARS`, 8000), `failed` (`failure_cause` why), `cancelled`, or `refused`, with no text, when the project is kept from the question's `cleared` now: the hub checks it again at every read. `label` is the project's default label naming the project, the label the answer carries, read only. 404, the same words, for another plugin's question and for none; the plugin need not still be enabled |
 | `ANSWER_EVENT` | `agent.answer`, the event the plugin gets when a question run of its agent type ends (section Agent types) |
+
+**Rankers** (`rankers`, version 1, core plugins only). A core plugin the project enabled may reorder the hits of
+`history_search` (REST and MCP) and of the hub's `kg_search` (REST tools, `/mcp`, `kg serve --backend hub`). The
+manifest declares `egress` and `contributes.rankers: [{name, python: "module:function", sink}]`; an isolated plugin
+that declares `rankers` is refused, and a plugin-v1 manifest without it stays valid. The function is
+`handler(params, context)` (async, or sync in a thread) with `params` = `{project, project_id, query, source, sink,
+hits: [{id, text, source}]}` and returns `{"order": [id, ...]}`.
+
+- Only hits whose label the plugin's sink may read (`Policy.allows`, as the decision reads) go to the ranker, redacted
+  and cut; the other hits keep their place.
+- The whole search has 2 seconds for all rankers. A timeout, an error, a bad answer or no ranker leaves the old order.
+- The response says `reranked: true` when an order changed. `rank` (ts_rank) keeps its original value. `history_search`
+  reranks the page it returns, so `limit` and `offset` keep their meaning.
+
+**Egress and decisions (1.6).** A plugin that sends a project's text out of the hub declares where in its manifest:
+`egress: [{id: <sink>, kind: <kind>, host: <host>}]` (`Plugin.egress`, a tuple of `EgressSink`; ids are unique; a plugin
+with `egress` is a per-project plugin, so a project enables it). Each read names one of its sinks, or the only one, and
+returns only the items whose label the project's policy lets the sink read: the project declares the sink in
+`knowledge.yaml` `policy.sinks` and does not close it, and its clearance covers the label under `Policy.allows`, the
+rule `judges.codex_cleared` applies to `codex@`. An item without a readable label counts as the highest label of the
+project. A project without the sink gets a `Cleared` with no items and `why` saying so. Text is redacted and cut.
+
+| Name | What it does and refuses |
+| --- | --- |
+| `read_run_failure(conn, plugin, project, run_id, *, sink=None)` | `Cleared` holding one `RunFailure`: sanitized error, `failure_cause`, `failure_cause_inferred` and the last events of the log (at most `MAX_TAIL_BYTES`), read at the label of the run's plan. 404 for a run the project has not |
+| `read_review_queue(conn, plugin, project, config, *, sink=None, limit=100)` | `Cleared` of `ReviewItemText`, the open items of the knowledge graph's review queue, read through the sink's ceiling |
+| `read_corrections(conn, plugin, project, *, since, until=None, sink=None, limit=200)`, `read_accepted_rules(conn, plugin, project, *, sink=None, limit=100)` | `Cleared` of `CorrectionText`, what people corrected in sessions of the range; `Cleared` of `AcceptedRule`, the rules the project accepted |
+| `classify_run_failure(conn, plugin, project, run_id, cause, *, model, confidence)` | sets the cause of a failed run only when the hub guessed it (409 for a worker's cause), keeps it a guess, writes the run event `cause_classification` (plugin, model, confidence, `previous_cause`) and audits `run.cause`. Undo: `POST /v1/projects/{project}/runs/{run_id}/cause/restore`, `hub run-cause restore RUN --project P` (writer) |
+| `decide_graph(conn, plugin, project, config, kind, src, *, rel=None, dst=None, reason, propose=False, sink=None)` | a decision on the graph with the plugin as its actor (`actor_plugin`, migration 0174). Undo: the decision's own undo, web and `hub kg decisions undo` |
+| `dismiss_review_item(conn, plugin, project, config, fingerprint, reason, *, sink=None)` | dismisses a review item as the plugin (`dismissed_by_plugin`). Undo: `DELETE /v1/kg/{project}/review/{fingerprint}/dismiss`, `hub kg review undismiss` (writer) |
+
+The `run.state` event of a failed move carries `failure_cause` and `failure_cause_inferred` (1.6, additive).
 
 **Bridges of group chats (1.5).** A plugin that contributes a channel bridges a group of it to a group chat of the
 hub, both ways, with these functions; `docs/chat-bridges.md` has the whole design. Each takes the plugin's connection

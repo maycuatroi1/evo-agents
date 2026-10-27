@@ -44,6 +44,7 @@ POINT_VERSIONS: dict[str, tuple[int, ...]] = {
     "loop_rules": (1,),
     "cli": (1,),
     "notice_kinds": (1,),
+    "rankers": (1,),
 }
 PLUGIN_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]{1,40}))?")
 _RELEASE = re.compile(r"(\d+(?:\.\d+)*)(?:\.?(a|b|rc|dev)\.?(\d*))?")
