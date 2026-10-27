@@ -20,6 +20,9 @@ project's decision board (criterion a8).
   each object's own route shows it (a canvas's under its label, a decision of a run whose plan they read), through
   the sink X-Evo-Sink names, else the project's hub sink.
 
+- POST /v1/projects/{p}/loop/adopt: a plan of the project becomes a deliver of the Loop for the use cases of a goal that
+  aims at an SRS document (``adopt``; an admin of the project, or the writer who owns the goal).
+
 - GET /v1/projects/{p}/goals/{ref}/baseline: the baseline of a goal that aims at an SRS document (plan srs-backlog-loop,
   criterion a5): each approved use case of its scope as delivered, undelivered or unknown, with the evidence the
   knowledge graph gives (``baseline``); for anyone with a grant on the project. POST .../baseline/fix sets use cases by
@@ -45,7 +48,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import delivery_evidence
-from evo_agents.hub.server.loop import baseline, board, chain, items
+from evo_agents.hub.server.loop import adopt, baseline, board, chain, items
 from evo_agents.hub.server.loop import breaker as loop_breaker
 from evo_agents.hub.server.loop.board_items import DecisionBoard
 from evo_agents.hub.server.loop.breaker import BREAKER_STATES
@@ -239,3 +242,16 @@ async def confirm_baseline(
     async with request.app.state.engine.begin() as conn:
         await baseline.confirm(conn, user, access, goal_id, code, found)
         return await baseline.view(conn, access.name, goal_id, code, found, why)
+
+
+@router.post(
+    "/{project}/loop/adopt", response_model=adopt.LoopAdopted, responses=BASELINE_REFUSALS | {422: {"model": ErrorBody}}
+)
+async def adopt_plan(
+    request: Request, project: ProjectName, body: adopt.LoopAdopt, user: CurrentUser
+) -> adopt.LoopAdopted:
+    """Adopt a plan of the project as a deliver for use cases of a goal's document (an admin of the project, or the
+    writer who owns the goal): the use cases are being delivered, and delivered at once for a plan already completed."""
+    async with request.app.state.engine.begin() as conn:
+        access = await _reader(conn, user, project, "the Loop")
+        return await adopt.adopt(conn, user, access, body)
