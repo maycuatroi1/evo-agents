@@ -182,6 +182,32 @@
         }
       ]
     },
+    "BridgeFile": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "media_type",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "size",
+          "annotation": "int",
+          "default": null
+        }
+      ]
+    },
     "BridgeMessage": {
       "kind": "dataclass",
       "frozen": true,
@@ -245,6 +271,11 @@
           "name": "created_at",
           "annotation": "datetime",
           "default": null
+        },
+        {
+          "name": "files",
+          "annotation": "tuple[BridgeFile, ...]",
+          "default": "()"
         }
       ]
     },
@@ -2944,6 +2975,42 @@
         }
       ],
       "returns": "LinkCode"
+    },
+    "bridge_file": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "context",
+          "kind": "positional_or_keyword",
+          "annotation": "Context",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "message_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "file_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "bytes | None"
     },
     "bridge_find": {
       "kind": "async function",

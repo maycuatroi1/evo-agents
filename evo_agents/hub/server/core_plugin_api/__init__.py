@@ -49,9 +49,9 @@ that is no default branch, pushed back to it, with up to ``MAX_TASK_MINUTES`` of
 
 Version 1.5 added the bridges of group chats to groups of a channel of the plugin, each function named ``bridge_``:
 ``bridge_code`` (from a web session of a chat admin), ``bridge_link``, ``bridge_find``, ``bridge_read``,
-``bridge_unlink``, ``bridge_move``, ``bridge_set_state``, ``bridge_message`` and ``bridge_sent`` for what goes out to
-the group, ``bridge_send`` and ``bridge_attach`` for what comes in, with ``Bridge``, ``BridgeMessage`` and
-``BRIDGE_EVENT``, the event a plugin's manifest names to get a bridged chat's new messages, run progress and reactions
+``bridge_unlink``, ``bridge_move``, ``bridge_set_state``, ``bridge_message``, ``bridge_file`` and ``bridge_sent`` for
+what goes out to the group, ``bridge_send`` and ``bridge_attach`` for what comes in, with ``Bridge``, ``BridgeMessage``,
+``BridgeFile`` and ``BRIDGE_EVENT``, the event a plugin's manifest names to get a bridged chat's new messages, run progress and reactions
 (``docs/chat-bridges.md``).
 
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
@@ -101,6 +101,7 @@ from evo_agents.hub.server.core_plugin_api._base import (
 from evo_agents.hub.server.core_plugin_api._bridges import (
     bridge_attach,
     bridge_code,
+    bridge_file,
     bridge_find,
     bridge_link,
     bridge_message,
@@ -221,6 +222,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     AgentRef,
     AgentTypeRef,
     Bridge,
+    BridgeFile,
     BridgeMessage,
     ChatMessage,
     ChatRunRef,
@@ -306,6 +308,7 @@ __all__ = [
     "AgentRef",
     "AgentTypeRef",
     "Bridge",
+    "BridgeFile",
     "BridgeMessage",
     "Caller",
     "Channel",
@@ -401,6 +404,7 @@ __all__ = [
     "begin",
     "bridge_attach",
     "bridge_code",
+    "bridge_file",
     "bridge_find",
     "bridge_link",
     "bridge_message",

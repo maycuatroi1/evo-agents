@@ -252,7 +252,10 @@ async def _reaction_event(conn, chat_id: int, kind: str, message_id: int, emoji:
     body = {"message_id": message_id, "emoji": emoji, "by": by.model_dump(mode="json"), "count": count}
     await write_event(conn, chat_id, kind, body)
     added = kind == "reaction_added"
-    await chat_bridge_events.reaction(conn, chat_id, message_id, emoji, added=added, count=count)
+    who = by.login if by.kind == "person" else by.handle if by.kind == "agent" else None
+    await chat_bridge_events.reaction(
+        conn, chat_id, message_id, emoji, added=added, count=count, by_kind=by.kind, by=who
+    )
 
 
 async def status_reaction(conn: AsyncConnection, *, message_id: int, profile_id: int, state: str) -> str | None:

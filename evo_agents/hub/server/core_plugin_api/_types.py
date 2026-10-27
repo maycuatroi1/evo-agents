@@ -180,8 +180,20 @@ class Bridge:
 
 
 @dataclass(frozen=True)
+class BridgeFile:
+    """A file a member attached to a message of a bridged chat (API 1.5): ``bridge_file`` reads its bytes. Never a
+    run's output or a file a tool read."""
+
+    id: int
+    name: str
+    media_type: str
+    size: int  # in bytes
+
+
+@dataclass(frozen=True)
 class BridgeMessage:
-    """A message of a bridged chat as its group may read it (API 1.5): the text redacted, without its files."""
+    """A message of a bridged chat as its group may read it (API 1.5): the text redacted, with the files its author
+    attached to it (``files``), never a run's outputs."""
 
     id: int
     chat_id: int
@@ -195,6 +207,7 @@ class BridgeMessage:
     reply_to: str | None  # the group's message its thread started from, when the bridge carried it
     link: str  # the message's page on the hub, a path: ``web_url`` makes it absolute, for what the group does not carry
     created_at: datetime
+    files: tuple[BridgeFile, ...] = ()  # what its author attached, in the order uploaded; ``bridge_file`` reads each
 
 
 class _KgSourceItems(TypedDict):

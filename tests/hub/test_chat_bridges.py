@@ -146,12 +146,16 @@ def test_channel_sink_absent_from_a_project_lets_none_of_its_chats_out(client, h
 # Telegram, to a group chat of the hub, through the API alone.
 
 if pg.DSN:
+    import base64
+    from dataclasses import replace
     from types import SimpleNamespace
 
     from sqlalchemy import insert, update
 
     from evo_agents.hub import chat_bridge_events
+    from evo_agents.hub.blobs import BlobStore
     from evo_agents.hub.server import core_plugin_api as api
+    from evo_agents.hub.server.chat_store import status_reaction
     from tests.hub.test_curator import night  # noqa: F401 (a fixture, on this module's web_client)
     from tests.hub.test_runs import OTHER, OWNER, audit_rows
     from tests.plugins import test_core_plugin_api as core
@@ -285,7 +289,72 @@ def test_a_bridge_carries_reactions_and_run_progress_of_the_messages_it_carried(
     assert core.on_hub(client, moved) == 1
     core.deliver_events(client)
     lines = [item["text"] for item in out(fake)]
-    assert f"+👍 on message {carried}" in lines and "run 41: running" in lines, lines
+    assert f"+👍 on message {carried} by person {OWNER}" in lines and "run 41: running" in lines, lines
+
+
+@on_pg
+def test_a_chat_bridge_reaction_names_who_put_it_a_person_or_an_agent(bridged):
+    client, db, fake, chat = bridged.client, bridged.db, bridged.fake, bridged.chat
+    assert core.said(client, text("look", group_id=ROOM, message_id="n-1")) == "bridged_in"
+    m, cm, ap = tables.chat_messages, tables.chat_members, tables.agent_profiles
+    ((carried,),) = sql(db, select(m.c.id).where(m.c.body == "look"))
+    query = select(ap.c.id, ap.c.handle).join_from(cm, ap, ap.c.id == cm.c.profile_id).where(cm.c.chat_id == chat["id"])
+    ((profile_id, handle),) = sql(db, query)
+
+    async def done(conn):
+        return await status_reaction(conn, message_id=carried, profile_id=profile_id, state="done")
+
+    assert core.on_hub(client, done) == "✅"
+    core.deliver_events(client)
+    lines = [item["text"] for item in out(fake)]
+    assert f"+✅ on message {carried} by agent {handle}" in lines, lines
+
+
+@on_pg
+def test_a_chat_bridge_carries_out_the_files_a_member_attached_and_reads_them_under_the_sink(bridged, s3, monkeypatch):
+    client, db, fake, chat, headers = bridged.client, bridged.db, bridged.fake, bridged.chat, bridged.headers
+    config = replace(client.app.state.config, **s3.config())
+    store = BlobStore.from_config(config)
+    monkeypatch.setattr(client.app.state, "config", config)
+    monkeypatch.setattr(client.app.state, "blobs", store)
+    target = f"/v1/chats/{chat['id']}/attachments"
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+    try:
+        up = client.post(
+            target, params={"name": "plan.png"}, content=png, headers={**headers["owner"], "Content-Type": "image/png"}
+        )
+        assert up.status_code == 201, up.text
+        attachment_id = up.json()["id"]
+        message = {"body": "the plan", "attachment_ids": [attachment_id]}
+        posted = client.post(f"/v1/chats/{chat['id']}/messages", json=message, headers=headers["owner"])
+        assert posted.status_code == 201, posted.text
+        message_id = posted.json()["id"]
+        other = sent(client, headers["owner"], chat["id"], "no files here")
+        core.deliver_events(client)
+        (line,) = [item for item in out(fake) if item["text"].endswith("the plan")]
+        (carried,) = line["files"]
+        assert (carried["name"], carried["size"], base64.b64decode(carried["data"])) == ("plan.png", len(png), png)
+
+        mine = api.plugin("northwind_chat.server")
+
+        async def read(conn):
+            return await api.bridge_message(conn, mine, bridged.bridge_id, message_id)
+
+        found = core.on_hub(client, read)
+        assert found.files == (api.BridgeFile(attachment_id, "plan.png", "image/png", len(png)),)
+        context = api.Context(mine.id, client.app.state.engine, config)
+
+        def file_of(of_message: int, file_id: int = attachment_id):
+            return client.portal.call(api.bridge_file, context, mine, bridged.bridge_id, of_message, file_id)
+
+        assert file_of(message_id) == png
+        assert file_of(other["id"]) is None, "a file of another message"
+        # The project's channel sink lowered below the chat's level: neither the message nor its file goes out.
+        channel_sink(db, {"level": "public", "location": "any"})
+        assert file_of(message_id) is None
+        assert core.on_hub(client, read) is None
+    finally:
+        store.close()
 
 
 @on_pg
