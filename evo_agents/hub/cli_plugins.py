@@ -184,9 +184,11 @@ def cmd_install(args) -> int:
     if (args.github is None) == (args.name is None):
         raise HubError("name the plugin, or its GitHub repo with --github OWNER/REPO[@TAG], not both")
     if args.github is not None:
+        if args.project and args.trust:
+            raise HubError("--trust is for a hub admin: a project's admin trusts the signer of this release alone")
         return install_github(args)
-    if args.signer or args.trust:
-        raise HubError("--signer and --trust go with --github")
+    if args.signer or args.trust or args.project:
+        raise HubError("--signer, --trust and --project go with --github")
     hub, _ = signed_in()
     return _changed(args, hub.call("POST", _path(args.name, "install"), {"version": args.version}), "Installed")
 
@@ -200,6 +202,9 @@ def cmd_upgrade(args) -> int:
 @client_command
 def cmd_remove(args) -> int:
     hub, _ = signed_in()
+    if args.project:  # a plugin a self-managed project installed
+        path = f"/v1/projects/{quote(args.project, safe='')}/plugins/{quote(args.name, safe='')}/remove"
+        return _changed(args, hub.call("POST", path), "Removed")
     return _changed(args, hub.call("POST", _path(args.name, "remove")), "Removed")
 
 
@@ -245,6 +250,11 @@ def register_plugins(hsub) -> None:
         help="with --github: what signs its releases (default: sigstore:OWNER/REPO/.github/workflows/ci.yml)",
     )
     install.add_argument("--trust", action="store_true", help="with --github: trust the signer if the hub does not yet")
+    install.add_argument(
+        "--project",
+        metavar="PROJECT",
+        help="with --github: as an admin of a self-managed project, install for it alone from a trusted owner",
+    )
     github = returns_object(*INSTALLED_KEYS, schema="MarketInstalled")
     json_option(install, returns_object(*PLUGIN_KEYS, schema="Plugin", variants=(("--github", github),)))
     install.set_defaults(func=cmd_install)
@@ -259,6 +269,7 @@ def register_plugins(hsub) -> None:
 
     removed = psub.add_parser("remove", help="remove the installed version; every version stays on the hub")
     _name(removed)
+    removed.add_argument("--project", metavar="PROJECT", help="remove a plugin this self-managed project installed")
     json_option(removed, returns_object(*PLUGIN_KEYS, schema="Plugin"))
     removed.set_defaults(func=cmd_remove)
     register_project_commands(psub, _name)

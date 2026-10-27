@@ -376,6 +376,31 @@ link, or the unused right of an accepted register link; it takes back no grant (
 accepting and revoking a link each write one audit row, `invite.create`, `invite.accept` and `invite.revoke`, naming
 the link's id and what it gives. Making, listing and revoking links take a hub admin; anyone else gets 403.
 
+### A self-managed project
+
+By default a hub admin installs plugins and gives grants and invite links. A hub admin can hand a project to its own
+admins: `hub admin project self-managed demo --on --owner lumen-labs` turns the state on with the GitHub owners they
+trust (`--owner` repeats, at least one), `--off` turns it off again (installed plugins and given grants stay). Each
+change is audited as `project.self_managed`. `hub admin project show demo` prints the state, the trusted owners, the
+ladder and every grant; the project's admins read it too.
+
+Once it is on, an admin of that project, never the agent of a run:
+
+- installs, upgrades and removes plugins from the releases of the trusted owners: `hub plugin install --github
+  lumen-labs/lumen-notes@v1.2.0 --project demo`, `hub plugin remove lumen-notes --project demo`. The signer is the
+  repository's own workflow (`sigstore:OWNER/REPO/.github/workflows/FILE.yml`, `ci.yml` by default) and the hub trusts
+  it for that release alone, so no publisher is stored. The plugin belongs to the project (`plugins.project_id`): no
+  other project sees, enables or removes it, and a name the hub or another project holds is refused. A hub admin
+  sees it with its project in `hub plugin list`. A repository of any other owner still needs a hub admin;
+- approves the `plugin_install` proposals of @builder that name a repository of a trusted owner, and gets the notice
+  for them (a hub admin may still decide them);
+- gives, changes and takes back grants with `hub admin project grant|revoke LOGIN PROJECT`, and makes invite links with
+  `hub admin project invite PROJECT --role R --max-level L`, with a role and a max level up to their own. They cannot
+  change or take back a grant above their own.
+
+Each is audited as the hub admin's route would write it (`plugin.install`, `plugin.upgrade`, `plugin.remove`,
+`grant.put`, `grant.delete`, `invite.create`), in the project.
+
 ## Projects and who sees what
 
 A project on the hub is a harness. `evo-agents hub project register` (run in the harness, or with its path) sends
@@ -3292,8 +3317,8 @@ checkout it is in and gives the images those names, tagged `EVO_HUB_VERSION`; `d
 pulls that release from GHCR instead. Postgres is not in it: point `EVO_HUB_DSN` at a database the platform manages,
 reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK` (default `dokploy-network`). The volumes `api-cache` and
 `worker-cache` are caches; deleting them loses nothing. `plugins-cache` holds the code and the environments of the
-isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep state:
-deleting it loses that state. The fifth service, `gateway`, runs a pinned image it does not build, and its volume
+isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep scratch state:
+deleting it loses that scratch only, not the plugin's records (`docs/plugins.md`, Records), which are rows of Postgres. The fifth service, `gateway`, runs a pinned image it does not build, and its volume
 `gateway-data` holds what the api reconciles into it, rebuilt when lost (section Model gateway). A hub for a client, from the same images with its own branding, publishers and plugins,
 is in `docs/hub-deployment.md`, and so are the core plugins the image installs: those `deploy/hub/core-plugins.txt`
 pins, from PyPI, and a hub's own, from the two build variables below. Set the variables in the platform's
@@ -3445,7 +3470,8 @@ traffic to a new release. A database at a revision the running code does not kno
 refused before anything runs, so going back to an older release means restoring a backup taken before the upgrade.
 
 **Backup.** Postgres holds every piece of state, so a backup is a dump of the database plus a copy of the bucket's
-`blobs/` prefix:
+`blobs/` prefix. The records of the isolated plugins (`plugin_records`, `docs/plugins.md`, Records) are in the dump; the
+volume `plugins-cache` is only a cache of code and environments, and needs no backup for them:
 
 ```sh
 pg_dump --format=custom --no-owner --file hub-$(date +%Y%m%d).dump "$EVO_HUB_DSN"

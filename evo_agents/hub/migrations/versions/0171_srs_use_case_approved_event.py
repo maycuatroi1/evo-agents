@@ -1,7 +1,7 @@
 """An event plugins may take: one use case of a version in review, approved.
 
-Revision ID: 0169
-Revises: 0168
+Revision ID: 0171
+Revises: 0170
 Create Date: 2026-10-27
 
 The names below are copies of ``evo_agents.hub.plugin_events`` and ``evo_agents.hub.hub_events`` as of this revision,
@@ -18,8 +18,8 @@ puts the check of 0165 back.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0169"
-down_revision = "0168"
+revision = "0171"
+down_revision = "0170"
 branch_labels = None
 depends_on = None
 

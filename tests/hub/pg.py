@@ -236,6 +236,8 @@ TODAY_TABLES = frozenset({"today_marks"})  # migration 0158: what Today keeps of
 DOCS_TABLES = frozenset({"docs_documents", "docs_versions", "docs_images", "docs_version_images"})
 # migration 0165: the bridges of group chats to groups of a channel, their codes and the ids of what they carried
 CHAT_BRIDGE_TABLES = frozenset({"chat_bridges", "chat_bridge_codes", "chat_bridge_messages"})
+# migration 0169: the records an isolated plugin keeps on the hub, and the leases that say whom a backend's call is for
+PLUGIN_RECORD_TABLES = frozenset({"plugin_records", "plugin_record_leases"})
 
 
 def plugin_version_tables() -> frozenset[str]:

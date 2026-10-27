@@ -30,10 +30,12 @@ from evo_agents.hub.plugin_calls import (
     PluginCallError,
     PluginHostUnavailable,
     call,
+    effective_grant,
     enabled_plugins,
     manifest_of,
 )
 from evo_agents.hub.profiles import MCP_PREFIX
+from evo_agents.hub.server import plugin_delegation
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.service.profiles import run_profile
 from evo_agents.hub.server.security import Principal
@@ -118,6 +120,17 @@ def _error(message: str) -> dict:
     return {"content": [{"type": "text", "text": f"error: {message}"}], "isError": True}
 
 
+async def _delegation(state, user: Principal, project: str | None, row, sink: str | None) -> str | None:
+    """The delegation of the call (``plugin_delegation``) when the project granted the plugin ``records:use``."""
+    if project is None or row.tier != "isolated" or plugin_delegation.PERMISSION not in effective_grant(row):
+        return None
+    async with state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        if access.role is None:
+            return None
+        return await plugin_delegation.mint(conn, row.id, access, user, sink, TOOL_TIMEOUT)
+
+
 async def answer(
     state, user: Principal, project: str | None, name: str, arguments: dict, sink: str | None = None
 ) -> dict:
@@ -141,7 +154,11 @@ async def answer(
     if problems:
         shown = "; ".join(f"{i.path or 'arguments'}: {i.message}" for i in problems[:SHOWN_PROBLEMS])
         return _error(f"bad arguments for {name}: {shown}")
-    params = {"tool": tool, "arguments": arguments, "caller": {"login": user.login, "project": project, "role": role}}
+    caller = {"login": user.login, "project": project, "role": role}
+    lease = await _delegation(state, user, project, row, sink)
+    if lease is not None:
+        caller["token"] = lease
+    params = {"tool": tool, "arguments": arguments, "caller": caller}
     run_id = user.scope.run_id if user.scope is not None else None
     jobs = getattr(state, "jobs", None)
     refs = graph_refs(state, user, project, sink)
