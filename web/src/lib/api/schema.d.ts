@@ -23399,7 +23399,7 @@ export interface components {
              * @description each kind of notification and its tier
              */
             tiers: components["schemas"]["TierSetting"][];
-            /** @description when an interrupt waits to be pushed until they end, but a decision whose run parks within two hours; null: none */
+            /** @description when an interrupt waits to be pushed until they end, a decision's too; null: none */
             quiet_hours: components["schemas"]["QuietHours"] | null;
             /**
              * Time Zone
@@ -24092,7 +24092,7 @@ export interface components {
             done_by_day: components["schemas"]["DayCount"][];
             /**
              * Active Runs
-             * @description at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued, idle: those whose agent works first, then waiting, parked and queued, the newest first within each
+             * @description at most 20 runs in leased, running, interactive, verifying, waiting, idle, parked, queued: those whose agent works first, then waiting, idle, parked and queued, the newest first within each
              */
             active_runs: components["schemas"]["OverviewRun"][];
             /**

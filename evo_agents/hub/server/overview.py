@@ -14,7 +14,7 @@ use the indexes the runs, decisions and plans already have.
   running, the runs in RUNNING_STATES; queued; and the runs that ended done, failed or lost on the last DAYS days in
   UTC, today included;
 - done_by_day: the runs that ended done on each of those days, oldest first, so its sum is counts.done_7d;
-- active_runs: at most MAX_ACTIVE runs in IN_FLIGHT, those whose agent works first, then waiting, parked, queued,
+- active_runs: at most MAX_ACTIVE runs in IN_FLIGHT, those whose agent works first, then waiting, idle, parked, queued,
   the newest first within each;
 - recent_runs: the MAX_RECENT runs that ended last, in any end state;
 - a local run (``local_runs``) shows in active_runs (also while it is idle), in recent_runs when it ended, in counts
@@ -78,7 +78,7 @@ MAX_DECISIONS = 20
 MAX_AUTHOR_WAITING = 20
 AUTHOR_WAITING_STATES = ("waiting", "parked")  # an author run's chat waits for its owner's reply (author.chat_status)
 RUNNING_STATES = runs.CLOCK_STATES  # an agent at work, headless or driven by a person, or its verify commands
-IN_FLIGHT = (*RUNNING_STATES, "waiting", "parked", "queued", "idle")  # in the order active_runs shows them
+IN_FLIGHT = (*RUNNING_STATES, "waiting", "idle", "parked", "queued")  # in the order active_runs shows them
 RECENT_STATES = (*runs.TERMINAL_STATES, "ended")  # ended is a local run's end
 ENDED_COUNTED = ("done", "failed", "lost")  # the end states counts has a number for; a cancel is the owner's own
 
@@ -189,7 +189,7 @@ class Overview(BaseModel):
     active_runs: list[OverviewRun] = Field(
         max_length=MAX_ACTIVE,
         description=f"at most {MAX_ACTIVE} runs in {', '.join(IN_FLIGHT)}: those whose agent works first, then "
-        "waiting, parked and queued, the newest first within each",
+        "waiting, idle, parked and queued, the newest first within each",
     )
     recent_runs: list[OverviewRun] = Field(
         max_length=MAX_RECENT, description=f"the {MAX_RECENT} runs that ended last, the last first"
@@ -581,14 +581,12 @@ def _parks_at(state: str, waiting_since: datetime | None, parked_at: datetime | 
 
 def parks_at(fields: dict, wait: timedelta) -> datetime | None:
     """When the run of a decision parks for want of an answer, from its row's ``run_kind``, ``run_state``,
-    ``waiting_since`` and ``parked_at``, which it takes out of ``fields``: ``wait`` after it started waiting (a chat
-    run's sooner), when it parked, or None while its agent works and for a local run."""
+    ``waiting_since`` and ``parked_at``, which it takes out of ``fields``: ``wait`` after it started waiting, when it
+    parked, or None while its agent works and for a local run."""
     waiting_since, parked_at = fields.pop("waiting_since"), fields.pop("parked_at")
     kind = fields.pop("run_kind")
     if kind == "local":  # no worker holds it and nothing parks it: it waits as long as it takes
         return None
-    if kind == "chat":  # the hub parks a chat run sooner, so a worker's slot is not held for long
-        wait = min(wait, timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS))
     return _parks_at(fields["run_state"], waiting_since, parked_at, wait)
 
 

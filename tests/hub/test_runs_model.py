@@ -335,7 +335,7 @@ def test_the_protocol_constants_the_plan_fixes():
     assert (runs.CLAIM_WAIT_SECONDS, runs.MAX_ATTEMPTS) == (25, 3)
     assert (runs.MAX_BATCH_EVENTS, runs.MAX_BATCH_BYTES, runs.MAX_EVENT_BODY_BYTES) == (500, 1 << 20, 64 << 10)
     assert (runs.MAX_RUN_EVENTS, runs.MAX_MESSAGE_BYTES, MAX_PROMPT_BYTES) == (20_000, 8 << 10, 32 << 10)
-    assert (runs.DECISION_WAIT_SECONDS, runs.PARKED_DAYS, runs.PLAN_TIMEOUT_CHOICES) == (86400, 7, (2, 4, 8, 24))
+    assert (runs.DECISION_WAIT_SECONDS, runs.PARKED_DAYS, runs.PLAN_TIMEOUT_CHOICES) == (600, 7, (2, 4, 8, 24))
 
 
 def test_decisions_and_notices_the_plan_names():
