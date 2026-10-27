@@ -202,6 +202,32 @@ def test_a_token_that_writes_asks_workflows_where_the_workers_app_holds_it(fake,
     assert with_app(curator_config, curator_asks, curator=True) == GITHUB_PERMISSIONS
 
 
+def test_a_token_that_writes_asks_pull_requests_where_the_workers_app_holds_it(fake, app_key):
+    """Runs #819 and #855: a plan run pushed its branch, then could not open its pull request, since the hub never
+    asked for ``pull_requests`` though the App held it. Asked where the installation holds it, whatever ``workflows``
+    says, never for a release run's token, never where it does not, never for a token that only reads, and never for
+    the Curator's App."""
+    held = {**GITHUB_PERMISSIONS, "pull_requests": "write"}
+    with_pulls = fake.install(OWNER, "evo-agents", permissions=held)
+    fake.install(THEIRS, "lumen-identity")
+    fake.collaborate(THEIRS, "lumen-identity", Account(OWNER, OWNER_ID), "write")
+    result = tokens(config(fake, app_key), [(OWNER, "evo-agents"), (THEIRS, "lumen-identity")])
+
+    granted = {token.installation.account: token.permissions for token in result.tokens}
+    assert granted == {OWNER: held, THEIRS: GITHUB_PERMISSIONS}
+    installation = Installation(with_pulls, OWNER, tuple(held.items()))
+
+    async def asks(app, permissions=None, **kwargs):
+        return app.run_permissions(installation, permissions, **kwargs)
+
+    assert with_app(config(fake, app_key), lambda app: asks(app, workflows=False)) == held
+    assert with_app(config(fake, app_key), lambda app: asks(app, pull_requests=False)) == GITHUB_PERMISSIONS
+    only_reads = with_app(config(fake, app_key), lambda app: asks(app, GITHUB_READ_PERMISSIONS))
+    assert only_reads == GITHUB_READ_PERMISSIONS
+    curator_config = config(fake, app_key, curator_app_id="77", curator_app_private_key=app_key[0])
+    assert with_app(curator_config, asks, curator=True) == GITHUB_PERMISSIONS
+
+
 # Whose token it is
 
 
