@@ -10585,7 +10585,8 @@
         "items": "Work item đang dở",
         "deadline": "Hạn",
         "owner": "Chủ"
-      }
+      },
+      "srsScope": "SRS {scope}"
     },
     "goal": {
       "meta": "{code} của {project}",
@@ -10611,7 +10612,10 @@
       "itemsSearch": "Work item của {goal}",
       "itemsCaption": "Work item của {goal}",
       "notFoundTitle": "Không có goal {code}",
-      "notFoundText": "Dự án không có goal nào mang mã hay bí danh đó."
+      "notFoundText": "Dự án không có goal nào mang mã hay bí danh đó.",
+      "srsScope": "Phạm vi SRS",
+      "srsScopeHeading": "{document}, dưới {heading}",
+      "backlogTitle": "Backlog SRS"
     },
     "chain": {
       "meta": "Work item {id} của {project}",
@@ -10681,7 +10685,9 @@
       "yours": "Bạn quyết",
       "chain": "Work item #{id}",
       "open": "Mở",
-      "openLabel": "Mở: {title}"
+      "openLabel": "Mở: {title}",
+      "baselinePreview": "Xem trước bản nền",
+      "baselineHide": "Ẩn bản nền"
     },
     "boardKind": {
       "goal_review": "Rà goal hằng tháng",
@@ -10699,7 +10705,8 @@
       "merge_manual": "Merge tay",
       "merge_sample": "Mẫu kiểm",
       "srs_review": "Duyệt SRS",
-      "srs_finding": "Finding SRS"
+      "srs_finding": "Finding SRS",
+      "srs_baseline": "Bản nền SRS"
     },
     "decidedBy": {
       "admin": "Admin",
@@ -10707,6 +10714,34 @@
       "run_owner": "Chủ của run",
       "srs_reviewer": "Người duyệt SRS",
       "chat_member": "Thành viên của chat"
+    },
+    "baseline": {
+      "title": "Backlog SRS",
+      "scopeHeading": "{document}, dưới {heading}",
+      "noUseCases": "Phạm vi này chưa có use case nào được duyệt.",
+      "noHeading": "Không có heading",
+      "count": "{count, number} {label}",
+      "state": {
+        "undelivered": "chưa giao",
+        "delivering": "đang giao",
+        "unknown": "chưa rõ",
+        "delivered": "đã giao"
+      },
+      "proposed": "Đang đề xuất: Loop chưa tạo build nào cho đến khi admin xác nhận",
+      "confirmed": "{by} đã xác nhận",
+      "noGraphTitle": "Không đọc được đồ thị tri thức",
+      "noGraphText": "Không có nó thì bản nền không có bằng chứng và không xác nhận được.",
+      "confirm": "Xác nhận bản nền",
+      "confirming": "Đang xác nhận",
+      "cancel": "Huỷ",
+      "confirmTitle": "Xác nhận bản nền của {goal}?",
+      "confirmText": "{open, number} trên {total, number} use case đã duyệt chưa giao và thành backlog: Loop sẽ tạo một build cho mỗi nhóm. Use case còn để chưa rõ thì không được build.",
+      "done": "Đã xác nhận bản nền",
+      "doneText": "Loop giao backlog của {goal} từ tick kế tiếp.",
+      "forbidden": "Chỉ admin của dự án mới xác nhận được bản nền.",
+      "conflict": "Bản nền đã được xác nhận, hoặc còn use case chưa có trạng thái.",
+      "noBuilds": "Loop chưa tạo build nào cho goal này.",
+      "buildsCaption": "Build của {goal}, mỗi nhóm của backlog một build"
     }
   },
   "problems": {

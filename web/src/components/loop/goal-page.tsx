@@ -29,7 +29,9 @@ import {
 } from "@/lib/loop-queries";
 
 import { GoalStatusBadge } from "./badges";
+import { BaselinePanel } from "./baseline-panel";
 import { GoalProgress, ReachedBadge, useMetricText } from "./goal-parts";
+import { useLoopViewer } from "./hooks";
 import { ItemsTable } from "./items-table";
 import { byState, countOf, STATE_LOOKS, totalCount } from "./model";
 
@@ -69,6 +71,24 @@ function MetricCard({ project, goal }: { project: string; goal: ProjectGoal }) {
   );
 }
 
+/** The baseline and backlog of a goal that aims at an SRS document; an admin confirms the baseline here too. */
+function BacklogCard({ project, goal }: { project: string; goal: ProjectGoal }) {
+  const t = useTranslations("loop.goal");
+  const viewer = useLoopViewer(project);
+  return (
+    <section aria-labelledby="goal-backlog-title" className="min-w-0 rounded-md border bg-card shadow-raised" data-testid="goal-backlog">
+      <div className="flex min-h-12 items-center border-b px-4 py-2">
+        <h2 id="goal-backlog-title" className="text-[15px] leading-[22px] font-semibold">
+          {t("backlogTitle")}
+        </h2>
+      </div>
+      <div className="px-4 py-4">
+        <BaselinePanel project={project} goal={goal.code} admin={viewer?.admin ?? false} />
+      </div>
+    </section>
+  );
+}
+
 function FactsCard({ project, goal }: { project: string; goal: ProjectGoal }) {
   const t = useTranslations("loop.goal");
   return (
@@ -85,6 +105,11 @@ function FactsCard({ project, goal }: { project: string; goal: ProjectGoal }) {
         {goal.opportunity ? (
           <Fact label={t("opportunity")} testId="goal-opportunity">
             <Identifier value={goal.opportunity} />
+          </Fact>
+        ) : null}
+        {goal.srs_document ? (
+          <Fact label={t("srsScope")} testId="goal-srs-scope">
+            {goal.srs_heading ? t("srsScopeHeading", { document: goal.srs_document, heading: goal.srs_heading }) : goal.srs_document}
           </Fact>
         ) : null}
         <Fact label={t("deadline")}>{goal.deadline ?? t("noDeadline")}</Fact>
@@ -174,6 +199,7 @@ export function GoalPage({ project, code, initialError }: { project: string; cod
             <MetricCard project={project} goal={goal} />
             <FactsCard project={project} goal={goal} />
           </div>
+          {goal.srs_document ? <BacklogCard project={project} goal={goal} /> : null}
           <GoalItems project={project} goal={goal} />
         </div>
       )}

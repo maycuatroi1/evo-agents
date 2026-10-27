@@ -20,11 +20,12 @@ import {
   Table,
   TriangleAlert,
   FileText,
+  ListChecks,
 } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { Tag } from "@/components/data/identifier";
 import { MetricStrip } from "@/components/data/metric-strip";
@@ -46,6 +47,7 @@ import {
   LOOP_REFRESH_MS,
 } from "@/lib/loop-queries";
 
+import { BaselinePanel } from "./baseline-panel";
 import { useLoopViewer } from "./hooks";
 import { boardGroups } from "./model";
 
@@ -58,6 +60,7 @@ const KIND_ICONS: Record<BoardKind, LucideIcon> = {
   goal_proposal: Goal,
   merge_breaker: PowerOff,
   loop_breaker: PowerOff,
+  srs_baseline: ListChecks,
   loop_decision: MessageSquare,
   run_decision: MessageSquare,
   author_question: MessageCircle,
@@ -76,6 +79,20 @@ const GROUP_ICONS: Record<BoardGroup, LucideIcon> = {
   srs: FileText,
 };
 
+/** The baseline a goal waits on, opened in place: the use cases with their proposed states, and the admin's confirmation. */
+function BaselinePreview({ project, goal, admin }: { project: string; goal: string; admin: boolean }) {
+  const t = useTranslations("loop.decide");
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex basis-full flex-col gap-3 pl-10" data-testid="board-baseline" data-goal={goal}>
+      <Button type="button" variant="ghost" size="sm" className="self-start" aria-expanded={open} onClick={() => setOpen(!open)} data-testid="board-baseline-toggle">
+        {open ? t("baselineHide") : t("baselinePreview")}
+      </Button>
+      {open ? <BaselinePanel project={project} goal={goal} admin={admin} /> : null}
+    </div>
+  );
+}
+
 /** One thing that waits: what, since when, who may decide it, and the page where it is decided. */
 function BoardRow({ project, item, login }: { project: string; item: BoardItem; login: string | null }) {
   const t = useTranslations("loop.decide");
@@ -83,6 +100,7 @@ function BoardRow({ project, item, login }: { project: string; item: BoardItem; 
   const decidedBy = useTranslations("loop.decidedBy");
   const Icon = KIND_ICONS[item.kind];
   const mine = login !== null && item.deciders.includes(login);
+  const baselineGoal = item.kind === "srs_baseline" && typeof item.refs?.goal === "string" ? item.refs.goal : null;
   const who = item.deciders.length > 0 ? t("deciders", { rule: decidedBy(item.decided_by), logins: item.deciders.join(", ") }) : t("nobody", { rule: decidedBy(item.decided_by) });
   return (
     <li className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3" data-testid="board-item" data-kind={item.kind} data-mine={mine ? "true" : "false"}>
@@ -127,6 +145,7 @@ function BoardRow({ project, item, login }: { project: string; item: BoardItem; 
           </Button>
         ) : null}
       </div>
+      {baselineGoal ? <BaselinePreview project={project} goal={baselineGoal} admin={mine} /> : null}
     </li>
   );
 }

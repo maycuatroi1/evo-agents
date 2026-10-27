@@ -34,6 +34,7 @@ import {
   type ProjectLoop,
 } from "@/lib/loop-queries";
 
+import { SrsBacklog } from "./baseline-panel";
 import { ChainList } from "./chain-list";
 import { useLoopViewer } from "./hooks";
 import { ItemsTable } from "./items-table";
@@ -204,6 +205,7 @@ function LoopBody({ project, loop, admin, reader, itemsError }: { project: strin
         </Banner>
       ) : null}
       <Strip loop={loop} />
+      <SrsBacklog project={project} admin={admin} />
       <ItemsCard project={project} loop={loop} itemsError={itemsError} />
     </>
   );
