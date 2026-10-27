@@ -8477,6 +8477,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/{chat_id}/bridges/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Bridge Code
+         * @description A one-time code that bridges the group chat to a group of ``kind``: the group's plugin takes it there within ten
+         *     minutes. From a web session of an admin of every project of the chat's agents, each of which enables the kind's
+         *     plugin with chats:read and chats:write.
+         */
+        post: operations["post_bridge_code_v1_chats__chat_id__bridges_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/bridges/{bridge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Bridge
+         * @description Take bridge ``bridge_id`` of the chat off: nothing goes to its group or comes from it any more. A chat admin
+         *     does it from the web or the CLI, a hub admin from either.
+         */
+        delete: operations["delete_bridge_v1_chats__chat_id__bridges__bridge_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/events": {
         parameters: {
             query?: never;
@@ -12861,6 +12904,13 @@ export interface components {
              */
             resumed: number[];
         };
+        /** BridgedTo */
+        BridgedTo: {
+            /** Bridge Id */
+            bridge_id: number;
+            /** Kind */
+            kind: string;
+        };
         /**
          * BriefSummary
          * @description The project's last morning brief (``evo_agents.hub.server.brief``).
@@ -15297,6 +15347,11 @@ export interface components {
              */
             label_admin: boolean;
             /**
+             * Bridges
+             * @description the groups of a core plugin's channel the chat is bridged to, oldest first
+             */
+            bridges?: components["schemas"]["ChatBridge"][];
+            /**
              * Restricted
              * @description a project of its agents is restricted: its notices name it and link only
              */
@@ -15404,6 +15459,55 @@ export interface components {
              * @description a person's GitHub avatar; null for a login that never signed in, an agent or the hub
              */
             avatar_url?: string | null;
+        };
+        /** ChatBridge */
+        ChatBridge: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @description the kind of channel of the group, as its core plugin names it
+             */
+            kind: string;
+            /**
+             * External Id
+             * @description the group's id on that channel
+             */
+            external_id: string;
+            /**
+             * Linked By
+             * @description the chat admin whose code bridged it
+             */
+            linked_by: string | null;
+            /**
+             * Linked At
+             * Format: date-time
+             */
+            linked_at: string;
+        };
+        /** ChatBridgeCode */
+        ChatBridgeCode: {
+            /**
+             * Code
+             * @description the one-time code the group's plugin takes, shown once
+             */
+            code: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description ten minutes after it was made
+             */
+            expires_at: string;
+        };
+        /** ChatBridgeCodeIn */
+        ChatBridgeCodeIn: {
+            /**
+             * Kind
+             * @description the kind of channel of the group, as a core plugin names it
+             */
+            kind: string;
         };
         /** ChatCandidate */
         ChatCandidate: {
@@ -18937,6 +19041,16 @@ export interface components {
              * @description the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes
              */
             attachments?: components["schemas"]["LinkedAttachment"][];
+            /**
+             * Via
+             * @description the kind of channel it came in by, from a group bridged to the chat; null when sent here
+             */
+            via?: string | null;
+            /**
+             * Bridged To
+             * @description the bridges it went out on, to their groups, oldest first
+             */
+            bridged_to?: components["schemas"]["BridgedTo"][];
         };
         /** GroupSample */
         GroupSample: {
@@ -70851,6 +70965,145 @@ export interface operations {
             header?: never;
             path: {
                 chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    post_bridge_code_v1_chats__chat_id__bridges_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatBridgeCodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatBridgeCode"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_bridge_v1_chats__chat_id__bridges__bridge_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                bridge_id: number;
             };
             cookie?: never;
         };
