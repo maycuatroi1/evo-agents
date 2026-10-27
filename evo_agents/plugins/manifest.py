@@ -67,7 +67,7 @@ MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
 PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
-CORE_ONLY_POINTS = ("tables", "kg_sources", "loop_rules", "notice_kinds")  # what only a core plugin contributes
+CORE_ONLY_POINTS = ("tables", "kg_sources", "loop_rules", "notice_kinds", "rankers")  # what only a core plugin contributes
 # what a project enables a plugin for, besides its permissions, its config and its routes and runtimes of a project
 PROJECT_POINTS = (
     "mcp_tools",
@@ -79,6 +79,7 @@ PROJECT_POINTS = (
     "environments",
     "kg_sources",
     "loop_rules",
+    "rankers",
 )
 # the keys of an agent type that name contributions of the plugin's own, and the point of each
 AGENT_TYPE_POINTS = {"packs": "agent_packs", "jobs": "jobs", "events": "events", "pages": "pages"}
@@ -128,6 +129,7 @@ CORE_ONLY_TEXT = {
     "kg_sources": "only a core plugin contributes a source of the knowledge graph, which the hub reads in its process",
     "loop_rules": "only a core plugin adds rules to the Loop, which the hub calls in its process",
     "notice_kinds": "only a core plugin adds kinds of notification, which it sends through the core plugin API",
+    "rankers": "only a core plugin ranks search hits, in the hub's process, with the hits its egress sink may read",
 }
 CORE_ONLY_KEYS = {
     "schema": "only a core plugin carries tables and a chain of migrations of its own",
@@ -257,6 +259,7 @@ def _semantics(data: dict) -> list[str]:
     sinks = [item["id"] for item in data.get("egress") or ()]
     for sink in sorted({sink for sink in sinks if sinks.count(sink) > 1}):
         found.append(f"egress: sink {sink!r} is listed twice")
+    found.extend(_ranker_problems(data, sinks))
     for index, item in enumerate((data.get("contributes") or {}).get("pages") or ()):
         if core and "entry" in item and "ui" not in data:
             found.append(
@@ -303,6 +306,8 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return _page_problems(where, item, core)
     if point == "notice_kinds" and not item["name"].startswith(table_prefix(plugin_id)):
         return [f"{where}: notice kind {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
+    if point == "rankers" and "python" not in item:
+        return [f"{where}.python: a ranker names the handler the hub calls, module:attribute"]
     if point == "cli":
         return _command_problems(where, item)
     if point == "runtimes":
@@ -310,6 +315,21 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
     if point == "environments":
         return _environment_problems(where, item)
     return []
+
+
+def _ranker_problems(data: dict, sinks: list[str]) -> list[str]:
+    """What is wrong with the rankers of a manifest: a ranker sends hits out, so the plugin declares ``egress``, and the
+    ranker names which of its sinks it sends them through (``sink``) unless it declares one."""
+    found = []
+    for index, item in enumerate((data.get("contributes") or {}).get("rankers") or ()):
+        where = f"contributes.rankers[{index}]"
+        if not sinks:
+            found.append(f"{where}: a ranker sends hits out, so the plugin declares the sink in egress")
+        elif "sink" in item and item["sink"] not in sinks:
+            found.append(f"{where}.sink: {item['sink']!r} is not a sink the plugin declares in egress")
+        elif "sink" not in item and len(sinks) > 1:
+            found.append(f"{where}.sink: the plugin declares several sinks in egress; name the one it ranks through")
+    return found
 
 
 def _loop_rule_problems(where: str, item: dict) -> list[str]:

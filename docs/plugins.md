@@ -264,6 +264,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `agent_types` | `name`, `title`, `description`, `profile`, `packs`, `environment`, `jobs`, `events`, `pages` | a template of an agent profile with the plugin's own packs, environment, jobs, events and pages it uses, which a project enables and the plugin hands tasks to | the same (section Agent types) |
 | `cli` | `name`, `help`, `http` (`method`, `path`), `project`, `args` (each `name`, `type`, `in`, `flag`, `positional`, `choices`, `required`, `repeatable`, `help`, `default`, `metavar`, `values`, `group`), `when` (each `arg`, `http`), `confirm` (`flag`, `text`), `client`, `output` (`json`, `table`, `text`, `render`, `keys`, `schema`) | a command `evo-agents hub <id> <name>`, which the CLI reads from the hub and runs as a call of the plugin's route (section Commands of the CLI) | the same |
 | `notice_kinds` | `name` (the plugin's table prefix, then a word), `title`, `description` | a kind of notice the plugin sends with `core_plugin_api.notify`, which members' notification settings list | (core only) |
+| `rankers` | `name`, `python` (`module:function`), `sink`, `title`, `description` | a function that puts the hits of `history_search` and `kg_search` in a new order (core plugins only, version 1; section Rankers); the plugin declares `egress`, and `sink` names one of its sinks, left out when it has one |
 
 **Commands of the CLI** (`cli`, version 1). A plugin adds commands to `evo-agents hub <id> <command>` without a
 release of the CLI. `GET /v1/cli/plugins` answers any member signed in with `{"version": 1, "plugins": [{"id",
@@ -810,6 +811,19 @@ core plugin). Both functions run in the plugin's transaction; neither needs a me
 | `ask_agent_type(conn, plugin, project, agent_type, question, *, asker, ref, cleared)` | queues a question run of the plugin's agent type `agent_type` in `project` and gives `AgentQuestion(question_id, run_id, project, agent_type, ref, made)`. `asker` names the person as the plugin knows them, `ref` is the plugin's key of the question, unique per message it answers, and `cleared` the `Clearance` of the place the answer goes. Checks, in order: 422 for a `question` empty once stripped, longer than `MAX_QUESTION_BYTES` (4096) bytes of UTF-8 or holding NUL, and an `asker` or `ref` that is not one line of 1 to `MAX_ASKER_CHARS` or `MAX_REF_CHARS` (200) characters; 404 for a project that does not enable the plugin, or a type it did not enable, turned off or that the plugin's version does not contribute; a `ref` the plugin asked before in the project gives that question back with `made` False, whatever the question or the type, and checks nothing more; 409 for a deleted profile or a `run_as` who no longer holds writer, and when no worker of `run_as` the type may run on takes question runs now (each worker's reasons; one that is only busy takes it); 403 for a project kept from `cleared`, as `restricted` reads it; 429 once the runs of the type reached its cap. Audited `<plugin>.ask`, `run_as` its actor, the target naming the question, the run and the asker |
 | `read_agent_answer(conn, plugin, question_id)` | `AgentAnswer(question_id, ref, project, agent_type, run_id, state, text, label, failure_cause)` of a question of the plugin, as it stands: `state` is `pending` until the run ended, then `done` (`text` the answer, at most `MAX_ANSWER_CHARS`, 8000), `failed` (`failure_cause` why), `cancelled`, or `refused`, with no text, when the project is kept from the question's `cleared` now: the hub checks it again at every read. `label` is the project's default label naming the project, the label the answer carries, read only. 404, the same words, for another plugin's question and for none; the plugin need not still be enabled |
 | `ANSWER_EVENT` | `agent.answer`, the event the plugin gets when a question run of its agent type ends (section Agent types) |
+
+**Rankers** (`rankers`, version 1, core plugins only). A core plugin the project enabled may reorder the hits of
+`history_search` (REST and MCP) and of the hub's `kg_search` (REST tools, `/mcp`, `kg serve --backend hub`). The
+manifest declares `egress` and `contributes.rankers: [{name, python: "module:function", sink}]`; an isolated plugin
+that declares `rankers` is refused, and a plugin-v1 manifest without it stays valid. The function is
+`handler(params, context)` (async, or sync in a thread) with `params` = `{project, project_id, query, source, sink,
+hits: [{id, text, source}]}` and returns `{"order": [id, ...]}`.
+
+- Only hits whose label the plugin's sink may read (`Policy.allows`, as the decision reads) go to the ranker, redacted
+  and cut; the other hits keep their place.
+- The whole search has 2 seconds for all rankers. A timeout, an error, a bad answer or no ranker leaves the old order.
+- The response says `reranked: true` when an order changed. `rank` (ts_rank) keeps its original value. `history_search`
+  reranks the page it returns, so `limit` and `offset` keep their meaning.
 
 **Egress and decisions (1.6).** A plugin that sends a project's text out of the hub declares where in its manifest:
 `egress: [{id: <sink>, kind: <kind>, host: <host>}]` (`Plugin.egress`, a tuple of `EgressSink`; ids are unique; a plugin
