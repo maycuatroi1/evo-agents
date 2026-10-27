@@ -31,6 +31,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi import HTTPException
+from psycopg import errors
 from sqlalchemy import func, select, update
 
 from evo_agents.cli import main
@@ -956,6 +957,29 @@ def test_access_only_the_owner_changes_it_and_only_on_a_run_that_has_not_ended(c
         == 404
     )
     assert OTHER  # the other member sees the run but may not change it
+
+
+def test_as_me_since_is_when_the_owner_let_the_run_and_the_next_attempt_keeps_it(client, hub, hub_db):
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
+    plain = step_run(client, hub["owner"], "notes", worker)
+    assert view(client, hub["owner"], plain)["as_owner_since"] is None
+    granted = change(client, hub["owner"], plain, True).json()
+    assert granted["as_owner_since"] is not None and granted["as_owner_since"] >= granted["queued_at"]
+    assert view(client, hub["other"], plain)["as_owner_since"] == granted["as_owner_since"], "a reader sees it too"
+    stopped = change(client, hub["owner"], plain, False).json()
+    assert (stopped["as_owner"], stopped["as_owner_since"]) == (False, None)
+    assert client.post(f"/v1/projects/{PROJECT}/runs/{plain}/cancel", headers=hub["owner"]).status_code == 200
+
+    run_id, _ = as_me_run(client, hub, worker, "evo-agents")
+    let = view(client, hub["owner"], run_id)
+    assert let["as_owner_since"] == let["queued_at"], "let at dispatch: the time it was queued"
+    expire(hub_db, run_id)
+    assert reap(client)["lost"] == 1
+    steady(hub_db, worker)
+    retry = view(client, hub["owner"], claim(client, worker)["id"])
+    assert (retry["attempt"], retry["as_owner"], retry["as_owner_since"]) == (2, True, let["as_owner_since"])
+    with pytest.raises(errors.CheckViolation):  # a run that does not run as its owner has no such time
+        sql(hub_db, update(tables.runs).values(as_owner=False).where(tables.runs.c.id == retry["id"]))
 
 
 # Step 2: the worker and the command line

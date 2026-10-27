@@ -52,6 +52,7 @@ def next_attempt(run_id: int):
         "principal_id",
         "autonomy",
         "as_owner",
+        "as_owner_since",
         *CHAT_COLUMNS,
     )
     source = select(

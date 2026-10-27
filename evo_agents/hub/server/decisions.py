@@ -519,6 +519,7 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.principal_id,
         r.c.autonomy,
         r.c.as_owner,
+        r.c.as_owner_since,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))

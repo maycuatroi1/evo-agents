@@ -325,7 +325,7 @@ async def change_access(engine, user: Principal, project: str, run_id: int, body
         if body.as_me:
             await let_run_as_owner(conn, user, access, project, run_id, "by=access")
         else:
-            await conn.execute(update(r).values(as_owner=False).where(r.c.id == run_id))
+            await conn.execute(update(r).values(as_owner=False, as_owner_since=None).where(r.c.id == run_id))
             ended = await run_access.end_access(conn, run_id)
             done = run_target(project, plan_id, key, run_id) + f" by=access tokens={ended}"
             await run_access.record(conn, user, access.project_id, done, granted=False)
@@ -356,7 +356,7 @@ async def let_run_as_owner(conn: AsyncConnection, user: Principal, access, proje
     if row.state not in runs.ACTIVE_STATES:
         raise HTTPException(409, f"run {run_id} is {row.state}, which is final: it has no agent to run as you")
     await web_only_steering(conn, user, run_id, "let it run as you", "do it on the web", "changed")
-    await conn.execute(update(r).values(as_owner=True).where(r.c.id == run_id))
+    await conn.execute(update(r).values(as_owner=True, as_owner_since=func.now()).where(r.c.id == run_id))
     done = f"{run_target(project, row.plan_id, row.step_key, run_id)} {how}"
     await run_access.record(conn, user, access.project_id, done, granted=True)
     return True

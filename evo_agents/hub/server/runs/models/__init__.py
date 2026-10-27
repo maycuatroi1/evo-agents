@@ -419,6 +419,12 @@ class Run(RunPlacement):
         description="its owner lets its agent call the hub's API as them, secrets, tokens and workers aside, through a "
         "token of the run's own while a worker holds it (PUT .../runs/{id}/access changes it)",
     )
+    as_owner_since: datetime | None = Field(
+        None,
+        description="when its owner let it run as them: at dispatch, or later through PUT .../access or the answer to "
+        "a credential request; the run that resumes a parked run, and the next attempt of a lost one, keep the time of "
+        "the run before it. Null while it does not run as its owner",
+    )
 
 
 class ClaimRequest(BaseModel):

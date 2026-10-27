@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import psycopg
 from fastapi import HTTPException
-from sqlalchemy import exists, insert, select
+from sqlalchemy import exists, func, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -293,6 +293,8 @@ async def insert_run(conn: AsyncConnection, values: dict, who: run_autonomy.For 
         default = await ensure_default(conn, values["project_id"])
         values = {**values, "profile_id": default.id, "profile_version": default.version}
     values = await run_autonomy.stamp(conn, values, who)
+    if values.get("as_owner"):
+        values = {**values, "as_owner_since": func.now()}  # let at dispatch (run_access)
     await autonomy_hold.hold(conn, values.get("principal_id"))
     async with conn.begin_nested():
         return (await conn.execute(insert(r).values(**values).returning(r.c.id))).scalar_one()

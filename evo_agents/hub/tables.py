@@ -480,6 +480,7 @@ runs = Table(
     Column("browser_identities", ARRAY(BigInteger), nullable=False, server_default="{}"),
     # Its owner let it call the hub's API as them, secrets, tokens and workers aside (0166, server/run_access.py).
     Column("as_owner", Boolean, nullable=False, server_default=false()),
+    _when("as_owner_since"),  # when it was let; NULL while it does not run as its owner (0168)
     # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
     # Claude Code session id, and its worker_id stays NULL.
     Column("machine", Text),
