@@ -21,14 +21,15 @@ hold. The audiences it shows are noted to the run (``run_audience``). With the k
 returned as it came, byte for byte.
 
 ``context_answer_loads`` records each answer loaded: the run, the source, its id and the scope key that matched
-(``repo:REPO``, ``dir:REPO:DIR`` or ``path:REPO:PATH``). ``load_counts`` counts them a day or a week.
+(``repo:REPO``, ``dir:REPO:DIR`` or ``path:REPO:PATH``). ``load_counts`` counts them a day or a week, and ``week_counts``
+sets them against the runs queued (the daily signal and the weekly read: ``context_answer_reuse``).
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from posixpath import dirname
 
 from sqlalchemy import BigInteger, bindparam, func, select
@@ -313,3 +314,41 @@ async def load_counts(
         .order_by(start)
     )
     return [LoadCount(r.start, r.runs, r.answers) for r in await conn.execute(query)]
+
+
+@dataclass(frozen=True)
+class WeekCount:
+    """One week (UTC, from ``start``) of the runs queued in it: how many ran in all, how many loaded at least one
+    answer, and how many answers they loaded."""
+
+    start: datetime
+    runs: int
+    runs_with_loads: int
+    answers: int
+
+
+async def week_counts(conn: AsyncConnection, project_id: int, since: datetime, until: datetime) -> list[WeekCount]:
+    """The runs of project ``project_id`` queued from ``since`` up to ``until``, by week (UTC), oldest first, with the
+    answers those runs loaded; a week with no run is not listed. The loads count in the week their run was queued, so
+    ``runs_with_loads`` never passes ``runs``."""
+    r, c = tables.runs, tables.context_answer_loads
+    week = func.date_trunc("week", func.timezone("UTC", r.c.queued_at)).label("start")  # a naive UTC time
+    found = {
+        row.start.replace(tzinfo=UTC): WeekCount(row.start.replace(tzinfo=UTC), row.runs, 0, 0)
+        for row in await conn.execute(
+            select(week, func.count().label("runs"))
+            .where(r.c.project_id == project_id, r.c.queued_at >= since, r.c.queued_at < until)
+            .group_by(week)
+        )
+    }
+    loaded = await conn.execute(
+        select(week, func.count(func.distinct(c.c.run_id)).label("runs"), func.count().label("answers"))
+        .select_from(c.join(r, r.c.id == c.c.run_id))
+        .where(c.c.project_id == project_id, r.c.queued_at >= since, r.c.queued_at < until)
+        .group_by(week)
+    )
+    for row in loaded:
+        start = row.start.replace(tzinfo=UTC)
+        base = found.get(start) or WeekCount(start, row.runs, 0, 0)
+        found[start] = WeekCount(start, max(base.runs, row.runs), row.runs, row.answers)
+    return [found[start] for start in sorted(found)]

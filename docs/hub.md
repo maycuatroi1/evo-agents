@@ -115,7 +115,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | loop | `GET /v1/projects/{project}/loop`, `GET .../loop/items` (`?state=`, `?kind=`, `?goal=`, `?problem=`, `?open=`, `?limit=`), `GET .../loop/items/{id}`, `GET .../loop/goals`: reading needs a grant on the project; `POST .../loop/resume` the admin role (section Goals, `docs/loop.md`) |
 | decision board | `GET /v1/projects/{project}/decision-board`: what waits for a person, the three gates first; reading needs a grant on the project (section Goals, The decision board) |
 | merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/{id}/pass`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
-| signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
+| signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`); `GET .../context-answers`, the confirmed answers loaded by week |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read`, `GET` and `PUT /v1/me/notification-settings` (the notices you turned off, the tier of each kind, quiet hours, time zone, the time of the summary push, Hide details) |
 | push | `GET /v1/push/config`, public: the VAPID key a browser subscribes with and which senders are on; `GET` and `POST /v1/me/push/devices`, `DELETE /v1/me/push/devices/{id}`, `POST /v1/me/push/devices/{id}/test`: your push devices, a browser's Web Push subscription, an APNs or an FCM token (`docs/notifications.md`, Push to devices) |
@@ -558,6 +558,13 @@ Each answer loaded is a row of `context_answer_loads` (schema 0175): the run, th
 answer once, so a run claimed again adds no row. `context_answers.load_counts` counts the runs that loaded and the
 answers loaded by day or by week. The policy revision that sets the key true is the first week of the trial that
 compares the 28 days after with the 28 before (`evo-agents hub policy history`).
+
+Two things show the trial. The daily job `hub.context_answer_reuse`, at 00:09 UTC, posts the signal
+`context.answer_reuse` (`docs/signals.md`) of each project whose policy sets `context.answers`: the answers loaded the
+day before. `GET /v1/projects/{project}/context-answers?weeks=N` (8 by default, 52 at most; any member with a grant on
+the project) and `evo-agents hub context answers [--weeks N] [--project P] [--json]` give, by week from Monday UTC, the
+runs queued, the runs that loaded at least one answer and the answers loaded, so one command sets the weeks after the
+revision that turned the key on against those before it. A run counts in the week it was queued, and so do its loads.
 
 ### Runs under a profile
 
@@ -3204,6 +3211,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_transcripts`, daily at 04:53: deletes the content of the session transcripts that got no part for
   `EVO_HUB_TRANSCRIPT_DAYS` days, keeping their rows marked deleted, and the blobs of kind `transcript` no part names
   (Session transcripts, above).
+- `hub.context_answer_reuse`, daily at 00:09 UTC: posts the signal `context.answer_reuse` of each project whose policy
+  sets `context.answers` (`docs/signals.md`, Answers loaded). Its table keeps the figures where the key is not
+  registered.
 - `hub.prune_signals`, daily at 05:03: deletes the signals measured more than `EVO_HUB_SIGNAL_DAYS` days ago, 400 by
   default (`docs/signals.md`).
 - `hub.value_check`, deferred by each batch of a project's signals that stored any, when a plugin the project enables
