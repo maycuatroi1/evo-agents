@@ -4,9 +4,16 @@ own project, for the permissions it asked and with the delegation of the call it
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
+import pytest
+
 from evo_agents.plugins.conformance import run_conformance
+
+pytestmark = pytest.mark.skipif(
+    os.name != "posix", reason="the isolated backend is POSIX; Windows cannot remove its working directory"
+)
 
 BACKEND = """
 import json, os, sys, urllib.request, urllib.error
