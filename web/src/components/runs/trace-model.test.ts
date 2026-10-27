@@ -257,6 +257,16 @@ describe("tool rows", () => {
     });
   });
 
+  it("shows a written file's lines and a unified diff as the change", () => {
+    fresh();
+    const items = buildTrace([
+      ev("tool_call", { toolCallId: "w1", title: "Write", kind: "edit", rawInput: { file_path: "a.py", content: "x\ny\n" } }),
+      ev("tool_call", { toolCallId: "w2", title: "Patch", kind: "edit", rawInput: { changes: [{ path: "b", diff: "@@\n-old\n+new\n" }] } }),
+    ]);
+    expect((items[0] as ToolItem).tool).toMatchObject({ diff: { added: 2, removed: 0 }, change: "+ x\n+ y" });
+    expect((items[1] as ToolItem).tool.change).toBe("@@\n-old\n+new");
+  });
+
   it("cuts an output at 20 lines and says how many it has", () => {
     const text = Array.from({ length: 45 }, (_, index) => `line ${index + 1}`).join("\n");
     expect(cutOutput(text)).toEqual({ shown: text.split("\n").slice(0, 20).join("\n"), total: 45, cut: true });
