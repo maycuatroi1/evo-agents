@@ -24043,7 +24043,7 @@ export interface components {
             done_by_day: components["schemas"]["DayCount"][];
             /**
              * Active Runs
-             * @description at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued, idle: those whose agent works first, then waiting, parked and queued, the newest first within each
+             * @description at most 20 runs in leased, running, interactive, verifying, waiting, idle, parked, queued: those whose agent works first, then waiting, idle, parked and queued, the newest first within each
              */
             active_runs: components["schemas"]["OverviewRun"][];
             /**
