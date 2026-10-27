@@ -2786,7 +2786,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -17098,7 +17099,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -17300,7 +17302,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -17411,7 +17414,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -17779,7 +17783,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -17890,7 +17895,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -18001,7 +18007,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -18510,7 +18517,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -18669,7 +18677,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -18838,7 +18847,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -18949,7 +18959,8 @@
           "autonomy",
           "selector",
           "tolerations",
-          "plan_progress"
+          "plan_progress",
+          "as_owner"
         ],
         "schema": "Run"
       }
@@ -31796,7 +31807,8 @@
                     "enum": [
                       "machine",
                       "web",
-                      "worker"
+                      "worker",
+                      "run"
                     ],
                     "type": "string"
                   },
@@ -35237,6 +35249,111 @@
           },
           "responses": {
             "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/access": {
+        "put": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Access",
+          "description": "Let a run of yours call the hub's API as you, secrets, tokens and workers aside, or stop it: its token ends at\nonce (``evo_agents.hub.server.run_access``). A run's own token never reaches this route.",
+          "operationId": "access_v1_projects__project__runs__run_id__access_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
               "description": "Successful Response",
               "content": {
                 "application/json": {
@@ -87383,6 +87500,22 @@
     },
     "components": {
       "schemas": {
+        "AccessChange": {
+          "properties": {
+            "as_me": {
+              "type": "boolean",
+              "title": "As Me",
+              "description": "true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it; false: it stops, and its token ends at once, as a run that never ran as you"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "as_me"
+          ],
+          "title": "AccessChange",
+          "description": "What PUT /v1/projects/{p}/runs/{id}/access changes of a run of the caller's."
+        },
         "Account": {
           "properties": {
             "name": {
@@ -88029,9 +88162,11 @@
               "enum": [
                 "machine",
                 "web",
-                "worker"
+                "worker",
+                "run"
               ],
-              "title": "Kind"
+              "title": "Kind",
+              "description": "run: the token of a run that runs as its owner (evo_agents.hub.server.run_access)"
             },
             "host": {
               "anyOf": [
@@ -88043,7 +88178,7 @@
                 }
               ],
               "title": "Host",
-              "description": "the machine a machine token or worker token was issued to; null for a web session"
+              "description": "the machine a machine token or worker token was issued to, run:<id> for a run's; null for a web session"
             },
             "created_at": {
               "type": "string",
@@ -99896,6 +100031,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/GatewayLease"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HubLease"
                   }
                 ],
                 "discriminator": {
@@ -99903,7 +100041,8 @@
                   "mapping": {
                     "env": "#/components/schemas/CredentialLease",
                     "gateway": "#/components/schemas/GatewayLease",
-                    "git": "#/components/schemas/CredentialLease"
+                    "git": "#/components/schemas/CredentialLease",
+                    "hub": "#/components/schemas/HubLease"
                   }
                 }
               },
@@ -101701,6 +101840,12 @@
               "title": "Identities",
               "description": "browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one",
               "default": []
+            },
+            "as_me": {
+              "type": "boolean",
+              "title": "As Me",
+              "description": "true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it",
+              "default": false
             }
           },
           "type": "object",
@@ -107320,6 +107465,79 @@
             "hub"
           ],
           "title": "HubIdentity"
+        },
+        "HubLease": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the lease of the run's token; the same id, and token, when it is asked for again"
+            },
+            "kind": {
+              "type": "string",
+              "const": "hub",
+              "title": "Kind"
+            },
+            "provider": {
+              "type": "string",
+              "const": "run-access",
+              "title": "Provider"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "run-access:<owner>, the login the token acts as"
+            },
+            "env_var": {
+              "type": "string",
+              "const": "EVO_HUB_TOKEN",
+              "title": "Env Var",
+              "description": "the variable that carries the token"
+            },
+            "url_prefix": {
+              "type": "null",
+              "title": "Url Prefix"
+            },
+            "username": {
+              "type": "null",
+              "title": "Username"
+            },
+            "value": {
+              "type": "string",
+              "title": "Value",
+              "description": "the run's token, evr_...: for memory only, never a file, a log line or an event"
+            },
+            "expires_at": {
+              "type": "null",
+              "title": "Expires At",
+              "description": "none: the token ends with the lease, when the run is no longer held"
+            },
+            "base_url": {
+              "type": "string",
+              "title": "Base Url",
+              "description": "the hub's URL, which the token is for"
+            },
+            "model": {
+              "type": "null",
+              "title": "Model"
+            },
+            "api_format": {
+              "type": "null",
+              "title": "Api Format"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "provider",
+            "name",
+            "env_var",
+            "value",
+            "base_url"
+          ],
+          "title": "HubLease",
+          "description": "The lease of a run its owner lets run as them (``evo_agents.hub.server.run_access``): the run's own token of the\nhub, which calls the hub's API as the owner, and the hub's URL. A worker that knows no kind hub leaves it unused."
         },
         "Inbox": {
           "properties": {
@@ -121495,6 +121713,12 @@
               "title": "Identities",
               "description": "browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one",
               "default": []
+            },
+            "as_me": {
+              "type": "boolean",
+              "title": "As Me",
+              "description": "true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it",
+              "default": false
             }
           },
           "type": "object",
@@ -133862,6 +134086,18 @@
               ],
               "title": "Browser",
               "description": "true: the rerun gets a Chromium of its own; false: it gets none, nor the run's browser identities; null keeps what the run rerun had"
+            },
+            "as_me": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Me",
+              "description": "true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it; null keeps the choice of the run rerun"
             }
           },
           "additionalProperties": false,
@@ -135509,6 +135745,12 @@
                 }
               ],
               "description": "the autonomy it acts under; null where principal is"
+            },
+            "as_owner": {
+              "type": "boolean",
+              "title": "As Owner",
+              "description": "its owner lets its agent call the hub's API as them, secrets, tokens and workers aside, through a token of the run's own while a worker holds it (PUT .../runs/{id}/access changes it)",
+              "default": false
             }
           },
           "type": "object",
@@ -136614,25 +136856,27 @@
               "enum": [
                 "secret",
                 "github-app",
-                "gateway"
+                "gateway",
+                "run-access"
               ],
               "title": "Provider",
-              "description": "secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's"
+              "description": "secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's; run-access: the run's own token of the hub, as its owner (evo_agents.hub.server.run_access)"
             },
             "kind": {
               "type": "string",
               "enum": [
                 "env",
                 "git",
-                "gateway"
+                "gateway",
+                "hub"
               ],
               "title": "Kind",
-              "description": "env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the model gateway, or a provider account it reaches"
+              "description": "env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the model gateway, or a provider account it reaches; hub: the run's token of the hub"
             },
             "target": {
               "type": "string",
               "title": "Target",
-              "description": "kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin; kind gateway: the model"
+              "description": "kind env and hub: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin; kind gateway: the model"
             },
             "worker": {
               "type": "string",
@@ -148082,9 +148326,11 @@
               "enum": [
                 "machine",
                 "web",
-                "worker"
+                "worker",
+                "run"
               ],
-              "title": "Kind"
+              "title": "Kind",
+              "description": "run: the token of a run of yours that runs as you (evo_agents.hub.server.run_access)"
             },
             "host": {
               "anyOf": [

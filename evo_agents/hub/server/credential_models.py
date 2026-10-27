@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.credentials import LEASED_KINDS, PROVIDERS
+from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, LEASED_KINDS, PROVIDERS, RUN_ACCESS
 
 
 class CredentialLease(BaseModel):
@@ -44,6 +44,24 @@ class GatewayLease(BaseModel):
     api_format: Literal["anthropic", "openai", "openai-responses"] = Field(description="what the runtime speaks")
 
 
+class HubLease(BaseModel):
+    """The lease of a run its owner lets run as them (``evo_agents.hub.server.run_access``): the run's own token of the
+    hub, which calls the hub's API as the owner, and the hub's URL. A worker that knows no kind hub leaves it unused."""
+
+    id: int = Field(description="the lease of the run's token; the same id, and token, when it is asked for again")
+    kind: Literal[HUB_KIND]
+    provider: Literal[RUN_ACCESS]
+    name: str = Field(description="run-access:<owner>, the login the token acts as")
+    env_var: Literal[HUB_TOKEN_ENV] = Field(description="the variable that carries the token")
+    url_prefix: None = None
+    username: None = None
+    value: str = Field(description="the run's token, evr_...: for memory only, never a file, a log line or an event")
+    expires_at: None = Field(None, description="none: the token ends with the lease, when the run is no longer held")
+    base_url: str = Field(description="the hub's URL, which the token is for")
+    model: None = None
+    api_format: None = None
+
+
 class MissingOrigin(BaseModel):
     """A repo of the run whose origin no lease covers: git uses the machine's own credentials for it."""
 
@@ -62,7 +80,7 @@ class RunRepoSource(BaseModel):
 
 
 class Credentials(BaseModel):
-    leases: list[Annotated[CredentialLease | GatewayLease, Field(discriminator="kind")]]
+    leases: list[Annotated[CredentialLease | GatewayLease | HubLease, Field(discriminator="kind")]]
     missing: list[MissingOrigin]
     repos: list[RunRepoSource] = Field(default_factory=list, description="each repo of the run, in the run's order")
 

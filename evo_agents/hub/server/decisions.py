@@ -16,14 +16,15 @@ decision without a plan names the author run and its title instead. A run has at
 (409).
 
 POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
-their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/), and someone
-without a grant on the project 404. A machine token also gets 403 when the run is on a worker set to take runs
-dispatched from the web only, held, pinned or parked there (``runs.web_only_steering``): its answer would steer that
-worker's agent, or resume the parked run on it. A decision that is no longer open gets 409. The answer names an
-option of the decision, gives text of the owner's own (at most 4 KiB), or both. Under the plan's dispatch lock (for a
-decision with a plan) and the run's row lock, the decision is answered, its notification read, and the answer goes to
-a run's inbox as a message that names the decision (``run_inbox.decision_id``), with a ``user_message`` event, so the
-heartbeat counts it and the worker hands it to the agent like any message of the owner's:
+their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/) and the token
+of the decision's own run that runs as its owner (``run_access``), and someone without a grant on the project 404. A
+machine token also gets 403 when the run is on a worker set to take runs dispatched from the web only, held, pinned or
+parked there (``runs.web_only_steering``): its answer would steer that worker's agent, or resume the parked run on it.
+A decision that is no longer open gets 409. The answer names an option of the decision, gives text of the owner's own
+(at most 4 KiB), or both. Under the plan's dispatch lock (for a decision with a plan) and the run's row lock, the
+decision is answered, its notification read, and the answer goes to a run's inbox as a message that names the decision
+(``run_inbox.decision_id``), with a ``user_message`` event, so the heartbeat counts it and the worker hands it to the
+agent like any message of the owner's:
 
 - a run that is queued or held (``runs.MESSAGE_STATES``, waiting included) gets it in its own inbox;
 - a parked plan run is resumed: the hub queues a new plan run pinned to the parked run's worker, with
@@ -471,7 +472,8 @@ def _resume_run(new_id: int, parked_id: int):
     ``new_id``, of its kind: pinned to its worker, in its session, with the agent time it used and the credential it
     was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is gone; none for
     an author run that has put no plan); a run the night shift queued keeps its schedule, night and caps, an author
-    run its request, a plan run its session per step, and every run its agent profile and version."""
+    run its request, a plan run its session per step, and every run its agent profile and version, and whether it runs
+    as its owner (``run_access``), with a token of its own."""
     r, pl = tables.runs, tables.plans
     source = _OverridingSystemValue(
         literal(new_id, BigInteger).label("id"),
@@ -505,6 +507,7 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.profile_version,
         r.c.principal_id,
         r.c.autonomy,
+        r.c.as_owner,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
@@ -642,6 +645,12 @@ async def answer_decision(
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
     run_id, run_state, kind = await lock_run_of(conn, access.project_id, plan_id, decision_id)
+    if user.run_id is not None and user.run_id == run_id:  # a run's token, which acts as the owner (run_access)
+        raise HTTPException(
+            403,
+            f"decision {decision_id} is a question of run {run_id} to its owner, and that run's token never answers "
+            "it: the owner answers with their own sign-in",
+        )
     locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
     state, category, question, options = (await conn.execute(locked.with_for_update())).one()
     if state != "open":

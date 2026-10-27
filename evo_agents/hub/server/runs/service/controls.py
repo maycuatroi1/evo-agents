@@ -11,12 +11,12 @@ from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import move_run
-from evo_agents.hub.server.runs.models import Rerun, Run
+from evo_agents.hub.server.runs.models import AccessChange, Rerun, Run
 from evo_agents.hub.server.runs.service import browsers
 from evo_agents.hub.server.runs.service.accounts import rerun_picks
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
@@ -267,6 +267,8 @@ async def rerun_in(
     activity = await plan_activity(conn, access.project_id, plan_id)
     no_plan_run(activity, plan_id)
     browser, identities = await browsers.rerun_browser(conn, user, run_id, body, worker)
+    as_owner = await _rerun_as_owner(conn, run_id, body)
+    run_access.refuse_onward(user, as_owner)
     new_id = await queue_run(
         conn,
         access,
@@ -287,8 +289,55 @@ async def rerun_in(
         browser=browser,
         identities=identities,
         placed=placed,
+        as_owner=as_owner,
     )
     accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
     target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
     await audit_run(conn, user, access, audit.RUN_RERUN, target)
+    if as_owner:
+        granted = f"{run_target(project, plan_id, key, new_id)} by=rerun of run:{run_id}"
+        await run_access.record(conn, user, access.project_id, granted, granted=True)
     return await run_view(conn, new_id)
+
+
+async def _rerun_as_owner(conn: AsyncConnection, run_id: int, body: Rerun | None) -> bool:
+    """Whether the rerun of run ``run_id`` runs as its owner: as ``body`` says, else as the run did."""
+    if body is not None and body.as_me is not None:
+        return body.as_me
+    r = tables.runs
+    return bool((await conn.execute(select(r.c.as_owner).where(r.c.id == run_id))).scalar_one())
+
+
+async def change_access(engine, user: Principal, project: str, run_id: int, body: AccessChange) -> Run:
+    """Let a run of the caller's run as them, or stop it (``run_access``): the run's row changes, a stop ends the
+    run's token at once, and either is audited; asking for what the run does already changes nothing and is not. Only
+    the run's owner (403 for another member), never with a run's token (``run_access.refuse_onward``, as the
+    middleware's group run access refuses the route already); to let it, a run of a kind that may (409) that has not
+    ended (409), from a web session when the run is on a worker that takes runs dispatched from the web only."""
+    run_access.refuse_onward(user, True)
+    async with engine.begin() as conn:
+        access, row = await owned_run(conn, user, project, run_id, "change the access of")
+        state, plan_id, key, kind = row[2], row[3], row[4], row.kind
+        r = tables.runs
+        now = bool((await conn.execute(select(r.c.as_owner).where(r.c.id == run_id))).scalar_one())
+        if body.as_me == now:
+            return await run_view(conn, run_id)
+        if body.as_me:
+            check_dispatcher(access)
+            await check_seat(conn, user, "letting a run run as you")
+            from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes of this package
+
+            curator = await curator_policy(conn, access.project_id, kind, plan_id) is not None
+            refusal = run_access.may_run_as_owner(kind, curator)
+            if refusal is not None:
+                raise HTTPException(409, f"run {run_id} cannot run as you: {refusal}")
+            if state not in runs.ACTIVE_STATES:
+                raise HTTPException(409, f"run {run_id} is {state}, which is final: it has no agent to run as you")
+            await web_only_steering(conn, user, run_id, "let it run as you", "do it on the web", "changed")
+        await conn.execute(update(r).values(as_owner=body.as_me).where(r.c.id == run_id))
+        ended = 0 if body.as_me else await run_access.end_access(conn, run_id)
+        done = run_target(project, plan_id, key, run_id) + " by=access" + ("" if body.as_me else f" tokens={ended}")
+        await run_access.record(conn, user, access.project_id, done, granted=body.as_me)
+        view = await run_view(conn, run_id)
+    log.info("run access changed", extra={"run_id": run_id, "as_owner": body.as_me, "login": user.login})
+    return view

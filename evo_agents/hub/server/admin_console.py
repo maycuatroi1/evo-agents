@@ -30,7 +30,7 @@ from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import and_, case, func, literal, select, tuple_, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import audit, workers
+from evo_agents.hub.server import audit, run_access, workers
 from evo_agents.hub.server.admin import (
     LOGIN_NAME,
     PROJECT_NAME,
@@ -192,9 +192,12 @@ TokenFilter = Literal["active", "revoked", "expired", "expiring", "unused", "any
 class AdminToken(BaseModel):
     id: int
     login: str = Field(description="whose token it is")
-    kind: Literal["machine", "web", "worker"]
+    kind: Literal["machine", "web", "worker", "run"] = Field(
+        description="run: the token of a run that runs as its owner (evo_agents.hub.server.run_access)"
+    )
     host: str | None = Field(
-        description="the machine a machine token or worker token was issued to; null for a web session"
+        description="the machine a machine token or worker token was issued to, run:<id> for a run's; null for a web "
+        "session"
     )
     created_at: datetime
     last_used_at: datetime | None
@@ -255,7 +258,7 @@ async def all_tokens(
     request: Request,
     user: AdminUser,
     login: Annotated[str | None, Query(pattern=LOGIN_NAME, description="one user's tokens, any case")] = None,
-    kind: Literal["machine", "web", "worker"] | None = None,
+    kind: Literal["machine", "web", "worker", "run"] | None = None,
     state: Annotated[
         TokenFilter,
         Query(
@@ -304,6 +307,7 @@ async def revoke_any_token(
         target = f"{audit.token_target(token_id)} login={owner}"
         action = audit.TOKEN_REVOKE
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+        await run_access.token_revoked(conn, user, token_id)  # a run's token: the run no longer runs as its owner
         released = await workers.end_worker(conn, user, *worker, token_id) if worker else 0
     if worker:
         log.info("worker revoked", extra={"worker_id": worker[0], "by": user.login, "runs_released": released})

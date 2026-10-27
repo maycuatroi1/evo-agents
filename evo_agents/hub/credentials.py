@@ -49,6 +49,14 @@ FORGE_KIND = "forge"  # a GitLab token only the hub's process opens, to drive me
 # leaves it out, and written through /v1/provider-accounts, never /v1/secrets
 PROVIDER_KIND = "provider"
 PROVIDERS = ("secret", "github-app")  # a member's secret, or an installation token the hub's GitHub App makes
+# A run its owner lets call the hub's API as them (schema 0166, ``evo_agents.hub.server.run_access``) is leased the
+# run's own token of the hub, ``evr_...``, as a lease of kind HUB_KIND and provider RUN_ACCESS that names the variable
+# HUB_TOKEN_ENV and carries the hub's URL as base_url. A daemon that knows no such kind keeps it and puts nothing of it
+# into the agent's environment, which takes kind env alone.
+HUB_KIND = "hub"
+RUN_ACCESS = "run-access"
+HUB_TOKEN_ENV = "EVO_HUB_TOKEN"
+HUB_URL_ENV = "EVO_HUB_URL"
 
 ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 # Variables a secret may not set: they steer the shell, the daemon, git or the interpreter rather than the agent.
@@ -176,15 +184,16 @@ class Lease:
     carry it."""
 
     id: int
-    kind: str  # one of LEASED_KINDS
-    provider: str  # one of PROVIDERS
-    name: str = ""  # the secret's name, or ``github-app:owner``
+    kind: str  # one of LEASED_KINDS, gateway or HUB_KIND
+    provider: str  # one of PROVIDERS, gateway or RUN_ACCESS
+    name: str = ""  # the secret's name, ``github-app:owner``, or ``run-access:<owner>``
     env_var: str | None = None
     url_prefix: str | None = None
     username: str | None = None
     value: str = field(default="", repr=False)
     expires_at: datetime | None = None
-    # kind gateway (``evo_agents.hub.gateway_runs``): the hub's gateway route, the run's model and the format it speaks
+    # kind gateway (``evo_agents.hub.gateway_runs``): the hub's gateway route, the run's model and the format it speaks;
+    # kind hub (HUB_KIND): the hub's URL alone
     base_url: str | None = None
     model: str | None = None
     api_format: str | None = None

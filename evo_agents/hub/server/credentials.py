@@ -67,6 +67,10 @@ leases are marked revoked, each GitHub token is revoked with itself (DELETE /ins
 dropped, and one audit row credential.revoke names the run and what it gave back, the secrets by id. A run of another
 worker is 404.
 
+A run whose owner lets it run as them (``run_access``) is also leased its own token of the hub, ``evr_...``, of kind
+hub: the same token at each ask while the lease is out, a new one after; the credential.lease row names it by id
+(``run-access=token:<id>``).
+
 GET /v1/projects/{p}/runs/{id}/credentials, the owner's view of a run's leases, is in ``run_leases``.
 
 The owner must still hold writer on the run's project when the worker asks: once the grant is gone or lowered to
@@ -108,7 +112,7 @@ from evo_agents.hub.credentials import (
     matches,
     normalize_origin,
 )
-from evo_agents.hub.server import audit, gateway_leases, gateway_sync, lease_autonomy
+from evo_agents.hub.server import audit, gateway_leases, gateway_sync, lease_autonomy, run_access
 from evo_agents.hub.server.account_choice import choose_accounts, fail_over_relogin
 from evo_agents.hub.server.account_refresh import refresh_due
 from evo_agents.hub.server.auth import NO_STORE
@@ -183,6 +187,7 @@ class _Run:
     credentials: dict | None = None  # its credential axis at that version
     profile_project_id: int | None = None  # the project of the profile: where its accounts are bound
     principal_id: int | None = None  # who it acts for (runs.principal_id); None for a local run or one before 0113
+    as_owner: bool = False  # its owner lets it call the hub as them (``run_access``)
 
     @property
     def agent_owned(self) -> bool:
@@ -313,6 +318,7 @@ def _run_row(run_id: int, *, lock: bool):
             func.coalesce(ap.c.is_default, False).label("profile_default"),
             credentials.label("credentials"),
             ap.c.project_id.label("profile_project_id"),
+            r.c.as_owner,
         )
         .join_from(r, projects, projects.c.id == r.c.project_id)
         .join(users, users.c.id == r.c.dispatched_by)
@@ -422,6 +428,7 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
         credentials=row.credentials,
         profile_project_id=row.profile_project_id,
         principal_id=row.principal_id,
+        as_owner=row.as_owner,
     )
 
 
@@ -780,6 +787,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     if sealer is not None and survey.github and not survey.reusable():
         made, reasons = await _ask_github(state, app, survey, curator)
     root = str(request.base_url).rstrip("/")
+    token_id: int | None = None  # the run's token of the hub, when its owner lets it run as them (``run_access``)
     gateway = None if sealer is None else await gateway_leases.prepare(request.app, engine, survey.run, asking, root)
     try:
         async with engine.begin() as conn:
@@ -798,7 +806,10 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                 leases += await _lease_tokens(conn, survey, worker_id, sealer, made)
                 leases += await gateway_leases.record(conn, gateway, survey.run, worker_id, sealer)
                 await _note_uncovered(conn, run_id, survey, leases, reasons)
+                hub, token_id = await run_access.lease(conn, survey.run, worker_id, sealer, root)
+                leases += hub
             target = _lease_target(survey.run, leases, survey.leased) + (gateway.audit_text() if gateway else "")
+            target += "" if token_id is None else f" run-access=token:{token_id}"
             await audit.record(
                 conn,
                 actor_id=user.user_id,

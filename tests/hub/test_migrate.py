@@ -4471,3 +4471,65 @@ def test_0165_chat_bridges_adds_bridges_their_codes_and_messages_and_going_back_
         conn.execute(insert(t.plugin_deliveries).values(delivery))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0165") :]
+
+
+def test_0166_run_access_takes_tokens_of_runs_and_their_leases_and_going_back_refuses_while_one_is_recorded(hub_db):
+    move_to(hub_db, "0165")
+    t = hub_tables
+    assert "as_owner" not in columns(hub_db, "runs") and "token_id" not in columns(hub_db, "credential_leases")
+    hashed = {"token_hash": "b" * 64, "host": "run:1", "expires_at": func.now() + timedelta(days=90)}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run = {
+            "project_id": ids["project"],
+            "kind": "judge",  # a run on no plan: the schema alone is under test
+            "dispatched_by": ids["user"],
+            "dispatched_via": "machine",
+            "requested_runtime": "claude-code",
+            "runtime": "claude-code",
+            "mode": "headless",
+            "approval": "auto",
+            "timeout_s": 600,
+            "repos": [{"repo": "lumen", "branch": "plan/report"}],
+        }
+        run_id = one(conn, insert(t.runs).values(run).returning(t.runs.c.id))
+        worker_id = one(conn, _worker_row(ids, ids["token"], "mac-mini", 1))
+        with pytest.raises(errors.CheckViolation):  # 0165 knows no token of kind run
+            conn.execute(insert(t.tokens).values(user_id=ids["user"], kind="run", **hashed))
+    move_to(hub_db, "0166")
+    assert "as_owner" in columns(hub_db, "runs") and "token_id" in columns(hub_db, "credential_leases")
+    assert query(hub_db, select(t.runs.c.as_owner).where(t.runs.c.id == run_id)) == [(False,)]
+    cl = t.credential_leases
+    sealed = {"sealed_value": b"x" * 32, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    lease = {"run_id": run_id, "worker_id": worker_id, "provider": "run-access", "target": "EVO_HUB_TOKEN"}
+    with live.connect(hub_db) as conn:
+        conn.execute(update(t.runs).values(as_owner=True).where(t.runs.c.id == run_id))
+        token_id = one(
+            conn, insert(t.tokens).values(user_id=ids["user"], kind="run", **hashed).returning(t.tokens.c.id)
+        )
+        conn.execute(insert(cl).values(**lease, **sealed, token_id=token_id))
+    for bad, error in (
+        ({**lease, "token_id": None}, errors.CheckViolation),  # a run-access lease names its token
+        ({**lease, "provider": "github-app", "token_id": token_id}, errors.CheckViolation),  # and no other lease does
+        ({**lease, "provider": "sideways", "token_id": None}, errors.CheckViolation),
+        ({**lease, "token_id": token_id}, errors.UniqueViolation),  # one lease per token
+    ):
+        with live.connect(hub_db) as conn, pytest.raises(error):
+            conn.execute(insert(cl).values(bad))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # a token keeps a host, as before
+        conn.execute(
+            insert(t.tokens).values(user_id=ids["user"], kind="run", **{**hashed, "token_hash": "c" * 64, "host": None})
+        )
+    with pytest.raises(Exception, match="a token of kind run or a lease of provider run-access is recorded"):
+        move_to(hub_db, "0165", down=True)
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(cl).where(cl.c.run_id == run_id))
+    with pytest.raises(Exception, match="a token of kind run or a lease of provider run-access is recorded"):
+        move_to(hub_db, "0165", down=True)  # the token alone still holds it back
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.tokens).where(t.tokens.c.id == token_id))
+    move_to(hub_db, "0165", down=True)
+    assert "as_owner" not in columns(hub_db, "runs") and "token_id" not in columns(hub_db, "credential_leases")
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(t.tokens).values(user_id=ids["user"], kind="run", **hashed))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0166") :]

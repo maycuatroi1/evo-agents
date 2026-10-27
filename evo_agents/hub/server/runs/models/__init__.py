@@ -84,6 +84,11 @@ ACCOUNT_HELP = (
     "variable and keeps it, with no failover to another account; null: the account is picked by the rules of the "
     "caller's policy for the project"
 )
+AS_ME_HELP = (
+    "true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are "
+    "one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run "
+    "(evo_agents.hub.server.run_access); a run's own token may not ask it"
+)
 
 MAX_LIST = 200
 MAX_OFFSET = 100_000
@@ -139,6 +144,7 @@ class Dispatch(PlacementFields):
     plugin_config: dict[PluginKey, dict[str, Any]] | None = Field(None, max_length=50, description=PLUGIN_CONFIG_HELP)
     browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
     identities: list[browser_help.IdentityName] = browser_help.identities_field()
+    as_me: bool = Field(False, description=AS_ME_HELP)
 
     @model_validator(mode="after")
     def _bounded_plugin_config(self) -> Dispatch:
@@ -201,6 +207,7 @@ class PlanRunDispatch(PlacementFields):
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
     browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
     identities: list[browser_help.IdentityName] = browser_help.identities_field()
+    as_me: bool = Field(False, description=AS_ME_HELP)
 
 
 class Rerun(PlacementFields):
@@ -218,12 +225,23 @@ class Rerun(PlacementFields):
         False, description="true: the rules of the caller's policy pick the account, not the one picked for the run"
     )
     browser: bool | None = Field(None, description=browser_help.RERUN_HELP)
+    as_me: bool | None = Field(None, description=AS_ME_HELP + "; null keeps the choice of the run rerun")
 
     @model_validator(mode="after")
     def _one_choice(self) -> Rerun:
         if self.account is not None and self.account_by_rule:
             raise ValueError("name an account or ask for one by rule, not both")
         return self
+
+
+class AccessChange(BaseModel):
+    """What PUT /v1/projects/{p}/runs/{id}/access changes of a run of the caller's."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    as_me: bool = Field(
+        description=AS_ME_HELP + "; false: it stops, and its token ends at once, as a run that never ran as you"
+    )
 
 
 class SteadyWait(BaseModel):
@@ -396,6 +414,11 @@ class Run(RunPlacement):
         "for a local run and one queued before the hub knew principals",
     )
     autonomy: RunAutonomy | None = Field(None, description="the autonomy it acts under; null where principal is")
+    as_owner: bool = Field(
+        False,
+        description="its owner lets its agent call the hub's API as them, secrets, tokens and workers aside, through a "
+        "token of the run's own while a worker holds it (PUT .../runs/{id}/access changes it)",
+    )
 
 
 class ClaimRequest(BaseModel):

@@ -1,11 +1,12 @@
 """Hub credentials and the check every /v1 request goes through.
 
-A machine token is ``evh_``, a web session ``evs_`` and the token of one worker ``evw_``, each followed by 32 random
-bytes in base64url. Postgres keeps only the hex SHA-256 of any of them, in ``tokens`` with its kind; 32 random bytes
-need no key, while a pairing code, which is short, is kept as a ``keyed_digest`` under the session secret. The
-plaintext exists only in the response that issues it and on the holder's side. A token expires after TOKEN_TTL
-without use: using it pushes the expiry TOKEN_TTL past now, but the row is written at most once per TOUCH_EVERY, so a
-busy token does not write on every request. Revoked, expired and unknown credentials all get the same 401, which names
+A machine token is ``evh_``, a web session ``evs_``, the token of one worker ``evw_`` and the token of one run that runs
+as its owner ``evr_`` (``evo_agents.hub.server.run_access``), each followed by 32 random bytes in base64url. Postgres
+keeps only the hex SHA-256 of any of them, in ``tokens`` with its kind; 32 random bytes need no key, while a pairing
+code, which is short, is kept as a ``keyed_digest`` under the session secret. The plaintext exists only in the response
+that issues it and on the holder's side. A token expires after TOKEN_TTL without use: using it pushes the expiry
+TOKEN_TTL past now, but the row is written at most once per TOUCH_EVERY, so a busy token does not write on every
+request. Revoked, expired and unknown credentials all get the same 401, which names
 ``evo-agents hub login`` (``evo-agents worker join`` on the worker's routes).
 
 ``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and the paths under PUBLIC_PREFIXES, and fails
@@ -38,6 +39,14 @@ hub's /mcp takes a worker token too, for the agent of one run its worker holds (
 principal carries a ``RunScope``, and ``evo_agents.hub.server.projects.project_access`` holds every read and write
 to it.
 
+A run's token arrives as ``Authorization: Bearer`` and is its owner, with the owner's grants on every project and hub
+admin when the owner is one, while its lease is out (``run_access``): the run is held by the worker it was leased to,
+its owner lets it run as them and still holds writer on its project, and neither the token nor its worker is revoked;
+otherwise it gets the same 401 as any other credential. It never works under WORKER_PREFIX, is refused the paths of
+``run_access_rules`` with 403 and the reason, and every write made with it, refused or not, adds an audit row naming
+the run. The gateway route's token of a run (``gateway_leases``) shares the prefix and is a credential of those routes
+alone: here it is unknown.
+
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
 one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the two ends of the web terminal, see
 ``evo_agents.hub.server.terminal``, and of the live view of a run's browser, ``evo_agents.hub.server.browser_view``);
@@ -61,14 +70,16 @@ from typing import Annotated
 
 import psycopg
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import bindparam, exists, func, insert, or_, select, update
+from sqlalchemy import and_, bindparam, exists, func, insert, or_, select, update
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.responses import Response
 from starlette.websockets import WebSocketClose
 
 from evo_agents.hub import tables
-from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
+from evo_agents.hub.access import ROLES, has_role
+from evo_agents.hub.runs import HELD_STATES, PROTOCOL_HEADER, PROTOCOL_VERSION
+from evo_agents.hub.server import run_access_rules
 from evo_agents.hub.server.errors import error_response
 
 log = logging.getLogger(__name__)
@@ -76,7 +87,8 @@ log = logging.getLogger(__name__)
 MACHINE = "machine"
 WEB = "web"
 WORKER = "worker"
-PREFIXES = {MACHINE: "evh_", WEB: "evs_", WORKER: "evw_"}
+RUN = "run"  # the token of a run that runs as its owner (``run_access``)
+PREFIXES = {MACHINE: "evh_", WEB: "evs_", WORKER: "evw_", RUN: "evr_"}
 TOKEN_BYTES = 32
 TOKEN_TTL = timedelta(days=90)  # without use; every use moves the expiry
 TOUCH_EVERY = timedelta(days=1)  # at most one write of last_used_at and expires_at per token in this time
@@ -130,7 +142,8 @@ LOGIN_HINT = "run `evo-agents hub login`"
 JOIN_HINT = "join the machine with `evo-agents worker join`"
 WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
 
-_TOKEN = re.compile(r"ev[hsw]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of base64url without padding
+_TOKEN = re.compile(r"ev[hswr]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of base64url without padding
+WRITER_ROLES = tuple(role for role in ROLES if has_role(role, "writer"))
 
 
 def _authenticate():
@@ -173,6 +186,57 @@ def _authenticate():
 AUTHENTICATE = _authenticate()
 
 
+def _authenticate_run():
+    """One statement: find the live token of a run, its hash ``:digest``, while its lease is out (``run_access``): the
+    lease is not given back, the run is held by the worker it was leased to and its owner lets it run as them, the
+    owner dispatched it and still holds writer on its project, and the worker is not revoked; push the token's expiry
+    as ``_authenticate`` does. The owner is not marked seen: the run is not them at their keyboard."""
+    tokens, users, cl, r, w, g = (
+        tables.tokens,
+        tables.users,
+        tables.credential_leases,
+        tables.runs,
+        tables.workers,
+        tables.grants,
+    )
+    found = (
+        select(tokens.c.id, tokens.c.user_id, users.c.login, cl.c.run_id)
+        .join_from(tokens, users, users.c.id == tokens.c.user_id)
+        .join(cl, cl.c.token_id == tokens.c.id)
+        .join(r, r.c.id == cl.c.run_id)
+        .join(w, w.c.id == cl.c.worker_id)
+        .join(g, and_(g.c.project_id == r.c.project_id, g.c.user_id == tokens.c.user_id))
+        .where(
+            tokens.c.token_hash == bindparam("digest"),
+            tokens.c.kind == RUN,
+            tokens.c.revoked_at.is_(None),
+            tokens.c.expires_at > func.now(),
+            cl.c.revoked_at.is_(None),
+            r.c.as_owner.is_(True),
+            r.c.state.in_(HELD_STATES),
+            r.c.worker_id == cl.c.worker_id,
+            r.c.dispatched_by == tokens.c.user_id,
+            w.c.revoked_at.is_(None),
+            g.c.role.in_(WRITER_ROLES),
+        )
+        .cte("found")
+    )
+    touched = (
+        update(tokens)
+        .values(last_used_at=func.now(), expires_at=func.now() + TOKEN_TTL)
+        .where(
+            tokens.c.id == select(found.c.id).scalar_subquery(),
+            or_(tokens.c.last_used_at.is_(None), tokens.c.last_used_at <= func.now() - TOUCH_EVERY),
+        )
+        .returning(tokens.c.id)
+        .cte("touched")
+    )
+    return select(found.c.id, found.c.user_id, found.c.login, found.c.run_id).add_cte(touched)
+
+
+AUTHENTICATE_RUN = _authenticate_run()
+
+
 @dataclass(frozen=True)
 class RunScope:
     """What the agent of one run reaches with its worker's token: the run's project alone, with the owner's grant
@@ -207,13 +271,15 @@ class Principal:
     login: str
     admin: bool  # the login is listed in EVO_HUB_ADMINS
     token_id: int
-    kind: str  # MACHINE or WORKER (a Bearer token), or WEB (the session cookie)
+    kind: str  # MACHINE, WORKER or RUN (a Bearer token), or WEB (the session cookie)
     token_hash: str
     scope: RunScope | None = None  # the agent of a run, on /mcp only; None for everyone else
+    run_id: int | None = None  # RUN: the run whose token it is, which acts as its owner; None for everyone else
 
     def __repr__(self) -> str:
-        run = "" if self.scope is None else f", run={self.scope.run_id}"
-        return f"Principal(login={self.login!r}, token_id={self.token_id}, kind={self.kind!r}{run})"
+        run = self.scope.run_id if self.scope is not None else self.run_id
+        shown = "" if run is None else f", run={run}"
+        return f"Principal(login={self.login!r}, token_id={self.token_id}, kind={self.kind!r}{shown})"
 
     @property
     def run_project(self) -> str | None:
@@ -338,12 +404,15 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
         return None
     digest = hash_token(token)
     async with engine.begin() as conn:
-        row = (await conn.execute(AUTHENTICATE, {"digest": digest, "token_kind": kind})).one_or_none()
+        if kind == RUN:
+            row = (await conn.execute(AUTHENTICATE_RUN, {"digest": digest})).one_or_none()
+        else:
+            row = (await conn.execute(AUTHENTICATE, {"digest": digest, "token_kind": kind})).one_or_none()
     if row is None:
         return None
-    token_id, user_id, login = row
+    token_id, user_id, login, *run = row
     admin = kind != WORKER and config.is_admin(login)  # a worker acts for its owner on its own routes only
-    return Principal(user_id, login, admin, token_id, kind, digest)
+    return Principal(user_id, login, admin, token_id, kind, digest, run_id=run[0] if run else None)
 
 
 def is_public(path: str) -> bool:
@@ -358,11 +427,25 @@ def unauthorized(request: Request, message: str, *, clear_cookie: bool = False) 
     return response
 
 
+class _Status:
+    """The ``send`` of an ASGI app that remembers the status its answer started with."""
+
+    def __init__(self, send):
+        self.send = send
+        self.status = 500  # an app that raised before it answered is answered 500
+
+    async def __call__(self, message) -> None:
+        if message["type"] == "http.response.start":
+            self.status = message["status"]
+        await self.send(message)
+
+
 class Authenticate:
     """Pure ASGI middleware: every request under /v1 that is not public needs a live credential of a kind the path
     takes, a write made with the session cookie needs its CSRF header, and a request under WORKER_PREFIX needs the
     worker protocol header. The principal goes to ``request.state.principal``. A websocket under /v1 passes only to
-    the routes of SELF_CHECKED_WEBSOCKETS, which check their own credential."""
+    the routes of SELF_CHECKED_WEBSOCKETS, which check their own credential. A run's token is refused the paths of
+    ``run_access_rules``, and each write made with it is audited once answered."""
 
     def __init__(self, app):
         self.app = app
@@ -384,10 +467,17 @@ class Authenticate:
         refusal = self._protocol_refusal(request) if worker_route else None
         if refusal is None and not is_public(path):
             refusal = await self._check(request, worker_route)
-        if refusal is not None:
-            await refusal(scope, receive, send)
+        answer = self.app if refusal is None else refusal
+        principal = getattr(request.state, "principal", None)
+        if principal is None or principal.kind != RUN or request.method not in UNSAFE_METHODS:
+            await answer(scope, receive, send)
             return
-        await self.app(scope, receive, send)
+        watched = _Status(send)
+        try:
+            await answer(scope, receive, watched)
+        finally:
+            engine = request.app.state.engine
+            await run_access_rules.record_write(engine, principal, request.method, path, watched.status)
 
     async def _check(self, request: Request, worker_route: bool) -> Response | None:
         config = request.app.state.config
@@ -400,7 +490,7 @@ class Authenticate:
             token = token.strip()
             if token.startswith(INGEST_PREFIX):
                 return self._ingest_refusal(request, token, worker_route)
-            kind = WORKER if token.startswith(PREFIXES[WORKER]) else MACHINE
+            kind = _bearer_kind(token)
         else:
             token = request.cookies.get(SESSION_COOKIE)
             if not token:
@@ -425,9 +515,14 @@ class Authenticate:
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
         if principal is None:
-            what = {MACHINE: "token", WEB: "web session", WORKER: "worker token"}[kind]
+            what = {MACHINE: "token", WEB: "web session", WORKER: "worker token", RUN: "run's token"}[kind]
             return unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}", clear_cookie=kind == WEB)
         request.state.principal = principal
+        if kind == RUN:  # after the database: a run's token that is no longer live gets 401 everywhere
+            reason = run_access_rules.refusal(request.method, request.url.path)
+            if reason is not None:
+                log.warning("a run's token was refused", extra={"run_id": principal.run_id, "method": request.method})
+                return error_response(request, 403, reason)
         return None
 
     @staticmethod
@@ -458,7 +553,7 @@ class Authenticate:
         # Decided by the kind of credential alone, before the database: a worker token outside the worker's routes,
         # or anything else on them, is refused whether or not it is live.
         if worker_route and kind != WORKER:
-            what = "a web session" if kind == WEB else "a machine token"
+            what = {WEB: "a web session", RUN: "a run's token"}.get(kind, "a machine token")
             return error_response(
                 request, 403, f"{WORKER_PREFIX}* takes a worker token (evw_...), not {what}: {JOIN_HINT}"
             )
@@ -481,6 +576,14 @@ class Authenticate:
                 f"a write made with the session cookie needs the {CSRF_HEADER} header from GET /v1/auth/web/csrf",
             )
         return None
+
+
+def _bearer_kind(token: str) -> str:
+    """The kind of a Bearer token by its prefix: WORKER, RUN, else MACHINE (which a malformed token fails as)."""
+    for kind in (WORKER, RUN):
+        if token.startswith(PREFIXES[kind]):
+            return kind
+    return MACHINE
 
 
 def principal(request: Request) -> Principal:
