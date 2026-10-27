@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pytest
 
+pytest.importorskip("fastapi", reason="the hub extras are not installed")
+
 from evo_agents.hub.server.chat_access import LabelProject, channel_allows, with_override
 from tests.hub import pg
 

@@ -10,15 +10,18 @@ GitHub is ``tests.hub.test_market.MarketGitHub``, Sigstore ``FakeSigstore``, the
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
 
-from evo_agents.hub import tables
-from tests.hub import live, pg
-from tests.hub.test_market import PROJECT, actions, grant, publisher_rows, started
-from tests.plugins.market_samples import LUMEN_REPO, LUMEN_SIGNER, lumen_release
+from tests.hub import pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
+
+from sqlalchemy import select
+
+from evo_agents.hub import tables
+from tests.hub import live
+from tests.hub.test_market import PROJECT, actions, grant, publisher_rows, started
+from tests.plugins.market_samples import LUMEN_REPO, LUMEN_SIGNER, lumen_release
 
 OTHER_PROJECT = "other"
 LADDER = ["public", "internal", "secret"]
