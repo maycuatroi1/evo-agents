@@ -342,6 +342,13 @@ class CodexAdapter(QueueAdapter):
         return CodexTui(context, session_id)
 
     @classmethod
+    def has_session(cls, env: Mapping[str, str], session_id: str) -> bool:
+        """Whether Codex's rollout of the thread is in the codex home of ``env``, which ``thread/resume`` loads."""
+        from evo_agents.worker.interactive import codex_rollout
+
+        return codex_rollout(env, session_id) is not None
+
+    @classmethod
     def profile_refusal(cls, run) -> str | None:
         profile = profiles.Profile.of(run)
         return profiles.model_refusal(profile, run) or profiles.codex_refusal(profile)
