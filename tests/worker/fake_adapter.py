@@ -50,7 +50,9 @@ otherwise a run that goes on with a session (after a handback, or a plan run res
 written as a JSON line ``{"run", "session", "resume", "prompt", "cwd", "leased", "budget", "spent_usd",
 "spent_seconds"}`` to the file EVO_FAKE_STARTS names.
 
-The messages ``send`` hands the agent are written, one per line, to the file EVO_FAKE_MESSAGES names.
+The messages ``send`` hands the agent are written, one per line, to the file EVO_FAKE_MESSAGES names. When
+EVO_FAKE_SESSIONS names a directory, each start leaves a file named as its session there, the session's record, which
+``has_session`` looks for; without it the fake, as a runtime that cannot tell, finds none.
 ``environment_notes`` names the variables the run's leases set, but for git's configuration, so the daemon's tests see
 where its notes go.
 
@@ -266,6 +268,12 @@ class FakeAdapter(Adapter):
         return FakeTui(context, session_id)
 
     @classmethod
+    def has_session(cls, env, session_id: str) -> bool:
+        """Whether a start left the record of session ``session_id`` in the directory EVO_FAKE_SESSIONS names."""
+        folder = env.get("EVO_FAKE_SESSIONS")
+        return bool(folder) and (Path(folder) / session_id).is_file()
+
+    @classmethod
     def environment_notes(cls, context) -> list[str]:
         """A line naming the variables the run's leases set, but for git's configuration, when there are any."""
         names = sorted(name for name in context.leased if not name.startswith("GIT_CONFIG_"))
@@ -321,6 +329,10 @@ class FakeAdapter(Adapter):
         self.actions = scenarios.get(key, [])
         self.cli_path = context.env.get("EVO_FAKE_CLI")
         self.messages_path = context.env.get("EVO_FAKE_MESSAGES")
+        sessions = context.env.get("EVO_FAKE_SESSIONS")
+        if sessions:
+            Path(sessions).mkdir(parents=True, exist_ok=True)
+            (Path(sessions) / self._session).touch()
         starts = context.env.get("EVO_FAKE_STARTS")
         if starts:
             with open(starts, "a", encoding="utf-8") as handle:

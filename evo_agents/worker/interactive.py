@@ -692,10 +692,7 @@ class ClaudeCodeTui(Tui):
         self._transcript: tuple[Path, int] | None = None
 
     def transcript(self) -> Path | None:
-        """``<config>/projects/<the folder, mangled>/<ID>.jsonl``, found by the session's id."""
-        pattern = str(claude_config_dir(self.context.env) / "projects" / "*" / f"{glob.escape(self.session_id)}.jsonl")
-        found = sorted(glob.glob(pattern))
-        return Path(found[0]) if found else None
+        return claude_transcript(self.context.env, self.session_id)
 
     async def prepare(self) -> list[str]:
         folders = _folders(self.context.worktree)
@@ -743,6 +740,23 @@ class ClaudeCodeTui(Tui):
         return follow_jsonl(self._locate, claude_transcript_events, self.logs_done)
 
 
+def claude_transcript(env: Mapping[str, str], session_id: str) -> Path | None:
+    """Claude Code's transcript of session ``session_id``, ``<config>/projects/<the folder, mangled>/<ID>.jsonl`` in
+    the config dir of ``env`` (``claude_config_dir``), found by the session's id; None when there is none."""
+    pattern = str(claude_config_dir(env) / "projects" / "*" / f"{glob.escape(session_id)}.jsonl")
+    found = sorted(glob.glob(pattern))
+    return Path(found[0]) if found else None
+
+
+def codex_rollout(env: Mapping[str, str], session_id: str) -> Path | None:
+    """Codex's rollout of thread ``session_id``, ``$CODEX_HOME/sessions/Y/M/D/rollout-*-<ID>.jsonl`` (``codex_home``
+    of ``env``), the latest when there are several; None when there is none."""
+    sessions = codex_home(env) / "sessions"
+    pattern = str(sessions / "*" / "*" / "*" / f"rollout-*-{glob.escape(session_id)}.jsonl")
+    found = sorted(glob.glob(pattern))
+    return Path(found[-1]) if found else None
+
+
 def codex_home(env: Mapping[str, str]) -> Path:
     value = env.get("CODEX_HOME")
     return Path(value).expanduser() if value else _home(env) / ".codex"
@@ -763,12 +777,7 @@ class CodexTui(Tui):
         self._rollout: tuple[Path, int] | None = None
 
     def rollout(self) -> Path | None:
-        if not self.session_id:
-            return None
-        sessions = codex_home(self.context.env) / "sessions"
-        pattern = str(sessions / "*" / "*" / "*" / f"rollout-*-{glob.escape(self.session_id)}.jsonl")
-        found = sorted(glob.glob(pattern))
-        return Path(found[-1]) if found else None
+        return codex_rollout(self.context.env, self.session_id) if self.session_id else None
 
     async def _help(self) -> str:
         args = ("resume", "--help") if self.resumed else ("--help",)
