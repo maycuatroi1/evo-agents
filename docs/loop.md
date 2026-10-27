@@ -77,9 +77,10 @@ ever added to. Its kinds are `created`, `ready`, `admitted`, `dispatched`, `wait
 
 The engine of this release is `rules/2`: the table of `rules/1` below with the changes of the next section. The engine
 `rules/1` reads three sources of change: the rows of `hub_events` past the Loop's cursor, the clock, and
-what each unfinished work item waits on, read again on each tick. Runs, plan steps and merge requests are not events:
-the Loop reads them from their tables when it reconciles a work item, so it needs no event kind beyond
-`srs.version.approved` and `tasks.status` (`docs/plugins.md`).
+what each unfinished work item waits on, read again on each tick. Runs, plan steps and merge requests are not events to
+the Loop: it reads them from their tables when it reconciles a work item, so it needs no event kind beyond
+`srs.version.approved` and `tasks.status` (`docs/plugins.md`). `plan.step` is in `hub_events` for the waits of plan
+runs (`docs/notifications.md`, A wait); it only brings the next tick sooner.
 
 | # | Change | When | What the Loop does | Key |
 | --- | --- | --- | --- | --- |
@@ -94,7 +95,7 @@ the Loop reads them from their tables when it reconciles a work item, so it need
 | 9 | the `build`'s author run wrote a plan and ended (the clock) | | the `build` done; a `deliver` of that plan | `deliver:<plan id>` |
 | 10 | the plan's merge requests in the merge queue (the clock) | each one through (`done`, `merged` where the repo names no check job, or `closed` because a person merged it on GitLab, as the queue's ledger says), each repo the queue does not merge marked merged in the plan | the `deliver` done; the release noted in the chain | |
 | 11 | a merge request of the chain reverted | | a failure of the `deliver` | |
-| 12 | `tasks.status`, `canvas.claim`, `signal.posted`, any other version approved | | nothing; the canvas's value check runs on signals by itself | |
+| 12 | `tasks.status`, `plan.step`, `canvas.claim`, `signal.posted`, any other version approved | | nothing; the canvas's value check runs on signals by itself | |
 | 13 | a test card past its deadline | | nothing; the canvas's baseline asks to extend or retire it | |
 | 14 | a goal paused or closed; the Loop turned off | | its unfinished work items cancelled; runs in flight finish and make nothing more | |
 

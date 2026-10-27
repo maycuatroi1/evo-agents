@@ -1,6 +1,7 @@
 """The hub's own events of a project, which the Loop reads by cursor (plan living-lean-canvas, criterion a6; plan
 loop-engine, criterion a3, adds an approved version of an SRS document and a change of a task's status to the same
-table).
+table), and on which the wait of a plan run wakes (``evo_agents.hub.server.run_waits``); a step's status of a plan,
+set or changed, joined them so a run can wait on another plan's step (``evo_agents.hub.plan_step_status``).
 
 The table hub_events (0077) is only ever added to: one row per event, its project, its kind, its payload and when it
 was written, with an id that only grows. ``record`` writes one in the caller's transaction, the transaction that made
@@ -40,7 +41,8 @@ BASELINE = "canvas.baseline"  # a baseline of a canvas, approved
 SIGNALS = "signal.posted"  # a batch of a project's signals the hub took (``evo_agents.hub.signals``)
 SRS_APPROVED = "srs.version.approved"  # a version of an SRS document, approved (core plugin srs)
 TASK_STATUS = "tasks.status"  # a task's status, set or changed (``evo_agents.hub.task_status``)
-KINDS = (CLAIM, BASELINE, SIGNALS, SRS_APPROVED, TASK_STATUS)  # what this release writes
+PLAN_STEP = "plan.step"  # a step's status of a plan, set or changed (``evo_agents.hub.plan_step_status``)
+KINDS = (CLAIM, BASELINE, SIGNALS, SRS_APPROVED, TASK_STATUS, PLAN_STEP)  # what this release writes
 KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0077 holds it
 OWN_PREFIX = "plugin."  # a kind a core plugin's Loop rule records of its own: plugin.<id, - made _>.<name>
 OWN_KIND = re.compile(r"^plugin\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]{0,40}$")
@@ -95,6 +97,7 @@ __all__ = [
     "BASELINE",
     "CLAIM",
     "KINDS",
+    "PLAN_STEP",
     "SIGNALS",
     "SRS_APPROVED",
     "TASK_STATUS",

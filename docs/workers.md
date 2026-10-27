@@ -962,11 +962,13 @@ asked before the run put a plan has no plan (`plan_id` null) and is read by whoe
 every decision its turn asked, or a reply in its chat, rather than the first answer; and a parked author run resumes
 only once none of its decisions is open. A plan run keeps waking at the first answer.
 
-A plan run's agent that needs a time, or an event of the hub (a baseline of a canvas approved, a claim or a task
-changing), waits for it with `evo-agents worker wait` instead of asking its owner to say when it came, and ends its
-turn: the run waits as on a decision, and the hub wakes it with a message naming the wait when the time or the event
-comes (`docs/notifications.md`, A wait). An option of a decision that only means not yet goes with `evo-agents worker
-ask --wait-option KEY`: choosing it leaves the decision open, and the agent hears nothing until another answer.
+A plan run's agent that needs a time, or an event of the hub (a step of another plan done, a baseline of a canvas
+approved, a claim or a task changing), waits for it with `evo-agents worker wait` instead of asking its owner to say
+when it came, and ends its turn: the run waits as on a decision, and the hub wakes it with a message naming the wait
+when the time or the event comes (`docs/notifications.md`, A wait). A step of another plan done is `--on plan.step
+--contains plan=PLAN --contains step=STEP --contains status=done`. An option of a decision that only means not yet goes
+with `evo-agents worker ask --wait-option KEY`: choosing it leaves the decision open, and the agent hears nothing until
+another answer.
 
 A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
 in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels
