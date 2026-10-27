@@ -29,6 +29,15 @@
         "pattern": "^P-[1-9][0-9]{0,8}$"
       }
     },
+    "worker_labels": {
+      "type": "array",
+      "description": "labels a worker must hold to take a run of the plan when the project's Loop runs it, with the Loop's loop.pool and loop.labels",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
+      }
+    },
     "status": {
       "type": "string"
     },

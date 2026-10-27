@@ -117,6 +117,7 @@ WRITES_REFUSED = (
             rf"{_RUN}/approve",
             rf"{_PROJECT}/merge-queue",
             rf"{_PROJECT}/loop/resume",
+            rf"{_PROJECT}/goals/[^/]+/baseline/",
             r"/v1/x/builder/[^/]+/proposals",
         ),
     ),

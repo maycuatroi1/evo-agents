@@ -12,7 +12,9 @@ The checks, in order; the first that fails is the work item's reason, and it sta
 3. ``rate``: the runs the Loop handed out in the last 60 minutes (its ledger's ``dispatched`` rows) reach
    ``loop.dispatches_per_hour``.
 4. ``worker``: for a ``build`` or a ``deliver``, worker ``loop.worker`` is named by no live worker serving the
-   project, is offline or draining, or has no free slot (the runs it holds and those queued for it counted).
+   project, is offline or draining, or has no free slot (the runs it holds and those queued for it counted). With
+   ``loop.pool`` or ``loop.labels`` set, they replace the pinned worker: no live, ready worker of the project, owned
+   by a writer, holds the pool and every label, or none of them has a free slot.
 
 A work item that passes them goes to the hand-out (``Dispatch``), which hands out its run in the tick's transaction or
 says why not: a task run's agent type off, its run_as no writer, or its daily cap spent is ``type_refused``, as
@@ -41,6 +43,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_gate, runs, tables
+from evo_agents.hub.access import has_role
 from evo_agents.hub.server.loop.model import (
     ACT,
     BUILD,
@@ -55,6 +58,7 @@ from evo_agents.hub.server.loop.model import (
     ItemView,
     View,
 )
+from evo_agents.hub.server.runs.models.placement import selector_of
 from evo_agents.hub.server.runs.service.worker_fit import OFFLINE
 
 log = logging.getLogger(__name__)
@@ -83,6 +87,7 @@ class LoopWorker:
     owner_id: int | None = None
     free: int = 0
     down: str | None = None
+    selector: tuple[str, ...] = ()  # set when loop.pool or loop.labels pick it: the runs carry it and pin no worker
 
     @property
     def problem(self) -> str | None:
@@ -161,10 +166,64 @@ def refusal(item: ItemView, repos: Sequence[str], capacity: Capacity, policy: Ma
 # What the checks read
 
 
-async def loop_worker(conn: AsyncConnection, project_id: int, name: str | None) -> LoopWorker:
-    """Worker ``name`` (the policy's loop.worker): the live worker of that name, in any case, that serves the project,
-    the oldest when several members name one so; its free slots are its slots less the runs it holds and those queued
-    for it."""
+def policy_selector(policy: Mapping) -> tuple[str, ...]:
+    """The selector loop.pool and loop.labels make; empty when the policy sets neither (loop.worker then rules)."""
+    return tuple(selector_of(policy.get("pool"), policy.get("labels")))
+
+
+async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[str]) -> LoopWorker:
+    """The workers a selector reaches (loop.pool, loop.labels, a plan's worker_labels): live, ready, not draining,
+    serving the project, holding every label, and owned by a writer of the project (their runs go in the owner's
+    name). The best of them, the most free slots, stands for the pick; its free slots are those of all of them."""
+    from evo_agents.hub.server import worker_placement  # it reaches the runs package, which imports the Loop
+
+    asked = ", ".join(selector)
+    w, wp, g, r = tables.workers, tables.worker_projects, tables.grants, tables.runs
+    held = (r.c.worker_id == w.c.id) & r.c.state.in_(runs.HELD_STATES)
+    waiting = (r.c.pinned_worker_id == w.c.id) & (r.c.state == "queued")
+    holding = select(func.count()).where(or_(held, waiting)).scalar_subquery()
+    serves = select(wp.c.worker_id).where(wp.c.project_id == project_id)
+    role = select(g.c.role).where(g.c.user_id == w.c.owner_id, g.c.project_id == project_id).scalar_subquery()
+    query = (
+        select(
+            w.c.id,
+            w.c.name,
+            w.c.owner_id,
+            w.c.slots,
+            w.c.drained_at,
+            (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
+            holding.label("holding"),
+            role.label("role"),
+            *worker_placement.columns(w),
+        )
+        .where(w.c.revoked_at.is_(None), w.c.id.in_(serves))
+        .order_by(w.c.id)
+    )
+    found: list[tuple[int, object]] = []
+    why = f"no live worker holding {asked} (the policy's loop.pool and loop.labels) serves the project"
+    for row in await conn.execute(query):
+        place = worker_placement.Placement.of(row)
+        if not row.online or row.drained_at is not None or place.problems(selector):
+            continue
+        if not has_role(row.role, "writer"):
+            why = f"the owner of every worker holding {asked} that serves the project is no writer on it"
+            continue
+        found.append((max(row.slots - row.holding, 0), row))
+    if not found:
+        return LoopWorker(asked, down=why, selector=tuple(selector))
+    _, best = max(found, key=lambda pair: (pair[0], -pair[1].id))
+    return LoopWorker(best.name, best.id, best.owner_id, sum(n for n, _ in found), selector=tuple(selector))
+
+
+async def loop_worker(
+    conn: AsyncConnection, project_id: int, name: str | None, selector: Sequence[str] = ()
+) -> LoopWorker:
+    """The worker of the Loop's author and plan runs. With a ``selector`` (loop.pool, loop.labels, a plan's
+    worker_labels), the workers it reaches; with none, worker ``name`` (the policy's loop.worker): the live worker of
+    that name, in any case, that serves the project, the oldest when several members name one so; its free slots are
+    its slots less the runs it holds and those queued for it."""
+    if selector:
+        return await _selected(conn, project_id, selector)
     if not name:
         return LoopWorker(None, down="the policy names no loop.worker")
     w, wp, r = tables.workers, tables.worker_projects, tables.runs
@@ -261,7 +320,7 @@ async def measure(conn: AsyncConnection, project_id: int, view: View, *, tripped
     running = Counter(CYCLE_OF[item.kind] for item in view.items if item.state == RUNNING and item.kind != ACT)
     return Capacity(
         tripped=tripped,
-        worker=await loop_worker(conn, project_id, view.policy.get("worker")),
+        worker=await loop_worker(conn, project_id, view.policy.get("worker"), policy_selector(view.policy)),
         running=running,
         repos=await _repos_held(conn, project_id, view),
         dispatched=await _handed_lately(conn, project_id, view),

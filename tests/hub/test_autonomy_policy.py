@@ -82,6 +82,8 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         # plan loop-engine: the Loop off, and no estimate and no budget (answer 1 of its checkpoint)
         "loop.enabled": False,
         "loop.worker": None,
+        "loop.pool": None,
+        "loop.labels": [],
         "loop.timezone": None,
         "loop.business.max_running": 2,
         "loop.development.max_running": 1,
@@ -181,7 +183,7 @@ def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
         'loop.brainstorm.time: a time of day as HH:MM, 00:00 to 23:59, not "9am"',
         'loop.timezone: null or a time zone name such as Asia/Ho_Chi_Minh, at most 64 characters, not "Asia/Ho Chi '
         'Minh"',
-        "loop.budget: no such key; loop takes enabled, worker, timezone, business, development, repo_max_running, "
+        "loop.budget: no such key; loop takes enabled, worker, pool, labels, timezone, business, development, repo_max_running, "
         "dispatches_per_hour, max_items_per_hour, stable_hours, brainstorm, require_sprint, caps, use_cases",
         "later: no such key; the policy takes repos, merge, judge, breaker, audit, loop",
     ]

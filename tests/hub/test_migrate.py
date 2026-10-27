@@ -155,6 +155,7 @@ TABLES |= pg.SELLER_TABLES  # migration 0159
 TABLES |= pg.DOCS_TABLES  # migration 0163
 TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
+TABLES |= {"srs_delivery", "srs_baselines"}  # migrations 0172 and 0173
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -245,8 +246,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_five_tables(hub_db):
-    assert len(TABLES) == 205  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_seven_tables(hub_db):
+    assert len(TABLES) == 207  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4674,3 +4675,82 @@ def test_0170_marks_a_project_self_managed_with_its_trusted_owners_and_scopes_a_
     assert "self_managed" not in columns(hub_db, "projects")
     assert "project_id" not in columns(hub_db, "plugins")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0170") :]
+
+
+def test_0171_takes_deliveries_of_an_approved_use_case_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0170")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="loop", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+    delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "contribution": "loop", "payload": {"v": 1}}
+    kind = "srs.use_case.approved"
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0170 takes no such kind
+        conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
+    move_to(hub_db, "0171")
+    with live.connect(hub_db) as conn:
+        for name in ("run.state", "srs.version.approved", kind):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": name}))
+        conn.execute(insert(t.hub_events).values(project_id=ids["project"], kind=kind, payload={"v": 1}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": "srs.use_case.dropped"}))
+    # Going back deletes the deliveries and the hub's events of the kind.
+    move_to(hub_db, "0170", down=True)
+    assert query(hub_db, select(t.plugin_deliveries.c.kind).order_by(t.plugin_deliveries.c.id)) == [
+        ("run.state",),
+        ("srs.version.approved",),
+    ]
+    assert query(hub_db, select(t.hub_events.c.kind)) == []
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0171") :]
+
+
+def test_0172_adds_the_srs_scope_of_a_goal_and_the_ledger_of_delivery_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0171")
+    assert not {"srs_document_id", "srs_heading"} & columns(hub_db, "goal_revisions")
+    assert "srs_delivery" not in tables(hub_db)
+    move_to(hub_db, "0172")
+    assert {"srs_document_id", "srs_heading"} <= columns(hub_db, "goal_revisions")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = insert(t.srs.documents).values(
+            project_id=ids["project"], slug="demo-shop", title="Demo Shop", label={}, created_by=ids["user"]
+        )
+        document_id = one(conn, document.returning(t.srs.documents.c.id))
+        row = {"project_id": ids["project"], "document_id": document_id, "code_key": "uc ord-1", "code": "UC ORD-1"}
+        conn.execute(insert(t.srs_delivery).values({**row, "state": "delivered", "source": "kg"}))
+        for bad in ({"state": "done", "source": "kg"}, {"state": "unknown", "source": "web"}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.srs_delivery).values({**row, "code_key": "uc ord-2", **bad}))
+            conn.rollback()
+    assert query(hub_db, select(t.srs_delivery.c.state, t.srs_delivery.c.evidence)) == [("delivered", {})]
+    move_to(hub_db, "0171", down=True)
+    assert not {"srs_document_id", "srs_heading"} & columns(hub_db, "goal_revisions")
+    assert "srs_delivery" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0172") :]
+
+
+def test_0173_adds_the_confirmed_baselines_of_goals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0172")
+    assert "srs_baselines" not in tables(hub_db)
+    move_to(hub_db, "0173")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = insert(t.srs.documents).values(
+            project_id=ids["project"], slug="demo-shop", title="Demo Shop", label={}, created_by=ids["user"]
+        )
+        document_id = one(conn, document.returning(t.srs.documents.c.id))
+        goal_id = one(
+            conn,
+            insert(t.goals).values(project_id=ids["project"], number=1, revision=1).returning(t.goals.c.id),
+        )
+        row = {"goal_id": goal_id, "project_id": ids["project"], "document_id": document_id}
+        conn.execute(insert(t.srs_baselines).values(row))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(t.srs_baselines).values(row))
+    assert query(hub_db, select(t.srs_baselines.c.counts)) == [({},)]
+    move_to(hub_db, "0172", down=True)
+    assert "srs_baselines" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0173") :]

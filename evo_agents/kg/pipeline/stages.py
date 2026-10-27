@@ -36,7 +36,7 @@ from evo_agents.kg.ids import normalize_time
 from evo_agents.kg.schema import node_kind_for_item
 
 MAP_VERSION = "7"
-STRUCTURE_VERSION = "9"
+STRUCTURE_VERSION = "10"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
@@ -425,6 +425,61 @@ def _markdown(record: dict, text: str, identifiers: Sequence[dict]) -> list[dict
     return []
 
 
+LINE_COMMENTS = {  # the line comment of a language and the suffixes of its files; a block comment is /* ... */
+    "#": (".py", ".sh", ".rb", ".pl", ".r", ".ex", ".exs"),
+    "//": (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".java", ".kt", ".go", ".rs", ".c", ".h", ".cc", ".cpp"),
+    "--": (".sql", ".lua", ".hs"),
+}
+COMMENT_MARKERS = {suffix: marker for marker, suffixes in LINE_COMMENTS.items() for suffix in suffixes}
+COMMENT_MARKERS.update({suffix: "//" for suffix in (".hpp", ".cs", ".swift", ".scala", ".php", ".dart")})
+BLOCK_COMMENT_MARKER = {suffix: "/*" for suffix, marker in COMMENT_MARKERS.items() if marker != "#"}
+
+
+def _comment_lines(text: str, suffix: str) -> dict[int, str]:
+    """The comments of a source file, by line number: what follows a line comment marker, and the lines of a
+    ``/* ... */`` block. A marker inside a string counts as one, so the text may hold a little more than comments."""
+    markers = [m for m in (COMMENT_MARKERS.get(suffix), BLOCK_COMMENT_MARKER.get(suffix)) if m]
+    found: dict[int, str] = {}
+    inside = False
+    for number, line in enumerate(text.splitlines()):
+        kept, rest = [], line
+        while rest:
+            if inside:
+                end = rest.find("*/")
+                kept.append(rest if end < 0 else rest[:end])
+                inside, rest = end < 0, "" if end < 0 else rest[end + 2 :]
+                continue
+            starts = sorted((rest.find(m), m) for m in markers if m in rest)
+            if not starts:
+                break
+            at, marker = starts[0]
+            if marker == "/*":
+                inside, rest = True, rest[at + 2 :]
+                continue
+            kept.append(rest[at + len(marker) :])
+            break
+        if kept:
+            found[number] = " ".join(kept)
+    return found
+
+
+def _comments(record: dict, text: str, identifiers: Sequence[dict]) -> list[dict]:
+    """The comments of a source file that hold a code of an identifier (a use case's, say), as one text for the link
+    stage with each comment on its line of the file, so a mention sits where it was written; the link stage reads
+    only the codes in it. None of the file's other text is read."""
+    path = (record.get("props") or {}).get("path") or ""
+    suffix = PurePosixPath(path).suffix.lower()
+    if not identifiers or suffix not in COMMENT_MARKERS:
+        return []
+    patterns = [re.compile(i["pattern"]) for i in identifiers]
+    lines = _comment_lines(text, suffix)
+    held = {n: c for n, c in lines.items() if any(p.search(c) for p in patterns)}
+    if not held:
+        return []
+    joined = "\n".join(held.get(n, "") for n in range(max(held) + 1))
+    return [{"t": "text", "src": record["id"], "unit": item_unit(record["id"]), "text": joined, "field": "comment"}]
+
+
 def symbol_key(record: dict, source_id: str, path: str, qualname: str) -> list[str]:
     """The PG-Keys key of a Symbol: one function of one file of one repo, whichever source read it. The
     repo is the item's ``props.repo``: the harness.yaml name for a ``repo:`` source or for the harness
@@ -808,8 +863,10 @@ def _structure_of_kind(
         return _tsconfig(record, text) if name in TSCONFIG_NAMES else []
     if kind == "code" and text is not None:
         extractor = code_extractor(record, code_backend)
+        facts: list[dict] = []
         if extractor == "python-ast":
-            return _python(record, source_id, text)
-        if extractor.startswith("graphify-ast"):
-            return _graphify(record, source_id, text)
+            facts = _python(record, source_id, text)
+        elif extractor.startswith("graphify-ast"):
+            facts = _graphify(record, source_id, text)
+        return facts + _comments(record, text, identifiers)
     return []

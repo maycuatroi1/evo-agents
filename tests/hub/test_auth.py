@@ -130,6 +130,7 @@ HUB_TABLES |= pg.SELLER_TABLES  # migration 0159
 HUB_TABLES |= pg.DOCS_TABLES  # migration 0163
 HUB_TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 HUB_TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
+HUB_TABLES |= {"srs_delivery", "srs_baselines"}  # migrations 0172 and 0173
 HUB_TABLES |= pg.plugin_chain_tables()  # the chains of the installed core plugins and their own tables
 
 

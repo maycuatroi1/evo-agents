@@ -53,6 +53,9 @@ TIME_OF_DAY = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # loop.brainstorm.ti
 TIME_ZONE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")  # loop.timezone, as an IANA name
 USE_CASE_MODES = ("always", "never", "auto")  # loop.use_cases (loop.model.USE_CASE_MODES)
 MAX_TIME_ZONE_CHARS = 64
+LABEL = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?"
+)  # loop.labels, as a placement label
 
 # Why a value is wrong, or None when it is right.
 Check = Callable[[Any], str | None]
@@ -130,6 +133,14 @@ def _optional(check: Check) -> Check:
     return optional
 
 
+def _labels(value) -> str | None:
+    """A list of placement labels (``worker_placement``), at most ten."""
+    right = (
+        isinstance(value, list) and len(value) <= 10 and all(isinstance(v, str) and LABEL.fullmatch(v) for v in value)
+    )
+    return None if right else "a list of at most 10 labels such as os=linux or gpu"
+
+
 def _flag(value) -> str | None:
     return None if isinstance(value, bool) else "true or false"
 
@@ -155,6 +166,13 @@ def _globs(value) -> str | None:
 LOOP_KEYS = (  # plan loop-engine: the Loop of the project, off by default; no estimate and no budget
     Key("loop.enabled", False, _flag, "true: the project's Loop makes work items and hands out their runs"),
     Key("loop.worker", None, _optional(_line(100)), "the worker of the Loop's author and plan runs; null: none run"),
+    Key(
+        "loop.pool",
+        None,
+        _optional(_line(100)),
+        "the pool of workers the Loop's author and plan runs go to, in place of loop.worker; null: loop.worker",
+    ),
+    Key("loop.labels", [], _labels, "the labels a worker of the Loop's author and plan runs holds, with loop.pool"),
     Key(
         "loop.timezone",
         None,
