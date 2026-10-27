@@ -326,6 +326,8 @@ writes as a revision (`evo-agents hub policy`, `docs/merge-queue.md`). A key a r
 | --- | --- | --- |
 | `loop.enabled` | false | the Loop makes work items and hands out their runs |
 | `loop.worker` | null | the worker of the Loop's author and plan runs; null: none run |
+| `loop.pool` | null | the pool the author and plan runs go to, in place of `loop.worker` (a selector `pool=<name>`, no pinned worker); null: `loop.worker` |
+| `loop.labels` | `[]` | labels a worker of those runs holds, with `loop.pool`; a plan's `worker_labels` add to them for its plan run. The worker found must be live, ready, serving the project and owned by a writer; the runs go in its owner's name |
 | `loop.timezone` | null | the zone of the Loop's schedule; null: the charter's, else UTC |
 | `loop.business.max_running` | 2 | work items of the business cycle running at once |
 | `loop.development.max_running` | 1 | work items of the development cycle running at once |
