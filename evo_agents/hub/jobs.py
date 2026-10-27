@@ -60,6 +60,9 @@ LOOP_NOTICES = "hub.loop_notices"  # every 5 minutes: the month's review of goal
 OPPORTUNITY_DEADLINES = "hub.opportunity_deadlines"  # hourly: owners told as the window of an open opportunity closes
 TODAY_DIGEST = "hub.today_digest"  # every minute: the summary push of Today, at each member's time, once a day
 MEMORY_UPKEEP = "hub.memory_upkeep"  # daily: agents' memories nobody opened for 30 days archived, stale ones marked
+CONTEXT_ANSWER_REUSE = (
+    "hub.context_answer_reuse"  # daily: the answers loaded the day before, as a signal, per project with them on
+)
 EXPIRE_SEATS = "hub.expire_seats"  # hourly: org seats past their end date ended, the leases of people at A0 back
 MARKET_REFRESH = "hub.market_refresh"  # every 6 hours: each plugin market's index and its plugins' latest releases
 MARKET_LICENSES = "hub.market_licenses"  # hourly: a buying hub's orders, licences, installs, reminders and lapses
