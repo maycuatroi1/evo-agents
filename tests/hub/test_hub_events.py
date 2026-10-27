@@ -4,9 +4,9 @@
 A rev of a claim emits canvas.claim, an approved baseline canvas.baseline, a batch of signals signal.posted, each in
 the transaction that made it: to the plugins granted canvas:read or signals:read that take them, at least once, as the
 events before them, and into hub_events, which is only added to and which the Loop reads by cursor per project. The
-four events before keep their names and payloads and stay out of hub_events. A project's events are written one
-transaction after the other, so their ids grow in the order they become visible. The product, Northwind Pantry, is
-made up.
+four events before keep their names and the keys of their payloads, and all but plan.step stay out of hub_events
+(``test_plan_step_status``). A project's events are written one transaction after the other, so their ids grow in the
+order they become visible. The product, Northwind Pantry, is made up.
 """
 
 from __future__ import annotations

@@ -38,7 +38,7 @@ from tests.hub.test_decisions import (
     run_view,
     set_run,
 )
-from tests.hub.test_plan_runs import plan_body, push, reported, started
+from tests.hub.test_plan_runs import held_plan, plan_body, push, reported, started
 from tests.hub.test_runs import PROJECT, audit_rows, claim, members, moved, moves, recover
 
 REASON = "Baseline W44 of canvas evo-agents, with CL-90 and CL-91, is approved on 2026-10-30."
@@ -168,6 +168,57 @@ def test_a_wait_wakes_on_an_event_of_its_kind_that_contains_what_it_names_and_ca
     }
 
 
+def marked(client, headers, plan_id: str, step, status: str) -> dict:
+    """Step ``step`` of plan ``plan_id`` set to ``status`` as `evo-agents hub plan step` does: a PATCH of the revision
+    the hub holds."""
+    revision = held_plan(client, headers, plan_id)["revision"]
+    body = {"section": "steps", "step": step, "updates": {"status": status}, "if_revision": revision}
+    response = client.patch(f"/v1/projects/{PROJECT}/plans/{plan_id}", json=body, headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_wait_on_a_step_of_another_plan_wakes_once_that_step_is_done_and_on_nothing_else(client, hub, hub_db):
+    push(client, hub["owner"], plan_body("northwind-launch"))  # the plan whose step 3 the run waits on
+    push(client, hub["owner"], plan_body("northwind-ops"))
+    # what `--contains plan=northwind-launch --contains step=3 --contains status=done` sends: 3 read as JSON
+    contains = {"plan": "northwind-launch", "step": 3, "status": "done"}
+    worker, run, wait = a_waiting_run(client, hub, until=soon(12), on=hub_events.PLAN_STEP, contains=contains)
+    assert wait["wake_on"] == {"kind": "plan.step", "contains": {**contains, "step": "3"}}, "a step is text"
+
+    marked(client, hub["owner"], "northwind-launch", 2, "done")  # another step
+    marked(client, hub["owner"], "northwind-launch", 3, "in_progress")  # another status
+    marked(client, hub["owner"], "northwind-ops", 3, "done")  # another plan
+    recover(client)
+    assert decision(client, hub["owner"], wait["id"])["state"] == "open"
+    assert run_view(client, hub["owner"], run["id"])["state"] == "parked"
+
+    revision = marked(client, hub["owner"], "northwind-launch", 3, "done")["revision"]
+    recover(client)
+    woke = decision(client, hub["owner"], wait["id"])
+    assert woke["state"] == "answered"
+    e = tables.hub_events
+    query = select(e.c.id, e.c.payload).where(e.c.kind == "plan.step").order_by(e.c.id.desc()).limit(1)
+    ((event_id, payload),) = sql(hub_db, query)
+    assert payload == {
+        "v": 1,
+        "plan": "northwind-launch",
+        "plan_id": "northwind-launch",
+        "step": "3",
+        "status": "done",
+        "from": "in_progress",
+        "to": "done",
+        "revision": revision,
+    }
+    assert woke["answer_text"].startswith(f"Decision #{wait['id']} (wait) woke: event plan.step #{event_id} ")
+    assert '"plan": "northwind-launch"' in woke["answer_text"]
+    new_id = woke["answer_run_id"]
+    assert claim(client, worker)["id"] == new_id
+    moved(client, worker, new_id, "running")
+    (message,) = inbox(client, worker, new_id)
+    assert message["decision_id"] == wait["id"]
+
+
 def test_a_parked_run_resumes_by_the_reaper_when_its_wait_wakes_and_stays_parked_until_then(client, hub, hub_db):
     worker, run, wait = a_waiting_run(client, hub, until=soon(100))
     parked_id = run["id"]
@@ -238,7 +289,7 @@ def test_the_owner_wakes_a_wait_sooner_with_an_answer(client, hub, hub_db):
         {"until": "2026-10-30T09:00:00"},
         {"until": soon(), "contains": {"canvas": "x"}},
         {"on": "canvas.nothing"},
-        {"on": "plan.step"},
+        {"on": "run.state"},
         {"until": soon(), "reason": "   "},
     ],
     ids=["neither", "past", "too-far", "naive", "contains-alone", "unknown-kind", "plugin-kind", "blank-reason"],
