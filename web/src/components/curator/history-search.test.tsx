@@ -41,6 +41,7 @@ const FOUND: HistorySearch = {
   total: 2,
   limit: 20,
   offset: 0,
+  reranked: false,
   hits: [
     {
       source: "transcript",
