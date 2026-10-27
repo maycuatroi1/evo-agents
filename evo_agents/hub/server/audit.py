@@ -87,6 +87,9 @@ WORKER_SHARE = "worker.share"
 WORKER_UNSHARE = "worker.unshare"
 # Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>" ("<project>/<plan>
 # run:<id>" for a plan run), never a prompt or evidence.
+RUN_CAUSE = (
+    "run.cause"  # a plugin classified the cause of a failed run, or a writer restored it: "<project> run:<id> ..."
+)
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
 RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project>/<plan> run:<id>", no step
 RUN_DISPATCH_AUTHOR = "run.dispatch_author"  # a member queued an author run: "<project>/author run:<id>", no request

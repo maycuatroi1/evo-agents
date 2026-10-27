@@ -4583,3 +4583,72 @@ def test_0168_says_since_when_a_run_runs_as_its_owner_and_going_back_drops_it(hu
     move_to(hub_db, "0167", down=True)
     assert "as_owner_since" not in columns(hub_db, "runs")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0168") :]
+
+
+def test_0169_lets_a_core_plugin_be_the_actor_of_a_decision_or_a_dismissal_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0168")
+    d, e, dismissals = hub_tables.kg_decisions, hub_tables.kg_decision_events, hub_tables.kg_review_dismissals
+    assert "actor_plugin" not in columns(hub_db, "kg_decision_events")
+    assert "dismissed_by_plugin" not in columns(hub_db, "kg_review_dismissals")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        project = ids["project"]
+        node = {"project_id": project, "kind": "deprecate", "state": "active", "src": "app:file:a.py"}
+        first = conn.execute(insert(d).values({**node, "number": 1}).returning(d.c.id)).scalar_one()
+        conn.execute(insert(d).values({**node, "number": 2, "src": "app:file:b.py"}))
+        event = {"project_id": project, "rev": 1, "decision_id": first, "action": "decide", "actor_id": ids["user"]}
+        conn.execute(insert(e).values({**event, "reason": "a member's"}))
+        row = {
+            "project_id": project,
+            "fingerprint": "r:0123456789abcdef",
+            "rule": "possible_duplicate",
+            "reason": "a member's",
+            "dismissed_by": ids["user"],
+        }
+        conn.execute(insert(dismissals).values(row))
+    move_to(hub_db, "0169")
+    assert "actor_plugin" in columns(hub_db, "kg_decision_events")
+    assert "dismissed_by_plugin" in columns(hub_db, "kg_review_dismissals")
+    with live.connect(hub_db) as conn:
+        member_less = {k: v for k, v in event.items() if k != "actor_id"}
+        conn.execute(
+            insert(e).values({**member_less, "rev": 2, "actor_plugin": "jev@typesafe", "reason": "a plugin's"})
+        )
+        conn.execute(
+            insert(dismissals).values(
+                {
+                    **row,
+                    "fingerprint": "r:fedcba9876543210",
+                    "dismissed_by": None,
+                    "dismissed_by_plugin": "jev@typesafe",
+                }
+            )
+        )
+        for table, bad_rows in (
+            (
+                e,
+                (
+                    {**event, "rev": 3, "actor_plugin": "jev@typesafe", "reason": "x"},  # a member and a plugin
+                    {**member_less, "rev": 3, "reason": "x"},  # neither
+                    {**member_less, "rev": 3, "actor_plugin": "", "reason": "x"},
+                    {**member_less, "rev": 3, "actor_plugin": "p" * 64, "reason": "x"},
+                ),
+            ),
+            (
+                dismissals,
+                (
+                    {**row, "fingerprint": "r:1", "dismissed_by_plugin": "jev@typesafe"},
+                    {**row, "fingerprint": "r:2", "dismissed_by": None},
+                    {**row, "fingerprint": "r:3", "dismissed_by": None, "dismissed_by_plugin": ""},
+                ),
+            ),
+        ):
+            for bad in bad_rows:
+                with pytest.raises(errors.CheckViolation):
+                    conn.execute(insert(table).values(bad))
+    move_to(hub_db, "0168", down=True)
+    assert "actor_plugin" not in columns(hub_db, "kg_decision_events")
+    assert "dismissed_by_plugin" not in columns(hub_db, "kg_review_dismissals")
+    assert query(hub_db, select(func.count()).select_from(dismissals)) == [(1,)], "the plugin's dismissal goes"
+    assert query(hub_db, select(func.count()).select_from(e)) == [(2,)], "its step of the history stays"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0169") :]

@@ -239,7 +239,10 @@ async def move_run(
     if row is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
     await _insert_event(conn, run_id, row.seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
-    await plugin_events.emit_run_state(conn, run_id, row, old, new, actor)
+    cause, guessed = row.failure_cause, False
+    if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
+        cause, guessed = await infer_failure_cause(conn, run_id, row.error), True
+    await plugin_events.emit_run_state(conn, run_id, row, old, new, actor, failure_cause=cause, inferred=guessed)
     if new in runs.TERMINAL_STATES:
         from evo_agents.hub.server import tool_stats  # it reads runs through the routes that import this module
 
@@ -251,8 +254,6 @@ async def move_run(
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 
         await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
-    if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
-        await infer_failure_cause(conn, run_id, row.error)
     await browser_holds.follow(conn, run_id, new)
     await notify_events(conn, run_id)
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
