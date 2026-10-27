@@ -95316,7 +95316,8 @@
                 "type": "string",
                 "enum": [
                   "delivered",
-                  "undelivered"
+                  "undelivered",
+                  "unknown"
                 ]
               },
               "type": "object",
@@ -95328,7 +95329,8 @@
                 "type": "string",
                 "enum": [
                   "delivered",
-                  "undelivered"
+                  "undelivered",
+                  "unknown"
                 ]
               },
               "type": "object",
