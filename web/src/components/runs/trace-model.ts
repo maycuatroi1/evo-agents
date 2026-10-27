@@ -1,6 +1,9 @@
 import { contentText, moveOf, type RunMove } from "./log-model";
 import { commandInput, unwrapShell } from "./shell-command";
 import type { RunEvent } from "./queries";
+import { type DiffStat, diffStat, editText } from "./trace-diff";
+
+export { type DiffStat, diffStat };
 
 /**
  * How the Trace tab of a run's page reads the run's events (the same stream as the Raw log): one item per thing the
@@ -36,7 +39,6 @@ export type ToolKind = (typeof TOOL_KINDS)[number];
 export type ToolStatus = "pending" | "in_progress" | "completed" | "failed";
 export type Tone = "ok" | "error" | null;
 
-export type DiffStat = { added: number; removed: number };
 
 export type ToolCall = {
   /** The runtime's toolCallId; null when the event had none. */
@@ -121,11 +123,6 @@ function messageText(body: Body): string | null {
   return contentText(body.content) ?? str(body.text) ?? contentText(body.message) ?? null;
 }
 
-function lineCount(text: string): number {
-  if (!text) return 0;
-  return text.replace(/\n$/, "").split("\n").length;
-}
-
 // Tool calls.
 
 const KIND_ALIASES: Record<string, ToolKind> = { write: "edit", patch: "edit", bash: "execute", shell: "execute", grep: "search", glob: "search" };
@@ -186,47 +183,6 @@ export function toolLabel(tool: Pick<ToolCall, "title" | "arg">): { name: string
   return { name, arg: tool.arg ?? (name ? null : tool.title) };
 }
 
-/** The lines an edit adds and removes, from its input (Claude Code, opencode, Codex) or its ACP diff content. */
-export function diffStat(input: unknown, content: unknown): DiffStat | null {
-  let added = 0;
-  let removed = 0;
-  let found = false;
-  const pair = (before: unknown, after: unknown) => {
-    if (typeof before !== "string" && typeof after !== "string") return;
-    found = true;
-    removed += typeof before === "string" ? lineCount(before) : 0;
-    added += typeof after === "string" ? lineCount(after) : 0;
-  };
-  const unified = (diff: unknown) => {
-    if (typeof diff !== "string") return;
-    found = true;
-    for (const line of diff.split("\n")) {
-      if (line.startsWith("+") && !line.startsWith("+++")) added += 1;
-      else if (line.startsWith("-") && !line.startsWith("---")) removed += 1;
-    }
-  };
-  if (isRecord(input)) {
-    if ("old_string" in input || "new_string" in input) pair(input.old_string, input.new_string);
-    else if ("oldString" in input || "newString" in input) pair(input.oldString, input.newString);
-    else if (typeof input.content === "string") pair(undefined, input.content);
-    if (Array.isArray(input.edits)) for (const edit of input.edits) if (isRecord(edit)) pair(edit.old_string ?? edit.oldString, edit.new_string ?? edit.newString);
-    if (Array.isArray(input.changes)) for (const change of input.changes) if (isRecord(change)) unified(change.diff);
-  }
-  if (!found && Array.isArray(content)) {
-    for (const item of content) if (isRecord(item) && item.type === "diff") pair(item.oldText ?? undefined, item.newText);
-  }
-  return found ? { added, removed } : null;
-}
-
-/** An edit's change as lines of a diff (`- old`, `+ new`), for an edit whose output says nothing of it. */
-function editText(input: unknown): string | null {
-  if (!isRecord(input)) return null;
-  const before = input.old_string ?? input.oldString;
-  const after = input.new_string ?? input.newString;
-  if (typeof before !== "string" && typeof after !== "string") return null;
-  const lines = (text: unknown, mark: string) => (typeof text === "string" && text ? text.replace(/\n$/, "").split("\n").map((line) => `${mark} ${line}`) : []);
-  return [...lines(before, "-"), ...lines(after, "+")].join("\n");
-}
 
 /** The exit code of a command, as Codex (`exitCode`), opencode (`exit`) or Claude Code's text ("Exit code 1") give it. */
 function exitCode(rawOutput: unknown, text: string | null): number | null {
@@ -297,7 +253,7 @@ function applyCall(tool: ToolCall, body: Body, at: string, first: boolean): void
     tool.description = description && description !== tool.arg ? oneLine(description) : tool.description;
     if (tool.kind === "edit") {
       tool.diff = diffStat(input, body.content) ?? tool.diff;
-      tool.change = editText(input) ?? tool.change;
+      tool.change = editText(input, body.content) ?? tool.change;
     } else if (tool.kind === "execute") {
       tool.input = commandInput(input) ?? tool.input;
     } else {
