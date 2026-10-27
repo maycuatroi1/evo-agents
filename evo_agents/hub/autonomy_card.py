@@ -57,8 +57,11 @@ DECISION_CATEGORY_TEXT = {
     "external_send": "sending anything to a service outside this machine and the repos' own remotes: mail, chat, "
     "issues, third-party APIs",
     "spend_money": "anything that costs money beyond this runtime's own usage: paid APIs, cloud resources, purchases",
-    "architecture": "an architectural choice the plan leaves open",
-    "scope": "a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers",
+    "architecture": "a design choice the plan leaves open that would change a contract it fixes (a schema, an API, a "
+    "CLI surface, a seam) or cannot be undone; any other choice of design is yours",
+    "scope": "a change to what the plan delivers that no route avoids (an acceptance criterion, an invariant or a "
+    "non-goal), or a block only the owner can lift; a choice you can undo with a commit, that changes no real data and "
+    "spends nothing beyond the runtime, is yours",
     "merge": "merging into a repo's default branch or the target branch of a pull or merge request",
     "credential": "creating, rotating or revoking a credential: a token, a key, a secret, an account's password",
     "access": "changing grants, autonomy ceilings or preferences, policies or agent profiles",
@@ -196,8 +199,8 @@ def decision_lines(where: str, autonomy: Mapping | None) -> list[str]:
     return [
         head,
         *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in categories),
-        f"  Decide everything else yourself, and write each such choice and why into the evidence of {where}, on a "
-        'line that starts with "Decision:".',
+        f"  Decide everything else yourself, and write each such choice, why and how to undo it into the evidence of "
+        f'{where}, on a line that starts with "Decision:".',
     ]
 
 
