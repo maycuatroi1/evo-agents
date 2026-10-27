@@ -11711,6 +11711,577 @@
         }
       }
     },
+    "hub okr add": {
+      "positionals": [
+        {
+          "name": "kind",
+          "metavar": "KIND",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "business_line",
+            "objective",
+            "key_result",
+            "deliverable"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--parent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "draft",
+            "active",
+            "done",
+            "dropped",
+            "archived"
+          ]
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--period"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--due"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--baseline"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--target"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--body"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ref"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "code",
+          "ref",
+          "kind",
+          "title",
+          "body_md",
+          "status",
+          "owner",
+          "period",
+          "due",
+          "baseline",
+          "target",
+          "source",
+          "source_url",
+          "source_rev",
+          "parents",
+          "children",
+          "links",
+          "rollup",
+          "gaps",
+          "created_by",
+          "created_at",
+          "updated_by",
+          "updated_at"
+        ],
+        "schema": "OkrItem"
+      }
+    },
+    "hub okr import": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--file"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--prune"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "source",
+          "dry_run",
+          "prune",
+          "created",
+          "updated",
+          "unchanged",
+          "missing",
+          "links"
+        ],
+        "schema": "OkrImported"
+      }
+    },
+    "hub okr link": {
+      "positionals": [
+        {
+          "name": "item",
+          "metavar": "ITEM",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "kind",
+          "metavar": "KIND",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "task",
+            "use_case",
+            "plan",
+            "goal"
+          ]
+        },
+        {
+          "name": "target",
+          "metavar": "TARGET",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "made",
+          "item",
+          "link"
+        ],
+        "schema": "OkrLinkMade"
+      }
+    },
+    "hub okr set": {
+      "positionals": [
+        {
+          "name": "item",
+          "metavar": "ITEM",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--parent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "draft",
+            "active",
+            "done",
+            "dropped",
+            "archived"
+          ]
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--period"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--due"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--baseline"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--target"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--body"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ref"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "code",
+          "ref",
+          "kind",
+          "title",
+          "body_md",
+          "status",
+          "owner",
+          "period",
+          "due",
+          "baseline",
+          "target",
+          "source",
+          "source_url",
+          "source_rev",
+          "parents",
+          "children",
+          "links",
+          "rollup",
+          "gaps",
+          "created_by",
+          "created_at",
+          "updated_by",
+          "updated_at"
+        ],
+        "schema": "OkrItem"
+      }
+    },
+    "hub okr show": {
+      "positionals": [
+        {
+          "name": "item",
+          "metavar": "ITEM",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "code",
+          "ref",
+          "kind",
+          "title",
+          "body_md",
+          "status",
+          "owner",
+          "period",
+          "due",
+          "baseline",
+          "target",
+          "source",
+          "source_url",
+          "source_rev",
+          "parents",
+          "children",
+          "links",
+          "rollup",
+          "gaps",
+          "created_by",
+          "created_at",
+          "updated_by",
+          "updated_at"
+        ],
+        "schema": "OkrItem"
+      }
+    },
+    "hub okr tree": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "draft",
+            "active",
+            "done",
+            "dropped",
+            "archived"
+          ]
+        },
+        {
+          "flags": [
+            "--line"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "today",
+          "counts",
+          "roots",
+          "gaps"
+        ],
+        "schema": "OkrTree"
+      }
+    },
+    "hub okr unlink": {
+      "positionals": [
+        {
+          "name": "item",
+          "metavar": "ITEM",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "link_id",
+          "metavar": "LINK",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "deleted",
+          "item",
+          "link"
+        ],
+        "schema": "OkrUnlinked"
+      }
+    },
     "hub openapi": {
       "positionals": [],
       "options": [
@@ -59937,6 +60508,981 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/MarketingDone"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/okr/{project}/tree": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Tree",
+          "description": "The tree from its business lines down, each item with its roll-up and links, and the gaps.",
+          "operationId": "tree_v1_x_okr__project__tree_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "draft",
+                      "active",
+                      "done",
+                      "dropped",
+                      "archived"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "items of this status and those above",
+                "title": "Status"
+              },
+              "description": "items of this status and those above"
+            },
+            {
+              "name": "line",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one business line, by its code or ref",
+                "title": "Line"
+              },
+              "description": "one business line, by its code or ref"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OkrTree"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/okr/{project}/items/{item}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Item",
+          "description": "One item with its parents, children, links, roll-up and gaps.",
+          "operationId": "show_item_v1_x_okr__project__items__item__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "item",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+                "description": "the item's code (KR-3) or its ref",
+                "title": "Item"
+              },
+              "description": "the item's code (KR-3) or its ref"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OkrItem"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Set Item",
+          "description": "Change an item's fields or parents (writer); 409 for an item a source writes.",
+          "operationId": "set_item_v1_x_okr__project__items__item__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "item",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+                "description": "the item's code (KR-3) or its ref",
+                "title": "Item"
+              },
+              "description": "the item's code (KR-3) or its ref"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkrItemPatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OkrItem"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/okr/{project}/items": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Item",
+          "description": "A new item under its parents, with the next code of its kind (writer).",
+          "operationId": "add_item_v1_x_okr__project__items_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkrItemIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OkrItem"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/okr/{project}/items/{item}/links": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Link",
+          "description": "Link the item to a task, use case, plan or goal the project holds (writer); 200 when it was linked already.",
+          "operationId": "link_v1_x_okr__project__items__item__links_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "item",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+                "description": "the item's code (KR-3) or its ref",
+                "title": "Item"
+              },
+              "description": "the item's code (KR-3) or its ref"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkrLinkIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OkrLinkMade"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/okr/{project}/items/{item}/links/{link_id}": {
+        "delete": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Unlink",
+          "description": "Take a link off the item (writer); an item a source writes keeps its links editable.",
+          "operationId": "unlink_v1_x_okr__project__items__item__links__link_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "item",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+                "description": "the item's code (KR-3) or its ref",
+                "title": "Item"
+              },
+              "description": "the item's code (KR-3) or its ref"
+            },
+            {
+              "name": "link_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the link's id, as the item shows it",
+                "title": "Link Id"
+              },
+              "description": "the link's id, as the item shows it"
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OkrUnlinked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/okr/{project}/import": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Import Bundle",
+          "description": "Upsert a source's items by ref and add their links (writer); dry_run writes nothing and answers the same.",
+          "operationId": "import_bundle_v1_x_okr__project__import_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "render",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer",
+                "title": "Render"
+              },
+              "description": "text: the words `evo-agents hub okr` prints, as {text}, instead of the answer"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkrImportIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OkrImported"
                   }
                 }
               }
@@ -115012,6 +116558,1483 @@
           ],
           "title": "OAuthTokens",
           "description": "The tokens beside the access token (which is the secret's value) that PUT /v1/secrets/{name} takes for an\naccount of OAuth; never shown again."
+        },
+        "OkrGap": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "no_link, no_goal, no_kr, late or gone"
+            },
+            "item": {
+              "type": "string",
+              "title": "Item",
+              "description": "the item's code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "detail": {
+              "type": "string",
+              "title": "Detail"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "item",
+            "title",
+            "detail"
+          ],
+          "title": "OkrGap"
+        },
+        "OkrGoal": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "G-<n>"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "the goal's own status: active, paused or closed"
+            },
+            "metric": {
+              "type": "string",
+              "title": "Metric",
+              "description": "how its metric reads, such as `search.zero_rate p50 over 30 days <= 0.05`"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "the latest value of its signal the caller may see"
+            },
+            "measured_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Measured At"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "met, not_met, no_signal or no_metric: the latest value against the target"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "statement",
+            "status",
+            "metric",
+            "value",
+            "measured_at",
+            "state"
+          ],
+          "title": "OkrGoal"
+        },
+        "OkrImportIn": {
+          "properties": {
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "the source's name; required"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "default": false
+            },
+            "prune": {
+              "type": "boolean",
+              "title": "Prune",
+              "description": "archive the items of the source the bundle no longer lists",
+              "default": false
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/OkrImportItem"
+              },
+              "type": "array",
+              "maxItems": 2000,
+              "title": "Items",
+              "default": []
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/OkrImportLink"
+              },
+              "type": "array",
+              "maxItems": 10000,
+              "title": "Links",
+              "default": []
+            },
+            "file": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File",
+              "description": "the bundle as JSON text, in place of the fields above"
+            }
+          },
+          "type": "object",
+          "title": "OkrImportIn",
+          "description": "A bundle of a source: its items, upserted by ref, and their links, added. ``file`` is the same bundle as the\ntext of a JSON file (the command line sends it so); ``dry_run`` and ``prune`` given beside it win when true."
+        },
+        "OkrImportItem": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+              "title": "Ref"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "business_line",
+                "objective",
+                "key_result",
+                "deliverable"
+              ],
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "body_md": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body Md",
+              "description": "the item's text, in Markdown"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "done",
+                "dropped",
+                "archived"
+              ],
+              "title": "Status",
+              "default": "active"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "the login of who answers for it"
+            },
+            "period": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period",
+              "description": "free text, such as 2026-Q4"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due",
+              "description": "YYYY-MM-DD"
+            },
+            "baseline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            },
+            "parents": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Parents",
+              "description": "refs in the bundle or on the hub",
+              "default": []
+            },
+            "source_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Url"
+            },
+            "source_rev": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Rev"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "kind",
+            "title"
+          ],
+          "title": "OkrImportItem"
+        },
+        "OkrImportLink": {
+          "properties": {
+            "item": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Item",
+              "description": "the item's ref (or code)"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "task",
+                "use_case",
+                "plan",
+                "goal"
+              ],
+              "title": "Kind"
+            },
+            "target": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Target"
+            }
+          },
+          "type": "object",
+          "required": [
+            "item",
+            "kind",
+            "target"
+          ],
+          "title": "OkrImportLink"
+        },
+        "OkrImported": {
+          "properties": {
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "description": "true: nothing was written, and this is what the import would do"
+            },
+            "prune": {
+              "type": "boolean",
+              "title": "Prune"
+            },
+            "created": {
+              "items": {
+                "$ref": "#/components/schemas/OkrImportedItem"
+              },
+              "type": "array",
+              "title": "Created"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/components/schemas/OkrImportedItem"
+              },
+              "type": "array",
+              "title": "Updated"
+            },
+            "unchanged": {
+              "items": {
+                "$ref": "#/components/schemas/OkrImportedItem"
+              },
+              "type": "array",
+              "title": "Unchanged"
+            },
+            "missing": {
+              "items": {
+                "$ref": "#/components/schemas/OkrImportedItem"
+              },
+              "type": "array",
+              "title": "Missing",
+              "description": "the source's items the bundle no longer lists"
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/OkrImportedLink"
+              },
+              "type": "array",
+              "title": "Links"
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "dry_run",
+            "prune",
+            "created",
+            "updated",
+            "unchanged",
+            "missing",
+            "links"
+          ],
+          "title": "OkrImported"
+        },
+        "OkrImportedItem": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "the code it has, or takes once the import is written"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "fields": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Fields",
+              "description": "updated: what changed",
+              "default": []
+            },
+            "archived": {
+              "type": "boolean",
+              "title": "Archived",
+              "description": "missing: archived by prune",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "code",
+            "kind"
+          ],
+          "title": "OkrImportedItem"
+        },
+        "OkrImportedLink": {
+          "properties": {
+            "item": {
+              "type": "string",
+              "title": "Item"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target"
+            },
+            "result": {
+              "type": "string",
+              "title": "Result",
+              "description": "added, exists, not_found or refused"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detail"
+            },
+            "id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id",
+              "description": "the link's id once written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "item",
+            "kind",
+            "target",
+            "result"
+          ],
+          "title": "OkrImportedLink"
+        },
+        "OkrItem": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "body_md": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body Md"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            },
+            "period": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due"
+            },
+            "baseline": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "the import that writes it; its fields then change only there"
+            },
+            "source_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Url"
+            },
+            "source_rev": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Rev"
+            },
+            "parents": {
+              "items": {
+                "$ref": "#/components/schemas/OkrItemRef"
+              },
+              "type": "array",
+              "title": "Parents"
+            },
+            "children": {
+              "items": {
+                "$ref": "#/components/schemas/OkrItemRef"
+              },
+              "type": "array",
+              "title": "Children"
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/OkrLink"
+              },
+              "type": "array",
+              "title": "Links"
+            },
+            "rollup": {
+              "$ref": "#/components/schemas/OkrRollup"
+            },
+            "gaps": {
+              "items": {
+                "$ref": "#/components/schemas/OkrGap"
+              },
+              "type": "array",
+              "title": "Gaps"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "ref",
+            "kind",
+            "title",
+            "body_md",
+            "status",
+            "owner",
+            "period",
+            "due",
+            "baseline",
+            "target",
+            "source",
+            "source_url",
+            "source_rev",
+            "parents",
+            "children",
+            "links",
+            "rollup",
+            "gaps",
+            "created_by",
+            "created_at",
+            "updated_by",
+            "updated_at"
+          ],
+          "title": "OkrItem"
+        },
+        "OkrItemIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "business_line",
+                "objective",
+                "key_result",
+                "deliverable"
+              ],
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref",
+              "description": "the id a source outside the hub gave it, unique in the project"
+            },
+            "body_md": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body Md",
+              "description": "the item's text, in Markdown"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "done",
+                "dropped",
+                "archived"
+              ],
+              "title": "Status",
+              "default": "active"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "the login of who answers for it"
+            },
+            "period": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period",
+              "description": "free text, such as 2026-Q4"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due",
+              "description": "YYYY-MM-DD"
+            },
+            "baseline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target",
+              "description": "a key result's target, such as `30 % of searches answered`"
+            },
+            "parents": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Parents",
+              "description": "codes or refs of its parents",
+              "default": []
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "title"
+          ],
+          "title": "OkrItemIn"
+        },
+        "OkrItemPatch": {
+          "properties": {
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref",
+              "description": "the id a source outside the hub gave it, unique in the project"
+            },
+            "body_md": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body Md",
+              "description": "the item's text, in Markdown"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "active",
+                    "done",
+                    "dropped",
+                    "archived"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "the login of who answers for it"
+            },
+            "period": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period",
+              "description": "free text, such as 2026-Q4"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due",
+              "description": "YYYY-MM-DD"
+            },
+            "baseline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            },
+            "parents": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parents",
+              "description": "codes or refs"
+            }
+          },
+          "type": "object",
+          "title": "OkrItemPatch",
+          "description": "What to change of an item: a field left out stays, null (or an empty string) clears one of CLEARABLE, and\n``parents`` replaces the parents. An item an import wrote refuses every field (409): its source owns them."
+        },
+        "OkrItemRef": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "kind",
+            "title",
+            "status"
+          ],
+          "title": "OkrItemRef"
+        },
+        "OkrLink": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "task, use_case, plan or goal"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "T-12, <document>:<code>, a plan's slug or G-3"
+            },
+            "gone": {
+              "type": "boolean",
+              "title": "Gone",
+              "description": "the hub no longer holds the target"
+            },
+            "visible": {
+              "type": "boolean",
+              "title": "Visible",
+              "description": "false: the caller may not read its title; it still counts"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "a task's status, a use case's state (draft, in_review, approved, retired), a plan's status, a goal's state (met, not_met, no_signal, no_metric)"
+            },
+            "done": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done",
+              "description": "a task 1 or 0, a use case's done tasks, a plan's done steps"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Total",
+              "description": "a task 1 (0 cancelled), a use case's tasks, a plan's steps"
+            },
+            "share": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Share",
+              "description": "what it counts for in the deliverable's progress"
+            },
+            "late": {
+              "type": "boolean",
+              "title": "Late",
+              "default": false
+            },
+            "blocked": {
+              "type": "boolean",
+              "title": "Blocked",
+              "default": false
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "target",
+            "gone",
+            "visible",
+            "created_at"
+          ],
+          "title": "OkrLink"
+        },
+        "OkrLinkIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "task",
+                "use_case",
+                "plan",
+                "goal"
+              ],
+              "title": "Kind",
+              "description": "a deliverable's task, use_case or plan; a key result's goal"
+            },
+            "target": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Target"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "target"
+          ],
+          "title": "OkrLinkIn"
+        },
+        "OkrLinkMade": {
+          "properties": {
+            "made": {
+              "type": "boolean",
+              "title": "Made",
+              "description": "false: the item linked the target already"
+            },
+            "item": {
+              "type": "string",
+              "title": "Item",
+              "description": "the item's code"
+            },
+            "link": {
+              "$ref": "#/components/schemas/OkrLink"
+            }
+          },
+          "type": "object",
+          "required": [
+            "made",
+            "item",
+            "link"
+          ],
+          "title": "OkrLinkMade"
+        },
+        "OkrNode": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            },
+            "period": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due"
+            },
+            "baseline": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            },
+            "rollup": {
+              "$ref": "#/components/schemas/OkrRollup"
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/OkrLink"
+              },
+              "type": "array",
+              "title": "Links"
+            },
+            "children": {
+              "items": {
+                "$ref": "#/components/schemas/OkrNode"
+              },
+              "type": "array",
+              "title": "Children",
+              "description": "a deliverable under two key results is under each"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "ref",
+            "kind",
+            "title",
+            "status",
+            "owner",
+            "period",
+            "due",
+            "baseline",
+            "target",
+            "source",
+            "rollup",
+            "links",
+            "children"
+          ],
+          "title": "OkrNode"
+        },
+        "OkrRollup": {
+          "properties": {
+            "progress": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progress",
+              "description": "0 to 1, computed on read; null when nothing below counts"
+            },
+            "deliverables": {
+              "type": "integer",
+              "title": "Deliverables",
+              "description": "the distinct open deliverables it counts"
+            },
+            "tasks_done": {
+              "type": "integer",
+              "title": "Tasks Done"
+            },
+            "tasks_total": {
+              "type": "integer",
+              "title": "Tasks Total",
+              "description": "the distinct tasks its deliverables link, cancelled ones left out"
+            },
+            "tasks_late": {
+              "type": "integer",
+              "title": "Tasks Late",
+              "description": "due before today and not done"
+            },
+            "tasks_blocked": {
+              "type": "integer",
+              "title": "Tasks Blocked",
+              "description": "not done, with an open blocker or an open decision of a run"
+            },
+            "krs_met": {
+              "type": "integer",
+              "title": "Krs Met"
+            },
+            "krs_total": {
+              "type": "integer",
+              "title": "Krs Total",
+              "description": "the open key results at or below it"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OkrGoal"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a key result's goal"
+            }
+          },
+          "type": "object",
+          "required": [
+            "progress",
+            "deliverables",
+            "tasks_done",
+            "tasks_total",
+            "tasks_late",
+            "tasks_blocked",
+            "krs_met",
+            "krs_total"
+          ],
+          "title": "OkrRollup"
+        },
+        "OkrTree": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "today": {
+              "type": "string",
+              "format": "date",
+              "title": "Today"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "kind -> how many items the tree shows"
+            },
+            "roots": {
+              "items": {
+                "$ref": "#/components/schemas/OkrNode"
+              },
+              "type": "array",
+              "title": "Roots",
+              "description": "the business lines, then the objectives without one"
+            },
+            "gaps": {
+              "items": {
+                "$ref": "#/components/schemas/OkrGap"
+              },
+              "type": "array",
+              "title": "Gaps"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "today",
+            "counts",
+            "roots",
+            "gaps"
+          ],
+          "title": "OkrTree"
+        },
+        "OkrUnlinked": {
+          "properties": {
+            "deleted": {
+              "type": "boolean",
+              "title": "Deleted"
+            },
+            "item": {
+              "type": "string",
+              "title": "Item"
+            },
+            "link": {
+              "$ref": "#/components/schemas/OkrLink",
+              "description": "the link as it was"
+            }
+          },
+          "type": "object",
+          "required": [
+            "deleted",
+            "item",
+            "link"
+          ],
+          "title": "OkrUnlinked"
         },
         "OpportunityEvidence": {
           "properties": {
