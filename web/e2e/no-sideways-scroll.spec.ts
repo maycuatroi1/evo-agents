@@ -409,7 +409,7 @@ for (const width of WIDTHS) {
       { path: "/chats", ready: shown("chats-rows") },
       { path: `/chats/${chat.id}`, ready: shown("chat-messages") },
       { path: `/chats/${direct.id}`, ready: shown("chat-messages") },
-      // Below 1536 px the thread is a sheet, outside the page's main.
+      // Below 1280 px the thread is a sheet, outside the page's main; from there a column in it.
       { path: `/chats/${chat.id}?thread=${root.id}`, ready: (page) => expect(page.getByTestId("chat-thread")).toHaveAttribute("data-state", "ready") },
     ]);
   });

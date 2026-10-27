@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowDown, MessageSquareReply, RotateCcw, X } from "lucide-react";
+import { ArrowDown, Maximize2, MessageSquareReply, Minimize2, RotateCcw, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { FileDropFrame } from "@/components/data/attachments";
 import { Button } from "@/components/ui/button";
@@ -26,9 +26,13 @@ type Props = Omit<MessageActions, "onThread"> & {
   loadThread: (root: number) => Promise<void>;
   onSent: (message: GroupMessage) => void;
   onClose: () => void;
+  /** Whether the thread takes the whole chat view, and the switch between that and its side place; none, no switch. */
+  expanded?: boolean;
+  onExpand?: (expanded: boolean) => void;
   /** The ended chat takes no message: the composer is left out. */
   readOnly: boolean;
   className?: string;
+  style?: CSSProperties;
 };
 
 /**
@@ -36,7 +40,7 @@ type Props = Omit<MessageActions, "onThread"> & {
  * xl a column beside the chat; below xl the same panel in a sheet. It reads the whole thread once it opens (the chat's
  * page holds only its latest messages), and the chat's stream keeps it current after that.
  */
-export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSent, onClose, readOnly, onReact, reacting, under, className }: Props) {
+export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSent, onClose, expanded = false, onExpand, readOnly, onReact, reacting, under, className, style }: Props) {
   const t = useTranslations("chats.thread");
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -67,6 +71,7 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
     <section
       aria-labelledby="chat-thread-title"
       className={cn("flex min-h-0 flex-col", className)}
+      style={style}
       data-testid="chat-thread"
       data-root={root}
       data-state={state}
@@ -80,6 +85,20 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
           <span className="text-xs text-fg-subtle tabular-nums" data-testid="chat-thread-count">
             {t("count", { count })}
           </span>
+          {onExpand ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t(expanded ? "collapse" : "expand")}
+              title={t(expanded ? "collapse" : "expand")}
+              aria-pressed={expanded}
+              onClick={() => onExpand(!expanded)}
+              data-testid="chat-thread-expand"
+            >
+              {expanded ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+            </Button>
+          ) : null}
           <Button type="button" variant="ghost" size="icon-sm" aria-label={t("close")} onClick={onClose} data-testid="chat-thread-close">
             <X aria-hidden="true" />
           </Button>
@@ -117,7 +136,7 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
                 <Skeleton className="h-10 w-3/4" />
               </div>
             ) : (
-              <ol className="flex flex-col">
+              <ol className={cn("flex flex-col", expanded && "mx-auto w-full max-w-4xl")}>
                 {first ? (
                   <ThreadItem message={first} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} under={under} />
                 ) : null}
@@ -154,7 +173,7 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
           ) : null}
         </div>
         {readOnly ? null : (
-          <div className="border-t p-3">
+          <div className={cn("border-t p-3", expanded && "px-[max(0.75rem,calc((100%-56rem)/2))]")}>
             <ChatComposer
               chat={chat}
               me={me}
