@@ -187,8 +187,8 @@ test("the owner answers a decision from the Inbox, and an answered decision take
   await expect(panel.getByTestId("decision-context-markdown").locator("strong")).toHaveText("staging");
   await expect(panel.getByTestId("decision-run-link")).toHaveAttribute("href", runPath(project, run.id));
   await expect(panel.getByTestId("decision-step-link")).toHaveText("step 3");
-  // The run waits for the answer: the head says when it parks, 24 hours after it started waiting.
-  await expect(panel.getByTestId("decision-parks")).toHaveText(/^parks in 23 h \d+ min$/);
+  // The run waits for the answer: the head says when it parks, a few minutes after it started waiting (the hub parks every waiting run within minutes).
+  await expect(panel.getByTestId("decision-parks")).toHaveText(/^parks in \d+ min$/);
   await expect(panel.getByTestId("decision-choice-deploy").getByTestId("decision-recommended")).toHaveText("Agent's pick");
   await expect(panel.getByTestId("decision-choice-wait").getByTestId("decision-recommended")).toHaveCount(0);
   await expect(panel.getByRole("radio", { checked: true })).toHaveAccessibleName("Deploy to staging now Agent's pick");

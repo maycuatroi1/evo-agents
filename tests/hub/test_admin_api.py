@@ -22,14 +22,16 @@ if not pg.DSN:
 
 from alembic import command
 from fastapi.testclient import TestClient
-from sqlalchemy import column, func, insert, select, table, update
+from sqlalchemy import MetaData, column, func, insert, select, table, update
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import jobs, tables
 from evo_agents.hub import migrate as hub_migrate
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.migrate import alembic_config, migrate
+from evo_agents.hub.migrations.owned import PLUGIN_OWNED_TABLES
 from evo_agents.hub.openapi import document
+from evo_agents.hub.plugin_schema import installed_tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin_console import decode_cursor, encode_cursor
 from evo_agents.hub.server.app import create_app
@@ -341,6 +343,13 @@ def move_to(db, revision: str, *, down: bool = False) -> None:
     engine = hub_migrate._engine(db.dsn)
     try:
         with engine.begin() as conn:
+            if down:  # the tables of the installed core plugins hold keys to the hub's, which a downgrade drops
+                kept = installed_tables() - PLUGIN_OWNED_TABLES  # the hub's own chain drops its old ones
+                plugin_tables = MetaData()
+                plugin_tables.reflect(conn, only=lambda name, _: name in kept)
+                for dropped in reversed(plugin_tables.sorted_tables):
+                    if dropped.name in kept:
+                        dropped.drop(conn)
             config = alembic_config()
             config.attributes["connection"] = conn
             (command.downgrade if down else command.upgrade)(config, revision)
