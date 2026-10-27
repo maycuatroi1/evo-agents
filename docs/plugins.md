@@ -356,7 +356,8 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
 - **Events.** A plugin enabled in a project takes the events its `on` names there (every kind when it names none) that
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
-  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision),
+  `plan.step` with `plans:read` (a step's status set or changed, by whatever wrote the plan: the plan, the step, the
+  statuses and the revision; `evo_agents.hub.plan_step_status`),
   `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
   task (section Agent types), `agent.answer` (a question run ended: the question, its state, the answer and its
   label), which only a core plugin asks for and takes, without a grant, only for its own agent type's question
@@ -375,8 +376,9 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   of what made it, the parent, and the SRS items and plan steps it links). The core plugin srs takes
   `srs.version.approved`, and tasks takes `tasks.status`, with no grant: each kind is its own. A payload carries ids
   and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more. The last
-  five carry `v`, the version of their shape, and the hub also writes each into its own table `hub_events`, in the
-  same transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
+  five and `plan.step` carry `v`, the version of their shape, and the hub also writes each into its own table
+  `hub_events`, in the same transaction, which the Loop reads by cursor and the wait of a plan run wakes on
+  (`evo_agents.hub.hub_events`, `docs/notifications.md`, A wait).
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
   the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails

@@ -887,12 +887,14 @@ RELAY_RULE = (
 
 # How the agent of a plan run waits for a time or an event of the hub (``server.run_waits``) instead of asking.
 WAIT_RULE = (
-    "- When the work waits for a time, or for something that happens on the hub (a baseline of a canvas approved, a "
-    "claim or a task changing, signals posted), wait for it rather than ask the owner to tell you when it came: "
-    "`evo-agents worker wait --reason TEXT --until TIME --on KIND --contains KEY=VALUE --step {step}`, then end your "
-    f"turn. TIME is 2026-10-30T09:00Z or a span such as +6h, at most {MAX_WAIT_DAYS} days ahead; KIND is "
-    "canvas.baseline, canvas.claim, tasks.status, signal.posted or srs.version.approved, and each --contains a key of "
-    "the event's payload with its value. Give --until, --on or both. The hub wakes this session with a message naming "
+    "- When the work waits for a time, or for something that happens on the hub (a step of another plan done, a "
+    "baseline of a canvas approved, a claim or a task changing, signals posted), wait for it rather than ask the owner "
+    "to tell you when it came: `evo-agents worker wait --reason TEXT --until TIME --on KIND --contains KEY=VALUE "
+    f"--step {{step}}`, then end your turn. TIME is 2026-10-30T09:00Z or a span such as +6h, at most {MAX_WAIT_DAYS} "
+    "days ahead; KIND is plan.step, canvas.baseline, canvas.claim, tasks.status, signal.posted or "
+    "srs.version.approved, and each --contains a key of the event's payload with its value: a step of another plan "
+    "done is `--on plan.step --contains plan=PLAN --contains step=STEP --contains status=done`, which wakes as soon "
+    "as it is done. Give --until, --on or both. The hub wakes this session with a message naming "
     "the wait when the first of them comes. An option of a decision that only means not yet goes with `--wait-option "
     "KEY` of `evo-agents worker ask`: choosing it leaves the decision open, and you hear nothing until a real answer."
 )
