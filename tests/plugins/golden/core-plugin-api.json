@@ -1,7 +1,7 @@
 {
   "api_version": [
     1,
-    6
+    7
   ],
   "names": {
     "ANSWER_EVENT": {
@@ -5391,6 +5391,12 @@
           "kind": "keyword_only",
           "annotation": "int",
           "default": "100"
+        },
+        {
+          "name": "rules",
+          "kind": "keyword_only",
+          "annotation": "Sequence[str] | None",
+          "default": "None"
         }
       ],
       "returns": "Cleared"

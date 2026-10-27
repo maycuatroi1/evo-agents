@@ -4,7 +4,7 @@ sink read and writes decisions through ``evo_agents.hub.server.core_plugin_api``
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 6)  # the version of the API this plugin is written for
+API = (1, 7)  # the version of the API this plugin is written for
 SINK = "scribe@northwind"
 
 MANIFEST = {
