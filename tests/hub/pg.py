@@ -234,6 +234,8 @@ PUSH_TABLES = frozenset({"push_devices", "notification_preferences"})
 TODAY_TABLES = frozenset({"today_marks"})  # migration 0158: what Today keeps of a member (plan hub-mobile-phase-0)
 # migration 0163: the documents of a project, their versions, their images and the images of each version (feature docs)
 DOCS_TABLES = frozenset({"docs_documents", "docs_versions", "docs_images", "docs_version_images"})
+# migration 0165: the bridges of group chats to groups of a channel, their codes and the ids of what they carried
+CHAT_BRIDGE_TABLES = frozenset({"chat_bridges", "chat_bridge_codes", "chat_bridge_messages"})
 
 
 def plugin_version_tables() -> frozenset[str]:

@@ -342,9 +342,18 @@ async def _direct_agent(
     return threaded if threaded and threaded[0]["profile_id"] == found[0]["profile_id"] else found
 
 
-async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Principal, body: ChatMessageIn) -> int:
+async def deliver_message(
+    conn: AsyncConnection,
+    chat: ChatAccess,
+    user: Principal,
+    body: ChatMessageIn,
+    *,
+    via: str | None = None,
+    via_bridge: int | None = None,
+) -> int:
     """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
-    the notices; its id."""
+    the notices; its id. ``via`` names the kind of channel it came in by and ``via_bridge`` the bridge, which does
+    not get it back (``chat_bridge_events``)."""
     root = None
     if body.reply_to is not None:
         answered = await visible_message(conn, chat, body.reply_to)
@@ -352,7 +361,9 @@ async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Princip
     names = chats.mention_names(body.body)
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
     files = await attachment_store.take(conn, body.attachment_ids, user.user_id, chat_id=chat.chat_id)
-    message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
+    message_id, seq = await insert_message(
+        conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id, via=via, via_bridge=via_bridge
+    )
     await attachment_store.hold_in_chat(conn, message_id, files)  # before hand_mentions, whose inboxes carry them
     if chat.kind == chats.DIRECT:
         kept += await _direct_agent(conn, chat, user, root, kept)

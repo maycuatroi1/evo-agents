@@ -617,6 +617,17 @@ and `label_admin`, whether the reader may set it. Each change is audited as `cha
 `chat:<id> label:<level>` or `label:default`. A chat run in a chat whose level is below its project's default gets the
 level in its prompt, and the rule not to paste documents, secrets, names or customer data above it into the chat.
 
+**Bridges.** A group chat with agents may be bridged to a group of a channel a core plugin contributes (a group of a
+chat service), both ways (`docs/chat-bridges.md`, `evo_agents/hub/server/chat_bridges.py`, migration 0165). A chat
+admin, as above, makes a one-time code from a web session (`POST /v1/chats/{id}/bridges/code` with `kind`; a machine
+token gets 403) and the plugin redeems it from the group. A linked member's message in the group comes into the chat
+as theirs, `via` the kind; the chat's messages go out to the group as far as each project's sink of kind channel for
+that kind clears their label, redacted and without files, with a run's progress and reactions. The chat (`chat`) has
+`bridges`, and each message `via` and `bridged_to`. A chat admin takes a bridge off with
+`DELETE /v1/chats/{id}/bridges/{bridge}` or `hub chat unbridge CHAT BRIDGE`, the group with its plugin's command; a
+hub admin in the chat does it the same way, and any hub admin through the plugin's admin route. Each link and unlink is audited, `chat.bridge` and `chat.unbridge`, the
+target `chat:<id> bridge:<id> kind:<kind>`, an unlink with `via=<web|cli|bot|admin>`.
+
 **Messages and mentions.** A message has at most 16 KiB of UTF-8; `reply_to` puts it in the thread of the message it
 answers, and a thread has one level: `thread_root_id` always names its first message. The hub reads a message's
 mentions once, when it is sent, and keeps them with it (at most 20 names): `@` then `[a-z0-9-]`, not right after a
@@ -791,6 +802,8 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
 | `PUT .../image` (`data`, base64), `DELETE .../image`, `GET .../image`: a group chat's image | | a member |
 | `PUT .../label` (`level`), `DELETE .../label`: a group chat's own level | `hub chat label CHAT LEVEL`, `hub chat label CHAT --default` | an admin of every project of its agents |
+| `POST .../bridges/code` (`kind`): a one-time code that bridges a group chat to a group of a channel | | an admin of every project of its agents, from a web session |
+| `DELETE .../bridges/{bridge}`: takes a bridge off | `hub chat unbridge CHAT BRIDGE` | an admin of every project of its agents, or a hub admin in the chat |
 | `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |

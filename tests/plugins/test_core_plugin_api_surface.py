@@ -46,7 +46,7 @@ def test_the_surface_is_the_golden_copy_or_takes_the_version_the_rule_asks_for()
 
 
 def test_the_golden_copy_holds_the_version_the_hub_serves():
-    assert tuple(golden()["api_version"]) == hub.API_VERSION == (1, 4)
+    assert tuple(golden()["api_version"]) == hub.API_VERSION == (1, 5)
 
 
 def test_the_command_prints_the_surface_and_the_version():
@@ -54,7 +54,7 @@ def test_the_command_prints_the_surface_and_the_version():
     printed = subprocess.run([*run, "surface"], capture_output=True, text=True, check=True)
     assert json.loads(printed.stdout) == surface()
     version = subprocess.run([*run, "version"], capture_output=True, text=True, check=True)
-    assert version.stdout == "1.4\n"
+    assert version.stdout == "1.5\n"
     wrong = subprocess.run([*run, "help"], capture_output=True, text=True)
     assert wrong.returncode == 2 and "usage:" in wrong.stderr
 
@@ -90,7 +90,7 @@ def test_adding_a_name_a_keyword_with_a_default_a_field_or_a_literal_value_takes
         by["annotation"] = "Literal['web', 'bot', 'admin', 'job']"
 
     for edit in (added, keyword, field, literal):
-        assert required_version(*changed(edit)) == (1, 5), edit.__name__
+        assert required_version(*changed(edit)) == (1, 6), edit.__name__
 
 
 def test_removing_or_changing_anything_takes_the_next_major():
@@ -121,16 +121,16 @@ def test_removing_or_changing_anything_takes_the_next_major():
 
 def test_an_unchanged_surface_keeps_its_version():
     kept = golden()
-    assert required_version(kept, copy.deepcopy(kept)) == (1, 4)
+    assert required_version(kept, copy.deepcopy(kept)) == (1, 5)
 
 
 # require
 
 
 def test_require_passes_for_the_version_the_hub_serves_alone():
-    hub.require(1, 4)
-    for major, minor in ((1, 0), (1, 1), (1, 2), (1, 3), (1, 5), (0, 9), (2, 0)):
-        with pytest.raises(hub.UnsupportedApi, match=rf"needs core plugin API {major}\.{minor}; this hub serves 1\.4"):
+    hub.require(1, 5)
+    for major, minor in ((1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 6), (0, 9), (2, 0)):
+        with pytest.raises(hub.UnsupportedApi, match=rf"needs core plugin API {major}\.{minor}; this hub serves 1\.5"):
             hub.require(major, minor)
     with pytest.raises(TypeError):
         hub.require(True, 0)

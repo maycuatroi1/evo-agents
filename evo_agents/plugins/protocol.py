@@ -46,7 +46,8 @@ POINT_METHODS = {"routes": "route", "mcp_tools": "tool", "jobs": "job", "events"
 BACKEND_POINTS = tuple(POINT_METHODS)  # the extension points an isolated plugin serves from its backend
 # what an events contribution may take (``on``); task.result goes only to the plugin of the task's agent type; the
 # next three (plan living-lean-canvas) are a claim's rev, an approved baseline of a canvas, and a batch of signals; the
-# last two (plan loop-engine) an approved version of an SRS document and a task's status set or changed
+# next two (plan loop-engine) an approved version of an SRS document and a task's status set or changed; agent.answer
+# goes to the core plugin that asked; chat.bridge (plan chat-bridges) to the core plugin of a chat's bridge alone
 EVENT_KINDS = (
     "run.state",
     "chat.message",
@@ -58,6 +59,7 @@ EVENT_KINDS = (
     "srs.version.approved",
     "tasks.status",
     "agent.answer",
+    "chat.bridge",
 )
 NAME = {"type": "string", "pattern": r"^[a-z][a-z0-9_-]{0,62}$"}
 PROJECT = {"type": "string", "minLength": 1, "maxLength": 100}

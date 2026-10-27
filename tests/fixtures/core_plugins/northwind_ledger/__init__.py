@@ -14,7 +14,7 @@ owed, written against ``evo_agents.hub.server.core_plugin_api`` alone, as a plug
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 4)  # the version of the API this plugin is written for
+API = (1, 5)  # the version of the API this plugin is written for
 PREFIX = "northwind_ledger_"
 OVERDUE = PREFIX + "overdue"  # its notice kind
 SERVER = "northwind_ledger.server"
