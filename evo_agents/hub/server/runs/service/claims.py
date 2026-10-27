@@ -746,8 +746,10 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
         title = text_or_none(step.get("title"))
         verify = runs.verify_of(step)
+    from evo_agents.hub.server.context_answers import with_answers
     from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
 
+    prompt = await with_answers(conn, run_id, prompt)  # the confirmed answers that match the run, when the policy says
     prompt = await with_index(conn, run_id, prompt)  # the memories of an agent profile, not the project's default
     if view.kind != "plan":  # the plan's prompt has it first already
         prompt = autonomy_card.with_card(prompt, autonomy)

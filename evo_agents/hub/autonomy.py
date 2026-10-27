@@ -2,7 +2,7 @@
 project's repos, first of all whether it merges their merge requests on GitLab, as keys an admin of the project
 writes and the hub keeps as revisions (``evo_agents.hub.server.autonomy_policies``, table autonomy_policies).
 
-A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit`` and ``loop`` hold the keys of KEYS;
+A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit``, ``loop`` and ``context`` hold the keys of KEYS;
 ``repos`` maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its writer set. A key it leaves out
 reads as its default (``effective``), so a key a later release adds reads its default in every revision written
 before it, and a value an older release took that this one refuses reads as the default too. A project with no
@@ -21,6 +21,10 @@ and plan runs it hands out, and whether a solution goes through use cases of SRS
 problem-oriented-hub: always, never, or auto, which does when the plugin srs is on and the project has an SRS
 document not archived). It has no estimate and no budget (the member's answer 1 of 2026-10-21, checkpoint of step 1).
 ``loop.enabled`` is false by default, so a revision written before these keys reads with the Loop off.
+
+``context.answers`` (plan active-context-answers) is false by default: true adds to the prompt of every run of the project
+the confirmed answers that match its work (``evo_agents.hub.server.context_answers``). The revision that sets it true is
+the first week of the trial that compares the 28 days after with the 28 before.
 
 Standard library only: the server checks bodies with it, and the client may import it.
 """
@@ -200,6 +204,15 @@ LOOP_KEYS = (  # plan loop-engine: the Loop of the project, off by default; no e
         "project has an SRS document not archived",
     ),
 )
+CONTEXT_KEYS = (  # plan active-context-answers: off by default; the revision that turns it on is the trial's week 1
+    Key(
+        "context.answers",
+        False,
+        _flag,
+        "true: a run's prompt ends with the confirmed answers (decisions answered, feedback memories) that match its "
+        "work",
+    ),
+)
 KEYS = (
     Key(
         "merge.opt_in_label", "evo-merge", _line(255), "the label a person puts on a merge request to ask for the queue"
@@ -227,6 +240,7 @@ KEYS = (
     Key("breaker.judge_misses_7d", 2, _whole(0, 1000), "Judge passes found wrong in 7 days that the breaker allows"),
     Key("audit.sample_rate", 0.10, _number(0, 1), "the share of merged merge requests an admin is asked to check"),
     *LOOP_KEYS,
+    *CONTEXT_KEYS,
 )
 REPO_KEYS = (
     Key("mode", OFF, _one_of(*MODES), "auto: the hub merges the repo's merge requests in scope; off: a person does"),
