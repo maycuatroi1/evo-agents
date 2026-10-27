@@ -175,7 +175,10 @@ async def _author_run(conn: AsyncConnection, project_id: int, item: ItemView, vi
     problem = problem or await _unfit(conn, project, worker, "author", [harness], runtime)
     if problem is not None:
         return _refused(problem)
-    if item.from_claim:
+    if item.from_srs:
+        request = await texts.srs_request(conn, project_id, project, item)
+        subject = f"group {(item.detail.get('backlog') or {}).get('title') or item.key}"
+    elif item.from_claim:
         request = await texts.claim_request(conn, project_id, project, item)
         subject = f"claim {item.detail.get('claim') or item.key}"
     else:

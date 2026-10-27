@@ -17,7 +17,7 @@ parent heading of its use cases when they are in more than one; a group that can
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DELIVERED, UNDELIVERED, UNKNOWN, DELIVERING = STATES = ("delivered", "undelivered", "unknown", "delivering")
 KG, ADMIN, DELIVER = SOURCES = ("kg", "admin", "deliver")  # who put a use case in the ledger
@@ -29,13 +29,15 @@ MAX_GROUP = 15  # use cases in one group before it splits by heading
 @dataclass(frozen=True)
 class UseCase:
     """An approved use case: ``ref`` is its code, or its key when it has none; ``heading`` the code or title of its
-    direct parent, ``headings`` the codes or titles of every ancestor, the outermost first."""
+    direct parent, ``headings`` the codes or titles of every ancestor, the outermost first; ``version`` the version of
+    the document it was read from (not part of what makes two use cases equal)."""
 
     ref: str
     title: str
     claim: str | None = None
     heading: str | None = None
     headings: tuple[str, ...] = ()
+    version: int | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)

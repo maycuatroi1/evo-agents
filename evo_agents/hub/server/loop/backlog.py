@@ -48,7 +48,7 @@ async def _from_version(conn: AsyncConnection, document_id: int, number: int) ->
             up = by_id[up].parent_item_id
         names.reverse()
         claim = (row.fields or {}).get("claim") or None
-        found.append(UseCase(row.code or row.key, row.title, claim, names[-1] if names else None, tuple(names)))
+        found.append(UseCase(row.code or row.key, row.title, claim, names[-1] if names else None, tuple(names), number))
     return found
 
 
@@ -74,7 +74,14 @@ async def _told(conn: AsyncConnection, document_id: int, since: int) -> list[Use
         found[ref_key(ref)] = (
             None
             if payload.get("change") == REMOVED
-            else UseCase(ref, ref, payload.get("claim") or None, parent, (parent,) if parent else ())
+            else UseCase(
+                ref,
+                payload.get("title") or ref,
+                payload.get("claim") or None,
+                parent,
+                (parent,) if parent else (),
+                payload.get("version"),
+            )
         )
     return [case for case in found.values() if case is not None]
 
