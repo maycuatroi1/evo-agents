@@ -158,6 +158,15 @@ async def approved_documents(conn: AsyncConnection, project_id: int) -> list[Doc
     return [DocumentRow(**row._mapping) for row in await conn.execute(query.order_by(d.c.slug))]
 
 
+async def kg_documents(conn: AsyncConnection, project_id: int) -> list[DocumentRow]:
+    """Every document of the project that has a version and is not archived, by slug, whoever reads: the knowledge
+    graph reads them all, those with no approved version too, for the use cases they hold."""
+    d = tables.srs.documents
+    query = _documents_query(project_id).where(d.c.archived_at.is_(None))
+    found = [DocumentRow(**row._mapping) for row in await conn.execute(query.order_by(d.c.slug))]
+    return [row for row in found if row.latest_version is not None]
+
+
 async def document_by_id(conn: AsyncConnection, project_id: int, document_id: int) -> DocumentRow | None:
     """Document ``document_id`` of project ``project_id`` whoever reads, archived or not, or None: for the hub's own
     work on it, such as the tasks of an approval (``auto_tasks``), whose caller checked who may do it."""

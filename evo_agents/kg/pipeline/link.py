@@ -44,7 +44,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "12"
+LINK_VERSION = "13"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -98,7 +98,10 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
     index["gosuffix"] = _go_suffixes({key.partition("::")[0] for key in index["pkgdef"]})
     # Once per build, not once per item: a project with thousands of known URLs spent most of a link run here.
     index["url_prefix"] = {_url_prefix(u) for u in index["url"]}
-    index["identifiers"] = [{"kind": i["kind"], "pattern": i["pattern"]} for i in identifiers]
+    index["identifiers"] = [
+        {"kind": i["kind"], "pattern": i["pattern"], **({"aliases": i["aliases"]} if i.get("aliases") else {})}
+        for i in identifiers
+    ]
     hierarchy.resolve(index, with_bases, lambda file, repo, path: Linker(index, file, repo, path))
     _return_types(index, typed)
     return index
@@ -328,7 +331,7 @@ class Linker:
         }
         self.samples: dict[str, list[str]] = {"ambiguous": [], "dangling": []}
         self.url_prefixes = index["url_prefix"]
-        self.patterns = [(i["kind"], re.compile(i["pattern"])) for i in index["identifiers"]]
+        self.patterns = [(i["kind"], re.compile(i["pattern"]), i.get("aliases") or {}) for i in index["identifiers"]]
 
     # -- recording ------------------------------------------------------------------------------
 
@@ -737,16 +740,7 @@ class Linker:
             else:
                 self._count("ambiguous", inner)
 
-        for kind, pattern in self.patterns:
-            for m in pattern.finditer(text):
-                if not claim(m):
-                    continue
-                code = m.group(0)
-                nid = f"{kind.lower()}:{code}"
-                self.nodes.setdefault(nid, node(nid, kind, code, [unit], props={"code": code}))
-                self._count("resolved")
-                defines = heading is not None and code in heading
-                self._link(src, nid, unit, m.start(), "parsed", "code", field, rel="defines" if defines else "mentions")
+        self.scan_codes(src, unit, text, field, heading, claim)
 
         for m in TOKEN.finditer(text):
             name = m.group(1)
@@ -759,6 +753,22 @@ class Linker:
                     self._count("resolved")
                     self._link(src, target, unit, m.start(), "parsed", kind, field)
                     break
+
+    def scan_codes(self, src: str, unit: str, text: str, field: str, heading: str | None = None, claim=None) -> None:
+        """The codes of the identifiers in ``text``: a node for each, and an edge from ``src``, ``defines`` when the
+        heading names it, else ``mentions``. A code that is an alias of another (a use case's old number) is the node of
+        the code it stands for, so a mention of either reaches the one node."""
+        for kind, pattern, aliases in self.patterns:
+            for m in pattern.finditer(text):
+                if claim is not None and not claim(m):
+                    continue
+                code = m.group(0)
+                code = aliases.get(" ".join(code.split()), code)
+                nid = f"{kind.lower()}:{code}"
+                self.nodes.setdefault(nid, node(nid, kind, code, [unit], props={"code": code}))
+                self._count("resolved")
+                defines = heading is not None and m.group(0) in heading
+                self._link(src, nid, unit, m.start(), "parsed", "code", field, rel="defines" if defines else "mentions")
 
     def facts(self) -> list[dict]:
         out = [self.nodes[k] for k in sorted(self.nodes)]
@@ -778,14 +788,17 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
             linker.resolve_ref(f)
     texts = [f for f in structure if f["t"] == "text"]
     kind = record["kind"]
-    if kind in ("manifest", "contracts", "plan", "knowledge", "binding", "ontology"):
+    if kind == "code":
+        for t in texts:  # the comments of a file that name a code: only the codes in them are links
+            linker.scan_codes(t["src"], t["unit"], t["text"], t.get("field", "comment"))
+    elif kind in ("manifest", "contracts", "plan", "knowledge", "binding", "ontology"):
         for t in texts:  # structured files: only the free-text fields, never comments or keys
             linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
     elif texts:
         for t in texts:
             linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
-    elif kind in ("code", "config", "asset"):
-        pass  # code links come from the structure stage; config and assets are not prose
+    elif kind in ("config", "asset"):
+        pass  # config and assets are not prose
     elif fragments:
         document_like = node_kind_for_item(kind) == "Document"  # only documents get Section nodes
         for frag in fragments:
