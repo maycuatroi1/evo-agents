@@ -2178,7 +2178,7 @@ evo-agents hub loop baseline --goal G-1 --project demo                 # preview
 evo-agents hub loop baseline --goal G-1 --set UC-1=delivered --heading Cart=undelivered --unknown undelivered \
   --project demo                                                       # an admin fixes it by code, heading and the unknown ones
 evo-agents hub loop baseline --goal G-1 --confirm --project demo       # an admin confirms it, once: the Loop builds its backlog
-evo-agents hub loop adopt PLAN-ID --goal G-1 --use-cases UC-1 UC-2 --project demo   # a plan of the hub becomes a deliver
+evo-agents hub loop adopt PLAN-ID --goal G-1 --use-cases UC-1 --project demo   # a plan of the hub becomes a deliver; more codes follow the first
 ```
 
 `GET /v1/projects/{p}/loop` is what `status` prints, for anyone with a grant; `POST /v1/projects/{p}/loop/resume` the
