@@ -8,7 +8,7 @@
     "src/components/inbox/mobile-decision.tsx": 432,
     "src/components/palette/command-palette.tsx": 698,
     "src/components/runs/queries.ts": 427,
-    "src/components/runs/trace-model.ts": 548,
+    "src/components/runs/trace-model.ts": 504,
     "src/components/secrets/secret-dialog.tsx": 474,
     "src/components/shell/shortcuts.tsx": 477,
     "src/components/ui/sidebar.tsx": 712,
