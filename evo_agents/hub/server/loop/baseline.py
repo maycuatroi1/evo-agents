@@ -5,7 +5,7 @@
   and its evidence, or, once the ledger holds a row for it (an admin's fix, a confirmation, the Loop), that row's state.
   Nothing is written.
 - ``fix`` sets use cases to delivered or undelivered by code, by heading and for the whole of the unknown ones: ledger
-  rows of source ``admin``, which a confirmation keeps. A use case the Loop has under way (``delivering``) is left.
+  rows of source ``admin``, which a confirmation keeps. A use case a live work item of the Loop holds (``delivering``) or a finished deliver delivered is left.
 - ``confirm`` writes a ledger row of source ``kg`` for each use case of the scope that has none, in its proposed state,
   and marks the goal confirmed for the document (``srs_baselines``), once: 409 the second time. An admin of the project
   only, never the agent of a run.
@@ -38,8 +38,9 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.hub_events import SRS_USE_CASE_APPROVED
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.loop import backlog, delivery
-from evo_agents.hub.srs_backlog import ADMIN, DELIVERING, KG, STATES, UNKNOWN, UseCase, ref_key, under
-from evo_agents.hub.srs_baseline import FIX_STATES, Evidence, Proposal, counts, fixes, propose
+from evo_agents.hub.server.loop.model import FINISHED
+from evo_agents.hub.srs_backlog import ADMIN, DELIVERED, DELIVERING, KG, STATES, UNKNOWN, UseCase, ref_key, under
+from evo_agents.hub.srs_baseline import FIX_STATES, SET_STATES, Evidence, Proposal, counts, fixes, propose
 
 log = logging.getLogger(__name__)
 
@@ -87,8 +88,8 @@ class SrsBaseline(BaseModel):
 class BaselineFix(BaseModel):
     """What an admin sets: use cases by code, by heading (every use case under it) and the unknown ones as a whole."""
 
-    codes: dict[str, Literal[FIX_STATES]] = Field(default_factory=dict, max_length=MAX_FIXES)
-    headings: dict[str, Literal[FIX_STATES]] = Field(default_factory=dict, max_length=MAX_FIXES)
+    codes: dict[str, Literal[SET_STATES]] = Field(default_factory=dict, max_length=MAX_FIXES)
+    headings: dict[str, Literal[SET_STATES]] = Field(default_factory=dict, max_length=MAX_FIXES)
     unknown: Literal[FIX_STATES] | None = Field(None, description="every use case still unknown becomes this")
 
 
@@ -143,10 +144,10 @@ async def refs(conn: AsyncConnection, goal_id: int) -> list[str]:
     return [case.ref for case in under(await backlog.use_cases(conn, project_id, document_id), heading)]
 
 
-async def _aimed_since(conn: AsyncConnection, goal_id: int, document_id: int) -> datetime | None:
-    """When the goal first aimed at the document: the baseline's date."""
-    r = tables.goal_revisions
-    query = select(func.min(r.c.created_at)).where(r.c.goal_id == goal_id, r.c.srs_document_id == document_id)
+async def _confirmed_at(conn: AsyncConnection, goal_id: int, document_id: int) -> datetime | None:
+    """When the goal's baseline was confirmed for the document: the baseline's date; None while it is not."""
+    b = tables.srs_baselines
+    query = select(b.c.confirmed_at).where(b.c.goal_id == goal_id, b.c.document_id == document_id)
     return await conn.scalar(query)
 
 
@@ -189,7 +190,7 @@ async def _states(
     aimed = await backlog.scope(conn, goal_id)
     project_id, document_id, heading = aimed
     cases = under(await backlog.use_cases(conn, project_id, document_id), heading)
-    since = await _aimed_since(conn, goal_id, document_id)
+    since = await _confirmed_at(conn, goal_id, document_id)  # before it, a use case is never newer
     told = await _approved_at(conn, document_id)
     proposals = {}
     for case in cases:
@@ -251,6 +252,15 @@ def _admin(user, access) -> None:
         raise HTTPException(403, f"setting the baseline of a goal needs the admin role on project {access.name}")
 
 
+async def _live(conn: AsyncConnection, item_ids: list[int]) -> set[int]:
+    """Of work items ``item_ids``, the ids of those not finished (not done, not cancelled)."""
+    if not item_ids:
+        return set()
+    i = tables.loop_items
+    query = select(i.c.id).where(i.c.id.in_(item_ids), i.c.state.not_in(FINISHED))
+    return set(await conn.scalars(query))
+
+
 async def fix(
     conn: AsyncConnection,
     user,
@@ -270,10 +280,14 @@ async def fix(
     except KeyError as exc:
         raise HTTPException(422, f"goal {code} has no use case {exc.args[0]} in its scope") from None
     by_key = {ref_key(case.ref): case for case in cases}
+    live = await _live(conn, [row.item_id for row in ledger.values() if row.state == DELIVERING and row.item_id])
     written = 0
     for key, state in setting.items():
-        if now[key] == DELIVERING or (key in ledger and ledger[key].source == "deliver"):
-            continue  # a use case the Loop has under way, or has delivered, is not the admin's to move here
+        row = ledger.get(key)
+        if row is not None and row.state == DELIVERING and (row.item_id is None or row.item_id in live):
+            continue  # a use case a live work item of the Loop has under way is not the admin's to move here
+        if row is not None and row.source == "deliver" and row.state == DELIVERED:
+            continue  # nor is one a finished deliver delivered
         proof = {"by": user.login, "was": now[key]}
         written += await delivery.record(
             conn, project_id, document_id, by_key[key].ref, state, ADMIN, proof, goal_id=goal_id, user_id=user.user_id

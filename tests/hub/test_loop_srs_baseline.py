@@ -75,7 +75,8 @@ def test_baseline_options_are_name_state_pairs_and_the_command_is_in_the_contrac
         "UC A-1": "delivered",
         "UC B-2": "undelivered",
     }
-    for bad in ("UC A-1", "UC A-1=unknown", "=delivered"):
+    assert cli_loop._fixes(["UC A-1=unknown"], "--heading") == {"UC A-1": "unknown"}
+    for bad in ("UC A-1", "UC A-1=maybe", "=delivered"):
         with pytest.raises(HubError):
             cli_loop._fixes([bad], "--set")
     printed = commands()["hub loop baseline"]["options"]
@@ -114,7 +115,7 @@ def test_the_preview_prints_each_state_with_its_evidence_and_says_what_confirmin
 # On the hub
 
 if pg.DSN:
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     from evo_agents.hub import tables
     from evo_agents.hub.server.loop import backlog as hub_backlog
@@ -196,11 +197,11 @@ def test_the_baseline_proposes_a_state_with_evidence_for_each_approved_use_case(
     assert states(found) == {
         "UC ORD-1": (UNKNOWN, "proposal"),  # approved before the goal, nothing in the graph: a person says
         "UC ORD-2": (DELIVERED, "proposal"),
-        "UC RET-1": (UNDELIVERED, "proposal"),  # approved after the goal, nothing in the graph
+        "UC RET-1": (UNKNOWN, "proposal"),  # approved after the goal but before it was confirmed: a person says
     }
     ord_2 = next(item for item in found["items"] if item["code"] == "UC ORD-2")
     assert ord_2["evidence"] == [{"kind": "commit_merged", "ref": "commit:r@abc", "title": "r@abc"}]
-    assert found["counts"] == {"unknown": 1, "delivered": 1, "undelivered": 1}
+    assert found["counts"] == {"unknown": 2, "delivered": 1}
     assert sorted(graph.asked[-1]) == ["UC ORD-1", "UC ORD-2", "UC RET-1"]
     _, document, _ = ids(hub_db)
     assert run(client, delivery.read, document) == {}, "a preview writes nothing"
@@ -246,7 +247,7 @@ def test_an_admin_fixes_by_code_by_heading_and_the_unknown_group_and_a_writer_ca
     assert moved and all(states(by_heading.json())[code] == (UNDELIVERED, "admin") for code in moved)
     _, document, _ = ids(hub_db)
     ledger = run(client, delivery.read, document)
-    assert ledger["uc ret-1"].evidence["by"] and ledger["uc ret-1"].evidence["was"] == UNDELIVERED
+    assert ledger["uc ret-1"].evidence["by"] and ledger["uc ret-1"].evidence["was"] == UNKNOWN
 
 
 @needs_pg
@@ -311,3 +312,59 @@ def test_a_goal_with_no_srs_document_has_no_baseline_and_a_goal_re_aimed_is_unco
     assert run(client, baseline.confirmed, goal_id) is False
     board = client.get(BOARD, headers=hub["owner"]).json()
     assert [i for i in board["items"] if i["kind"] == "srs_baseline"] == []
+
+
+@needs_pg
+def test_confirming_leaves_a_use_case_with_no_evidence_unknown_and_only_a_later_one_is_undelivered(
+    client, hub, graph, hub_db
+):
+    baseline_set(client, hub)
+    _, document, goal_id = ids(hub_db)
+    done = client.post(f"{BASELINE}/confirm", headers=hub["owner"])
+    assert done.status_code == 200, done.text
+    assert states(done.json()) == {
+        "UC ORD-1": (UNKNOWN, "kg"),
+        "UC ORD-2": (DELIVERED, "kg"),
+        "UC RET-1": (UNKNOWN, "kg"),
+    }
+    assert run(client, hub_backlog.backlog_of, goal_id) == [], "nothing is undelivered because of the confirmation"
+    # a use case approved after the confirmation, which has no ledger row yet, is proposed undelivered
+    e, b, d = tables.hub_events, tables.srs_baselines, tables.srs_delivery
+
+    async def rewind(conn):
+        at = await conn.scalar(select(e.c.created_at).where(e.c.payload["code"].astext == "UC ORD-1").limit(1))
+        await conn.execute(d.delete().where(d.c.code_key == "uc ret-1"))
+        await conn.execute(b.update().values(confirmed_at=at))
+
+    run(client, rewind)
+    shown = client.get(BASELINE, headers=hub["chi"]).json()
+    assert states(shown)["UC RET-1"] == (UNDELIVERED, "proposal")
+    assert states(shown)["UC ORD-1"] == (UNKNOWN, "kg")
+
+
+@needs_pg
+def test_an_admin_may_set_unknown_and_moves_a_use_case_no_live_item_holds(client, hub, graph, hub_db):
+    baseline_set(client, hub)
+    project, document, goal_id = ids(hub_db)
+    set_unknown = client.post(f"{BASELINE}/fix", json={"codes": {"UC ORD-2": "unknown"}}, headers=hub["owner"])
+    assert set_unknown.status_code == 200 and states(set_unknown.json())["UC ORD-2"] == (UNKNOWN, "admin")
+    i = tables.loop_items
+    from evo_agents.hub.server.loop.model import BUILD, CANCELLED, QUEUED  # noqa: PLC0415
+
+    async def item(conn, state):
+        row = {"project_id": project, "kind": BUILD, "cycle": "development", "engine": "rules/2", "state": state}
+        if state == CANCELLED:
+            row |= {"reason": "person", "finished_at": func.now()}
+        return await conn.scalar(i.insert().values(**row, key=f"build:{state}", goal_id=goal_id).returning(i.c.id))
+
+    live, dead = run(client, item, QUEUED), run(client, item, CANCELLED)
+    for code, held in (("UC RET-1", live), ("UC ORD-1", dead)):
+        run(
+            client, delivery.record, project, document, code, "delivering", "deliver", {}, goal_id=goal_id, item_id=held
+        )
+    fixed = client.post(
+        f"{BASELINE}/fix", json={"codes": {"UC RET-1": "delivered", "UC ORD-1": "undelivered"}}, headers=hub["owner"]
+    )
+    assert fixed.status_code == 200, fixed.text
+    assert states(fixed.json())["UC RET-1"] == ("delivering", "deliver"), "a live item holds it"
+    assert states(fixed.json())["UC ORD-1"] == (UNDELIVERED, "admin"), "a cancelled item's row is not stuck"

@@ -7,15 +7,16 @@ Each approved use case is proposed as one of three states (``evo_agents.hub.srs_
 
 - ``delivered`` when the graph holds evidence of it: a plan whose steps are all done, or a step done, that mentions its
   code; a commit or a merged pull request that mentions it; a comment in the code that mentions it;
-- ``undelivered`` when the graph holds none and the use case is newer than the baseline (a review approved it after the
-  goal began to aim at the document), so nothing could have been built for it yet;
+- ``undelivered`` when the graph holds none and the use case is newer than the baseline (a review approved it after an
+  admin confirmed the baseline), so nothing could have been built for it yet;
 - ``unknown`` in every other case: it may be delivered without a trace, and a person says. An unknown use case never
   enters the backlog by itself.
 
 Evidence is what the graph says (``Evidence``): a kind of ``EVIDENCE_KINDS``, the node it is read from and its title.
 The admin confirms the baseline once; before that the Loop makes no build for the goal (``confirmed`` of
 ``evo_agents.hub.server.loop.baseline``). Fixes are by code, by heading (every use case under it) and for the whole of
-the unknown ones, to ``delivered`` or ``undelivered`` (``FIX_STATES``).
+the unknown ones, to ``delivered`` or ``undelivered`` (``FIX_STATES``); a code or a heading may also be set to
+``unknown`` (``SET_STATES``).
 """
 
 from __future__ import annotations
@@ -32,7 +33,11 @@ PLAN_COMPLETED, STEP_DONE, COMMIT, PULL_REQUEST, CODE_COMMENT = EVIDENCE_KINDS =
     "pr_merged",
     "code_comment",
 )
-FIX_STATES = (DELIVERED, UNDELIVERED)  # what an admin sets a use case to
+FIX_STATES = (DELIVERED, UNDELIVERED)  # what an admin sets the whole of the unknown use cases to
+SET_STATES = (
+    *FIX_STATES,
+    UNKNOWN,
+)  # what an admin sets one use case or a heading to: unknown takes it out of the backlog
 MAX_EVIDENCE = 5  # lines of evidence one use case shows
 
 
@@ -64,8 +69,10 @@ def propose(evidence: Iterable[Evidence], newer: bool) -> Proposal:
         kinds = sorted({item.kind for item in found})
         return Proposal(DELIVERED, found[:MAX_EVIDENCE], f"the graph holds {len(found)}: {', '.join(kinds)}")
     if newer:
-        return Proposal(UNDELIVERED, (), "approved after the baseline, and nothing in the graph mentions it")
-    return Proposal(UNKNOWN, (), "approved before the baseline, and nothing in the graph mentions it")
+        return Proposal(
+            UNDELIVERED, (), "approved after the baseline was confirmed, and nothing in the graph mentions it"
+        )
+    return Proposal(UNKNOWN, (), "approved before the baseline was confirmed, and nothing in the graph mentions it")
 
 
 def fixes(
@@ -110,6 +117,7 @@ __all__ = [
     "MAX_EVIDENCE",
     "PLAN_COMPLETED",
     "PULL_REQUEST",
+    "SET_STATES",
     "STEP_DONE",
     "Evidence",
     "Proposal",

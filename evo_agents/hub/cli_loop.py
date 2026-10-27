@@ -27,7 +27,7 @@ from evo_agents.hub.cli_policy import PROJECT_HELP
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.mirror import harness_project, harness_root
-from evo_agents.hub.srs_baseline import FIX_STATES
+from evo_agents.hub.srs_baseline import FIX_STATES, SET_STATES
 
 # The keys of the hub's answer these commands print with --json (the contract, `evo-agents hub contract print`).
 LOOP_KEYS = (
@@ -122,8 +122,8 @@ def _fixes(pairs: list[str] | None, what: str) -> dict[str, str]:
     found = {}
     for pair in pairs or []:
         name, _, state = pair.rpartition("=")
-        if not name.strip() or state not in FIX_STATES:
-            raise HubError(f"{what} {pair!r}: write NAME=STATE with STATE one of {', '.join(FIX_STATES)}")
+        if not name.strip() or state not in SET_STATES:
+            raise HubError(f"{what} {pair!r}: write NAME=STATE with STATE one of {', '.join(SET_STATES)}")
         found[name.strip()] = state
     return found
 
@@ -218,7 +218,7 @@ def register_loop(hsub) -> None:
     base.add_argument("--goal", required=True, metavar="G-N", help="the goal's code (G-<number>) or alias")
     base.add_argument("--confirm", action="store_true", help="confirm the baseline, once (the admin role)")
     base.add_argument(
-        "--set", action="append", metavar="CODE=STATE", help="set one use case to delivered or undelivered"
+        "--set", action="append", metavar="CODE=STATE", help="set one use case to delivered, undelivered or unknown"
     )
     base.add_argument("--heading", action="append", metavar="HEADING=STATE", help="set every use case under a heading")
     base.add_argument("--unknown", choices=FIX_STATES, help="set every use case still unknown to this")
