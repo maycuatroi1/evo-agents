@@ -4583,3 +4583,31 @@ def test_0168_says_since_when_a_run_runs_as_its_owner_and_going_back_drops_it(hu
     move_to(hub_db, "0167", down=True)
     assert "as_owner_since" not in columns(hub_db, "runs")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0168") :]
+
+
+def test_0169_takes_deliveries_of_an_approved_use_case_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0168")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="loop", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+    delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "contribution": "loop", "payload": {"v": 1}}
+    kind = "srs.use_case.approved"
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0168 takes no such kind
+        conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
+    move_to(hub_db, "0169")
+    with live.connect(hub_db) as conn:
+        for name in ("run.state", "srs.version.approved", kind):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": name}))
+        conn.execute(insert(t.hub_events).values(project_id=ids["project"], kind=kind, payload={"v": 1}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": "srs.use_case.dropped"}))
+    # Going back deletes the deliveries and the hub's events of the kind.
+    move_to(hub_db, "0168", down=True)
+    assert query(hub_db, select(t.plugin_deliveries.c.kind).order_by(t.plugin_deliveries.c.id)) == [
+        ("run.state",),
+        ("srs.version.approved",),
+    ]
+    assert query(hub_db, select(t.hub_events.c.kind)) == []
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0169") :]

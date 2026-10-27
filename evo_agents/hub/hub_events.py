@@ -39,8 +39,9 @@ CLAIM = "canvas.claim"  # a rev of a claim of a Lean Canvas (core plugin canvas)
 BASELINE = "canvas.baseline"  # a baseline of a canvas, approved
 SIGNALS = "signal.posted"  # a batch of a project's signals the hub took (``evo_agents.hub.signals``)
 SRS_APPROVED = "srs.version.approved"  # a version of an SRS document, approved (core plugin srs)
+SRS_USE_CASE_APPROVED = "srs.use_case.approved"  # one use case of a version in review, approved (core plugin srs)
 TASK_STATUS = "tasks.status"  # a task's status, set or changed (``evo_agents.hub.task_status``)
-KINDS = (CLAIM, BASELINE, SIGNALS, SRS_APPROVED, TASK_STATUS)  # what this release writes
+KINDS = (CLAIM, BASELINE, SIGNALS, SRS_APPROVED, TASK_STATUS, SRS_USE_CASE_APPROVED)  # what this release writes
 KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0077 holds it
 OWN_PREFIX = "plugin."  # a kind a core plugin's Loop rule records of its own: plugin.<id, - made _>.<name>
 OWN_KIND = re.compile(r"^plugin\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]{0,40}$")
@@ -97,6 +98,7 @@ __all__ = [
     "KINDS",
     "SIGNALS",
     "SRS_APPROVED",
+    "SRS_USE_CASE_APPROVED",
     "TASK_STATUS",
     "HubEvent",
     "OWN_PREFIX",
