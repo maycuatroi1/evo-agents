@@ -2,7 +2,8 @@
 
 The list shows live tokens (neither revoked nor expired) unless ``all`` is set, each with its kind, host, last use
 and expiry, and marks the one the request came with. Revoking takes effect on the next request made with that
-token, from any process, and adds an audit row. Another user's token is answered as unknown. Revoking a worker's
+token, from any process, and adds an audit row. Another user's token is answered as unknown. Revoking the token of a
+run that runs as its owner (kind run, ``run_access``) also stops the run running as them. Revoking a worker's
 token revokes the worker too, in the same transaction and as POST /v1/workers/{id}/revoke does: its runs are
 released and the name is free again, with a worker.revoke audit row besides the token.revoke one.
 """
@@ -14,11 +15,11 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import audit, workers
+from evo_agents.hub.server import audit, run_access, workers
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, CurrentUser, delete_session_cookie, revoke_token
 
@@ -31,7 +32,9 @@ router = APIRouter(prefix="/v1/tokens", tags=["tokens"], responses={401: {"model
 
 class TokenRow(BaseModel):
     id: int
-    kind: Literal["machine", "web", "worker"]
+    kind: Literal["machine", "web", "worker", "run"] = Field(
+        description="run: the token of a run of yours that runs as you (evo_agents.hub.server.run_access)"
+    )
     host: str | None
     created_at: datetime
     last_used_at: datetime | None
@@ -85,6 +88,7 @@ async def revoke(request: Request, user: CurrentUser, token_id: Annotated[int, P
         target = audit.token_target(token_id)
         action = audit.TOKEN_REVOKE
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+        await run_access.token_revoked(conn, user, token_id)  # a run's token: the run no longer runs as you
         released = await workers.end_worker(conn, user, *worker, token_id) if worker else 0
     if worker:
         log.info("worker revoked", extra={"worker_id": worker[0], "by": user.login, "runs_released": released})

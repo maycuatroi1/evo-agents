@@ -478,6 +478,9 @@ runs = Table(
     Column("browser", Boolean, nullable=False, server_default=false()),  # its agent gets a Chromium of its own (0118)
     # The browser identities its Chromium opens with, the first one's profile and the others' cookies (0119).
     Column("browser_identities", ARRAY(BigInteger), nullable=False, server_default="{}"),
+    # Its owner let it call the hub's API as them, secrets, tokens and workers aside (0166, server/run_access.py).
+    Column("as_owner", Boolean, nullable=False, server_default=false()),
+    _when("as_owner_since"),  # when it was let; NULL while it does not run as its owner (0168)
     # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
     # Claude Code session id, and its worker_id stays NULL.
     Column("machine", Text),
@@ -591,6 +594,8 @@ decisions = Table(
     Column("reversible", Boolean),  # whether the act it asks about can be undone (0155)
     Column("undo", Text),  # and how (0155)
     Column("evidence", JSONB(none_as_null=True)),  # the refs it rests on, an array of texts; None is SQL NULL (0155)
+    # what a decision of category credential asks for: env_var, secret_name, hub_account; never a value (0167)
+    Column("credential_request", JSONB(none_as_null=True)),
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
@@ -817,11 +822,19 @@ credential_leases = Table(
     Column("sealed_value", LargeBinary),
     Column("nonce", LargeBinary),
     Column("key_id", Text),
+    Column("token_id", BigInteger),  # the run's own token of the hub, of a lease of provider run-access (0166)
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="credential_leases_run_id_fkey"),
     ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="RESTRICT", name="credential_leases_secret_id_fkey"),
     ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="credential_leases_worker_id_fkey"),
+    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="credential_leases_token_id_fkey"),
     PrimaryKeyConstraint("id", name="credential_leases_pkey"),
     Index("credential_leases_run_idx", "run_id", "id"),
+)
+Index(
+    "credential_leases_token_id_idx",
+    credential_leases.c.token_id,
+    unique=True,
+    postgresql_where=credential_leases.c.token_id.is_not(None),
 )
 Index(
     "credential_leases_worker_idx",

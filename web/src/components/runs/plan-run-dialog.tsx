@@ -24,6 +24,7 @@ import { modelsFor, runnableModelsQuery } from "@/lib/runnable-models";
 import { AccountField, useAccountChoice } from "./account-field";
 import { accountField } from "./account-model";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
+import { AsMeField } from "./as-me-field";
 import { Outlook, WorkerField, type WorkerChoice } from "./dispatch-fields";
 import { FieldLabel } from "./field-label";
 import { useDispatchPlanRun } from "./hooks";
@@ -139,6 +140,7 @@ function PlanRunForm({
   const [workerPick, setWorkerPick] = useState<WorkerChoice | null>(null);
   const [timeout, setTimeoutHours] = useState<PlanTimeout>(DEFAULT_PLAN_TIMEOUT);
   const [perStep, setPerStep] = useState(false);
+  const [asMe, setAsMe] = useState(false);
   const agents = useAgentChoice(project);
 
   const view = plan.data ? parsePlan(plan.data.body, plan.data.plan_id) : null;
@@ -185,6 +187,7 @@ function PlanRunForm({
         ...each,
         ...accountField(account),
         ...profileField(agents.agent),
+        as_me: asMe,
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -278,6 +281,8 @@ function PlanRunForm({
           </div>
           <SessionsField on={perStep} onChange={setPerStep} disabled={pending} workers={mine} loaded={workersState.isSuccess} />
         </div>
+
+        <AsMeField checked={asMe} onChange={setAsMe} disabled={pending} />
 
         {error ? <InlineError text={error.text} detail={apiDetail ?? error.detail} requestId={error.requestId} /> : null}
       </div>

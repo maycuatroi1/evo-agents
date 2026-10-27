@@ -6,7 +6,10 @@ reader of the run may; a decision of a run that has put no plan (an author run b
 has none, and shows its run alone.
 ``decision answer ID`` answers one (POST .../decisions/{id}/answer) with an option of the decision (``--option KEY``),
 words of your own (``--text``, ``-`` reads them from stdin), or both; only the member who dispatched the run may, and
-the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. An option marked waits
+the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. A credential request
+(``evo_agents.hub.credential_requests``) also takes the value of the variable it asks for with ``--secret``, read from
+stdin when it is not a terminal, else asked for without echo, never from the command line; the hub keeps it as your
+secret and the answer says its name, never the value. An option marked waits
 leaves the decision open and tells the agent nothing; a decision of category wait is a wait of the agent's for a time
 or an event, which the hub answers itself, and ``decision show`` says what it waits for, and for any decision why the
 agent recommends its option, whether the act can be undone and how, and the refs of its evidence.
@@ -28,6 +31,7 @@ import json
 import sys
 from urllib.parse import urlencode
 
+from evo_agents.hub import credential_requests
 from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
@@ -69,6 +73,7 @@ DECISION_KEYS = (
     "wake_at",
     "wake_on",
     "outputs",
+    "credential_request",
 )
 DECISION_LIST_KEYS = ("decisions", "total", "limit", "offset")
 NOTIFICATION_LIST_KEYS = ("notifications", "total", "limit", "offset")
@@ -229,6 +234,20 @@ def _print_grounds(decision: dict) -> None:
         _print_block("Evidence", "\n".join(decision["evidence"]))
 
 
+def _request_lines(decision: dict) -> list[tuple[str, str]]:
+    """What a credential request asks for: a variable's value and the secret that would keep it, the owner's hub
+    account."""
+    request = decision.get("credential_request")
+    if not request:
+        return []
+    lines = []
+    if request.get("env_var"):
+        lines.append(("asks for", f"the value of {request['env_var']}, kept as your secret {request['secret_name']}"))
+    if request.get("hub_account"):
+        lines.append(("asks for", "your hub account: the run runs as you, secrets, tokens and workers aside"))
+    return lines
+
+
 def _run_line(decision: dict, step: str) -> str:
     """The run of a decision, with its plan and step, or the run alone when it has put no plan."""
     run = f"#{decision['run_id']} ({decision['run_state']})"
@@ -252,6 +271,7 @@ def cmd_show(args) -> int:
         ("owner", decision["owner"]),
         ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
         ("asked", f"{_when(decision['asked_at'])} UTC"),
+        *_request_lines(decision),
         *_reversible_lines(decision),
         *_wait_lines(decision),
         *_answer_lines(decision),
@@ -263,21 +283,46 @@ def cmd_show(args) -> int:
     _print_options(decision)
     _print_grounds(decision)
     if decision["state"] == "open":
+        secret = (
+            " (--secret pastes the value it asks for)"
+            if (decision.get("credential_request") or {}).get("env_var")
+            else ""
+        )
         print(
             f"Answer it with `evo-agents hub decision answer {decision['id']} --option KEY"
-            f"{_with_project(args, project)}`; --text adds words of your own, or stands for an option."
+            f"{_with_project(args, project)}`; --text adds words of your own, or stands for an option{secret}."
         )
     return 0
 
 
 @_client_command
 def cmd_answer(args) -> int:
-    if args.option is None and args.text is None:
+    if args.option is None and args.text is None and not args.secret:
         return _usage_error("an answer names an option with --option KEY, gives words with --text TEXT, or both")
+    if args.secret and args.text == "-":
+        return _usage_error("--secret reads the value from stdin: give your words with --text TEXT, not -")
+    if args.secret and args.option is not None and not credential_requests.gives_value(args.option):
+        return _usage_error(
+            f"--secret goes with option {credential_requests.VALUE} or {credential_requests.BOTH}, or with none"
+        )
     text = sys.stdin.read() if args.text == "-" else args.text
     hub, _ = _signed_in()
     project = _project(args)
     body = {key: value for key, value in (("option", args.option), ("text", text)) if value is not None}
+    if args.secret:
+        from evo_agents.hub.cli_secrets import Refused, check_value, read_value
+
+        try:
+            value = read_value(
+                f"of decision {args.decision}",
+                prompt=f"Value decision #{args.decision} asks for (not shown): ",
+                missing="no value: pipe it on stdin, such as `pbpaste | evo-agents hub decision answer ID --secret`, "
+                "or run the command in a terminal to be asked for it",
+            )
+            check_value("env", value)
+        except Refused as exc:
+            return _usage_error(str(exc))
+        body["secret"] = value
     decision = hub.call("POST", _decisions_path(project, args.decision, "answer"), body)
     if args.json:
         _print_json(decision)
@@ -292,9 +337,12 @@ def cmd_answer(args) -> int:
     if decision["answer_option"]:
         label = _option_label(decision, decision["answer_option"])
         given.append(f"option {decision['answer_option']}" + (f" ({label})" if label else ""))
-    if decision["answer_text"]:
+    if args.text is not None:
         given.append("your words")
     print(f"Answered decision #{decision['id']} with {' and '.join(given)}.")
+    gave = args.secret or credential_requests.grants_account(decision["answer_option"])
+    if decision.get("credential_request") and gave and decision["answer_text"]:
+        print(decision["answer_text"].rsplit("\n\n", 1)[-1])  # what the hub gave the run, by name, never the value
     inbox = decision["answer_run_id"]
     if inbox is not None and inbox != decision["run_id"]:
         print(
@@ -445,6 +493,12 @@ def register_decisions(hsub) -> None:
     with_decision(answer)
     answer.add_argument("--option", metavar="KEY", help="the key of one of the decision's options")
     answer.add_argument("--text", metavar="TEXT", help="your own words, at most 4 KiB; - reads them from stdin")
+    answer.add_argument(
+        "--secret",
+        action="store_true",
+        help="a credential request: paste the value of the variable it asks for, read from stdin, or asked for "
+        "without echo in a terminal; the hub keeps it as your secret, never shows it again",
+    )
     with_project(answer)
     json_option(answer, DECISION)
     answer.set_defaults(func=cmd_answer)

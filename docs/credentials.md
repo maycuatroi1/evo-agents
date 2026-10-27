@@ -843,7 +843,181 @@ session that has it) does the same inside a run: with `--backend auto` or `hub` 
 worker token and `X-Evo-Run`, so the run reads its project's graph on the hub whether or not the machine is signed in
 or knows the worktree's project. A worker machine needs no machine token at all. The scope is the run the request
 names, not a token of the agent's own: the agent holds the worker's token as its daemon does (see "The agent can act
-as its worker" below).
+as its worker" below). A run that runs as its owner also reaches the hub's REST API as them (next section); its scope
+on `/mcp` stays the one above.
+
+## A run that runs as its owner
+
+The owner of a run of a step, a plan run or an author run can let its agent call the hub's REST API as them, with
+their grants on every project and hub admin when they are one, but never their secrets, tokens or workers. A run of
+the Curator, a release run, a chat run and the hub's other kinds never run as their owner. The agent then needs no
+login on the worker: `evo-agents hub ...` in the run signs in as the owner with a token of the run's own.
+
+**Choosing it.** The owner chooses per run, never for a whole project:
+
+```sh
+evo-agents hub run dispatch rollout 5 --as-me                 # the step's run runs as you
+evo-agents hub run plan rollout --as-me                       # the plan run runs as you
+evo-agents hub run access 41 --as-me                          # a run already queued or held: let it from now on
+evo-agents hub run access 41 --revoke                         # stop it: its token ends at once
+```
+
+`--as-me` sends `as_me: true` with `POST /v1/projects/{p}/runs` or `.../plan-runs`; `hub run access` is `PUT
+/v1/projects/{p}/runs/{id}/access` with `{"as_me": true|false}`, which only the member who dispatched the run may call,
+on a run that has not ended (409 otherwise). A rerun keeps the choice of the run it reruns unless its body names
+`as_me`, and the run that resumes a parked run and the next attempt of a lost one keep it too. `hub run show` says
+"it runs as them on the hub's API" after who dispatched it, and its `--json`, like every Run the hub answers, carries
+`as_owner` and `as_owner_since`, when the owner let it (the time of the run before it for a run that resumes or retries
+one; null while it does not run as them).
+
+On the web, Dispatch and Run plan have the checkbox "Run as me on the hub", off by default, which says what the agent
+gets and what it never gets and, once checked, the risk below; the form sends `as_me` either way. The page of a run that
+runs as its owner shows a Hub access card to everyone who reads the run: as whom it runs, who let it and since when, and
+when it ends; the owner alone gets Revoke while the run is active, which asks first and is `hub run access RUN
+--revoke`. The run's head carries the same "Runs as" tag while it is active.
+
+**The token.** While a worker holds such a run, the hub adds one lease to its answer to the worker's ask for
+credentials: kind `hub`, provider `run-access`, named `run-access:<owner>` (as `hub run credentials` lists it), its
+value the run's token `evr_...`. It is a token of kind `run` of the owner, `run:<id>` as its host in `hub token list`,
+stored as a SHA-256 like every token and sealed in the lease, so a second ask hands the same token back. It
+authenticates only while its lease is out, the run is held by that worker and still let, the owner still holds writer
+on the run's project and the worker is not revoked: the run ending, being parked or given back, the reaper, the
+owner's `--revoke`, `hub token revoke` of that token, the lost grant or the revoked worker end it at once, and every
+later call gets 401. A run that resumes gets a new token at its first ask.
+
+**What it never reaches.** Each path of these groups answers 403 with the reason (`run_access_rules.py`), whatever
+the method, and a route added later under one of their prefixes is refused with the group:
+
+- secrets and everything that holds a credential's value: `/v1/secrets`, `/v1/shares`, the accounts and provider
+  accounts, an agent's accounts, browser identities, a run's credentials and accounts;
+- tokens, invite links and signing in: `/v1/tokens`, `/v1/admin/tokens`, the invites, `/v1/auth/*` but `whoami`, a
+  project's signal ingest keys;
+- workers with their pools, the terminal, the live view, takeover and handback of a run;
+- the access of any run, its own included, so no run grants running as its owner onward.
+
+These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
+
+- grants: `/v1/admin/projects/{p}/grants/*` and `/v1/admin/users/*`, an access that would outlive the run;
+- the owner's autonomy: `/v1/autonomy*`, the whole org chart `/v1/org*` (seats, units, ceilings), a project's policy,
+  its agent profiles (`/v1/projects/{p}/agents*`) and agent types;
+- runs: a dispatch (`POST /v1/projects/{p}/runs`), a plan run, an author run, a rerun, a message to a run or to a
+  local run's inbox, a release run or schedule, an editorial post's run. No run starts from it, with or without
+  `as_me`: the owner's account would go on into work the owner never chose, with the accounts, browser identities or
+  worker the request names;
+- decisions: the answer to a decision of any run, a local run's decision marked answered, the approval of a run in
+  review, the merge queue's answers, the reset of the Loop's breaker, the answers and rollbacks of `@builder`;
+- the Curator: its charter, proposals, changes, probes and builds.
+
+Behind the groups, every rule of the form "the agent of a run never does X" takes the run's token as it takes the agent
+of a run on `/mcp` (`Principal.acts_for_run`): it writes no goal, opportunity or problem, answers no decision, approves
+or returns no SRS version, decides no item of a canvas baseline, claims no post of a marketing channel's browser
+session, whose answer carries the session's cookies (`session_run` of the core plugin API), reads no probe's verify,
+uses no invite's right to register a project, and the K8 and K12 classes of its run's autonomy hold its writes
+(`route_autonomy`). And no run starts while a request of its token is answered (`run_access_rules.ACTING_RUN`), whatever
+route it took: a message it posts in a chat stays, and its mention of an agent is refused in the thread, with no run
+and nothing in a run's inbox; a core plugin's task is not handed. The rerun the agent of a triage thread makes never
+runs as the owner, whatever the failed run did. A stream of a run's log or of a chat the token opened looks at each
+turn, at most every 5 seconds, whether the token is still live, and stops once it is not.
+
+What stays open is the owner's ordinary work: plans and their steps, memories, chats, their messages, labels and
+people (`hub chat label`), Telegram's webhook (`hub admin telegram`), a project's registration and sinks, plugins and
+reading everything the owner reads. Each write made with it, refused or not, adds the audit row `run_access.write`
+naming the run, the method, the path and the status; `run_access.grant` and `run_access.revoke` record each change of
+the choice, and the `credential.lease` row names the token by id. No log line, event, audit row or error holds its
+value.
+
+**How the daemon hands it over.** The daemon puts the token into the agent's environment as `EVO_HUB_TOKEN` and the
+hub's URL as `EVO_HUB_URL`: the URL the daemon itself reaches the hub at, the one the token was made through, else the
+lease's own; `https`, or `http` to a loopback address, as for any hub URL (`run_access_env` in
+`evo_agents/worker/credentials.py`). The value is masked in worker.log and in the run's events like every lease value,
+and an interactive pane gets both variables from `eval "$(evo-agents worker env --run N)"`, never in its script. That
+lease is the one way the two variables get there: an `env` secret may not name a variable starting with `EVO_`
+(`env_name_refusal`), the daemon drops the ones its own environment holds from every run's agent, and a run of the
+Curator or a release run gets none even if a lease came. A daemon older than this release keeps the lease, masks it and
+puts nothing of it into the agent's environment; the run then goes on as one not let.
+
+**The command line in the run.** `evo-agents hub ...` takes `EVO_HUB_TOKEN` and `EVO_HUB_URL`, when both are set and
+neither is blank, before the login of `~/.evo/hub` and of `EVO_HUB_HOME` (`env_credentials` in
+`evo_agents/hub/client.py`), so `evo-agents hub whoami` in the run prints the owner's login and `token N: run on
+run:<id>`. One of the two alone changes nothing. `hub logout` refuses while they are set and deletes no file; `hub
+login` still saves its login, which commands use once the two are unset. The SessionStart hook of the run's agent reads
+the owner's memories with them. `evo-agents hub mcp` and `evo-agents kg serve` never send the run's token: inside a
+run they keep the worker token and the scope of "The agent and the hub", and fall back to the login on disk, as
+before.
+
+**The risk.** For as long as the run holds the token, whatever steers its agent acts as the owner on the hub, within
+the groups above: a prompt injected through a page, an issue or a file the agent reads can read every project the
+owner reads, and change plans, memories, chats and their labels, a project's sinks and plugins, and, when the owner is a
+hub admin, what a hub admin changes outside the groups (features, branding, market sources). It cannot start a run,
+answer a decision, change a grant or anyone's autonomy, nor reach a secret or a token. A chat label it changes moves
+which members read a chat, and a sink it changes moves where a project's messages may go: both are written in the audit
+as `run_access.write`. Let a run run as you only when its work needs your account, and cut it with `evo-agents hub run
+access RUN --revoke` (Revoke on the run's page), `evo-agents hub run cancel RUN`, or `evo-agents hub token revoke ID`
+of the token `hub token list` shows with host `run:<id>` (kind Run token on the admin's Tokens page); the audit rows
+`run_access.write` say what it wrote.
+
+## A run that asks for a credential
+
+A run that lacks a credential asks its owner for it with a decision, rather than for a login on the worker's machine
+or a value in `evo cred` there; the plan run's prompt tells its agent so. The request names a variable of the agent's
+environment the run needs, such as an API key, the owner's account on the hub, or both in one decision:
+
+```sh
+evo-agents worker ask --category credential --question "The deploy needs its key and the hub." \
+  --env-var NORTHWIND_DEPLOY_KEY --secret-name northwind-deploy --hub-account --step 3
+```
+
+The request goes with the decision as `credential_request` (`{env_var, secret_name, hub_account}`,
+`evo_agents/hub/credential_requests.py`), and `--secret-name` defaults to the variable in lower case with `-` for `_`.
+The hub refuses a variable no secret may set (`EVO_`, `GIT_`, `LD_`, `DYLD_`, `PYTHON...`, `PATH`, `HOME` and the
+others of `env_name_refusal`), and gives the decision its own options, never the agent's: `value` (paste the value),
+`as_me` (let the run use my hub account), `both`, and `refuse`, as the request asks. It is asked of the run's owner
+whoever the run's principal reports to, since what it asks for is the owner's alone to give.
+
+**Answering it.** The owner pastes the value, never on a command line:
+
+```sh
+evo-agents hub decision show 91                                # what it asks for, and the secret it would fill
+pbpaste | evo-agents hub decision answer 91 --secret           # option value: the value from stdin
+evo-agents hub decision answer 91 --secret --option both       # asked for without echo in a terminal, and as_me
+evo-agents hub decision answer 91 --option as_me               # the hub account alone
+evo-agents hub decision answer 91 --option refuse              # nothing
+```
+
+`--secret` sends the value as `secret` in `POST /v1/projects/{p}/decisions/{id}/answer`, which the web's password
+field sends too; a value with no option stands for `value`. The hub keeps it as the owner's secret of kind `env` for
+that variable, under the rules of `PUT /v1/secrets` (at most 16 KiB, no NUL, at most 200 secrets, the hub's key; 503
+without it): the owner's live env secret for that variable bound to the run's project has its value replaced, the one
+of the proposed name first, so no second one is made; with none, the secret of the proposed name is made, bound to the
+run's project and, when the run is on a worker of the owner's, to that worker. A proposed name the owner holds for
+something else is 409 and changes nothing. `as_me` and `both` let the run run as its owner as `hub run access --as-me`
+does (a run of the Curator or a release run never does; 409), with the audit row `run_access.grant` ending
+`by=decision:<id>`. Only the member who dispatched the run gives either (403 for a lead the decision escalated to, who
+may still refuse); a run's token answers no decision at all.
+
+On the web the decision says what the run asks for among its grounds, to anyone who reads it. The owner's form opens on
+`value` when the request names a variable (nothing is picked for the account alone) with a password field for it: no
+`name`, never filled by the page, read when the answer is sent and emptied at that moment whatever the hub answers, and
+sent outside the cache of the page's queries. It refuses a missing value, one over 16 KiB, a NUL or the value inside the
+owner's note before anything leaves. Picking `as_me` or `both` shows what the run's agent may then do; the send button
+names what the answer gives. The phone's decision screen has the same form, its field at 16 px.
+
+The decision's answer carries a sentence of the hub's after the owner's words: which secret keeps the value, by name,
+and whether the run now runs as its owner, never the value. The value is in no decision, answer, inbox message, event,
+log line, audit row or error: the audit row `secret.put` names the secret by id and the decision (`secret:<id>
+decision:<id>`), a 422 never echoes a request's input, and an answer whose words hold the value it pastes is refused.
+
+**Going on.** The run goes on without being dispatched again. A parked run is resumed by the answer, and the run that
+resumes it is leased the new secret and, with `as_me`, a token of its own from its start. A run still waiting gets the
+answer in its inbox; `worker ask` noted the decision as a credential request in the run's file of decisions, so the
+daemon asks for the run's leases again before it hands the answer to the agent (`Agent.credentials_answered`). The
+agent reads what came with `eval "$(evo-agents worker env --run "$EVO_RUN_ID")"` before the command that needs it,
+and its next start has it in its environment; the run's log says the leases were taken again, never their values. A
+worker older than this release takes nothing again: the run gets what was given when it is leased next, at its resume.
+
+**The risk.** A pasted value is a secret like any other: every run of the owner's on that project is leased it, on that
+worker or on any of theirs, until the owner deletes it (`evo-agents hub secret delete NAME`). The account on the hub
+holds the risk of "A run that runs as its owner" above for as long as the run holds its token.
 
 ## Who may hand a worker its work
 

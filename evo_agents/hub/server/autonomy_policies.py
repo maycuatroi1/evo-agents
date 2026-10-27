@@ -181,7 +181,7 @@ async def view_at(conn: AsyncConnection, access: ProjectAccess, revision: int | 
 
 def refusal(user: Principal, access: ProjectAccess) -> str | None:
     """Why ``user`` may not write the project's policy; None when they may."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         return "the agent of a run never writes the policy: @builder proposes a change, which an admin approves"
     if has_role(access.role, "admin"):
         return None

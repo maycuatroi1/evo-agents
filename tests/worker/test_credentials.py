@@ -16,6 +16,7 @@ or ``~/.evo/worker``.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import importlib.util
 import logging
@@ -30,7 +31,7 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.hub.credentials import Lease
+from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, HUB_URL_ENV, RUN_ACCESS, Lease
 from evo_agents.worker import credential_commands, credentials, interactive
 from evo_agents.worker.credentials import MISSING_NOTE, RunCredentials
 from evo_agents.worker.home import WorkerHome
@@ -77,11 +78,19 @@ def app_lease(lease_id: int, owner: str, value: str, minutes: float) -> dict:
     return lease.to_json()
 
 
+def hub_lease(lease_id: int, value: str, base_url: str = "https://hub.northwind.example") -> dict:
+    """The lease of a run's own token of the hub, as the hub hands it to a run that runs as its owner."""
+    name = f"{RUN_ACCESS}:northwind-owner"
+    return Lease(lease_id, HUB_KIND, RUN_ACCESS, name, env_var=HUB_TOKEN_ENV, value=value, base_url=base_url).to_json()
+
+
 class StubHub:
     """The two calls of ``hubapi.WorkerHub`` the leases make: each ask answers the next of ``answers`` (the last one
-    again once they run out); an exception among them is raised."""
+    again once they run out); an exception among them is raised. ``url`` is the hub the daemon reaches, as
+    ``WorkerHub.url``."""
 
-    def __init__(self, *answers):
+    def __init__(self, *answers, url: str | None = None):
+        self.url = url
         self.answers = list(answers)
         self.asks = 0
         self.given_back: list[int] = []
@@ -768,6 +777,139 @@ def test_the_commands_of_git_and_of_the_pane_ask_the_runs_socket(machine):
     assert machine.files_holding(token, oauth) == []
 
 
+# A run that runs as its owner: its token of the hub in its agent's environment
+
+
+def test_run_access_env_takes_the_runs_token_of_the_hub_alone():
+    token = sample("evr_")
+    held = Lease.from_json(hub_lease(1, token))
+    assert credentials.run_access_env([], None, guarded=False) == ({}, None)
+    leased_env = Lease.from_json(env_lease(2, "OPENAI_KEY", sample("sk-")))
+    assert credentials.run_access_env([leased_env], None, guarded=False) == ({}, None), "an env lease is no run's token"
+    daemons = "https://agents.northwind.example"
+    assert credentials.run_access_env([held], daemons, guarded=False) == (
+        {HUB_TOKEN_ENV: token, HUB_URL_ENV: daemons},
+        None,
+    ), "the hub this daemon reaches, which the token was made through"
+    assert credentials.run_access_env([held], None, guarded=False) == (
+        {HUB_TOKEN_ENV: token, HUB_URL_ENV: "https://hub.northwind.example"},
+        None,
+    ), "else the lease's own"
+    plain = Lease.from_json(hub_lease(3, token, base_url="http://hub.northwind.example"))
+    env, refusal = credentials.run_access_env([plain], None, guarded=False)
+    assert env == {} and "must use https" in refusal and token not in refusal
+    env, refusal = credentials.run_access_env([held], daemons, guarded=True)
+    assert env == {} and refusal == "a run of the Curator or a release run never runs as its owner"
+    for odd in (
+        Lease(4, HUB_KIND, "secret", "odd", env_var=HUB_TOKEN_ENV, value=token),
+        Lease(5, HUB_KIND, RUN_ACCESS, "odd", env_var="OTHER_TOKEN", value=token),
+        Lease(6, HUB_KIND, RUN_ACCESS, "odd", env_var=HUB_TOKEN_ENV, value=""),
+    ):
+        env, refusal = credentials.run_access_env([odd], daemons, guarded=False)
+        assert env == {} and refusal.startswith(f"the hub sent a lease of kind {HUB_KIND}"), odd
+
+
+@needs_worker
+def test_a_run_that_runs_as_its_owner_gets_its_token_and_hub_in_its_agents_environment_and_pane(machine):
+    token, oauth = sample("evr_"), sample("oauth-")
+    hub = StubHub(
+        {"leases": [env_lease(1, "CLAUDE_CODE_OAUTH_TOKEN", oauth), hub_lease(2, token)]},
+        url="https://agents.northwind.example",
+    )
+    command = [sys.executable, "-m", "evo_agents", "worker"]
+
+    async def go():
+        leases = machine.leases()
+        await leases.take(hub, {})
+        held = dict(leases.agent_vars)
+        withheld = leases.withheld
+        masked = credentials.scrub(f"the agent printed {token}")
+        printed = await run([*command, "env", "--run", str(RUN)], machine.env)
+        await leases.release()
+        return held, withheld, masked, printed
+
+    held, withheld, masked, printed = asyncio.run(go())
+    assert held[HUB_TOKEN_ENV] == token and held[HUB_URL_ENV] == "https://agents.northwind.example"
+    assert held["CLAUDE_CODE_OAUTH_TOKEN"] == oauth, "the env leases as before"
+    assert {HUB_TOKEN_ENV, HUB_URL_ENV} <= withheld, "a pane's script never holds them: it evaluates `worker env`"
+    assert masked == "the agent printed ***", "masked as every lease value while the run holds it"
+    assert printed.returncode == 0, printed.stderr
+    assert f"export {HUB_TOKEN_ENV}={token}\n" in printed.stdout
+    assert f"export {HUB_URL_ENV}=https://agents.northwind.example\n" in printed.stdout
+    assert credentials.scrub(token) == token, "given back: masked no more"
+    assert machine.files_holding(token) == []
+    assert not [text for text, _ in machine.notes if "token of the hub" in text]
+
+
+@needs_worker
+def test_only_the_hubs_lease_sets_the_runs_token_and_a_guarded_run_gets_none(machine):
+    forged, token = sample("evr_"), sample("evr_")
+    member = StubHub(
+        {
+            "leases": [
+                env_lease(1, HUB_TOKEN_ENV, forged),
+                env_lease(2, HUB_URL_ENV, "https://hub.lumen.example"),
+                env_lease(3, "OPENAI_KEY", sample("sk-")),
+            ]
+        }
+    )
+    guarded = StubHub({"leases": [hub_lease(4, token)]}, url="https://agents.northwind.example")
+
+    async def go():
+        plain = machine.leases()
+        await plain.take(member, {})
+        curator = RunCredentials(8, machine.worker, machine.env, machine.note, guarded=True)
+        await curator.take(guarded, {})
+        found = dict(plain.agent_vars), dict(curator.agent_vars)
+        await plain.release()
+        await curator.release()
+        return found
+
+    plain_vars, guarded_vars = asyncio.run(go())
+    assert HUB_TOKEN_ENV not in plain_vars and HUB_URL_ENV not in plain_vars, "an env secret may not set them"
+    assert "OPENAI_KEY" in plain_vars
+    assert HUB_TOKEN_ENV not in guarded_vars and HUB_URL_ENV not in guarded_vars
+    said = [text for text, _ in machine.notes]
+    assert (
+        f"The lease {HUB_TOKEN_ENV.lower()} is not put into the agent's environment: {HUB_TOKEN_ENV} steers the "
+        in ("".join(said))
+    )
+    assert (
+        "The run's token of the hub is not put into the agent's environment: a run of the Curator or a release run "
+        "never runs as its owner." in said
+    )
+    assert all(forged not in text and token not in text for text in said)
+
+
+@needs_worker
+def test_the_agent_gets_the_runs_token_of_the_hub_from_its_lease_never_from_the_daemon(tmp_path):
+    from types import SimpleNamespace
+
+    from evo_agents.worker.runner.agent import Agent
+
+    daemons = {HUB_TOKEN_ENV: sample("evh_"), HUB_URL_ENV: "https://hub.lumen.example", "PATH": "/usr/bin"}
+
+    def agent_env(agent_vars: dict) -> dict:
+        run = SimpleNamespace(
+            id=7,
+            runtime="codex",
+            project="demo",
+            curator=None,
+            spec={"kind": "step", "plan_id": "p", "step_key": "1"},
+            daemon=SimpleNamespace(env=daemons, home=SimpleNamespace(root=tmp_path / "worker")),
+            credentials=SimpleNamespace(agent_vars=agent_vars, withheld=frozenset(agent_vars), gateway=None),
+            venvs={},
+            worktree=None,
+        )
+        return Agent(run).env()
+
+    plain = agent_env({})
+    assert HUB_TOKEN_ENV not in plain and HUB_URL_ENV not in plain, "a run not let keeps none of the daemon's"
+    token = sample("evr_")
+    let = agent_env({HUB_TOKEN_ENV: token, HUB_URL_ENV: "https://agents.northwind.example"})
+    assert (let[HUB_TOKEN_ENV], let[HUB_URL_ENV]) == (token, "https://agents.northwind.example")
+
+
 # What the run says, and a hub that does not lease
 
 
@@ -970,3 +1112,134 @@ def test_op_open_asks_the_chat_runs_opener_on_a_socket_it_opens_without_leases(m
     assert gone.returncode == 1
     assert gone.stderr == f"error: run {RUN} holds no socket on this worker to open a repo\n"
     assert none == {"error": f"run {RUN + 1} holds no socket on this worker to open a repo"}, "no opener: no socket"
+
+
+# A credential request: the agent asks, the owner answers, the daemon takes the run's leases again
+
+
+def ask_args(**given) -> argparse.Namespace:
+    """The arguments of `evo-agents worker ask` as its parser leaves them."""
+    values = {
+        "category": "credential",
+        "option": None,
+        "wait_option": None,
+        "env_var": None,
+        "secret_name": None,
+        "hub_account": False,
+    }
+    return argparse.Namespace(**(values | given))
+
+
+def test_credential_request_of_worker_ask_is_the_hubs_body_and_refused_as_the_hub_refuses_it():
+    from evo_agents.worker.cli import WorkerStateError, credential_request
+
+    assert credential_request(ask_args()) is None, "a decision of category credential without a request, as before"
+    assert credential_request(ask_args(env_var="NORTHWIND_DEPLOY_KEY", hub_account=True)) == {
+        "hub_account": True,
+        "env_var": "NORTHWIND_DEPLOY_KEY",
+        "secret_name": "northwind-deploy-key",
+    }
+    assert credential_request(ask_args(hub_account=True)) == {"hub_account": True}
+    named = credential_request(ask_args(env_var="NORTHWIND_DEPLOY_KEY", secret_name="deploy"))
+    assert named["secret_name"] == "deploy"
+    for given, why in (
+        ({"env_var": "EVO_HUB_TOKEN"}, "steers the shell, git or the worker"),
+        ({"env_var": "GIT_ASKPASS"}, "steers the shell, git or the worker"),
+        ({"secret_name": "deploy"}, "names the variable the run needs"),
+        ({"secret_name": "deploy", "hub_account": True}, "name the variable too"),
+        ({"env_var": "KEY", "category": "scope"}, "use --category credential"),
+        ({"env_var": "KEY", "option": ["a=A", "b=B"]}, "leave out --option"),
+    ):
+        with pytest.raises(WorkerStateError, match=why):
+            credential_request(ask_args(**given))
+
+
+def test_credential_request_noted_by_worker_ask_is_read_back_and_only_it(machine):
+    path = machine.worker.decisions_path(RUN)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        '{"id": 4, "asked_at": "2026-10-27T09:00:00+00:00"}\n'
+        '{"id": 5, "asked_at": "2026-10-27T09:01:00+00:00", "credential": true}\n'
+        "not json\n",
+        encoding="utf-8",
+    )
+    assert credentials.credential_asks(machine.worker, RUN) == {5}
+    assert credentials.credential_asks(machine.worker, RUN + 1) == set(), "a run that asked nothing"
+
+
+@needs_worker
+def test_credential_request_answered_takes_the_leases_again_and_worker_env_prints_what_it_gave(machine):
+    from types import SimpleNamespace
+
+    from evo_agents.worker.runner.agent import Agent
+
+    key, token = sample("deploy-key-"), sample("evr_")
+    hub = StubHub(
+        {"leases": []},
+        {"leases": [env_lease(1, "NORTHWIND_DEPLOY_KEY", key), hub_lease(2, token)]},
+        url="https://agents.northwind.example",
+    )
+    path = machine.worker.decisions_path(RUN)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"id": 4}\n{"id": 5, "credential": true}\n', encoding="utf-8")
+    command = [sys.executable, "-m", "evo_agents", "worker", "env", "--run", str(RUN)]
+
+    def answer(decision_id: int) -> dict:
+        return {"id": 10 + decision_id, "decision_id": decision_id, "text": f"Answer to decision #{decision_id}"}
+
+    async def go():
+        leases = machine.leases()
+        await leases.take(hub, {})
+        before = await run(command, machine.env)
+        run_of = SimpleNamespace(
+            id=RUN, daemon=SimpleNamespace(home=machine.worker), credentials=leases, note=machine.note
+        )
+        agent = SimpleNamespace(run=run_of, credentials_seen=set())
+        await Agent.credentials_answered(agent, [answer(4), {"id": 9, "decision_id": None, "text": "go on"}])
+        asks_after_other = hub.asks
+        await Agent.credentials_answered(agent, [answer(5)])
+        asks_after_request = hub.asks
+        await Agent.credentials_answered(agent, [answer(5)])  # the same answer again: taken once
+        held = dict(leases.agent_vars)
+        after = await run(command, machine.env)
+        await leases.release()
+        return before, asks_after_other, asks_after_request, held, after
+
+    before, asks_after_other, asks_after_request, held, after = asyncio.run(go())
+    assert before.returncode == 1, "no lease yet: the run's socket is not open"
+    assert asks_after_other == 1, "an answer to another decision takes nothing again"
+    assert asks_after_request == 2 and hub.asks == 2
+    assert held["NORTHWIND_DEPLOY_KEY"] == key and held[HUB_TOKEN_ENV] == token
+    assert after.returncode == 0, after.stderr
+    assert f"export NORTHWIND_DEPLOY_KEY={key}\n" in after.stdout
+    assert f"export {HUB_TOKEN_ENV}={token}\n" in after.stdout
+    said = [text for text, _ in machine.notes]
+    assert any(text.startswith("Credential request #5 was answered: the run took its leases again") for text in said)
+    assert all(key not in text and token not in text for text in said)
+    assert machine.files_holding(key, token) == []
+
+
+@needs_worker
+def test_credential_request_answered_while_the_hub_does_not_lease_says_so(machine):
+    from types import SimpleNamespace
+
+    from evo_agents.worker.hubapi import Refused
+    from evo_agents.worker.runner.agent import Agent
+
+    hub = StubHub({"leases": []}, Refused("run 7 is not held by this worker", 404))
+    path = machine.worker.decisions_path(RUN)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"id": 5, "credential": true}\n', encoding="utf-8")
+
+    async def go():
+        leases = machine.leases()
+        await leases.take(hub, {})
+        run_of = SimpleNamespace(
+            id=RUN, daemon=SimpleNamespace(home=machine.worker), credentials=leases, note=machine.note
+        )
+        await Agent.credentials_answered(SimpleNamespace(run=run_of, credentials_seen=set()), [{"decision_id": 5}])
+        await leases.release()
+
+    asyncio.run(go())
+    said = [text for text, _ in machine.notes]
+    assert any("the hub did not lease the run its credentials again" in text for text in said), said

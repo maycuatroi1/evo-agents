@@ -2221,6 +2221,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Access
+         * @description Let a run of yours call the hub's API as you, secrets, tokens and workers aside, or stop it: its token ends at
+         *     once (``evo_agents.hub.server.run_access``). A run's own token never reaches this route.
+         */
+        put: operations["access_v1_projects__project__runs__run_id__access_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/claim": {
         parameters: {
             query?: never;
@@ -2401,7 +2422,9 @@ export interface paths {
         /**
          * Stream
          * @description The run's events as server-sent events, each with its seq as id, then an ``end`` event once the run is final
-         *     and every event was sent; a ``: ping`` comment keeps an idle stream open.
+         *     and every event was sent; a ``: ping`` comment keeps an idle stream open. The stream of a run's token
+         *     (``run_access``) stops once the token no longer holds, which each look checks (``security.still_live``), and the
+         *     client that connects again is answered 401.
          */
         get: operations["stream_v1_projects__project__runs__run_id__stream_get"];
         put?: never;
@@ -8677,7 +8700,8 @@ export interface paths {
          * @description The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no
          *     longer read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too
          *     (``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages
-         *     changed.
+         *     changed. The stream of a run's token (``run_access``) ends once the token no longer holds, which each look checks
+         *     (``security.still_live``).
          */
         get: operations["stream_v1_chats__chat_id__stream_get"];
         put?: never;
@@ -11209,6 +11233,17 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AccessChange
+         * @description What PUT /v1/projects/{p}/runs/{id}/access changes of a run of the caller's.
+         */
+        AccessChange: {
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it; false: it stops, and its token ends at once, as a run that never ran as you
+             */
+            as_me: boolean;
+        };
+        /**
          * Account
          * @description One of the caller's env secrets or provider accounts as an account: everything but its value or key.
          */
@@ -11500,12 +11535,13 @@ export interface components {
             login: string;
             /**
              * Kind
+             * @description run: the token of a run that runs as its owner (evo_agents.hub.server.run_access)
              * @enum {string}
              */
-            kind: "machine" | "web" | "worker";
+            kind: "machine" | "web" | "worker" | "run";
             /**
              * Host
-             * @description the machine a machine token or worker token was issued to; null for a web session
+             * @description the machine a machine token or worker token was issued to, run:<id> for a run's; null for a web session
              */
             host: string | null;
             /**
@@ -12314,6 +12350,11 @@ export interface components {
              * @description the owner's own words, at most 4 KiB
              */
             text?: string | null;
+            /**
+             * Secret
+             * @description a credential request's variable: its value, which the hub keeps as the owner's secret of kind env for the run's project and never shows again; with option value or both, which it stands for when left out
+             */
+            secret?: string | null;
         };
         /** ApnsDeviceIn */
         ApnsDeviceIn: {
@@ -16541,6 +16582,28 @@ export interface components {
             expires_at: string | null;
         };
         /**
+         * CredentialRequest
+         * @description What a decision of category credential asks the run's owner for; never a value.
+         */
+        CredentialRequest: {
+            /**
+             * Env Var
+             * @description the variable of the agent's environment the run needs, such as an API key; never one that steers the shell, git or the worker (EVO_*, GIT_* ...)
+             */
+            env_var?: string | null;
+            /**
+             * Secret Name
+             * @description the name of the owner's secret that keeps its value; the variable in lower case with - for _ when left out
+             */
+            secret_name?: string | null;
+            /**
+             * Hub Account
+             * @description whether the run asks to run as its owner on the hub
+             * @default false
+             */
+            hub_account: boolean;
+        };
+        /**
          * CredentialShare
          * @description A share of a secret or an account, as its owner sees it.
          */
@@ -16619,7 +16682,7 @@ export interface components {
         /** Credentials */
         Credentials: {
             /** Leases */
-            leases: (components["schemas"]["CredentialLease"] | components["schemas"]["GatewayLease"])[];
+            leases: (components["schemas"]["CredentialLease"] | components["schemas"]["GatewayLease"] | components["schemas"]["HubLease"])[];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
             /**
@@ -17056,6 +17119,8 @@ export interface components {
              * @description the files of its run it carries, oldest first, each with the decision's URL of its bytes
              */
             outputs?: components["schemas"]["RunOutput"][];
+            /** @description what a decision of category credential asks the run's owner for: a variable's value, kept as their secret secret_name, their hub account, or both; null for any other decision */
+            credential_request?: components["schemas"]["CredentialRequest"] | null;
         };
         /** DecisionAsk */
         DecisionAsk: {
@@ -17072,8 +17137,11 @@ export interface components {
              * @description markdown, at most 16 KiB of UTF-8
              */
             context?: string | null;
-            /** Options */
-            options: components["schemas"]["OptionIn"][];
+            /**
+             * Options
+             * @description 2 to 6; none for a credential request, which takes the hub's
+             */
+            options?: components["schemas"]["OptionIn"][];
             /**
              * Recommended
              * @description the key of the option the agent recommends
@@ -17109,6 +17177,8 @@ export interface components {
              * @description outputs of the run the question carries, such as the screenshot it is about
              */
             output_ids?: number[];
+            /** @description category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options */
+            credential_request?: components["schemas"]["CredentialRequest"] | null;
         };
         /**
          * DecisionBoard
@@ -17409,6 +17479,12 @@ export interface components {
              * @default []
              */
             identities: string[];
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it
+             * @default false
+             */
+            as_me: boolean;
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -19827,6 +19903,62 @@ export interface components {
              */
             url?: string | null;
         };
+        /**
+         * HubLease
+         * @description The lease of a run its owner lets run as them (``evo_agents.hub.server.run_access``): the run's own token of the
+         *     hub, which calls the hub's API as the owner, and the hub's URL. A worker that knows no kind hub leaves it unused.
+         */
+        HubLease: {
+            /**
+             * Id
+             * @description the lease of the run's token; the same id, and token, when it is asked for again
+             */
+            id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "hub";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "run-access";
+            /**
+             * Name
+             * @description run-access:<owner>, the login the token acts as
+             */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable that carries the token
+             * @constant
+             */
+            env_var: "EVO_HUB_TOKEN";
+            /** Url Prefix */
+            url_prefix?: null;
+            /** Username */
+            username?: null;
+            /**
+             * Value
+             * @description the run's token, evr_...: for memory only, never a file, a log line or an event
+             */
+            value: string;
+            /**
+             * Expires At
+             * @description none: the token ends with the lease, when the run is no longer held
+             */
+            expires_at?: null;
+            /**
+             * Base Url
+             * @description the hub's URL, which the token is for
+             */
+            base_url: string;
+            /** Model */
+            model?: null;
+            /** Api Format */
+            api_format?: null;
+        };
         /** Inbox */
         Inbox: {
             /**
@@ -21215,8 +21347,11 @@ export interface components {
              * @description markdown, at most 16 KiB of UTF-8
              */
             context?: string | null;
-            /** Options */
-            options: components["schemas"]["OptionIn"][];
+            /**
+             * Options
+             * @description 2 to 6; none for a credential request, which takes the hub's
+             */
+            options?: components["schemas"]["OptionIn"][];
             /**
              * Recommended
              * @description the key of the option the agent recommends
@@ -21252,6 +21387,8 @@ export interface components {
              * @description outputs of the run the question carries, such as the screenshot it is about
              */
             output_ids?: number[];
+            /** @description category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options */
+            credential_request?: components["schemas"]["CredentialRequest"] | null;
         };
         /** LocalLogin */
         LocalLogin: {
@@ -25842,6 +25979,12 @@ export interface components {
              * @default []
              */
             identities: string[];
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it
+             * @default false
+             */
+            as_me: boolean;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -31252,6 +31395,11 @@ export interface components {
              * @description true: the rerun gets a Chromium of its own; false: it gets none, nor the run's browser identities; null keeps what the run rerun had
              */
             browser?: boolean | null;
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it; null keeps the choice of the run rerun
+             */
+            as_me?: boolean | null;
         };
         /** RerunCandidates */
         RerunCandidates: {
@@ -31950,6 +32098,17 @@ export interface components {
             principal?: string | null;
             /** @description the autonomy it acts under; null where principal is */
             autonomy?: components["schemas"]["RunAutonomy"] | null;
+            /**
+             * As Owner
+             * @description its owner lets its agent call the hub's API as them, secrets, tokens and workers aside, through a token of the run's own while a worker holds it (PUT .../runs/{id}/access changes it)
+             * @default false
+             */
+            as_owner: boolean;
+            /**
+             * As Owner Since
+             * @description when its owner let it run as them: at dispatch, or later through PUT .../access or the answer to a credential request; the run that resumes a parked run, and the next attempt of a lost one, keep the time of the run before it. Null while it does not run as its owner
+             */
+            as_owner_since?: string | null;
         };
         /** RunAccount */
         RunAccount: {
@@ -32540,19 +32699,19 @@ export interface components {
             name: string;
             /**
              * Provider
-             * @description secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's
+             * @description secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's; run-access: the run's own token of the hub, as its owner (evo_agents.hub.server.run_access)
              * @enum {string}
              */
-            provider: "secret" | "github-app" | "gateway";
+            provider: "secret" | "github-app" | "gateway" | "run-access";
             /**
              * Kind
-             * @description env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the model gateway, or a provider account it reaches
+             * @description env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the model gateway, or a provider account it reaches; hub: the run's token of the hub
              * @enum {string}
              */
-            kind: "env" | "git" | "gateway";
+            kind: "env" | "git" | "gateway" | "hub";
             /**
              * Target
-             * @description kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin; kind gateway: the model
+             * @description kind env and hub: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin; kind gateway: the model
              */
             target: string;
             /**
@@ -37364,9 +37523,10 @@ export interface components {
             id: number;
             /**
              * Kind
+             * @description run: the token of a run of yours that runs as you (evo_agents.hub.server.run_access)
              * @enum {string}
              */
-            kind: "machine" | "web" | "worker";
+            kind: "machine" | "web" | "worker" | "run";
             /** Host */
             host: string | null;
             /**
@@ -44732,7 +44892,7 @@ export interface operations {
             query?: {
                 /** @description one user's tokens, any case */
                 login?: string | null;
-                kind?: ("machine" | "web" | "worker") | null;
+                kind?: ("machine" | "web" | "worker" | "run") | null;
                 /** @description live tokens unless set; expiring: live ones expiring within 14 days; unused: not revoked and unused for 90 days */
                 state?: "active" | "revoked" | "expired" | "expiring" | "unused" | "any";
                 /** @description next_cursor of the previous page, with the same filters */
@@ -47069,6 +47229,78 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    access_v1_projects__project__runs__run_id__access_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

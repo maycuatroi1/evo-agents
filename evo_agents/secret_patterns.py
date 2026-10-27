@@ -26,8 +26,8 @@ AWS_ACCESS_KEY_ID = re.compile(r"\b(?:AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[A-Z0-9]{1
 SLACK_TOKEN = re.compile(r"\b(?P<head>xox[abposr]-)[A-Za-z0-9-]{10,}")  # bot, user, app, refresh
 GOOGLE_API_KEY = re.compile(r"\bAIza[0-9A-Za-z_-]{35}")
 GITHUB_TOKEN = re.compile(r"\b(?P<head>gh[opsur]_|github_pat_)[A-Za-z0-9_]{16,}")  # every kind of GitHub token
-# hub, web, worker, signal ingest, invite and join tokens
-HUB_TOKEN = re.compile(r"\b(?P<head>ev[hswinj]_)[A-Za-z0-9_-]{8,}")
+# hub, web, worker, run, signal ingest, invite and join tokens
+HUB_TOKEN = re.compile(r"\b(?P<head>ev[hswrinj]_)[A-Za-z0-9_-]{8,}")
 
 # The password of a URI, scheme://user:password@host, any scheme
 URI_PASSWORD = re.compile(r"(?P<head>\b[A-Za-z][A-Za-z0-9+.-]*://[^:/@\s]*:)(?P<value>[^@\s/]+)@")

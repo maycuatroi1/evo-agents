@@ -24,6 +24,8 @@
   Other origins keep the machine's helpers, and the machine's git configuration is not touched. Leases of kind ``env``
   go into the agent's environment, and a lease of kind gateway the hub's gateway route, the run's token and model
   (``evo_agents.worker.runtimes.gateway``), beside which Claude Code gets no env lease of ``gateway.CLAUDE_DROPPED``.
+  The lease of kind hub of a run that runs as its owner puts the run's token and the hub's URL into EVO_HUB_TOKEN and
+  EVO_HUB_URL (``run_access_env``), the one way they get there: an env lease of EVO_ is refused (``env_name_refusal``).
 - The run's socket ``runs/<run>/cred.sock`` (mode 0600, in the run's directory, mode 0700) answers processes of the
   daemon's own uid alone (``peer_uid``: SO_PEERCRED on Linux, getpeereid elsewhere), one JSON request a connection.
   ``{"op": "git", "protocol", "host", "path"}`` gets the username and value of the git lease whose url_prefix covers
@@ -39,6 +41,12 @@
   otherwise the failure names the hub's reason ("the hub leased no credential for {repo}: {reason}").
 - ``release`` gives the leases back (``DELETE`` on the same route) when the run ends, is parked or the daemon stops,
   closes the socket and forgets the values, in the redaction too.
+
+A credential request the agent asked (``evo-agents worker ask --category credential --env-var NAME --hub-account``,
+``evo_agents.hub.credential_requests``) is noted as one in the run's file of decisions (``credential_asks``). When the
+owner's answer to it reaches the run, before the agent gets it, the daemon asks for the run's leases again (``swap``):
+the secret the owner pasted and the run's token of the hub come with them, ``evo-agents worker env --run N`` prints
+them, and the agent's next start has them in its environment (``Agent.credentials_answered``).
 
 The other side of the socket, ``evo-agents worker git-credential --run N get|store|erase`` (git's credential
 protocol; store and erase do nothing), ``evo-agents worker env --run N`` and the asks of a Builder's push and of a chat
@@ -85,8 +93,14 @@ from pathlib import Path
 from typing import TypeVar
 from urllib.parse import urlsplit
 
+from evo_agents.hub.client import HubError, check_url
+from evo_agents.hub.credential_requests import NOTED
 from evo_agents.hub.credentials import (
     DEFAULT_GIT_USERNAME,
+    HUB_KIND,
+    HUB_TOKEN_ENV,
+    HUB_URL_ENV,
+    RUN_ACCESS,
     Lease,
     env_name_refusal,
     is_ssh_origin,
@@ -229,6 +243,38 @@ def config_env(base: Mapping[str, str], entries: Sequence[tuple[str, str]]) -> d
         env[f"GIT_CONFIG_VALUE_{start + offset}"] = value
     env[CONFIG_COUNT] = str(start + len(entries))
     return env
+
+
+def run_access_env(leases: Iterable[Lease], hub_url: str | None, *, guarded: bool) -> tuple[dict[str, str], str | None]:
+    """What the lease of kind HUB_KIND, the run's own token of the hub, adds to its agent's environment: the token as
+    HUB_TOKEN_ENV and as HUB_URL_ENV the URL this daemon reaches the hub at (``hub_url``), else the lease's own; with
+    why it adds nothing to a run that holds such a lease. ``({}, None)`` for a run that holds none."""
+    found = [lease for lease in leases if lease.kind == HUB_KIND]
+    if not found:
+        return {}, None
+    lease = found[-1]
+    if lease.provider != RUN_ACCESS or lease.env_var != HUB_TOKEN_ENV or not lease.value:
+        return {}, f"the hub sent a lease of kind {HUB_KIND} that is not a run's token of {HUB_TOKEN_ENV}"
+    if guarded:
+        return {}, "a run of the Curator or a release run never runs as its owner"
+    try:
+        url = check_url(hub_url or lease.base_url or "", HUB_URL_ENV)
+    except HubError as exc:
+        return {}, str(exc)
+    return {HUB_TOKEN_ENV: lease.value, HUB_URL_ENV: url}, None
+
+
+def credential_asks(home: WorkerHome, run_id: int) -> set[int]:
+    """The decisions of run ``run_id`` that are credential requests, as ``evo-agents worker ask`` noted them in the
+    run's file of decisions (``WorkerHome.decisions_path``)."""
+    found: set[int] = set()
+    with contextlib.suppress(OSError):
+        for line in home.decisions_path(run_id).read_text(encoding="utf-8").splitlines():
+            with contextlib.suppress(ValueError, TypeError, AttributeError):
+                noted = json.loads(line)
+                if isinstance(noted.get("id"), int) and noted.get(NOTED) is True:
+                    found.add(noted["id"])
+    return found
 
 
 # Values out of logs and events
@@ -569,6 +615,10 @@ class RunCredentials:
                 continue
             if lease.env_var not in env:
                 env[lease.env_var] = lease.value
+        access, refusal = run_access_env(self.leases, getattr(self.hub, "url", None), guarded=self.guarded)
+        if refusal is not None:
+            self.note(f"The run's token of the hub is not put into the agent's environment: {refusal}.")
+        env.update(access)  # the run acts as its owner on the hub's API (``run_access_env``)
         if route is not None:  # the hub's gateway route, the run's token and model (``gateway``)
             env.update(gateway.agent_env(route, self.base_env))
         unleased = self.unleased

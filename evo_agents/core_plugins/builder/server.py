@@ -268,7 +268,7 @@ async def answer_as(
 ) -> BuilderProposal:
     """Decide (APPROVE, REJECT) or roll back (ROLLBACK) proposal ``proposal_id`` as ``member``, ``install``
     installing a release for one of kind plugin_install; ProposalError when they may not, or the hub cannot."""
-    if member.scope is not None:
+    if member.acts_for_run is not None:
         raise ProposalError(403, "the agent of a run never answers a proposal of @builder: an admin does")
     access = await _access(conn, member, project)
     if verb == ROLLBACK:

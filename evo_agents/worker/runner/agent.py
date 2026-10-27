@@ -51,12 +51,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import browser_login, curator, runs
+from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
 from evo_agents.worker import autonomy_hook, environments, interactive, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
-from evo_agents.worker.credentials import config_env
+from evo_agents.worker.credentials import config_env, credential_asks
 from evo_agents.worker.runner import authorship
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
@@ -101,6 +102,7 @@ class Agent:
         self._packs: tuple | None = None  # the agent packs of the run's profile, built before its first agent
         self.browser: browser_session.BrowserSession | None = None  # the run's Chromium, for a run with browser
         self.logins_seen: set[int] = set()  # the login decisions whose answer was handled
+        self.credentials_seen: set[int] = set()  # the credential requests whose answer took the leases again
         self._gate: list = []  # the run's hook of autonomy (``autonomy_hook.for_run``), built for its first agent
 
     # The runtime
@@ -247,6 +249,8 @@ class Agent:
                 "EVO_RUN_STEP": str(run.spec.get("step_key") or ""),
             }
         )
+        for key in (HUB_TOKEN_ENV, HUB_URL_ENV):  # the run's token of the hub: from its lease, never the daemon's
+            env.pop(key, None)
         env.update(run.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
         route = run.credentials.gateway  # the hub's gateway route: no Claude login, nor key, beside it
         for key in [key for key in env if gateway.drops(route, key)]:
@@ -520,6 +524,37 @@ class Agent:
                 run.note(f"Login decision #{decision_id}: Done. The profile is saved to the identity.")
             else:
                 run.note(f"Login decision #{decision_id}: Done, but the profile was not saved (see above).")
+
+    async def credentials_answered(self, messages: list[dict]) -> None:
+        """The owner's messages are about to reach the agent: when one answers a credential request the agent asked
+        (``evo-agents worker ask --env-var NAME --hub-account``), the daemon asks for the run's leases again
+        (``RunCredentials.swap``), once for those messages, so the value the owner pasted and the run's token of the hub
+        are in what ``evo-agents worker env --run N`` prints, and in the environment of the agent's next start."""
+        run = self.run
+        asked = credential_asks(run.daemon.home, run.id)
+        answered = sorted(
+            {
+                message["decision_id"]
+                for message in messages
+                if isinstance(message.get("decision_id"), int)
+                and message["decision_id"] in asked
+                and message["decision_id"] not in self.credentials_seen
+            }
+        )
+        if not answered:
+            return
+        self.credentials_seen.update(answered)
+        shown = ", ".join(f"#{decision_id}" for decision_id in answered)
+        if await run.credentials.swap():
+            run.note(
+                f"Credential request {shown} was answered: the run took its leases again, which its agent reads with "
+                f"`evo-agents worker env --run {run.id}`."
+            )
+        else:
+            run.note(
+                f"Credential request {shown} was answered, but the hub did not lease the run its credentials again: "
+                "what the answer gave reaches the run when it resumes."
+            )
 
     async def close_browser(self) -> None:
         """Close the run's Chromium and remove its directory (``BrowserSession.close``): the run is over here."""
