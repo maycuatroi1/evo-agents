@@ -860,7 +860,8 @@ def test_preflight_fails_a_run_whose_gh_gets_401_and_whose_app_token_lacks_pull_
 
 def test_preflight_fails_a_run_whose_only_token_is_the_app_s_without_pull_requests_write(tmp_path, github):
     github.answers[("POST", PULLS_PATH, APP_TOKEN)] = REFUSED_APP
-    run = PullRun(tmp_path, env={"PATH": "/usr/bin:/bin"}, leases=[APP_LEASE])
+    (tmp_path / "no-gh-bin").mkdir()
+    run = PullRun(tmp_path, env={"PATH": str(tmp_path / "no-gh-bin")}, leases=[APP_LEASE])
     problem = asyncio.run(access.opens_pull(run, "alpha"))
     assert problem is not None and problem.cause == "credentials"
     assert problem.message.startswith(
