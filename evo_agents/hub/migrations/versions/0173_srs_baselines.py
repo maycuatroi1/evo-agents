@@ -1,7 +1,7 @@
 """A goal that aims at an SRS document has its baseline confirmed once by an admin.
 
-Revision ID: 0171
-Revises: 0170
+Revision ID: 0173
+Revises: 0172
 Create Date: 2026-10-28
 
 srs_baselines is new (plan srs-backlog-loop, criterion a5): one row per goal whose baseline of delivered, undelivered and
@@ -15,8 +15,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0171"
-down_revision = "0170"
+revision = "0173"
+down_revision = "0172"
 branch_labels = None
 depends_on = None
 

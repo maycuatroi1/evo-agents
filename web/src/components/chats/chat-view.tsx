@@ -22,6 +22,7 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { chatKeys, chatPageQuery, chatQuery, COMPOSE_PARAM, toggleReaction } from "@/lib/chat-queries";
 import { type Chat, type ChatPage, chatsHref, type ChatSummary, type GroupMessage } from "@/lib/chats";
 import { chatMentionMarks, plainMentions } from "@/lib/mention-marks";
+import { cn } from "@/lib/utils";
 
 import { AgentActionsContext, type AgentTab, type AgentTarget } from "./agent-menu";
 import type { AgentPanels } from "./agent-sheet";
@@ -36,6 +37,7 @@ import { type MessageSlot } from "./message-item";
 import { MessageList } from "./message-list";
 import { useAuthorLabel } from "./message-parts";
 import { ThreadPanel } from "./thread-panel";
+import { ThreadResizeHandle, useThreadWidth } from "./thread-width";
 import { useChatFeed } from "./use-chat-feed";
 
 /** The members' sheet opens on demand: its code loads when the chat's head asks for it. */
@@ -44,8 +46,8 @@ const MembersSheet = dynamic(() => import("./members-sheet").then((module) => mo
 const AgentSheet = dynamic(() => import("./agent-sheet").then((module) => module.AgentSheet), { ssr: false });
 
 const CARD = "flex min-h-0 flex-col overflow-hidden rounded-md border bg-card shadow-raised";
-/** Tailwind's 2xl (96rem, 1536 px): from there the thread is a column beside the chat, below it a sheet. */
-const THREAD_COLUMN_QUERY = "(min-width: 96rem)";
+/** Tailwind's xl (80rem, 1280 px): from there the thread is a column beside the chat, below it a sheet. */
+const THREAD_COLUMN_QUERY = "(min-width: 80rem)";
 /** Tailwind's lg (64rem): from there a document is a column beside the chat, below it a sheet. */
 const DOC_COLUMN_QUERY = "(min-width: 64rem)";
 
@@ -142,6 +144,10 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
     [chat.agents],
   );
   const opener = useRef<HTMLElement | null>(null);
+  // The thread's place: a column the visitor widens or narrows beside the chat, or the whole view to work in it.
+  const frame = useRef<HTMLDivElement | null>(null);
+  const threadWidth = useThreadWidth();
+  const [threadFull, setThreadFull] = useState(false);
   // The Markdown document read beside the chat (doc-panel.tsx), by its name, and what opened it: the composer stays in
   // reach, and Close gives the focus back.
   const [doc, setDoc] = useState<string | null>(null);
@@ -180,6 +186,7 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
   };
   const closeThread = () => {
     setThread(null);
+    setThreadFull(false);
     setHighlight(null);
     urlWith({ thread: null, message: null });
     opener.current?.focus();
@@ -231,11 +238,14 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
         loadThread={live.loadThread}
         onSent={live.sent}
         onClose={closeThread}
+        expanded={threadFull}
+        onExpand={setThreadFull}
         readOnly={ended}
         onReact={onReact}
         reacting={reacting}
         under={under}
-        className={threadColumn ? `${CARD} w-[26rem] shrink-0` : "h-full"}
+        className={threadColumn ? `${CARD} ${threadFull ? "min-w-0 flex-1" : "min-w-[22rem] shrink-0"}` : "h-full"}
+        style={threadColumn && !threadFull ? { width: `${threadWidth.share * 100}%` } : undefined}
       />
     ) : null;
 
@@ -247,8 +257,8 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
   return (
     <OpenDocContext.Provider value={openDoc}>
     <AgentActionsContext.Provider value={agentPanels ? openAgent : null}>
-    <div className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
-      <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`}>
+    <div ref={frame} className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
+      <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`} hidden={threadColumn && thread !== null && threadFull}>
         <FileDropFrame className="flex min-h-0 flex-1 flex-col" data-testid="chat-drop">
           <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} />
           <MessageList
@@ -297,10 +307,16 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
         </FileDropFrame>
       </section>
       {docWide ? docPanel : null}
+      {threadColumn && thread !== null && !threadFull ? <ThreadResizeHandle frame={frame} share={threadWidth.share} onResize={threadWidth.resize} /> : null}
       {threadColumn ? panel : null}
       {!threadColumn ? (
         <Sheet open={thread !== null} onOpenChange={(open) => (open ? undefined : closeThread())}>
-          <SheetContent side="right" showCloseButton={false} className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg" data-testid="chat-thread-sheet">
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            className={cn("gap-0 p-0 data-[side=right]:w-full", threadFull ? "data-[side=right]:sm:max-w-none" : "data-[side=right]:sm:max-w-2xl")}
+            data-testid="chat-thread-sheet"
+          >
             <SheetTitle className="sr-only">{t("threadSheet")}</SheetTitle>
             <SheetDescription className="sr-only">{t("threadSheetBody", { title: chat.title })}</SheetDescription>
             <InFrame>{panel}</InFrame>

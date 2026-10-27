@@ -85,7 +85,8 @@
           "canvas:read",
           "signals:read",
           "srs:read",
-          "tasks:read"
+          "tasks:read",
+          "records:use"
         ]
       }
     },

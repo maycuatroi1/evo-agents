@@ -39,9 +39,12 @@ The proposal of kind `plugin` names the plugin's id (`name`), the `industry`, th
 6. Add the repository to the project, so the runs after this one open it: add it to the harness's `harness.yaml`
    (its `repos`), then register the harness again with `evo-agents hub project register ROOT`.
 7. Propose, each with its own call of `builder__propose`, for the member to approve:
-   - kind `plugin_install`: set `repo` OWNER/NAME and `tag` v0.1.0. A hub admin approves it; the hub trusts the
-     signer for the publisher and installs the release, as `evo-agents hub plugin install --github OWNER/NAME@v0.1.0
-     --trust` would.
+   - kind `plugin_install`: set `repo` OWNER/NAME and `tag` v0.1.0. In a self-managed project (the hub admin turned
+     it on and listed the GitHub owners they trust; `evo-agents hub admin project show PROJECT --json` prints
+     `self_managed` and `trusted_owners`) and an owner on that list, the admin of the project approves it and the
+     plugin installs for that project alone. Any other owner, or a project that is not self-managed, waits for a hub
+     admin, who trusts the signer for the publisher and installs the release, as `evo-agents hub plugin install
+     --github OWNER/NAME@v0.1.0 --trust` would.
    - kind `plugin_listing`: set `repo`, `tag`, `price`, `industries` and `categories`. Approving it hands you the
      listing: for a free plugin, a pull request that adds its entry to the market's index; for a paid one, the
      listing and the bundle on the seller's hub (see Listing).
@@ -77,6 +80,28 @@ docs/rename.md                  how to rename the template's id, publisher and s
   looks like the hub in both themes, and keeps its strings in `pages/i18n`. It injects nothing into the hub's web.
 - **Agent packs.** A skill's directory name equals the `name` of its front matter, with a description of 1 to 1024
   characters. INSTRUCTIONS.md stays under 32 KiB.
+
+## Records: a plugin that keeps a company's papers
+
+A plugin that keeps business records (leave requests, expense vouchers, draft entries, a customer's file) keeps them
+in the hub's records store, never in `data/<name>/` of its backend: the store lives in the hub's Postgres, in its
+backup, and survives a restart or a new host; `data/<name>/` is a cache that may vanish. Do this:
+
+- Ask `records:use` in `permissions`, and nothing else the plugin does not need. The admin of the project grants it,
+  and sets `records_level`, the highest level that jobs and events, which have no caller, may touch.
+- Read and write through the records API (`/v1/plugin-api/projects/{project}/records/{collection}/{key}`, or the
+  bridge's `records.list|get|put|delete` from a page), sending the plugin token and, for a route or tool call, the
+  call's `caller.token` as `X-Evo-On-Behalf-Of`. Never invent a token, never send one from another call.
+- Before you write the plugin, ask the member two things for each kind of record, and put the answers in the code:
+  its `level`, one of the project's ladder (a leave request: `internal`; an expense voucher: `finance`), and its
+  `audience`: `everyone` that the level reaches, or `writer`, so that only the person who wrote it sees it (a leave
+  request: the writer, with the manager's level reaching it through a role, not through the audience). The level of
+  a record may be no higher than the writer reaches.
+- Use `revision` on every update, so that two people do not overwrite each other, and generated keys for a new record.
+- Expect 404 for a record the call cannot see, 409 for a revision that moved, 403 for a level above the call.
+- Test with `evo-agents plugin test .`: a stand-in hub answers the records API, and the check `records` fails when the
+  plugin calls it without `records:use` in its manifest, for another project, or with a delegation the call did not
+  carry.
 
 ## Before you push
 

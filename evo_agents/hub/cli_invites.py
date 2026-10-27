@@ -140,4 +140,7 @@ def admin_commands(hsub):
     admin = hsub.add_parser("admin", help="users, grants and invite links (hub admins only)")
     asub = admin.add_subparsers(dest="admin_command", required=True)
     _invite_commands(asub)
+    from evo_agents.hub.cli_project_admin import project_commands
+
+    project_commands(asub)
     return asub

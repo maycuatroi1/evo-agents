@@ -35,7 +35,7 @@ from typing import Annotated, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import features, tables
@@ -91,6 +91,11 @@ class ProjectPlugin(BaseModel):
     pending: list[str] = Field(
         description="asked for and not granted, after an upgrade asked for more: enable it again to grant them"
     )
+    records_level: str | None = Field(
+        None,
+        description="the highest level of the project's ladder its jobs and events, which have no caller, reach in its "
+        "records (records:use); none: they reach none",
+    )
     config_schema: dict | None = Field(description="the JSON Schema of its config, secret fields marked x-secret")
     pages: list[PluginPage] = Field(description="the pages it adds to the project's part of the web")
     enabled_by: str | None
@@ -105,6 +110,11 @@ class PluginEnable(BaseModel):
     permissions: list[Permission] = Field(
         max_length=len(PERMISSIONS),
         description="the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it",
+    )
+    records_level: str | None = Field(
+        None,
+        description="a level of the project's ladder: the highest its jobs and events, which have no caller, reach in "
+        "the plugin's records; left out, what is set stays (none at first)",
     )
 
 
@@ -145,8 +155,10 @@ def _query(project_id: int):
             pp.c.enabled_at,
             granter.c.login.label("granted_by"),
             pp.c.granted_at,
+            pp.c.records_level,
         )
         .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
+        .where(or_(p.c.project_id.is_(None), p.c.project_id == project_id))  # one installed for another is not seen
         .outerjoin(e, (e.c.plugin_id == p.c.id) & (e.c.project_id == project_id))
         .outerjoin(pp, (pp.c.plugin_id == p.c.id) & (pp.c.project_id == project_id))
         .outerjoin(enabler, enabler.c.id == pp.c.enabled_by)
@@ -182,6 +194,7 @@ def view(row, project: str, secret: str | None) -> ProjectPlugin:
         enabled_at=row.enabled_at,
         granted_by=row.granted_by,
         granted_at=row.granted_at,
+        records_level=row.records_level if enabled else None,
     )
 
 
@@ -250,25 +263,42 @@ def check_grant(row, wanted: list[str]) -> list[str]:
     return asked
 
 
-async def enable(conn: AsyncConnection, user: Principal, access: ProjectAccess, name: str, wanted: list[str]) -> bool:
+async def enable(
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    name: str,
+    wanted: list[str],
+    records_level: str | None = None,
+) -> bool:
     """Enable plugin ``name`` for the project, granting ``wanted``, or grant ``wanted`` to it once enabled; False when
-    nothing changed. 409 for a plugin the hub turned off."""
+    nothing changed. ``records_level`` is the highest level its calls with no caller reach in its records. 409 for a
+    plugin the hub turned off."""
     row = await installed_row(conn, access, name, lock=True)
     if row.disabled_reason:
         raise HTTPException(
             409, f"plugin {name} is turned off on this hub ({row.disabled_reason}); a hub admin upgrades it first"
         )
     asked = check_grant(row, wanted)
+    if records_level is not None:
+        if records_level not in access.rules.levels:
+            raise HTTPException(422, f"records_level {records_level!r} is not a level of project {access.name}")
+        if "records:use" not in asked:
+            raise HTTPException(422, f"plugin {name} does not ask for records:use, so records_level has no use")
     if row.builtin:
         return await _turn_feature(conn, user, access, row, on=True)
     pp = tables.project_plugins
     grant = {"permissions": asked, "granted_by": user.user_id, "granted_at": func.now()}
+    if records_level is not None:
+        grant["records_level"] = records_level
     granted = f"{_target(access, row)} permissions={','.join(asked) or '-'}"
+    if records_level is not None:
+        granted += f" records_level={records_level}"
     if row.enabled_id is None:
         values = {"project_id": access.project_id, "plugin_id": row.id, "enabled_by": user.user_id, **grant}
         await conn.execute(insert(pp).values(values))
         await _record(conn, user, access, audit.PLUGIN_PROJECT_ENABLE, _target(access, row))
-    elif set(row.permissions) == set(asked):
+    elif set(row.permissions) == set(asked) and records_level in (None, row.records_level):
         return False
     else:
         mine = (pp.c.project_id == access.project_id) & (pp.c.plugin_id == row.id)

@@ -1,4 +1,4 @@
-"""The ledger of what is delivered of an SRS document (0170, plan srs-backlog-loop), which ``evo_agents.hub.tables``
+"""The ledger of what is delivered of an SRS document (0172, plan srs-backlog-loop), which ``evo_agents.hub.tables``
 adds to its metadata as ``tables.srs_delivery``: queries name it there. The model is ``evo_agents.hub.srs_backlog``.
 
 srs_delivery holds one row per use case of a document the hub knows a state of: the document, the use case's code (or
@@ -71,7 +71,7 @@ def delivery_table(metadata: MetaData) -> Table:
 
 
 def baseline_table(metadata: MetaData) -> Table:
-    """srs_baselines (0171), added to ``metadata``: the goals whose baseline an admin confirmed. One row per goal: the
+    """srs_baselines (0173), added to ``metadata``: the goals whose baseline an admin confirmed. One row per goal: the
     document the baseline is of (a goal re-aimed at another document is unconfirmed again), who confirmed and when,
     and the use cases of each state the ledger held then (``counts``)."""
     name = "srs_baselines"

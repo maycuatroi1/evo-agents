@@ -1,7 +1,7 @@
 """A goal may aim at an SRS document, and the hub keeps a ledger of what is delivered of one.
 
-Revision ID: 0170
-Revises: 0169
+Revision ID: 0172
+Revises: 0171
 Create Date: 2026-10-27
 
 goal_revisions gains ``srs_document_id`` (the SRS document the goal aims at, NULL for none; NO ACTION, as its problem)
@@ -18,8 +18,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0170"
-down_revision = "0169"
+revision = "0172"
+down_revision = "0171"
 branch_labels = None
 depends_on = None
 

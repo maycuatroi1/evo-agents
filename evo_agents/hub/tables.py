@@ -56,6 +56,7 @@ from evo_agents.hub import (
     tables_org,
     tables_outputs,
     tables_plugin_notices,
+    tables_plugin_records,
     tables_plugins,
     tables_pools,
     tables_problems,
@@ -139,6 +140,8 @@ projects = Table(
     Column("cluster", Text),
     Column("workspace", Text),
     Column("harness_path", Text),
+    Column("self_managed", Boolean, nullable=False, server_default=false()),  # 0170
+    Column("trusted_owners", ARRAY(Text), nullable=False, server_default="{}"),  # 0170
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="projects_created_by_fkey"),
     PrimaryKeyConstraint("id", name="projects_pkey"),
     UniqueConstraint("name", name="projects_name_key"),
@@ -1029,8 +1032,8 @@ opportunities, opportunity_revisions, opportunity_answers = tables_opportunities
 )  # the opportunities of a project (0143)
 opportunity_evidence = tables_opportunities.evidence_table(metadata)  # the lines of evidence of an opportunity (0143)
 loop_states, loop_items, loop_item_events = tables_loop.loop_tables(metadata)  # the Loop of a project (0093)
-srs_delivery = tables_delivery.delivery_table(metadata)  # what is delivered of an SRS document (0170)
-srs_baselines = tables_delivery.baseline_table(metadata)  # the goals whose baseline an admin confirmed (0171)
+srs_delivery = tables_delivery.delivery_table(metadata)  # what is delivered of an SRS document (0172)
+srs_baselines = tables_delivery.baseline_table(metadata)  # the goals whose baseline an admin confirmed (0173)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
 history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0059
 history_lines, history_indexed = tables_sessions.search_tables(metadata)  # the words of the history (0060)
@@ -1042,6 +1045,7 @@ curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposal
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
+plugin_records, plugin_record_leases = tables_plugin_records.plugin_record_tables(metadata)  # 0169
 # the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)
 org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops, worker_shares = tables_org.org_tables(
     metadata, runs, secrets

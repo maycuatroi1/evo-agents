@@ -1251,6 +1251,9 @@ def register(sub) -> None:
         "wait",
         help="inside a plan run: wait for a time or an event of the hub rather than ask the owner when it came; "
         "prints the wait's id",
+        description="Wait for a time or an event of the hub rather than ask the owner when it came. A step of another "
+        "plan done: --on plan.step --contains plan=northwind-launch --contains step=8 --contains status=done --until "
+        "+12h.",
     )
     wait.add_argument("--reason", required=True, help="what the run waits for and why, for the owner to read")
     wait.add_argument(
@@ -1260,13 +1263,17 @@ def register(sub) -> None:
         f"+5d), at most {runs.MAX_WAIT_DAYS} days ahead; without it, {runs.MAX_WAIT_DAYS} days",
     )
     wait.add_argument(
-        "--on", metavar="KIND", help="wake sooner on an event of the hub of this kind, such as canvas.baseline"
+        "--on",
+        metavar="KIND",
+        help="wake sooner on an event of the hub of this kind: plan.step (a step's status of a plan set or changed), "
+        "tasks.status, canvas.baseline, canvas.claim, signal.posted, srs.version.approved, or plugin.<plugin>.<name>",
     )
     wait.add_argument(
         "--contains",
         action="append",
         metavar="KEY=VALUE",
-        help="the event's payload has KEY equal to VALUE (read as JSON when it is); repeat it",
+        help="the event's payload has KEY equal to VALUE (read as JSON when it is), such as plan=SLUG, step=8 and "
+        "status=done for plan.step; repeat it",
     )
     wait.add_argument("--step", help="the step of the run's plan it is about")
     wait.set_defaults(func=cmd_wait)

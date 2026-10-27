@@ -101,6 +101,7 @@ PERMISSIONS = (
     "signals:read",
     "srs:read",
     "tasks:read",
+    "records:use",
 )
 # What each permission lets a plugin do on a project that enables it, as an admin of the project reads it before
 # granting it.
@@ -116,6 +117,9 @@ PERMISSION_TEXT = {
     "signals:read": "read the project's signals: each batch the hub takes",
     "srs:read": "read the project's SRS documents: each version approved, with the codes of the items it changed",
     "tasks:read": "read the project's tasks: each status a task takes, with what the task links to",
+    "records:use": "keep the project's records for the people it serves: read and write the records of its own "
+    "collections, each at a level the person it acts for reaches; its jobs and events, which act for no person, "
+    "reach the levels up to the one the admin sets when enabling it",
 }
 
 

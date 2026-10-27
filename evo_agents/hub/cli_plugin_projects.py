@@ -50,6 +50,7 @@ PROJECT_PLUGIN_KEYS = (
     "description",
     "tier",
     "pages",
+    "records_level",
 )
 LAYER_KEYS = (
     "plugin",

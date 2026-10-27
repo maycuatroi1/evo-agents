@@ -71,8 +71,8 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("canvas_id", BigInteger),
         Column("problem_id", BigInteger),  # 0134
         Column("opportunity_id", BigInteger),  # 0145, never with a problem
-        Column("srs_document_id", BigInteger),  # 0170
-        Column("srs_heading", Text),  # 0170, the code or title of a heading of that document; never without it
+        Column("srs_document_id", BigInteger),  # 0172
+        Column("srs_heading", Text),  # 0172, the code or title of a heading of that document; never without it
         Column("rank", Integer, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
         Column("status", Text, nullable=False),

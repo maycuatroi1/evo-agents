@@ -154,7 +154,8 @@ TABLES |= pg.TODAY_TABLES  # migration 0158
 TABLES |= pg.SELLER_TABLES  # migration 0159
 TABLES |= pg.DOCS_TABLES  # migration 0163
 TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
-TABLES |= {"srs_delivery", "srs_baselines"}  # migrations 0170 and 0171
+TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
+TABLES |= {"srs_delivery", "srs_baselines"}  # migrations 0172 and 0173
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -245,8 +246,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_five_tables(hub_db):
-    assert len(TABLES) == 205  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_seven_tables(hub_db):
+    assert len(TABLES) == 207  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3642,9 +3643,8 @@ def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_t
         )
         layer = {"kind": "features", "project_id": ids["project"], "changed_by": user}
         conn.execute(insert(settings).values(layer | {"version": 1, "values": {"chats": False}}))
-    before = query(
-        hub_db, select(*(pp.c[name] for name in sorted(pp.c.keys()))).order_by(pp.c.project_id, pp.c.plugin_id)
-    )
+    old_columns = [name for name in sorted(pp.c.keys()) if name != "records_level"]  # 0169 adds it
+    before = query(hub_db, select(*(pp.c[name] for name in old_columns)).order_by(pp.c.project_id, pp.c.plugin_id))
     move_to(hub_db, "0147")
     assert {"retired_project_plugins"} <= tables(hub_db) and "builtin" in columns(hub_db, "plugins")
     builtin = select(plugins.c.name).where(plugins.c.builtin).order_by(plugins.c.name)
@@ -3674,9 +3674,7 @@ def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_t
         conn.execute(insert(settings).values(layer | {"version": 3, "values": {"chats": True, "canvas": True}}))
     move_to(hub_db, "0146", down=True)
     assert "retired_project_plugins" not in tables(hub_db) and "builtin" not in columns(hub_db, "plugins")
-    after = query(
-        hub_db, select(*(pp.c[name] for name in sorted(pp.c.keys()))).order_by(pp.c.project_id, pp.c.plugin_id)
-    )
+    after = query(hub_db, select(*(pp.c[name] for name in old_columns)).order_by(pp.c.project_id, pp.c.plugin_id))
     assert after == before  # each row back with the permissions it had
     assert query(hub_db, select(settings.c.project_id, settings.c.version, settings.c["values"])) == [
         (ids["project"], 1, {"chats": False}),
@@ -4586,8 +4584,101 @@ def test_0168_says_since_when_a_run_runs_as_its_owner_and_going_back_drops_it(hu
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0168") :]
 
 
-def test_0169_takes_deliveries_of_an_approved_use_case_and_going_back_deletes_them(hub_db):
+def test_0169_keeps_a_plugins_records_with_their_levels_and_leases_and_going_back_drops_them_and_the_grant(hub_db):
     move_to(hub_db, "0168")
+    t = hub_tables
+    assert "records_level" not in columns(hub_db, "project_plugins")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="vault", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        granted = {"project_id": ids["project"], "plugin_id": plugin_id, "enabled_by": ids["user"]}
+        granted |= {"granted_by": ids["user"], "permissions": ["runs:read"]}
+        conn.execute(insert(t.project_plugins).values(granted))
+        with pytest.raises(errors.CheckViolation):  # 0168 knows no records:use
+            conn.execute(update(t.project_plugins).values(permissions=["records:use"]))
+    move_to(hub_db, "0169")
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0169",)]
+    assert {"plugin_records", "plugin_record_leases"} <= {
+        row[0] for row in query(hub_db, select(INFO_TABLES.c.table_name))
+    }
+    row = {"project_id": ids["project"], "plugin_id": plugin_id, "collection": "notes", "key": "a", "level": "internal"}
+    row |= {"body": {"text": "x"}, "created_by": ids["user"], "updated_by": ids["user"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(update(t.project_plugins).values(permissions=["runs:read", "records:use"], records_level="public"))
+        conn.execute(insert(t.plugin_records).values(row))
+        conn.execute(insert(t.plugin_records).values({**row, "key": "job", "created_by": None, "updated_by": None}))
+        conn.execute(
+            insert(t.plugin_record_leases).values(
+                token_hash="c" * 64,
+                plugin_id=plugin_id,
+                project_id=ids["project"],
+                user_id=ids["user"],
+                max_level="internal",
+                expires_at=func.now() + timedelta(minutes=1),
+            )
+        )
+    assert query(hub_db, select(t.plugin_records.c.key, t.plugin_records.c.revision).order_by("key")) == [
+        ("a", 1),
+        ("job", 1),
+    ]
+    for bad in (
+        {"key": ""},
+        {"key": "k" * 201},
+        {"collection": "Bad Name"},
+        {"revision": 0},
+        {"body": [1]},
+        {"level": None},
+    ):
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.NotNullViolation)):
+            conn.execute(insert(t.plugin_records).values({**row, "key": "z", **bad}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):  # records are kept, not cascaded
+        conn.execute(t.plugins.delete().where(t.plugins.c.id == plugin_id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
+        conn.execute(
+            insert(t.plugin_record_leases).values(
+                token_hash="c" * 64,
+                plugin_id=plugin_id,
+                project_id=ids["project"],
+                user_id=ids["user"],
+                expires_at=func.now(),
+            )
+        )
+    move_to(hub_db, "0168", down=True)
+    assert "records_level" not in columns(hub_db, "project_plugins")
+    assert not pg.PLUGIN_RECORD_TABLES & tables(hub_db)
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)], "records:use goes from grants"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0169") :]
+
+
+def test_0170_marks_a_project_self_managed_with_its_trusted_owners_and_scopes_a_plugin_to_one_project(hub_db):
+    move_to(hub_db, "0169")
+    t = hub_tables
+    assert "self_managed" not in columns(hub_db, "projects")
+    assert "project_id" not in columns(hub_db, "plugins")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="vault", publisher="acme").returning(t.plugins.c.id))
+    move_to(hub_db, "0170")
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0170",)]
+    p = t.projects
+    assert query(hub_db, select(p.c.self_managed, p.c.trusted_owners)) == [(False, [])], "no project is self-managed"
+    assert query(hub_db, select(t.plugins.c.project_id)) == [(None,)], "a plugin of the hub belongs to no project"
+    with live.connect(hub_db) as conn:
+        conn.execute(update(p).values(self_managed=True, trusted_owners=["bachtha"]))
+        conn.execute(update(t.plugins).values(project_id=ids["project"]).where(t.plugins.c.id == plugin_id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(update(t.plugins).values(project_id=ids["project"] + 1000))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(p.delete().where(p.c.id == ids["project"]))
+    move_to(hub_db, "0169", down=True)
+    assert "self_managed" not in columns(hub_db, "projects")
+    assert "project_id" not in columns(hub_db, "plugins")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0170") :]
+
+
+def test_0171_takes_deliveries_of_an_approved_use_case_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0170")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -4595,9 +4686,9 @@ def test_0169_takes_deliveries_of_an_approved_use_case_and_going_back_deletes_th
         conn.execute(_plugin_version(plugin_id, ids["user"]))
     delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "contribution": "loop", "payload": {"v": 1}}
     kind = "srs.use_case.approved"
-    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0168 takes no such kind
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0170 takes no such kind
         conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
-    move_to(hub_db, "0169")
+    move_to(hub_db, "0171")
     with live.connect(hub_db) as conn:
         for name in ("run.state", "srs.version.approved", kind):
             conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": name}))
@@ -4605,20 +4696,20 @@ def test_0169_takes_deliveries_of_an_approved_use_case_and_going_back_deletes_th
         with pytest.raises(errors.CheckViolation):
             conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": "srs.use_case.dropped"}))
     # Going back deletes the deliveries and the hub's events of the kind.
-    move_to(hub_db, "0168", down=True)
+    move_to(hub_db, "0170", down=True)
     assert query(hub_db, select(t.plugin_deliveries.c.kind).order_by(t.plugin_deliveries.c.id)) == [
         ("run.state",),
         ("srs.version.approved",),
     ]
     assert query(hub_db, select(t.hub_events.c.kind)) == []
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0169") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0171") :]
 
 
-def test_0170_adds_the_srs_scope_of_a_goal_and_the_ledger_of_delivery_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0169")
+def test_0172_adds_the_srs_scope_of_a_goal_and_the_ledger_of_delivery_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0171")
     assert not {"srs_document_id", "srs_heading"} & columns(hub_db, "goal_revisions")
     assert "srs_delivery" not in tables(hub_db)
-    move_to(hub_db, "0170")
+    move_to(hub_db, "0172")
     assert {"srs_document_id", "srs_heading"} <= columns(hub_db, "goal_revisions")
     t = hub_tables
     with live.connect(hub_db) as conn:
@@ -4634,16 +4725,16 @@ def test_0170_adds_the_srs_scope_of_a_goal_and_the_ledger_of_delivery_and_going_
                 conn.execute(insert(t.srs_delivery).values({**row, "code_key": "uc ord-2", **bad}))
             conn.rollback()
     assert query(hub_db, select(t.srs_delivery.c.state, t.srs_delivery.c.evidence)) == [("delivered", {})]
-    move_to(hub_db, "0169", down=True)
+    move_to(hub_db, "0171", down=True)
     assert not {"srs_document_id", "srs_heading"} & columns(hub_db, "goal_revisions")
     assert "srs_delivery" not in tables(hub_db)
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0170") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0172") :]
 
 
-def test_0171_adds_the_confirmed_baselines_of_goals_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0170")
+def test_0173_adds_the_confirmed_baselines_of_goals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0172")
     assert "srs_baselines" not in tables(hub_db)
-    move_to(hub_db, "0171")
+    move_to(hub_db, "0173")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -4660,6 +4751,6 @@ def test_0171_adds_the_confirmed_baselines_of_goals_and_going_back_drops_them(hu
         with pytest.raises(errors.UniqueViolation):
             conn.execute(insert(t.srs_baselines).values(row))
     assert query(hub_db, select(t.srs_baselines.c.counts)) == [({},)]
-    move_to(hub_db, "0170", down=True)
+    move_to(hub_db, "0172", down=True)
     assert "srs_baselines" not in tables(hub_db)
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0171") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0173") :]

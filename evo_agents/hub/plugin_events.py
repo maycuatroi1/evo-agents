@@ -3,25 +3,26 @@ points).
 
 ``emit`` stores, in the caller's transaction, one delivery of an event for each plugin enabled in the event's project
 whose installed version takes it and whose grant there lets it read it: a run's state (``run.state``, with
-``runs:read``), a message of a group chat (``chat.message``, with ``chats:read``), a step of a plan (``plan.step``, with
-``plans:read``), the end of a task run (``task.result``, with ``runs:dispatch``), which ``emit_task_result`` stores for
-the plugin of the run's agent type alone (``evo_agents.hub.task_runs``), a rev of a claim of a Lean Canvas and an
-approved baseline of one (``canvas.claim``, ``canvas.baseline``, with ``canvas:read``; the core plugin canvas emits
-them), a batch of signals (``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``), an approved version of
-an SRS document (``srs.version.approved``, with ``srs:read``; the core plugin srs emits it), and a task's status set or
-changed (``tasks.status``, with ``tasks:read``; ``evo_agents.hub.task_status``), and the end of a question a core plugin
-asked an agent type of its own (``agent.answer``, which ``emit`` stores for that plugin alone;
+``runs:read``), a message of a group chat (``chat.message``, with ``chats:read``), a step's status of a plan set or
+changed (``plan.step``, with ``plans:read``; ``evo_agents.hub.plan_step_status``), the end of a task run
+(``task.result``, with ``runs:dispatch``), which ``emit_task_result`` stores for the plugin of the run's agent type
+alone (``evo_agents.hub.task_runs``), a rev of a claim of a Lean Canvas and an approved baseline of one
+(``canvas.claim``, ``canvas.baseline``, with ``canvas:read``; the core plugin canvas emits them), a batch of signals
+(``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``), an approved version of an SRS document
+(``srs.version.approved``, with ``srs:read``; the core plugin srs emits it), and a task's status set or changed
+(``tasks.status``, with ``tasks:read``; ``evo_agents.hub.task_status``), and the end of a question a core plugin asked
+an agent type of its own (``agent.answer``, which ``emit`` stores for that plugin alone;
 ``evo_agents.hub.question_runs``), and what a group chat's bridge carries (``chat.bridge``, with ``chats:read``, to the
-plugin of the bridge alone; ``evo_agents.hub.chat_bridge_events``). A core plugin takes the end of its own task runs
-and questions without a grant, as it hands them without one (``task_dispatch.hand_own_task``,
-``core_plugin_api.ask_agent_type``), and the events of its own (``OWN``) likewise: the image trusts it. An events contribution takes the kinds its ``on`` names, or every kind
-when it names none. The same call writes an event of the last five kinds into the hub's own table hub_events too,
-which the Loop reads by cursor (``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table
-plugin_deliveries is the outbox:
-nothing goes out while the transaction is open, and nothing is lost when the hub stops after the commit.
-``emit_notification`` does the same for a notification of a project, to each isolated plugin's channel there, with
-``notifications:send``: a core plugin's channel is a kind of members' channel instead, which
-``evo_agents.hub.server.notifications`` sends as it
+plugin of the bridge alone; ``evo_agents.hub.chat_bridge_events``). A core plugin takes the end of its own task runs and
+questions without a grant, as it hands them without one (``task_dispatch.hand_own_task``,
+``core_plugin_api.ask_agent_type``), and the events of its own (``OWN``) likewise: the image trusts it. An events
+contribution takes the kinds its ``on`` names, or every kind when it names none. The same call writes an event of
+``hub_events.KINDS`` (``plan.step`` and the five kinds from ``canvas.claim`` to ``tasks.status``) into the hub's own
+table hub_events too, which the Loop reads by cursor and the wait of a plan run wakes on
+(``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table plugin_deliveries is the outbox: nothing
+goes out while the transaction is open, and nothing is lost when the hub stops after the commit. ``emit_notification``
+does the same for a notification of a project, to each isolated plugin's channel there, with ``notifications:send``: a
+core plugin's channel is a kind of members' channel instead, which ``evo_agents.hub.server.notifications`` sends as it
 sends Telegram's.
 
 A payload carries ids and states, never a text the project's labels may keep from a plugin: a run's id, kind and
@@ -73,7 +74,7 @@ STATES = ("pending", "delivered", "failed")  # plugin_deliveries.state (0038)
 PERMISSION = {
     "run.state": "runs:read",
     "chat.message": "chats:read",
-    "plan.step": "plans:read",
+    hub_events.PLAN_STEP: "plans:read",
     "task.result": "runs:dispatch",
     "agent.answer": "runs:dispatch",  # only a core plugin asks, and takes it ungranted
     "chat.bridge": "chats:read",  # to the core plugin of the bridge alone (evo_agents.hub.chat_bridge_events)
