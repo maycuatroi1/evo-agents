@@ -4162,6 +4162,66 @@
           "people",
           "agents",
           "label",
+          "label_level",
+          "label_levels",
+          "label_admin",
+          "restricted",
+          "last_seq",
+          "last_read_seq",
+          "kind",
+          "image_url"
+        ],
+        "schema": "Chat"
+      }
+    },
+    "hub chat label": {
+      "positionals": [
+        {
+          "name": "chat",
+          "metavar": "CHAT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--default"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "title",
+          "created_by",
+          "created_at",
+          "people",
+          "agents",
+          "label",
+          "label_level",
+          "label_levels",
+          "label_admin",
           "restricted",
           "last_seq",
           "last_read_seq",
@@ -72138,6 +72198,184 @@
           }
         }
       },
+      "/v1/chats/{chat_id}/label": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Put Label",
+          "description": "Set the chat's level, at or below the default level of every project of its agents: a message sent from now\non carries it. Needs the admin role on every one of those projects.",
+          "operationId": "put_label_v1_chats__chat_id__label_put",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatLabelIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Delete Label",
+          "description": "Take the chat's level off: its label is its projects' default again, for the messages sent from now on.",
+          "operationId": "delete_label_v1_chats__chat_id__label_delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/events": {
         "get": {
           "tags": [
@@ -95352,7 +95590,33 @@
               },
               "type": "array",
               "title": "Label",
-              "description": "the labels of its agents' projects: every person in it clears them"
+              "description": "the labels of its agents' projects, at the level set for the chat if any: every person in it clears them, and a message sent now carries them"
+            },
+            "label_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label Level",
+              "description": "the level an admin of every project of its agents set for the chat, below or at each one's default; null when its label is its projects' default"
+            },
+            "label_levels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Label Levels",
+              "description": "the levels the chat may be set to, lowest first: on every project's ladder, at or below each one's default; empty for a direct chat or a chat without agents"
+            },
+            "label_admin": {
+              "type": "boolean",
+              "title": "Label Admin",
+              "description": "whether the reader is an admin of every project of its agents, so may set its level",
+              "default": false
             },
             "restricted": {
               "type": "boolean",
@@ -95799,6 +96063,21 @@
             "by"
           ],
           "title": "ChatImageChange"
+        },
+        "ChatLabelIn": {
+          "properties": {
+            "level": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+              "title": "Level",
+              "description": "the chat's level: on the ladder of every project of its agents, at or below each one's default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "level"
+          ],
+          "title": "ChatLabelIn"
         },
         "ChatLastMessage": {
           "properties": {
@@ -137359,7 +137638,8 @@
                 "llm-backend",
                 "writeback-target",
                 "cli",
-                "hub"
+                "hub",
+                "channel"
               ],
               "title": "Kind"
             },

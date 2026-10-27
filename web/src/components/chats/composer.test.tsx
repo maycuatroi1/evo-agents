@@ -49,6 +49,7 @@ const CHAT = {
   last_read_seq: 3,
   kind: "group",
   image_url: null,
+  label_admin: false,
 } satisfies Chat;
 
 function setup(onSent = vi.fn()) {

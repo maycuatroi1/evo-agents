@@ -38,9 +38,9 @@ from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.harness import load_schema
+from evo_agents.harness import channel_sink_id, channel_sink_problem, load_schema
 from evo_agents.hub import tables
-from evo_agents.hub.access import HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
+from evo_agents.hub.access import CHANNEL_KIND, HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
 from evo_agents.hub.server import audit, invites
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -236,6 +236,8 @@ def _checked(name: str, body: Registration) -> ProjectRules:
             problems.append(f"sink {sink.id}: clearance level {sink.clearance.level!r} is not in levels")
         if sink.clearance.location is not None and sink.clearance.location not in body.locations:
             problems.append(f"sink {sink.id}: clearance location {sink.clearance.location!r} is not in locations")
+        if sink.kind == CHANNEL_KIND and not channel_sink_id(sink.id):
+            problems.append(f"sink {channel_sink_problem(sink.id)}")
     hubs = [sink.id for sink in body.sinks if sink.kind == HUB_KIND]
     if len(hubs) > 1:
         problems.append(f"sinks {', '.join(hubs)} are all of kind hub; a project declares one")

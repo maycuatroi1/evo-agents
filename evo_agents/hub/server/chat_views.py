@@ -24,7 +24,7 @@ from evo_agents.hub import chat_runs, chats, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.agent_profiles import icon_url
-from evo_agents.hub.server.chat_access import ChatAccess, LabelReader
+from evo_agents.hub.server.chat_access import ChatAccess, LabelReader, label_admin, label_levels
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.output_views import by_message as outputs_by_message
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
@@ -147,7 +147,23 @@ class Chat(BaseModel):
     created_at: datetime
     people: list[ChatPerson]
     agents: list[ChatAgent]
-    label: list[dict] = Field(description="the labels of its agents' projects: every person in it clears them")
+    label: list[dict] = Field(
+        description="the labels of its agents' projects, at the level set for the chat if any: every person in it "
+        "clears them, and a message sent now carries them"
+    )
+    label_level: str | None = Field(
+        None,
+        description="the level an admin of every project of its agents set for the chat, below or at each one's "
+        "default; null when its label is its projects' default",
+    )
+    label_levels: list[str] = Field(
+        default_factory=list,
+        description="the levels the chat may be set to, lowest first: on every project's ladder, at or below each "
+        "one's default; empty for a direct chat or a chat without agents",
+    )
+    label_admin: bool = Field(
+        False, description="whether the reader is an admin of every project of its agents, so may set its level"
+    )
     restricted: bool = Field(description="a project of its agents is restricted: its notices name it and link only")
     last_seq: int = Field(description="the number of its last event")
     last_read_seq: int = Field(description="how far the reader read")
@@ -330,6 +346,9 @@ async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
         people=people,
         agents=agents,
         label=chat.label,
+        label_level=chat.label_level,
+        label_levels=label_levels(chat),
+        label_admin=await label_admin(conn, chat),
         restricted=chat.restricted,
         last_seq=seq,
         last_read_seq=read,

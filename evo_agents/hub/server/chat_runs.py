@@ -865,7 +865,16 @@ async def chat_prompt(
         listing=listing,
         harness=harness,
         ships=ships,
+        label=await _lowered(conn, found.chat_id, profile.project),
     )
+
+
+async def _lowered(conn: AsyncConnection, chat_id: int, project: str) -> dict | None:
+    """{level, default} when chat ``chat_id`` was set below the default level of ``project``; None otherwise."""
+    found = next((p for p in await agent_projects(conn, chat_id) if p.name == project), None)
+    if found is None or not found.lowered:
+        return None
+    return {"level": found.label["level"], "default": found.default_level}
 
 
 async def _member_names(conn: AsyncConnection, chat_id: int) -> tuple[list[str], list[str]]:

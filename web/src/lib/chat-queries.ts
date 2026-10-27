@@ -89,6 +89,18 @@ export async function removeChatImage(api: ApiClient, id: number): Promise<Chat>
   return call(api.DELETE("/v1/chats/{chat_id}/image", { params: { path: { chat_id: id } }, headers }));
 }
 
+/** Set a group chat's level, at or below the default level of every project of its agents: a message sent from now on carries it. */
+export async function setChatLabel(api: ApiClient, id: number, level: string): Promise<Chat> {
+  const headers = await csrfHeaders(api);
+  return call(api.PUT("/v1/chats/{chat_id}/label", { params: { path: { chat_id: id } }, body: { level }, headers }));
+}
+
+/** Take a group chat's level off: its label is its projects' default again, for the messages sent from now on. */
+export async function removeChatLabel(api: ApiClient, id: number): Promise<Chat> {
+  const headers = await csrfHeaders(api);
+  return call(api.DELETE("/v1/chats/{chat_id}/label", { params: { path: { chat_id: id } }, headers }));
+}
+
 /** Send a message, in the thread of `replyTo` when given. */
 export async function sendChatMessage(api: ApiClient, id: number, body: string, replyTo: number | null, files: number[] = []): Promise<GroupMessage> {
   const headers = await csrfHeaders(api);

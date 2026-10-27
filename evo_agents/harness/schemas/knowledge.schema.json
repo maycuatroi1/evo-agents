@@ -129,7 +129,8 @@
             "llm-backend",
             "writeback-target",
             "cli",
-            "hub"
+            "hub",
+            "channel"
           ]
         },
         "clearance": {

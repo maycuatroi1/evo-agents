@@ -8452,6 +8452,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/{chat_id}/label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Label
+         * @description Set the chat's level, at or below the default level of every project of its agents: a message sent from now
+         *     on carries it. Needs the admin role on every one of those projects.
+         */
+        put: operations["put_label_v1_chats__chat_id__label_put"];
+        post?: never;
+        /**
+         * Delete Label
+         * @description Take the chat's level off: its label is its projects' default again, for the messages sent from now on.
+         */
+        delete: operations["delete_label_v1_chats__chat_id__label_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/events": {
         parameters: {
             query?: never;
@@ -15250,11 +15275,27 @@ export interface components {
             agents: components["schemas"]["ChatAgent"][];
             /**
              * Label
-             * @description the labels of its agents' projects: every person in it clears them
+             * @description the labels of its agents' projects, at the level set for the chat if any: every person in it clears them, and a message sent now carries them
              */
             label: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Label Level
+             * @description the level an admin of every project of its agents set for the chat, below or at each one's default; null when its label is its projects' default
+             */
+            label_level?: string | null;
+            /**
+             * Label Levels
+             * @description the levels the chat may be set to, lowest first: on every project's ladder, at or below each one's default; empty for a direct chat or a chat without agents
+             */
+            label_levels?: string[];
+            /**
+             * Label Admin
+             * @description whether the reader is an admin of every project of its agents, so may set its level
+             * @default false
+             */
+            label_admin: boolean;
             /**
              * Restricted
              * @description a project of its agents is restricted: its notices name it and link only
@@ -15441,6 +15482,14 @@ export interface components {
              * @description the person who set it or took it off
              */
             by: string;
+        };
+        /** ChatLabelIn */
+        ChatLabelIn: {
+            /**
+             * Level
+             * @description the chat's level: on the ladder of every project of its agents, at or below each one's default
+             */
+            level: string;
         };
         /**
          * ChatLastMessage
@@ -33624,7 +33673,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "agent-session" | "llm-backend" | "writeback-target" | "cli" | "hub";
+            kind: "agent-session" | "llm-backend" | "writeback-target" | "cli" | "hub" | "channel";
             clearance: components["schemas"]["Clearance"];
         };
         /**
@@ -70721,6 +70770,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_label_v1_chats__chat_id__label_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatLabelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_label_v1_chats__chat_id__label_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
