@@ -23350,7 +23350,7 @@ export interface components {
              * @description each kind of notification and its tier
              */
             tiers: components["schemas"]["TierSetting"][];
-            /** @description when an interrupt waits to be pushed until they end, but a decision whose run parks within two hours; null: none */
+            /** @description when an interrupt waits to be pushed until they end, a decision's too; null: none */
             quiet_hours: components["schemas"]["QuietHours"] | null;
             /**
              * Time Zone

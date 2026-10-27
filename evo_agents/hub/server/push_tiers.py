@@ -18,12 +18,10 @@ added later included. DEFAULT_INTERRUPTS are the kinds whose default is interrup
 **Quiet hours.** A member may set quiet hours, from ``quiet_start`` to ``quiet_end`` (HH:MM, past midnight when the end
 is not after the start), in their time zone (an IANA name, the hub's EVO_HUB_WEB_TIME_ZONE until they choose one).
 The job hub.deliver_notifications asks ``held_until`` before it pushes to a device: inside the quiet hours a push waits
-until they end, unless it is of a decision whose run parks for want of an answer within PARK_SOON, which goes at once;
-one whose run parks later waits at most until PARK_SOON before the park. A run parks EVO_HUB_DECISION_WAIT_SECONDS
-after it starts waiting (a chat run sooner, ``runs.CHAT_DECISION_WAIT_SECONDS``); a run that does not wait yet would
-park that long from now, and a local run, or one parked or ended already, parks no more. The check runs at the
-delivery, not when the notification is stored, so quiet hours set or changed meanwhile hold. A push of a decision that
-is no longer open by then is not sent (``closed``).
+until they end, a decision's too. Its run parked meanwhile costs nothing: the hub parks every run that waits
+(``run_state.park_waiting``), and the answer resumes it in its session. The check runs at the delivery, not when the
+notification is stored, so quiet hours set or changed meanwhile hold. A push of a decision that is no longer open by
+then is not sent (``closed``).
 
 ``digest_at`` is the local time of the member's summary push (DEFAULT_DIGEST_AT until they choose one), which the job
 of plan hub-mobile-phase-0 step 5 reads with ``preferences``.
@@ -49,7 +47,6 @@ KINDS = ("decision", "proposal", *runs.NOTICE_KINDS)  # the kinds of notificatio
 # The kinds whose default tier is interrupt, for the notifications ``default_tier`` names: the rest default to brief.
 DEFAULT_INTERRUPTS = ("decision", "run_failed", "release", "merge_paused")
 RELEASED = "published"  # the event of a release notice of a release that went out (``release_watch``)
-PARK_SOON = timedelta(hours=2)  # a decision whose run parks this soon is pushed inside quiet hours too
 FALLBACK_ZONE = "UTC"  # the time zone of quiet hours whose own Postgres no longer knows (logged)
 PG_TIMEZONES = table("pg_timezone_names", column("name", Text))  # the zones Postgres knows
 PREFERENCES = ("tiers", "quiet_start", "quiet_end", "time_zone", "digest_at")  # the columns ``set_preferences`` sets
@@ -149,25 +146,9 @@ async def time_zone_known(conn: AsyncConnection, name: str) -> bool:
     return bool((await conn.execute(select(exists().where(PG_TIMEZONES.c.name == name)))).scalar_one())
 
 
-async def _parks_at(conn: AsyncConnection, decision_id: int, now: datetime, wait: timedelta) -> datetime | None:
-    """When the run of decision ``decision_id`` parks for want of an answer (the module), or None when it never will."""
-    d, r = tables.decisions, tables.runs
-    query = select(r.c.kind, r.c.state, r.c.waiting_since).select_from(d.join(r, r.c.id == d.c.run_id))
-    run = (await conn.execute(query.where(d.c.id == decision_id))).one_or_none()
-    if run is None or run.kind == runs.LOCAL_KIND:
-        return None
-    if run.kind == "chat":
-        wait = min(wait, timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS))
-    if run.state == "waiting" and run.waiting_since is not None:
-        return run.waiting_since + wait
-    if run.state in ("queued", *runs.CLOCK_STATES):
-        return now + wait
-    return None
-
-
-async def held_until(conn: AsyncConnection, *, user_id: int, decision_id: int | None, config=None) -> datetime | None:
-    """Until when member ``user_id``'s quiet hours hold a push to their devices of a notification of decision
-    ``decision_id`` (None for any other), on a hub configured with ``config``; None when it goes now (the module)."""
+async def held_until(conn: AsyncConnection, *, user_id: int, config=None) -> datetime | None:
+    """Until when member ``user_id``'s quiet hours hold a push to their devices, on a hub configured with ``config``;
+    None when it goes now (the module)."""
     row = await preferences(conn, user_id)
     if row is None or row.quiet_start is None or row.quiet_end is None:
         return None
@@ -175,23 +156,14 @@ async def held_until(conn: AsyncConnection, *, user_id: int, decision_id: int | 
     if not await time_zone_known(conn, zone):
         log.warning("quiet hours in a time zone Postgres does not know", extra={"user_id": user_id, "zone": zone})
         zone = FALLBACK_ZONE
-    now, local_now = (await conn.execute(select(func.now(), func.timezone(zone, func.now())))).one()
+    local_now = (await conn.execute(select(func.timezone(zone, func.now())))).scalar_one()
     start, end = curator.parse_time(row.quiet_start), curator.parse_time(row.quiet_end)
     if not curator.in_window(local_now.time(), start, end):
         return None
     local_end = datetime.combine(local_now.date(), end)
     if local_end <= local_now:
         local_end += timedelta(days=1)
-    ends = (await conn.execute(select(func.timezone(zone, literal(local_end, DateTime()))))).scalar_one()
-    if decision_id is None:
-        return ends
-    wait = timedelta(seconds=getattr(config, "decision_wait_seconds", None) or runs.DECISION_WAIT_SECONDS)
-    parks = await _parks_at(conn, decision_id, now, wait)
-    if parks is None:
-        return ends
-    if parks - now <= PARK_SOON:
-        return None
-    return min(ends, parks - PARK_SOON)
+    return (await conn.execute(select(func.timezone(zone, literal(local_end, DateTime()))))).scalar_one()
 
 
 async def closed(conn: AsyncConnection, decision_id: int | None) -> bool:

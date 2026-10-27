@@ -563,7 +563,7 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
         log.info("notification not delivered", extra={"delivery_id": delivery_id, "channel": kind, "why": refused})
         return "failed"
     if row.device_id is not None:
-        held = await push_tiers.held_until(conn, user_id=row.user_id, decision_id=row.decision_id, config=config)
+        held = await push_tiers.held_until(conn, user_id=row.user_id, config=config)
         if held is not None:
             await conn.execute(_held(delivery_id, held))
             log.info("push held for quiet hours", extra={"delivery_id": delivery_id, "until": held.isoformat()})

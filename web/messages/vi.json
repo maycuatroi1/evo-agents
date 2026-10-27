@@ -11388,7 +11388,7 @@
     "schedule": {
       "title": "Giờ yên lặng và tóm tắt",
       "quiet": "Giờ yên lặng",
-      "quietHint": "Push chờ tới khi hết giờ yên lặng, trừ câu hỏi mà run của nó sẽ park trong vòng hai giờ.",
+      "quietHint": "Push chờ tới khi hết giờ yên lặng, kể cả câu hỏi: run đang chờ nhả worker và chạy tiếp khi bạn trả lời.",
       "start": "Từ",
       "end": "Đến",
       "overnight": "Từ {start} tối nay đến {end} sáng mai.",

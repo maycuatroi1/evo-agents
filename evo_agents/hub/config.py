@@ -27,9 +27,10 @@ default, from 30 to 3650. EVO_HUB_SIGNAL_DAYS is how many days the hub keeps a s
 the daily hub.prune_signals deletes it (``evo_agents.hub.signals``): 400 by default, from 30 to 3650.
 EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat lease a run for (``runs.LEASE_SECONDS`` by default);
 the reaper finds a run lost once its lease ran out, so tests shorten it, and it must stay well above the daemon's
-heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
-for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
-(``runs.DECISION_WAIT_SECONDS``, a day, by default); the end-to-end tests shorten it to see a run parked and resumed.
+heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a run waits
+for its owner's answer, holding its worker's slot, before the reaper (the job hub.recover_runs of ``hub worker``) parks
+it (``runs.DECISION_WAIT_SECONDS``, 10 minutes, by default); the end-to-end tests shorten it to see a run parked and
+resumed.
 EVO_HUB_WEB_TIME_ZONE, the time zone of the dates the web renders (Asia/Ho_Chi_Minh by default), is also the time
 zone of a member's quiet hours and summary push until they choose one (``evo_agents.hub.server.push_tiers``): an IANA
 name such as Asia/Tokyo.
@@ -152,7 +153,7 @@ MAX_SIGNAL_DAYS = 3650
 # Seconds a claim and each heartbeat lease a run for (evo_agents.hub.server.runs).
 MIN_RUN_LEASE_SECONDS = 5
 MAX_RUN_LEASE_SECONDS = 3600
-# Seconds a plan run waits for its owner's answer before the reaper parks it (evo_agents.hub.server.run_state).
+# Seconds a run waits for its owner's answer before the reaper parks it (evo_agents.hub.server.run_state).
 MIN_DECISION_WAIT_SECONDS = 1
 MAX_DECISION_WAIT_SECONDS = 7 * 86400
 # The time zone of the web's dates and of members' notification settings until they choose one (web/src/i18n).
