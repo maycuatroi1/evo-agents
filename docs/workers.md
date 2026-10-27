@@ -627,7 +627,13 @@ results, since each step was verified when it was reported (it never goes to `re
 or `cancelled` sets back to `pending` the steps it reported, it or an earlier attempt of it, that are still
 `in_progress`, with the note `run #N failed: ...` or `run #N was cancelled: ...`; a step someone else left in
 progress stays as it is. A plan run that is `lost` queues its next attempt as a plan run with the same repos and model,
-and leaves the steps as they are.
+and leaves the steps as they are. When the worker that lost it claims that attempt on the same runtime, the claim names
+the lost attempt and its agent's session (`lost_attempt`: `{run_id, session_id}`; none for a run with a session for
+each step or with a budget). The daemon then goes on in that session and in the lost attempt's directory and
+worktrees, its plan branches checked out again, when the attempt ended on this machine, every worktree is still there,
+and the runtime finds the session's record (Claude Code's transcript, Codex's rollout; opencode and a plugin's runtime
+never do); its agent is told that its process was interrupted and to check each worktree before it goes on. Otherwise,
+and always on another worker, the attempt starts a new session in new worktrees, as before.
 
 ## Author runs
 

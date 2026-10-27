@@ -18,7 +18,9 @@ each step when it was dispatched with ``session_per_step`` (``sessions``).
    fails, ``worker step`` pushes them to ``evo-run/<run>``, sends the owner the notice ``run_failed`` naming it, reports
    nothing and leaves ``runs/<run>/push_conflict.json``, and the run fails with push_conflict once the turn ends.
 3. ``waiting``: a turn that ends with a decision of the run open moves the run to waiting (``conversation``); a run
-   the hub parks keeps its session and worktrees for the run that resumes it.
+   the hub parks keeps its session and worktrees for the run that resumes it. The next attempt of a run the hub lost
+   on this worker goes on in the lost attempt's session and worktrees when they are still here
+   (``Conversation.adopt_lost``), with no session for each step.
 4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits (leaving out what a run
    of one step leaves out) and pushes what each repo has left, never forced (a default branch only when the plan
    names it, with the notice ``push_default_branch``), and reports ``done`` with the agent's summary from
@@ -111,7 +113,7 @@ class PlanRun:
         pulls = await self.pull_repos(repos)
         await access.check(run, names, path=access.run_path(run), pushes=names, pulls=pulls, verify=verify_commands)
         run.check()
-        await self.prepare(repos)
+        await self.prepare(repos, cls)
         run.check()
         if self.sessions is not None:
             await self.sessions.work(cls)
@@ -158,14 +160,17 @@ class PlanRun:
         body = plan.get("body") if isinstance(plan, dict) else None
         return body if isinstance(body, dict) else {}
 
-    async def prepare(self, repos: list[dict]) -> None:
+    async def prepare(self, repos: list[dict], cls=None) -> None:
         """The run's directory with a worktree of each repo: the parked run's when this run resumes one and they are
-        still here, else new ones, made several at a time (``RunDirectory.make_each``); and the plan as claimed in
-        .evo-run/plan.yaml. A repo without a name, a branch or a checkout here fails the run before any new worktree
-        is made. Then the Python environment of each worktree whose repo asks for one (``venv``)."""
+        still here, the lost attempt's when this run goes on in its session (``Conversation.adopt_lost``, which asks
+        the runtime ``cls``), else new ones, made several at a time (``RunDirectory.make_each``); and the plan as
+        claimed in .evo-run/plan.yaml. A repo without a name, a branch or a checkout here fails the run before any new
+        worktree is made. Then the Python environment of each worktree whose repo asks for one (``venv``)."""
         run, directory = self.run, self.directory
         if self.conversation.resume_of is not None:
             self.conversation.adopt()
+        elif cls is not None and self.sessions is None:
+            await self.conversation.adopt_lost(cls)
         if directory.path is None:
             directory.claim("run the plan again")
         directory.enter()

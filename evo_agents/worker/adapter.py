@@ -38,7 +38,9 @@ with a decision of the run open is followed by no new adapter until the owner an
 ``waiting``, and the answer, from the inbox, is the prompt of a new adapter with ``context.resume_session`` set to the
 same session, which reports the run ``running`` again. When the hub parks the run, ``stop_at_turn_boundary`` ends the
 agent at the end of its turn and the session and the worktrees stay; the run that resumes it, claimed with
-``resume_of_run_id``, starts its adapter in the same directory and session.
+``resume_of_run_id``, starts its adapter in the same directory and session. The next attempt of a plan run the hub lost
+on this worker does the same with the lost attempt's session (``lost_attempt`` of its claim), but only once
+``has_session`` finds the session's record here; a runtime that cannot tell starts a new session.
 
 An adapter whose ``interactive`` is true can also hand the session to a person: ``tui(context, session_id)`` gives the
 runtime's own terminal UI on that session (a new one on ``context.prompt`` when ``session_id`` is None), which the
@@ -292,6 +294,13 @@ class Adapter(abc.ABC):
         """The runtime's terminal UI on the session ``session_id``, or on a new session that starts on
         ``context.prompt`` when it is None; only for an adapter whose ``interactive`` is true."""
         raise NotImplementedError(f"the {cls.runtime} adapter cannot hand its session to a terminal")
+
+    @classmethod
+    def has_session(cls, env: Mapping[str, str], session_id: str) -> bool:
+        """Whether this machine still holds the record of the runtime's session ``session_id``, as an agent with the
+        environment ``env`` would find it to go on in it (``RunContext.resume_session``); False for a runtime that
+        cannot tell, whose run then starts a new session rather than one that may fail to load."""
+        return False
 
     @classmethod
     def environment_notes(cls, context: RunContext) -> list[str]:
