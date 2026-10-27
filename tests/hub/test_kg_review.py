@@ -233,3 +233,40 @@ def test_the_command_line_prints_the_queue_and_dismisses(hub, capsys):
     assert kg_review_cli._dismiss(client, done) == 0
     shown = json.loads(capsys.readouterr().out)
     assert set(shown) == set(kg_review_cli.DISMISSAL) and shown["reason"] == "checked by hand"
+
+
+def test_a_writer_takes_back_a_dismissal_a_core_plugin_made_and_the_item_is_open_again(hub, capsys):
+    from sqlalchemy import insert
+
+    target = next(i for i in queue(hub, "wendy")["items"] if CONTRACT not in json.dumps(i))
+    fp = target["fingerprint"]
+    project_id = live.sql(hub.db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    live.sql(
+        hub.db,
+        insert(tables.kg_review_dismissals).values(
+            project_id=project_id,
+            fingerprint=fp,
+            rule=target["rule"],
+            reason="a plugin's reason",
+            dismissed_by=None,
+            dismissed_by_plugin="jev@typesafe",
+        ),
+    )
+    shown = next(i for i in queue(hub, "wendy", state="dismissed")["items"] if i["fingerprint"] == fp)
+    assert shown["dismissal"]["by"] == "plugin:jev@typesafe" and shown["dismissal"]["reason"] == "a plugin's reason"
+    path = f"/v1/kg/{PROJECT}/review/{fp}/dismiss"
+    assert hub.client.delete(path, headers=hub.ivan).status_code == 403  # a reader may not
+    undone = hub.client.delete(path, headers=hub.wendy)
+    assert undone.status_code == 200, undone.text
+    assert undone.json() == {"fingerprint": fp, "was_by": "plugin:jev@typesafe"}
+    assert fp in {i["fingerprint"] for i in queue(hub, "wendy")["items"]}
+    assert hub.client.delete(path, headers=hub.wendy).status_code == 404  # nothing is dismissed now
+    a = tables.audit
+    logged = live.sql(hub.db, select(a.c.target).where(a.c.action == audit.KG_REVIEW, a.c.target.contains(fp)))
+    assert (f"{PROJECT} item={fp} reopened dismissed_by=plugin:jev@typesafe",) in logged
+
+    assert dismiss(hub, "wendy", fp, "dismissed again by a member").status_code == 200
+    client = InProcessHub(hub.client, hub.wendy)
+    args = SimpleNamespace(project=PROJECT, action="undismiss", fingerprint=fp, json=True)
+    assert kg_review_cli._undismiss(client, args) == 0
+    assert json.loads(capsys.readouterr().out) == {"fingerprint": fp, "was_by": "wendy"}

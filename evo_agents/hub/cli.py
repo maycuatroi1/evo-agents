@@ -287,6 +287,9 @@ def _register_client_commands(hsub) -> None:
     from evo_agents.hub.cli_stop import register_stop
 
     register_stop(hsub)
+    from evo_agents.hub.cli_run_cause import register_run_cause
+
+    register_run_cause(hsub)
 
 
 def register(sub) -> None:

@@ -4,6 +4,8 @@
 then the counts per rule; ``--rule``, ``--cluster`` and ``--state`` (open, dismissed, all) narrow the list, and with
 ``--json`` it prints the hub's ReviewQueue. ``review dismiss FINGERPRINT --reason TEXT --project P`` dismisses one
 item (the writer role): it stays dismissed in later builds that find it, and ``--json`` prints the hub's Dismissal.
+``review undismiss FINGERPRINT --project P`` takes a dismissal back, whoever made it (a member or a core plugin), so
+the item is open again; ``--json`` prints the hub's Undismissed.
 What an item shows is what you can see (``evo_agents.hub.kg_review``). Standard library only.
 """
 
@@ -71,28 +73,51 @@ def _dismiss(hub, args) -> int:
     return 0
 
 
+def _undismiss(hub, args) -> int:
+    path = f"{_base(args.project)}/review/{quote(args.fingerprint, safe=':')}/dismiss"
+    found = hub.call("DELETE", path)
+    if args.json:
+        _print_json(found)
+        return 0
+    print(f"{args.fingerprint} in project {args.project} is open again; {found['was_by']} had dismissed it")
+    return 0
+
+
 @_client_command
 def cmd_review(args) -> int:
     if args.action == "dismiss" and not (args.fingerprint and args.reason):
         print("error: review dismiss needs an item's FINGERPRINT and --reason", file=sys.stderr)
         return 2
+    if args.action == "undismiss" and not args.fingerprint:
+        print("error: review undismiss needs an item's FINGERPRINT", file=sys.stderr)
+        return 2
     if args.action is None and args.fingerprint:
         print("error: give an item after dismiss: review dismiss FINGERPRINT --reason TEXT", file=sys.stderr)
         return 2
     hub, _ = _signed_in()
-    return _dismiss(hub, args) if args.action == "dismiss" else _list(hub, args)
+    if args.action == "dismiss":
+        return _dismiss(hub, args)
+    return _undismiss(hub, args) if args.action == "undismiss" else _list(hub, args)
 
 
 REVIEW_QUEUE = ("graph", "computed", "reason", "can_dismiss", "counts", "items")
 DISMISSAL = ("reason", "by", "at", "build_id")
+UNDISMISSED = ("fingerprint", "was_by")
 
 
 def register(ksub) -> None:
     review = ksub.add_parser(
         "review", help="the review queue of a project's graph you can see, or dismiss an item with `dismiss FP`"
     )
-    review.add_argument("action", nargs="?", choices=["dismiss"], help="dismiss one item (the writer role)")
-    review.add_argument("fingerprint", metavar="FINGERPRINT", nargs="?", help="with dismiss: the item's fingerprint")
+    review.add_argument(
+        "action",
+        nargs="?",
+        choices=["dismiss", "undismiss"],
+        help="dismiss one item, or take its dismissal back (the writer role)",
+    )
+    review.add_argument(
+        "fingerprint", metavar="FINGERPRINT", nargs="?", help="with dismiss or undismiss: the item's fingerprint"
+    )
     review.add_argument("--project", required=True, help="project name on the hub")
     review.add_argument("--rule", choices=RULES, help="only the items of this rule")
     review.add_argument("--cluster", help="only the items of this cluster (its id)")
@@ -106,8 +131,11 @@ def register(ksub) -> None:
             "object",
             REVIEW_QUEUE,
             "ReviewQueue",
-            variants=(("dismiss", returns_object(*DISMISSAL, schema="Dismissal")),),
+            variants=(
+                ("dismiss", returns_object(*DISMISSAL, schema="Dismissal")),
+                ("undismiss", returns_object(*UNDISMISSED, schema="Undismissed")),
+            ),
         ),
-        help="machine-readable output: the queue, or with dismiss the dismissal",
+        help="machine-readable output: the queue, or with dismiss the dismissal, with undismiss who had dismissed it",
     )
     review.set_defaults(func=cmd_review)

@@ -99,6 +99,41 @@
     "schema": {
       "$ref": "#/$defs/plugin_schema"
     },
+    "egress": {
+      "description": "Core plugins only: the sinks through which the plugin sends text of a project to a service outside the hub (API 1.6). Each entry names the sink as a project declares it in knowledge.yaml policy.sinks (a plugin reads text of a project only when the project's policy declares that sink and its clearance covers the item's label), its kind and the host the text goes to. A core plugin that declares none is refused every text read of the decision API.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "host"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The sink's id, as a project declares it, such as codex@openai.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.@-]{0,126}$"
+          },
+          "kind": {
+            "description": "The kind of sink, as knowledge.yaml names it.",
+            "enum": [
+              "agent-session",
+              "llm-backend",
+              "writeback-target",
+              "cli",
+              "hub"
+            ]
+          },
+          "host": {
+            "description": "The host name the text is sent to.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$"
+          }
+        }
+      }
+    },
     "ui": {
       "description": "Core plugins only: module:directory, the directory of the plugin's package (read with importlib.resources) that holds the built files of its pages, as an isolated plugin's bundle holds them under pages/. A core page that names an entry (pages/<file>.html) is framed from it in the sandbox, with the bridge evo-plugin/1 and the hub's UI kit (docs/plugins.md, Pages).",
       "type": "string",
