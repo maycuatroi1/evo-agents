@@ -636,6 +636,17 @@ def test_loop_tick_srs_goal_builds_each_group_of_its_confirmed_backlog_once_and_
     assert [key for key, *_ in items(hub_db) if key.endswith(":2")] == [keys[1][:-1] + "2"]
 
 
+def test_loop_tick_turning_the_loop_off_settles_the_use_cases_its_cancelled_builds_held(client, hub, hub_db):
+    document, goal = srs_goal(client, hub, hub_db)
+    policy(client, hub, {"enabled": True})
+    confirm(hub_db, document, goal)
+    ticked(client, hub_db)
+    assert {state for state, _ in ledger_of(hub_db).values()} == {"delivering"}
+    policy(client, hub, {"enabled": False})  # no tick runs after this: the same operation settles the ledger
+    assert {row[2] for row in items(hub_db)} == {"cancelled"}
+    assert {state for state, _ in ledger_of(hub_db).values()} == {"undelivered"}, "nothing is stuck as delivering"
+
+
 def test_loop_tick_srs_goal_gives_the_author_run_every_use_case_of_its_group(client, hub, hub_db):
     document, goal = srs_goal(client, hub, hub_db)
     policy(client, hub, {"enabled": True})
