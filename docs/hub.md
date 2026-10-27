@@ -3285,8 +3285,8 @@ checkout it is in and gives the images those names, tagged `EVO_HUB_VERSION`; `d
 pulls that release from GHCR instead. Postgres is not in it: point `EVO_HUB_DSN` at a database the platform manages,
 reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK` (default `dokploy-network`). The volumes `api-cache` and
 `worker-cache` are caches; deleting them loses nothing. `plugins-cache` holds the code and the environments of the
-isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep state:
-deleting it loses that state. The fifth service, `gateway`, runs a pinned image it does not build, and its volume
+isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep scratch state:
+deleting it loses that scratch only, not the plugin's records (`docs/plugins.md`, Records), which are rows of Postgres. The fifth service, `gateway`, runs a pinned image it does not build, and its volume
 `gateway-data` holds what the api reconciles into it, rebuilt when lost (section Model gateway). A hub for a client, from the same images with its own branding, publishers and plugins,
 is in `docs/hub-deployment.md`, and so are the core plugins the image installs: those `deploy/hub/core-plugins.txt`
 pins, from PyPI, and a hub's own, from the two build variables below. Set the variables in the platform's
@@ -3438,7 +3438,8 @@ traffic to a new release. A database at a revision the running code does not kno
 refused before anything runs, so going back to an older release means restoring a backup taken before the upgrade.
 
 **Backup.** Postgres holds every piece of state, so a backup is a dump of the database plus a copy of the bucket's
-`blobs/` prefix:
+`blobs/` prefix. The records of the isolated plugins (`plugin_records`, `docs/plugins.md`, Records) are in the dump; the
+volume `plugins-cache` is only a cache of code and environments, and needs no backup for them:
 
 ```sh
 pg_dump --format=custom --no-owner --file hub-$(date +%Y%m%d).dump "$EVO_HUB_DSN"

@@ -155,6 +155,7 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         Column("project_id", BigInteger, nullable=False),
         Column("plugin_id", BigInteger, nullable=False),
         Column("permissions", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("records_level", Text),  # 0169: the highest level a call with no caller touches records at
         Column("enabled_by", BigInteger, nullable=False),
         _stamp("enabled_at"),
         Column("granted_by", BigInteger, nullable=False),
