@@ -295,6 +295,9 @@
         },
         "notice_kinds": {
           "$ref": "#/$defs/notice_kinds"
+        },
+        "rankers": {
+          "$ref": "#/$defs/rankers"
         }
       }
     },
@@ -1381,6 +1384,50 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/notice_kind"
+      }
+    },
+    "ranker": {
+      "description": "A ranker a core plugin contributes (extension point rankers, version 1): the hub calls its Python handler with a search's query and the hits the plugin's egress sink may read (id, text, source), and the handler returns the ids in the order it ranks them. history_search and the hub's kg_search call the rankers of the plugins a project enabled, within a budget of 2 seconds for the whole search; a handler that fails or is late leaves the order as it was.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "python"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the handler, called as handler(params, context) and awaited when it returns an awaitable.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "sink": {
+          "description": "The id of the egress sink the hits go through; left out when the plugin declares one sink.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.@-]{0,126}$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "rankers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ranker"
       }
     }
   }
