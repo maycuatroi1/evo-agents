@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Ban, ChevronRight, CircleDot, KeyRound, TimerOff } from "lucide-react";
+import { Ban, ChevronRight, CircleDot, KeyRound, TimerOff, UserRoundKey } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useId } from "react";
@@ -21,8 +21,9 @@ import { type LeaseState, leaseState, leaseTargets } from "./run-model";
 
 /**
  * The credentials a run got from the hub (docs/credentials.md, What a run got), a card of the run page's side column:
- * each lease's name, its provider as a tag, what it answered for (a git lease's repos as links to their pages), when it
- * was issued, when it ends and when it was given back, and its state as a pill, with a link to the Secrets page in its
+ * each lease's name, its provider as a tag (Hub account for the run's own token of a run that runs as its owner), what
+ * it answered for (a git lease's repos as links to their pages, the variable of an env or hub one), when it was
+ * issued, when it ends and when it was given back, and its state as a pill, with a link to the Secrets page in its
  * head. Never a value: the hub's answer carries none. Shown to the member who dispatched the run alone, as the API
  * answers only them.
  */
@@ -56,8 +57,8 @@ function LeaseItem({ lease, now }: { lease: RunLease; now: number | null }) {
           {lease.name}
         </span>
         <Tag data-testid="run-lease-provider" data-provider={lease.provider}>
-          {lease.provider === "github-app" ? <GitHubMark /> : <KeyRound aria-hidden="true" />}
-          {t(`provider.${lease.provider === "github-app" ? "githubApp" : "secret"}`)}
+          {lease.provider === "github-app" ? <GitHubMark /> : lease.provider === "run-access" ? <UserRoundKey aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
+          {t(`provider.${lease.provider === "github-app" ? "githubApp" : lease.provider === "run-access" ? "runAccess" : "secret"}`)}
         </Tag>
         <Badge variant={variant} className="ml-auto" data-testid="run-lease-state">
           <StateIcon aria-hidden="true" />
@@ -65,12 +66,12 @@ function LeaseItem({ lease, now }: { lease: RunLease; now: number | null }) {
         </Badge>
       </div>
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-        <dt className="text-muted-foreground">{lease.kind === "env" ? t("variable") : t("repos")}</dt>
+        <dt className="text-muted-foreground">{lease.kind === "env" || lease.kind === "hub" ? t("variable") : t("repos")}</dt>
         <dd className="min-w-0" data-testid="run-lease-target">
           <ul className="flex flex-col gap-0.5 font-mono [overflow-wrap:anywhere]">
             {targets.map((target) => {
               // A git lease answered for its repos' origins, which the hub keeps as https://host/path.
-              const web = lease.kind === "env" ? null : repoWeb(target);
+              const web = lease.kind === "env" || lease.kind === "hub" ? null : repoWeb(target);
               return <li key={target}>{web ? <ExternalLink href={web.url} label={target} testId="run-lease-repo-link" /> : target}</li>;
             })}
           </ul>

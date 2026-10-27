@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { answerNotice } from "./answer-notice";
 import { DecisionCategoryBadge } from "./badges";
 import { AnsweredBy } from "./answered-by";
+import { AnswerHint, CredentialFields, useCredentialAnswer } from "./credential-decisions";
 import { DecisionGrounds } from "./decision-grounds";
 import { ClosedNote, DecisionFiles, DeliveryNote, NoFormNote } from "./decision-notes";
 import { type HeadingLevel, OptionCard, OptionList, Question } from "./decision-options";
@@ -33,6 +34,7 @@ import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTe
 import { type AnswerAccess, answerAccess, answerBody, answerProblem, optionWaits, isHubDecision, runLinkWords, type AnswerProblem, chosenOption, initialOption, parkTiming } from "./model";
 import { type Decision, MAX_ANSWER_BYTES } from "./queries";
 import { TakeOverButton } from "./take-over-button";
+export { AnswerHint }; // its words follow a credential request's option (credential-decisions.tsx)
 
 /**
  * The kit's DecisionCard (web/DESIGN.md, components/inbox): an agent's question to the owner of its plan run, the
@@ -275,7 +277,8 @@ export function AnswerSummary({ decision }: { decision: Decision }) {
  * (or Cmd or Ctrl with Enter anywhere in the form) answers with it; Clear the choice leaves words alone as the answer.
  * Nothing chosen or written, or words over 4 KiB of UTF-8, is refused beside the field. What the hub says is a toast:
  * the answer sent, with a link to the run that takes it, or why the hub refused it, which stays until dismissed; after a
- * 409 the decision is shown as the hub holds it. The card (`AnswerForm`) and the phone's screen lay it out.
+ * 409 the decision is shown as the hub holds it; a credential request's value goes its own way (`useCredentialAnswer`).
+ * The card (`AnswerForm`) and the phone's screen lay it out.
  */
 export function useAnswerForm(
   decision: Decision,
@@ -285,27 +288,30 @@ export function useAnswerForm(
   const ids = useId();
   const failure = useAnswerFailure();
   const terminalHref = useDecisionTerminalHref(decision);
-  const answer = useAnswerDecision(decision, {
-    onAnswered: (answered) => {
+  const handlers = {
+    onAnswered: (answered: Decision) => {
       notify(answerNotice(answered, t, (run) => runHref(answered.project, run)));
       onAnswered?.(answered);
     },
-    onFailed: (error) => notifyFailure(t("failed"), failure(error, decision)),
+    onFailed: (error: unknown) => notifyFailure(t("failed"), failure(error, decision)),
     onConflict,
-  });
-  const [option, setOption] = useState<string | null>(() => initialOption(decision));
+  };
+  const answer = useAnswerDecision(decision, handlers);
+  const credential = useCredentialAnswer(decision, handlers, ids);
+  const [option, setOption] = useState<string | null>(() => initialOption(decision) ?? credential.initial);
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<AnswerProblem>(null);
   const bytes = utf8Bytes(text.trim());
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (answer.isPending) return;
+    if (answer.isPending || credential.pending) return;
     const found = answerProblem(option, text, isHubDecision(decision), optionWaits(decision, option));
     setProblem(found);
     // Focus goes where the answer needs work: the first option, or the field (`AnswerFields` gives them these ids).
     if (found === "empty" || found === "option") return document.getElementById(`${ids}-options`)?.querySelector<HTMLInputElement>("input")?.focus();
     if (found === "long" || found === "waits") return document.getElementById(`${ids}-text`)?.focus();
+    if (credential.blocks(option, text) || credential.send(option, text)) return;
     answer.mutate(answerBody(option, text));
   };
 
@@ -332,7 +338,10 @@ export function useAnswerForm(
     bytes,
     long: bytes > MAX_ANSWER_BYTES,
     parked: decision.run_state === "parked",
-    pending: answer.isPending,
+    pending: answer.isPending || credential.pending,
+    credential,
+    /** The send button's words: what a credential request's answer gives, or Send answer. */
+    sendLabel: credential.label(option) ?? t("send"),
     terminalHref,
     /** The form's own props: what it submits, Cmd or Ctrl with Enter, and its name. */
     formProps: {
@@ -382,6 +391,7 @@ export function AnswerFields({ form, screen = false }: { form: AnswerFormState; 
           </Button>
         ) : null}
       </fieldset>
+      <CredentialFields form={form} screen={screen} />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${ids}-text`} className={cn("font-medium text-muted-foreground", screen ? "text-sm" : "text-xs")}>
           {isHubDecision(form.decision) ? t("hubNote") : option !== null ? t("note") : t("text")}
@@ -425,16 +435,6 @@ export function AnswerFields({ form, screen = false }: { form: AnswerFormState; 
   );
 }
 
-/** "The agent continues as soon as you answer", or that the parked run resumes. */
-export function AnswerHint({ form, className }: { form: AnswerFormState; className?: string }) {
-  const t = useTranslations("inbox.answer");
-  return (
-    <p className={cn("text-xs text-pretty text-fg-subtle", className)} data-testid="decision-form-hint">
-      {isHubDecision(form.decision) ? t("footHub") : form.parked ? t("footParked") : t("foot")}
-    </p>
-  );
-}
-
 /**
  * The card's answer form: the fields, then a footer with the hint, Take over when the owner may open the run's terminal,
  * and Send answer with its key (Cmd or Ctrl with Enter; from 768 px, where a keyboard is likely). `flush` keeps the
@@ -468,7 +468,7 @@ function AnswerForm({
         <AnswerHint form={form} className="mr-auto min-w-0 basis-full sm:basis-auto" />
         {form.terminalHref ? <TakeOverButton decision={decision} href={form.terminalHref} onTakeOver={onTakeOver} /> : null}
         <Button type="submit" busy={form.pending} aria-keyshortcuts="Meta+Enter Control+Enter" data-testid="decision-send">
-          {form.pending ? t("sending") : t("send")}
+          {form.pending ? t("sending") : form.sendLabel}
           {modifier && !form.pending ? (
             <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70 max-md:hidden" aria-hidden="true" data-testid="decision-send-kbd">
               {shortcutText("send", modifier)}

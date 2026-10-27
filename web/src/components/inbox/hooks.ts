@@ -46,32 +46,20 @@ export function useMarkRead() {
   });
 }
 
-/**
- * Answer a decision from the browser. Nothing changes on screen until the hub answers; then the decision is the one
- * the hub returned, and its project's decisions, the member's notifications and overview, the runs and the plan are
- * read again (an answer to a parked run ends it and queues the run that resumes it). A 409 means the decision was
- * answered or closed meanwhile: the decision is read again at once and handed to `onConflict`, so the card shows it as
- * the hub holds it beside the toast that says why. After any failure the same reads show what the hub holds.
- */
-export function useAnswerDecision(
-  decision: Pick<Decision, "id" | "project" | "plan_id">,
-  {
-    onAnswered,
-    onFailed,
-    onConflict,
-  }: {
-    /** Called even when the form that sent the answer is gone, which an answered decision replaces at once. */
-    onAnswered?: (answered: Decision) => void;
-    onFailed?: (error: unknown) => void;
-    /** The decision as the hub holds it after a 409, read again. */
-    onConflict?: (fresh: Decision) => void;
-  } = {},
-) {
+export type AnswerHandlers = {
+  /** Called even when the form that sent the answer is gone, which an answered decision replaces at once. */
+  onAnswered?: (answered: Decision) => void;
+  onFailed?: (error: unknown) => void;
+  /** The decision as the hub holds it after a 409, read again. */
+  onConflict?: (fresh: Decision) => void;
+};
+
+/** What every answer does once the hub has said: the decision it returned or why it refused, then the reads again. */
+export function useAnswerEffects(decision: Pick<Decision, "id" | "project" | "plan_id">, { onAnswered, onFailed, onConflict }: AnswerHandlers) {
   const queryClient = useQueryClient();
   const keys = decisionKeys(decision.project);
-  return useMutation({
-    mutationFn: (body: AnswerRequest) => answerDecision(browserApi(), decision.project, decision.id, body),
-    onError: async (error) => {
+  return {
+    failed: async (error: unknown) => {
       if (isApiError(error) && error.kind === "unauthorized") {
         window.location.assign(LOGIN_PATH);
         return;
@@ -82,11 +70,11 @@ export function useAnswerDecision(
         if (fresh) onConflict?.(fresh);
       }
     },
-    onSuccess: (answered) => {
+    answered: (answered: Decision) => {
       queryClient.setQueryData(keys.one(decision.id), answered);
       onAnswered?.(answered);
     },
-    onSettled: () =>
+    settled: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: keys.all }),
         queryClient.invalidateQueries({ queryKey: inboxKeys.all }),
@@ -94,6 +82,23 @@ export function useAnswerDecision(
         queryClient.invalidateQueries({ queryKey: runKeys.all(decision.project) }),
         decision.plan_id !== null ? queryClient.invalidateQueries({ queryKey: planKeys.one(decision.project, decision.plan_id) }) : null,
       ]),
+  };
+}
+
+/**
+ * Answer a decision from the browser. Nothing changes on screen until the hub answers; then the decision is the one
+ * the hub returned, and its project's decisions, the member's notifications and overview, the runs and the plan are
+ * read again (an answer to a parked run ends it and queues the run that resumes it). A 409 means the decision was
+ * answered or closed meanwhile: the decision is read again at once and handed to `onConflict`, so the card shows it as
+ * the hub holds it beside the toast that says why. After any failure the same reads show what the hub holds.
+ */
+export function useAnswerDecision(decision: Pick<Decision, "id" | "project" | "plan_id">, handlers: AnswerHandlers = {}) {
+  const effects = useAnswerEffects(decision, handlers);
+  return useMutation({
+    mutationFn: (body: AnswerRequest) => answerDecision(browserApi(), decision.project, decision.id, body),
+    onError: effects.failed,
+    onSuccess: effects.answered,
+    onSettled: effects.settled,
   });
 }
 

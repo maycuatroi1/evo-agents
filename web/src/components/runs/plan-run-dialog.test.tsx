@@ -212,8 +212,26 @@ describe("PlanRunDialog", () => {
       model: "sonnet",
       mode: "headless",
       timeout_h: 8,
+      as_me: false,
     });
     expect(dispatched).toHaveBeenCalledWith(queued);
+  });
+
+  it("queues the plan run as the visitor on the hub only when asked, and then says the risk", async () => {
+    const user = userEvent.setup();
+    const queued = { id: 52, kind: "plan", project: "demo", plan_id: "rollout", state: "queued", as_owner: true } as Run;
+    api.answer = answer(() => json(queued, 201));
+    renderVi(<Harness onDispatched={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Chạy plan" });
+    await within(dialog).findByTestId("plan-run-summary");
+    const asMe = within(dialog).getByRole("checkbox", { name: /Chạy như tôi trên hub/ });
+    expect(asMe).not.toBeChecked();
+    await user.click(asMe);
+    expect(within(dialog).getByTestId("dispatch-as-me-warning")).toHaveTextContent("có thể lái nó trong lúc nó giữ quyền của bạn");
+    await waitFor(() => expect(within(dialog).getByTestId("plan-run-submit")).toBeEnabled());
+    await user.click(within(dialog).getByTestId("plan-run-submit"));
+    await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
+    expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.as_me).toBe(true);
   });
 
   it("leaves the run to any worker that fits when none can take it now, and says why below the dropdown", async () => {
@@ -290,6 +308,7 @@ describe("PlanRunDialog", () => {
       mode: "headless",
       timeout_h: 24,
       session_per_step: true,
+      as_me: false,
     });
   });
 

@@ -975,7 +975,8 @@
       "kinds": {
         "machine": "Machine token",
         "web": "Web session",
-        "worker": "Worker token"
+        "worker": "Worker token",
+        "run": "Run token"
       },
       "state": "State",
       "states": {
@@ -1012,6 +1013,7 @@
       "machine": "Machine {host} gets a 401 on its next request and has to run evo-agents hub login again.",
       "web": "This web session is signed out on its next request.",
       "worker": "Worker {host} stops at once: revoking its token revokes the worker too, and the runs it holds go back to the queue.",
+      "run": "The run this token belongs to ({host}) stops acting as {login} at once, and goes on with its other credentials.",
       "current": "This is the session you are using: revoking it signs you out at once.",
       "audit": "This cannot be undone, and it is audited.",
       "cancel": "Cancel",
@@ -5460,7 +5462,8 @@
         "empty": "This run got no credential from the hub.",
         "provider": {
           "secret": "Your secret",
-          "githubApp": "GitHub App"
+          "githubApp": "GitHub App",
+          "runAccess": "Hub account"
         },
         "state": {
           "out": "Out",
@@ -5780,6 +5783,30 @@
         "boundedLabel": "Classes that are not auto",
         "allAuto": "Every class is auto.",
         "showAll": "{count, plural, one {Show the class} other {Show all # classes}}"
+      },
+      "access": {
+        "title": "Hub access",
+        "active": "Runs as {login}",
+        "ended": "Ran as {login}",
+        "textOwner": "The agent calls the hub's API as you: your access on every project, never your secrets, tokens or workers.",
+        "textOther": "The agent calls the hub's API as {login}: their access on every project, never their secrets, tokens or workers.",
+        "grantedBy": "Granted by",
+        "since": "Since",
+        "sinceUnknown": "not recorded",
+        "ends": "Ends",
+        "endsOwner": "when the run stops, or when you revoke it",
+        "endsOther": "when the run stops, or when {login} revokes it",
+        "endsDone": "ended with the run",
+        "revoke": "Revoke",
+        "revokeLabel": "Revoke the hub access of run #{id}",
+        "confirmTitle": "Stop run #{id} acting as you?",
+        "confirmText": "Its token ends at once: the agent's next call to the hub gets a 401. The run goes on with its other credentials.",
+        "confirmAgain": "To let it act as you again: <code>evo-agents hub run access {id} --as-me</code>",
+        "confirm": "Revoke access",
+        "pending": "Revoking…",
+        "cancel": "Cancel",
+        "revoked": "Run #{id} no longer acts as you",
+        "revokedText": "Its token has ended; the agent's next call to the hub gets a 401."
       }
     },
     "diff": {
@@ -6029,6 +6056,11 @@
         "needs_login": "needs a login",
         "disabled": "disabled"
       }
+    },
+    "asMe": {
+      "label": "Run as me on the hub",
+      "hint": "The agent calls the hub's API as you: your access on every project, and hub admin if you have it, but never your secrets, tokens or workers. It ends when the run stops.",
+      "warning": "Anything the agent reads, such as a web page, an issue or a file, could steer it while it holds your access. You can revoke it on the run's page at any time."
     },
     "progress": {
       "label": "Plan progress",
@@ -6807,6 +6839,28 @@
       "footHub": "The hub does what the option says as soon as you answer.",
       "takeOver": "Take over",
       "takeOverLabel": "Take over run #{run} in the terminal"
+    },
+    "credential": {
+      "asksValue": "The run asks for <code>{name}</code>, to keep as the secret <code>{secret}</code> of {owner}.",
+      "asksAccount": "The run asks for the hub account of {owner}: their access on every project, never their secrets, tokens or workers.",
+      "asksBoth": "The run asks for <code>{name}</code>, to keep as the secret <code>{secret}</code> of {owner}, and for the hub account of {owner}.",
+      "value": "Value of <code>{name}</code>",
+      "valueHint": "Kept as your secret <code>{secret}</code> for project {project}. The hub never shows it again, and this field empties as soon as you send.",
+      "problem": {
+        "missing": "Paste the value of {name}, or pick another option.",
+        "long": "A secret's value is at most {max} bytes of UTF-8.",
+        "nul": "A secret's value cannot hold a NUL character.",
+        "inWords": "Your note holds the value, and the agent reads the note. Take the value out of it."
+      },
+      "forgotten": "The field was emptied when you sent it. Paste the value again to answer.",
+      "accountNote": "The run's agent will call the hub as you on every project you can reach, and as hub admin if you are one, never with your secrets, tokens or workers. Anything it reads could steer it with that access until the run ends or you revoke it on the run's page.",
+      "sendValue": "Give the value",
+      "sendAccount": "Let it use my account",
+      "sendBoth": "Give the value and my account",
+      "sendRefuse": "Refuse",
+      "footValue": "The value goes to your secrets, never into the answer the agent reads. The run gets it as soon as you answer.",
+      "footAccount": "The run acts as you as soon as you answer, until it ends or you revoke it.",
+      "footBoth": "The value goes to your secrets, never into the answer the agent reads, and the run acts as you as soon as you answer."
     },
     "errors": {
       "forbidden": "The hub refused: only {owner}, who dispatched run #{run}, can answer, and only while they hold the writer role on {project}.",

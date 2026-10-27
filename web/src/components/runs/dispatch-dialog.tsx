@@ -20,6 +20,7 @@ import { modelsFor, runnableModelsQuery } from "@/lib/runnable-models";
 
 import { AccountField, useAccountChoice } from "./account-field";
 import { accountField } from "./account-model";
+import { AsMeField } from "./as-me-field";
 import { BrowserField, browserFields } from "./browser-field";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
 import { Outlook, Section, Tile, WorkerField, type WorkerChoice } from "./dispatch-fields";
@@ -139,6 +140,7 @@ function DispatchForm({
   const [timeout, setTimeoutMinutes] = useState<number>(DEFAULT_TIMEOUT);
   const agents = useAgentChoice(project);
   const [browser, setBrowser] = useState("");
+  const [asMe, setAsMe] = useState(false);
 
   // The workers of the visitor's for the project, then those the agent lets claim the runs, and the one found for them.
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
@@ -187,6 +189,7 @@ function DispatchForm({
         ...accountField(account),
         ...profileField(agents.agent),
         ...browserFields(browser),
+        as_me: asMe,
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -324,6 +327,8 @@ function DispatchForm({
             </div>
           </Section>
         </div>
+
+        <AsMeField checked={asMe} onChange={setAsMe} disabled={pending} />
 
         {tooMany ? (
           <p className="text-sm font-medium text-danger" role="alert">
