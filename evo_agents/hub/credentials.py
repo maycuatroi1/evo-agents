@@ -69,9 +69,14 @@ GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the to
 # Asked as well for a run that writes, when the workers' App holds it on the installation: GitHub refuses a push that
 # creates or updates a file of .github/workflows without it, whatever the pusher may do. Never for the Curator's App.
 GITHUB_WORKFLOW_PERMISSIONS = {"workflows": "write"}
+# Asked as well for a run that writes, when the workers' App holds it on the installation: the agent opens the pull
+# request of its branch with the run's token, and GitHub refuses that without it (the preflight probes it). Never for
+# the Curator's App.
+GITHUB_PULL_REQUEST_PERMISSIONS = {"pull_requests": "write"}
 # the kinds of run whose GitHub token reads only
 READ_ONLY_KINDS = ("review", "judge", "author", "replay", "history", "probe")
 NO_WORKFLOW_KINDS = ("release",)  # the kinds of run whose GitHub token never asks GITHUB_WORKFLOW_PERMISSIONS
+NO_PULL_REQUEST_KINDS = ("release",)  # the kinds of run whose GitHub token never asks GITHUB_PULL_REQUEST_PERMISSIONS
 # The variables of the only env secrets a release run is leased: the login of Claude Code, its runtime
 # (evo_agents.hub.releases.RUNTIME).
 RELEASE_ENV_VARS = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
@@ -87,6 +92,12 @@ def github_workflows(run_kind: str) -> bool:
     """Whether the GitHub token of a run of ``run_kind`` that writes may also ask GITHUB_WORKFLOW_PERMISSIONS: never for
     a release run, whose push may not change the workflows that test and publish the release."""
     return run_kind not in NO_WORKFLOW_KINDS
+
+
+def github_pull_requests(run_kind: str) -> bool:
+    """Whether the GitHub token of a run of ``run_kind`` that writes may also ask GITHUB_PULL_REQUEST_PERMISSIONS: never
+    for a release run, which tags and publishes and opens no pull request."""
+    return run_kind not in NO_PULL_REQUEST_KINDS
 
 
 GITHUB_TOKEN_REFRESH_SECONDS = 600  # the daemon asks again for a GitHub token with less than this left
