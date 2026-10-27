@@ -13327,11 +13327,11 @@ export interface components {
         BaselineFix: {
             /** Codes */
             codes?: {
-                [key: string]: "delivered" | "undelivered";
+                [key: string]: "delivered" | "undelivered" | "unknown";
             };
             /** Headings */
             headings?: {
-                [key: string]: "delivered" | "undelivered";
+                [key: string]: "delivered" | "undelivered" | "unknown";
             };
             /**
              * Unknown
