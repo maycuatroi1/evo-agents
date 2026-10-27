@@ -350,6 +350,13 @@ CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for it
 # Leases given back: "... run:<id> leases=<n> secrets=<names> github-app=<tokens> by=<worker|run-<state>|...>",
 # by the worker (its actor), or by the hub itself when the run left the held states or its worker was revoked.
 CREDENTIAL_REVOKE = "credential.revoke"
+# A run that runs as its owner (evo_agents.hub.server.run_access), in the run's project: its owner let it, "<run as
+# above> by=dispatch" or "by=rerun of run:<id>" or "by=access", or stopped letting it, "<run as above> by=access
+# tokens=<n>" or "by=token"; and each write made with its token, refused or not, "<run as above> <method> <path>
+# <status>" (run_access_rules), the actor its owner and the token the run's. Never the token, a query string or a body.
+RUN_ACCESS_GRANT = "run_access.grant"
+RUN_ACCESS_REVOKE = "run_access.revoke"
+RUN_ACCESS_WRITE = "run_access.write"
 # The signals of a project (evo_agents.hub.server.signal_keys), in the project: "<project> key=<name>" for its registry,
 # "<project> ingest:<id> name=<name>" for an ingest key; never a token.
 SIGNAL_KEY_ADD = "signal.key-add"  # an admin added a key to the registry

@@ -21,7 +21,7 @@ from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, autonomy_hold, run_autonomy, worker_placement
+from evo_agents.hub.server import audit, autonomy_hold, run_access, run_autonomy, worker_placement
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_configs import check_run_layer
@@ -317,12 +317,14 @@ async def queue_run(
     browser: bool = False,
     identities: list[int] | tuple[int, ...] = (),
     placed: dict | None = None,
+    as_owner: bool = False,
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
     by hand, under the agent profile ``chosen`` (the project's default without one), with its own layer of plugin
     config ``plugin_config`` (checked already), with a Chromium of its own when ``browser`` or browser
-    ``identities`` (resolved already, the run ``pinned`` to their worker), and the selector and tolerations
-    ``placed`` (``placement``); HTTPException when the step may not run now."""
+    ``identities`` (resolved already, the run ``pinned`` to their worker), the selector and tolerations
+    ``placed`` (``placement``), and running as its owner when ``as_owner`` (``run_access``, checked already);
+    HTTPException when the step may not run now."""
     body = held.body
     browser = browser or bool(identities)
     try:
@@ -362,6 +364,7 @@ async def queue_run(
         "branch": _short(repo.get("branch")),
         "browser": browser,
         "browser_identities": list(identities),
+        "as_owner": as_owner,
         **_listed(placed),
         **({} if plugin_config is None else {"plugin_config": plugin_config}),  # a JSON null is no layer
         **({} if chosen is None else chosen.columns()),
@@ -428,6 +431,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
     """Queue a run of each step named, all of them or none; each one goes to a worker of the caller, and takes the
     account named by hand, if one is."""
     keys = list(dict.fromkeys(str(step) for step in body.steps))
+    run_access.refuse_onward(user, body.as_me)
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
@@ -466,6 +470,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 browser=body.browser,
                 identities=identities,
                 placed=placed,
+                as_owner=body.as_me,
             )
             target = run_target(project, body.plan_id, key, run_id) + _account_text(picked) + chosen.audit_text()
             await audit.record(
@@ -476,6 +481,9 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 target=target,
                 project_id=access.project_id,
             )
+            if body.as_me:
+                granted = f"{run_target(project, body.plan_id, key, run_id)} by=dispatch"
+                await run_access.record(conn, user, access.project_id, granted, granted=True)
             queued.append(run_id)
         views = await run_views(conn, queued)
     log.info(
@@ -523,6 +531,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
     """Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet, in one
     agent session or, with ``session_per_step``, in a new session for each step; pinned to a worker whose daemon does
     not say it runs that, 409."""
+    run_access.refuse_onward(user, body.as_me)
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
@@ -576,6 +585,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "session_per_step": body.session_per_step,
             "browser": browser,
             "browser_identities": identities,
+            "as_owner": body.as_me,
             **_listed(placed),
             **chosen.columns(),
         }
@@ -595,6 +605,9 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         await notify_queued(conn, run_id)
         target = run_target(project, held.plan_id, None, run_id) + _account_text(picked) + chosen.audit_text()
         await audit_run(conn, user, access, audit.RUN_DISPATCH_PLAN, target)
+        if body.as_me:
+            granted = f"{run_target(project, held.plan_id, None, run_id)} by=dispatch"
+            await run_access.record(conn, user, access.project_id, granted, granted=True)
         view = await run_view(conn, run_id)
     log.info(
         "plan run dispatched",

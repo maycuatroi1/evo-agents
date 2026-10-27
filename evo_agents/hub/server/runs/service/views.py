@@ -146,6 +146,7 @@ def run_select():
             r.c.last_activity_at,
             principal.c.login.label("principal"),
             r.c.autonomy,
+            r.c.as_owner,
             lost_on.c.id.label("steady_wait_worker_id"),
             lost_on.c.name.label("steady_wait_worker"),
             case((beating(lost_on), lost_on.c.steady_since + STEADY), else_=None).label("steady_wait_at"),

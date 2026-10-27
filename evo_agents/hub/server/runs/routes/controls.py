@@ -1,5 +1,5 @@
-"""The owner's controls of a run: POST /v1/projects/{p}/runs/{id}/cancel, takeover, handback, approve and rerun
-(``service.controls``)."""
+"""The owner's controls of a run: POST /v1/projects/{p}/runs/{id}/cancel, takeover, handback, approve and rerun, and PUT
+/v1/projects/{p}/runs/{id}/access (``service.controls``)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from fastapi import APIRouter, Request
 
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.runs.models import REFUSALS, Rerun, Run, RunId
-from evo_agents.hub.server.runs.service.controls import approve_run, ask_control, cancel_run, rerun_run
+from evo_agents.hub.server.runs.models import REFUSALS, AccessChange, Rerun, Run, RunId
+from evo_agents.hub.server.runs.service.controls import approve_run, ask_control, cancel_run, change_access, rerun_run
 from evo_agents.hub.server.security import CurrentUser
 
 router = APIRouter()
@@ -48,3 +48,10 @@ async def rerun(
     the plan's current revision, and the account picked by hand for it; the body, which may be left out, picks
     another account or asks the rules for one."""
     return await rerun_run(request.app.state.engine, user, project, run_id, body)
+
+
+@router.put("/{project}/runs/{run_id}/access", response_model=Run, responses=REFUSALS)
+async def access(request: Request, project: ProjectName, run_id: RunId, body: AccessChange, user: CurrentUser) -> Run:
+    """Let a run of yours call the hub's API as you, secrets, tokens and workers aside, or stop it: its token ends at
+    once (``evo_agents.hub.server.run_access``). A run's own token never reaches this route."""
+    return await change_access(request.app.state.engine, user, project, run_id, body)

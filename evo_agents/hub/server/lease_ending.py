@@ -3,10 +3,11 @@ lease"); moved out of ``credentials``, which re-exports every name here so its c
 and the like as before.
 
 ``end_leases`` marks revoked, in the caller's transaction, the leases of a run, of a worker or of that worker's run, and
-adds one credential.revoke audit row per run; ``end_member_leases`` does it for every run a member dispatched in a
-project. ``revoke_tokens`` then revokes at GitHub, once that transaction commits, each token of the leases marked
-revoked that still holds its sealed value, and ``drop_expired`` drops the sealed values of tokens past their end. No
-log line, audit row or error holds a value.
+adds one credential.revoke audit row per run; the token of a run that runs as its owner (``run_access``) is revoked in
+the same statement and its sealed value dropped, so it stops working with its lease; ``end_member_leases`` does it for
+every run a member dispatched in a project. ``revoke_tokens`` then revokes at GitHub, once that transaction commits,
+each token of the leases marked revoked that still holds its sealed value, and ``drop_expired`` drops the sealed values
+of tokens past their end. No log line, audit row or error holds a value.
 """
 
 from __future__ import annotations
@@ -14,11 +15,12 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
-from sqlalchemy import BigInteger, distinct, func, select, update
+from sqlalchemy import BigInteger, case, distinct, func, null, select, update
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
+from evo_agents.hub.credentials import RUN_ACCESS
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
@@ -36,15 +38,29 @@ def _ids(values) -> str:
 
 def _end_leases(run_id: int | None, worker_id: int | None):
     """One statement: mark revoked the leases not given back yet of run ``run_id`` and of worker ``worker_id`` (either
-    may be None), in a data-modifying CTE, and per run they were of, its project, plan and step, how many leases ended,
-    the secrets among them and how many GitHub tokens."""
-    cl, r, projects = tables.credential_leases, tables.runs, tables.projects
-    ending = update(cl).values(revoked_at=func.greatest(func.now(), cl.c.issued_at)).where(cl.c.revoked_at.is_(None))
+    may be None), in a data-modifying CTE that drops the sealed token of a run-access lease, revoke the tokens of those
+    in another, and per run they were of, its project, plan and step, how many leases ended, the secrets among them, how
+    many GitHub tokens and how many tokens of the run's own."""
+    cl, r, projects, tokens = tables.credential_leases, tables.runs, tables.projects, tables.tokens
+    own = cl.c.provider == RUN_ACCESS
+    sealed = {name: case((own, null()), else_=cl.c[name]) for name in ("sealed_value", "nonce", "key_id")}
+    ending = (
+        update(cl)
+        .values(revoked_at=func.greatest(func.now(), cl.c.issued_at), **sealed)
+        .where(cl.c.revoked_at.is_(None))
+    )
     if run_id is not None:
         ending = ending.where(cl.c.run_id == run_id)
     if worker_id is not None:
         ending = ending.where(cl.c.worker_id == worker_id)
-    ended = ending.returning(cl.c.run_id, cl.c.provider, cl.c.secret_id).cte("ended")
+    ended = ending.returning(cl.c.run_id, cl.c.provider, cl.c.secret_id, cl.c.token_id).cte("ended")
+    revoked = (
+        update(tokens)
+        .values(revoked_at=func.now())
+        .where(tokens.c.id.in_(select(ended.c.token_id)), tokens.c.revoked_at.is_(None))
+        .returning(tokens.c.id)
+        .cte("revoked")
+    )
     secrets = func.array_remove(func.array_agg(distinct(ended.c.secret_id)), None, type_=ARRAY(BigInteger))
     return (
         select(
@@ -56,11 +72,13 @@ def _end_leases(run_id: int | None, worker_id: int | None):
             func.count().label("leases"),
             secrets.label("secrets"),
             func.count().filter(ended.c.provider == "github-app").label("tokens"),
+            func.count().filter(ended.c.provider == RUN_ACCESS).label("run_tokens"),
         )
         .join_from(ended, r, r.c.id == ended.c.run_id)
         .join(projects, projects.c.id == r.c.project_id)
         .group_by(ended.c.run_id, r.c.project_id, projects.c.name, r.c.plan_id, r.c.step_key)
         .order_by(ended.c.run_id)
+        .add_cte(revoked)
     )
 
 
@@ -83,7 +101,9 @@ async def end_leases(
     for row in rows:
         target = (
             f"{run_target(row.project, row.plan_id, row.step_key, row.run_id)} leases={row.leases} "
-            f"secrets={_ids(row.secrets)} github-app={row.tokens} by={by}"
+            f"secrets={_ids(row.secrets)} github-app={row.tokens}"
+            + (f" run-access={row.run_tokens}" if row.run_tokens else "")  # a row without one reads as it always did
+            + f" by={by}"
         )
         await audit.record(
             conn,

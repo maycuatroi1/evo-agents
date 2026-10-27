@@ -2221,6 +2221,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Access
+         * @description Let a run of yours call the hub's API as you, secrets, tokens and workers aside, or stop it: its token ends at
+         *     once (``evo_agents.hub.server.run_access``). A run's own token never reaches this route.
+         */
+        put: operations["access_v1_projects__project__runs__run_id__access_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/claim": {
         parameters: {
             query?: never;
@@ -11209,6 +11230,17 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AccessChange
+         * @description What PUT /v1/projects/{p}/runs/{id}/access changes of a run of the caller's.
+         */
+        AccessChange: {
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it; false: it stops, and its token ends at once, as a run that never ran as you
+             */
+            as_me: boolean;
+        };
+        /**
          * Account
          * @description One of the caller's env secrets or provider accounts as an account: everything but its value or key.
          */
@@ -11500,12 +11532,13 @@ export interface components {
             login: string;
             /**
              * Kind
+             * @description run: the token of a run that runs as its owner (evo_agents.hub.server.run_access)
              * @enum {string}
              */
-            kind: "machine" | "web" | "worker";
+            kind: "machine" | "web" | "worker" | "run";
             /**
              * Host
-             * @description the machine a machine token or worker token was issued to; null for a web session
+             * @description the machine a machine token or worker token was issued to, run:<id> for a run's; null for a web session
              */
             host: string | null;
             /**
@@ -16619,7 +16652,7 @@ export interface components {
         /** Credentials */
         Credentials: {
             /** Leases */
-            leases: (components["schemas"]["CredentialLease"] | components["schemas"]["GatewayLease"])[];
+            leases: (components["schemas"]["CredentialLease"] | components["schemas"]["GatewayLease"] | components["schemas"]["HubLease"])[];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
             /**
@@ -17409,6 +17442,12 @@ export interface components {
              * @default []
              */
             identities: string[];
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it
+             * @default false
+             */
+            as_me: boolean;
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -19826,6 +19865,62 @@ export interface components {
              * @description EVO_HUB_PUBLIC_URL, which an order carries
              */
             url?: string | null;
+        };
+        /**
+         * HubLease
+         * @description The lease of a run its owner lets run as them (``evo_agents.hub.server.run_access``): the run's own token of the
+         *     hub, which calls the hub's API as the owner, and the hub's URL. A worker that knows no kind hub leaves it unused.
+         */
+        HubLease: {
+            /**
+             * Id
+             * @description the lease of the run's token; the same id, and token, when it is asked for again
+             */
+            id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "hub";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "run-access";
+            /**
+             * Name
+             * @description run-access:<owner>, the login the token acts as
+             */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable that carries the token
+             * @constant
+             */
+            env_var: "EVO_HUB_TOKEN";
+            /** Url Prefix */
+            url_prefix?: null;
+            /** Username */
+            username?: null;
+            /**
+             * Value
+             * @description the run's token, evr_...: for memory only, never a file, a log line or an event
+             */
+            value: string;
+            /**
+             * Expires At
+             * @description none: the token ends with the lease, when the run is no longer held
+             */
+            expires_at?: null;
+            /**
+             * Base Url
+             * @description the hub's URL, which the token is for
+             */
+            base_url: string;
+            /** Model */
+            model?: null;
+            /** Api Format */
+            api_format?: null;
         };
         /** Inbox */
         Inbox: {
@@ -25842,6 +25937,12 @@ export interface components {
              * @default []
              */
             identities: string[];
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it
+             * @default false
+             */
+            as_me: boolean;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -31252,6 +31353,11 @@ export interface components {
              * @description true: the rerun gets a Chromium of its own; false: it gets none, nor the run's browser identities; null keeps what the run rerun had
              */
             browser?: boolean | null;
+            /**
+             * As Me
+             * @description true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run (evo_agents.hub.server.run_access); a run's own token may not ask it; null keeps the choice of the run rerun
+             */
+            as_me?: boolean | null;
         };
         /** RerunCandidates */
         RerunCandidates: {
@@ -31950,6 +32056,12 @@ export interface components {
             principal?: string | null;
             /** @description the autonomy it acts under; null where principal is */
             autonomy?: components["schemas"]["RunAutonomy"] | null;
+            /**
+             * As Owner
+             * @description its owner lets its agent call the hub's API as them, secrets, tokens and workers aside, through a token of the run's own while a worker holds it (PUT .../runs/{id}/access changes it)
+             * @default false
+             */
+            as_owner: boolean;
         };
         /** RunAccount */
         RunAccount: {
@@ -32540,19 +32652,19 @@ export interface components {
             name: string;
             /**
              * Provider
-             * @description secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's
+             * @description secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's; run-access: the run's own token of the hub, as its owner (evo_agents.hub.server.run_access)
              * @enum {string}
              */
-            provider: "secret" | "github-app" | "gateway";
+            provider: "secret" | "github-app" | "gateway" | "run-access";
             /**
              * Kind
-             * @description env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the model gateway, or a provider account it reaches
+             * @description env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the model gateway, or a provider account it reaches; hub: the run's token of the hub
              * @enum {string}
              */
-            kind: "env" | "git" | "gateway";
+            kind: "env" | "git" | "gateway" | "hub";
             /**
              * Target
-             * @description kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin; kind gateway: the model
+             * @description kind env and hub: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin; kind gateway: the model
              */
             target: string;
             /**
@@ -37364,9 +37476,10 @@ export interface components {
             id: number;
             /**
              * Kind
+             * @description run: the token of a run of yours that runs as you (evo_agents.hub.server.run_access)
              * @enum {string}
              */
-            kind: "machine" | "web" | "worker";
+            kind: "machine" | "web" | "worker" | "run";
             /** Host */
             host: string | null;
             /**
@@ -44732,7 +44845,7 @@ export interface operations {
             query?: {
                 /** @description one user's tokens, any case */
                 login?: string | null;
-                kind?: ("machine" | "web" | "worker") | null;
+                kind?: ("machine" | "web" | "worker" | "run") | null;
                 /** @description live tokens unless set; expiring: live ones expiring within 14 days; unused: not revoked and unused for 90 days */
                 state?: "active" | "revoked" | "expired" | "expiring" | "unused" | "any";
                 /** @description next_cursor of the previous page, with the same filters */
@@ -47069,6 +47182,78 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    access_v1_projects__project__runs__run_id__access_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
